@@ -1,0 +1,68 @@
+[project]
+name = "housegen"
+version = "0.1.0"
+description = "Agentic plan + photos → 3D house scene generator"
+requires-python = ">=3.12"
+dependencies = [
+    "aiosqlite>=0.20",
+    "anthropic>=0.60",
+    "fastapi>=0.115",
+    "openai>=1.50",
+    "pillow>=10",
+    "playwright>=1.45",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.4",
+    "pymupdf>=1.24",
+    "python-json-logger>=2.0",
+    "python-multipart>=0.0.9",
+    "sqlalchemy[asyncio]>=2.0",
+    "sse-starlette>=2.1",
+    "uvicorn[standard]>=0.30",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27",
+    "mypy>=1.11",
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/housegen"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "PT", "RUF", "ASYNC"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src"]
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+
+[[tool.mypy.overrides]]
+module = ["pymupdf", "pymupdf.*", "pythonjsonlogger", "pythonjsonlogger.*", "sse_starlette", "sse_starlette.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["housegen.projects.storage"]
+disallow_untyped_calls = false  # pymupdf ships partially typed bindings
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra -q"

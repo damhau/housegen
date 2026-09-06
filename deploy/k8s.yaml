@@ -1,0 +1,101 @@
+# Minimal single-replica deployment. The backend keeps jobs in-process and
+# state on a PVC, so keep replicas: 1 until a job queue + shared storage exist.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: { name: housegen-data }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 20Gi } }
+---
+apiVersion: v1
+kind: Secret
+metadata: { name: housegen-llm }
+type: Opaque
+stringData:
+  LLM_PROVIDER: anthropic
+  ANTHROPIC_API_KEY: "replace-me"
+  OPENAI_API_KEY: ""
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: backend }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }        # one writer on the PVC
+  selector: { matchLabels: { app: backend } }
+  template:
+    metadata: { labels: { app: backend } }
+    spec:
+      containers:
+        - name: backend
+          image: housegen-backend:latest
+          ports: [{ containerPort: 8000 }]
+          envFrom: [{ secretRef: { name: housegen-llm } }]
+          env:
+            - { name: BROWSER_CHANNEL, value: "" }
+            - { name: DATA_DIR, value: /data }
+            - { name: RENDER_BASE_URL, value: http://127.0.0.1:8000 }
+          resources:
+            requests: { cpu: "1", memory: 2Gi }
+            limits: { cpu: "4", memory: 6Gi }   # software WebGL + LLM images: give it room
+          volumeMounts:
+            - { name: data, mountPath: /data }
+            - { name: dshm, mountPath: /dev/shm }
+          readinessProbe:
+            httpGet: { path: /api/v1/health, port: 8000 }
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /api/v1/health, port: 8000 }
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: housegen-data }
+        - name: dshm
+          emptyDir: { medium: Memory, sizeLimit: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: backend }
+spec:
+  selector: { app: backend }
+  ports: [{ port: 8000, targetPort: 8000 }]
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: frontend }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend } }
+    spec:
+      containers:
+        - name: frontend
+          image: housegen-frontend:latest
+          ports: [{ containerPort: 80 }]
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 128Mi }
+---
+apiVersion: v1
+kind: Service
+metadata: { name: frontend }
+spec:
+  selector: { app: frontend }
+  ports: [{ port: 80, targetPort: 80 }]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: housegen
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 200m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"   # SSE job stream
+spec:
+  rules:
+    - host: housegen.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend: { service: { name: frontend, port: { number: 80 } } }

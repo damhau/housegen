@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>House scene</title>
+<link rel="icon" href="data:," />
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #dfe6ea; }
+  canvas#view { display: block; width: 100%; height: 100%; touch-action: none; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "/kit/vendor/three/build/three.module.js",
+    "three/addons/": "/kit/vendor/three/examples/jsm/",
+    "housekit": "/kit/house.js"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<script type="module">
+  import { boot } from "/kit/runtime.js";
+  import { buildScene } from "./src/scene.js";
+  boot(buildScene);
+</script>
+</body>
+</html>

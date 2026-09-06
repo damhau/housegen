@@ -1,0 +1,33 @@
+# --- Python / backend ---
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+backend/data/
+backend/.env
+
+# --- Node / frontend / kit ---
+node_modules/
+frontend/dist/
+frontend/src/routeTree.gen.ts
+*.tsbuildinfo
+npm-debug.log*
+
+# --- Sample inputs & one-off outputs (kept locally, not versioned) ---
+/Plans*.pdf
+/*.jpg
+/*.jpeg
+/*.png
+/maison_exterieur.html
+
+# --- Editors / OS ---
+.idea/
+.vscode/
+.DS_Store
+*.swp
+
+# Playwright MCP artefacts
+.playwright-mcp/
