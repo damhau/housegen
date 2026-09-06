@@ -1,19 +1,12 @@
 services:
-  backend:
-    build: { context: ., dockerfile: backend/Dockerfile }
-    env_file: backend/.env
-    environment:
-      BROWSER_CHANNEL: ""          # bundled Chromium inside the image
-      DATA_DIR: /data
+  housegen:
+    build: .
+    image: ghcr.io/damhau/housegen:latest
+    env_file: backend/.env          # LLM_PROVIDER + API key; the image sets the rest
     volumes:
       - housegen-data:/data
-    shm_size: 1gb                  # Chromium; on k8s use an emptyDir mounted at /dev/shm (medium: Memory)
-    ports: ["8000:8000"]
-
-  frontend:
-    build: { context: ., dockerfile: frontend/Dockerfile }
-    depends_on: [backend]
-    ports: ["8080:80"]
+    shm_size: 1gb                   # Chromium; on k8s use an emptyDir (medium: Memory) at /dev/shm
+    ports: ["8000:8000"]            # UI + API on the same port
 
 volumes:
   housegen-data:

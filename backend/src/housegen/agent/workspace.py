@@ -15,10 +15,12 @@ class WorkspaceError(Exception):
 
 
 class Workspace:
-    def __init__(self, scene_dir: Path) -> None:
+    def __init__(self, scene_dir: Path, readonly: dict[str, Path] | None = None) -> None:
+        """`readonly` maps a virtual prefix (e.g. "kit") to a directory the model may read."""
         self.root = scene_dir
         self.src = scene_dir / "src"
         self.src.mkdir(parents=True, exist_ok=True)
+        self.readonly = readonly or {}
 
     def _resolve(self, rel: str) -> Path:
         rel = rel.strip().lstrip("/")
@@ -28,6 +30,17 @@ class Workspace:
             raise WorkspaceError("only .js modules are allowed")
         p = (self.root / rel).resolve()
         if self.src.resolve() not in p.parents:
+            raise WorkspaceError("path escapes the workspace")
+        return p
+
+    def _resolve_readonly(self, rel: str) -> Path | None:
+        rel = rel.strip().lstrip("/")
+        prefix, _, rest = rel.partition("/")
+        base = self.readonly.get(prefix)
+        if base is None or not rest or not rest.endswith(".js"):
+            return None
+        p = (base / rest).resolve()
+        if base.resolve() not in p.parents:
             raise WorkspaceError("path escapes the workspace")
         return p
 
@@ -42,9 +55,25 @@ class Workspace:
                     "bytes": len(text),
                 }
             )
+        for prefix, base in self.readonly.items():
+            for p in sorted(base.glob("*.js")):
+                text = p.read_text(encoding="utf-8")
+                out.append(
+                    {
+                        "path": f"{prefix}/{p.name}",
+                        "lines": text.count("\n") + 1,
+                        "bytes": len(text),
+                        "readonly": "yes",
+                    }
+                )
         return out
 
     def read(self, rel: str) -> str:
+        ro = self._resolve_readonly(rel)
+        if ro is not None:
+            if not ro.exists():
+                raise WorkspaceError(f"{rel} does not exist")
+            return ro.read_text(encoding="utf-8")
         p = self._resolve(rel)
         if not p.exists():
             raise WorkspaceError(

@@ -65,6 +65,7 @@ class SceneVersion(Base):
     label: Mapped[str] = mapped_column(String(200))
     summary: Mapped[str] = mapped_column(Text, default="")
     critic_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    critique_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
     project: Mapped[Project] = relationship(back_populates="versions")

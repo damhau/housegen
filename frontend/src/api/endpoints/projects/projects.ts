@@ -531,6 +531,79 @@ export const useModify = <TError = HTTPValidationError,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * Send the stored review findings of a version to the builder as a modification.
+ * @summary Fix Version
+ */
+export const getFixVersionUrl = (projectId: string,
+    number: number,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/versions/${number}/fix`
+}
+
+export const fixVersion = async (projectId: string,
+    number: number, options?: RequestInit): Promise<JobOut> => {
+  
+  return httpClient<JobOut>(getFixVersionUrl(projectId,number),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+
+
+
+
+export const getFixVersionMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof fixVersion>>, TError,{projectId: string;number: number}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof fixVersion>>, TError,{projectId: string;number: number}, TContext> => {
+
+const mutationKey = ['fixVersion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof fixVersion>>, {projectId: string;number: number}> = (props) => {
+          const {projectId,number} = props ?? {};
+
+          return  fixVersion(projectId,number,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type FixVersionMutationResult = NonNullable<Awaited<ReturnType<typeof fixVersion>>>
+    
+    export type FixVersionMutationError = HTTPValidationError
+
+    /**
+ * @summary Fix Version
+ */
+export const useFixVersion = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof fixVersion>>, TError,{projectId: string;number: number}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof fixVersion>>,
+        TError,
+        {projectId: string;number: number},
+        TContext
+      > => {
+
+      const mutationOptions = getFixVersionMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
  * @summary List Jobs
  */
 export const getListJobsUrl = (projectId: string,) => {

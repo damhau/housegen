@@ -14,6 +14,7 @@ import {
   useListJobs,
   useModify,
   useRestoreVersion,
+  useFixVersion,
 } from "@/api/endpoints/projects/projects"
 import { ChatPanel } from "@/components/ChatPanel"
 import { CodePanel } from "@/components/CodePanel"
@@ -53,6 +54,7 @@ function ProjectPage() {
   const generate = useGenerate()
   const modify = useModify()
   const restore = useRestoreVersion()
+  const fix = useFixVersion()
   const del = useDeleteProject()
 
   const [tab, setTab] = useState<Tab>("activity")
@@ -105,6 +107,13 @@ function ProjectPage() {
     await generate.mutateAsync({ projectId })
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
+  }
+  async function onFix(n: number) {
+    await fix.mutateAsync({ projectId, number: n })
+    setSelectedVersion(null)
+    setTab("activity")
+    void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
+    void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
   }
   async function onRestore(n: number) {
     await restore.mutateAsync({ projectId, number: n })
@@ -200,7 +209,8 @@ function ProjectPage() {
                 selected={selectedVersion}
                 onSelect={setSelectedVersion}
                 onRestore={(n) => void onRestore(n)}
-                restoring={restore.isPending || busy}
+                onFix={(n) => void onFix(n)}
+                busy={restore.isPending || fix.isPending || busy}
               />
             )}
             {tab === "code" && <CodePanel projectId={projectId} version={selectedVersion} />}

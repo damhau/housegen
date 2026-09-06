@@ -641,6 +641,277 @@ export function car({ position = [0, 0, 0], rotationY = 0, color = "#2f3a48" }) 
   return g;
 }
 
+// --------------------------------------------------------------------------
+// Terrain (registered globally so every later placement can ask groundY)
+// --------------------------------------------------------------------------
+
+let _heightAt = () => 0;
+
+/** Ground height at [x, z]: the registered terrain's, or 0 on flat ground. */
+export function groundY(x, z) {
+  return _heightAt(x, z);
+}
+
+/**
+ * Sloped / shaped ground. Give EITHER heightAt(x, z) → y, OR `points: [[x, z, y], ...]`
+ * (spot heights: the surface is interpolated between them and flattens to `edgeHeight`
+ * far away). The mesh is centred on `center` and covers `size` metres. Registers itself
+ * so groundY(), ribbon(), pebbleStrip(), leafTree()… follow it. Hide ctx.ground when you
+ * use it: `ctx.ground.visible = false`.
+ */
+export function terrain({ size = [90, 90], center = [0, 0], resolution = 0.5, heightAt, points, edgeHeight = 0, material = mat.grass("#8a9a68") }) {
+  let fn = heightAt;
+  if (!fn && points) {
+    fn = (x, z) => {
+      let num = 0, den = 0;
+      for (const [px, pz, py] of points) {
+        const d2 = (x - px) ** 2 + (z - pz) ** 2;
+        if (d2 < 1e-6) return py;
+        const w = 1 / (d2 * d2);
+        num += w * py; den += w;
+      }
+      const far = Math.min(...points.map(([px, pz]) => Math.hypot(x - px, z - pz)));
+      const t = Math.min(1, Math.max(0, (far - 6) / 14)); // blend to edgeHeight beyond ~6 m from the nearest point
+      return (num / den) * (1 - t) + edgeHeight * t;
+    };
+  }
+  if (!fn) fn = () => 0;
+  _heightAt = fn;
+  const [w, d] = size;
+  const nx = Math.max(2, Math.round(w / resolution)), nz = Math.max(2, Math.round(d / resolution));
+  const geo = new THREE.PlaneGeometry(w, d, nx, nz);
+  geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + center[0], z = pos.getZ(i) + center[1];
+    pos.setY(i, fn(x, z));
+  }
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, material);
+  m.position.set(center[0], 0.0, center[1]);
+  m.receiveShadow = true;
+  m.userData = { kind: "terrain", heightAt: fn };
+  return m;
+}
+
+/** Thin cylinder between two [x,y,z] points (branches, rails, posts…). */
+export function rod(from, to, radius = 0.03, material = mat.metal()) {
+  const a = new THREE.Vector3(...from), b = new THREE.Vector3(...to);
+  const len = a.distanceTo(b);
+  const geo = new THREE.CylinderGeometry(radius, radius, len, 7);
+  const m = shadow(new THREE.Mesh(geo, material), true, false);
+  m.position.copy(a).lerp(b, 0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
+  return m;
+}
+
+/** Path / drive draped on the ground along a polyline of [x, z] points. */
+export function ribbon({ points, width = 1.2, lift = 0.03, material = mat.gravel() }) {
+  const left = [], right = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i], q = points[Math.min(i + 1, points.length - 1)], o = points[Math.max(i - 1, 0)];
+    let dx = q[0] - o[0], dz = q[1] - o[1];
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    const nx = -dz, nz = dx;
+    left.push([p[0] + nx * width / 2, p[1] + nz * width / 2]);
+    right.push([p[0] - nx * width / 2, p[1] - nz * width / 2]);
+  }
+  const verts = [], idx = [];
+  for (let i = 0; i < points.length; i++) {
+    const [lx, lz] = left[i], [rx, rz] = right[i];
+    verts.push(lx, groundY(lx, lz) + lift, lz, rx, groundY(rx, rz) + lift, rz);
+    if (i > 0) { const a = 2 * (i - 1); idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  const m = new THREE.Mesh(geo, material);
+  m.receiveShadow = true;
+  return m;
+}
+
+/** River stones along a line (the classic strip against a foundation). */
+export function pebbleStrip({ from, to, width = 0.45, density = 12, seed = 5 }) {
+  const rnd = seeded(seed);
+  const dx = to[0] - from[0], dz = to[1] - from[1];
+  const len = Math.hypot(dx, dz);
+  const n = Math.max(4, Math.round(len * density));
+  const geo = new THREE.IcosahedronGeometry(1, 1);
+  const m = new THREE.MeshStandardMaterial({ color: "#b9b4a8", roughness: 0.95 });
+  const inst = new THREE.InstancedMesh(geo, m, n);
+  const d = new THREE.Object3D();
+  for (let i = 0; i < n; i++) {
+    const t = rnd(), s = 0.05 + rnd() * 0.07;
+    const x = from[0] + dx * t + (rnd() - 0.5) * width, z = from[1] + dz * t + (rnd() - 0.5) * width;
+    d.position.set(x, groundY(x, z) + s * 0.4, z);
+    d.scale.set(s, s * 0.6, s * 0.8);
+    d.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+    d.updateMatrix();
+    inst.setMatrixAt(i, d.matrix);
+    inst.setColorAt(i, new THREE.Color().setHSL(0.1, 0.05 + rnd() * 0.05, 0.55 + rnd() * 0.25));
+  }
+  inst.castShadow = true;
+  return inst;
+}
+
+function leafCluster(list, cx, cy, cz, rx, ry, rz, count, rnd) {
+  for (let q = 0; q < count; q++) {
+    const u = rnd() * Math.PI * 2, v = Math.acos(2 * rnd() - 1), r = Math.cbrt(rnd());
+    list.push([cx + Math.cos(u) * Math.sin(v) * r * rx, cy + Math.cos(v) * r * ry, cz + Math.sin(u) * Math.sin(v) * r * rz]);
+  }
+}
+
+function leafMesh(leaves, color, rnd, scale = 1) {
+  const geo = new THREE.SphereGeometry(1, 5, 3);
+  const m = mat.foliage(color);
+  const inst = new THREE.InstancedMesh(geo, m, leaves.length);
+  const d = new THREE.Object3D();
+  const base = new THREE.Color(color);
+  const hsl = { h: 0, s: 0, l: 0 };
+  base.getHSL(hsl);
+  leaves.forEach((p, i) => {
+    d.position.set(...p);
+    d.scale.set((0.07 + rnd() * 0.04) * scale, (0.16 + rnd() * 0.1) * scale, 0.025 * scale);
+    d.rotation.set(rnd() * 2, rnd() * 6, rnd() * 6);
+    d.updateMatrix();
+    inst.setMatrixAt(i, d.matrix);
+    inst.setColorAt(i, new THREE.Color().setHSL(hsl.h + (rnd() - 0.5) * 0.05, hsl.s * (0.8 + rnd() * 0.4), hsl.l * (0.75 + rnd() * 0.5)));
+  });
+  inst.castShadow = true;
+  inst.receiveShadow = true;
+  return inst;
+}
+
+/**
+ * A tree that reads as foliage (instanced leaves), not as blobs. position=[x, z] (sits on the
+ * ground) or [x, y, z]. kind: "broadleaf" | "pine" | "columnar". RECOMMENDED over tree().
+ */
+export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf", seed = 3, foliageColor, trunkColor = "#655d48" }) {
+  const rnd = seeded(seed);
+  const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
+  const y = position.length === 3 ? position[1] : groundY(x, z);
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  const bark = mat.wood(trunkColor);
+  const leaves = [];
+  if (kind === "pine") {
+    g.add(rod([0, 0, 0], [0.3, height, -0.15], 0.16, bark));
+    const tiers = 5;
+    for (let t = 0; t < tiers; t++) {
+      const yy = height * (0.45 + 0.11 * t), reach = spread * 0.55 * (1 - t / (tiers + 1));
+      for (let j = 0; j < 5; j++) {
+        const a = j * 1.256 + t * 0.55;
+        const e = [Math.cos(a) * reach, yy + 0.3, Math.sin(a) * reach];
+        g.add(rod([0.1, yy - 0.2, 0], e, 0.04, bark));
+        leafCluster(leaves, e[0], e[1], e[2], reach * 0.55, 0.35, reach * 0.55, 120, rnd);
+      }
+    }
+    g.add(leafMesh(leaves, foliageColor ?? "#4b6b3f", rnd, 0.8));
+  } else {
+    const trunkH = height * (kind === "columnar" ? 0.25 : 0.4);
+    const spine = [[0, 0, 0], [-0.08, trunkH * 0.5, 0.06], [0.1, trunkH, -0.04]];
+    for (let i = 0; i < spine.length - 1; i++) g.add(rod(spine[i], spine[i + 1], 0.18 - i * 0.05, bark));
+    const branches = kind === "columnar" ? 7 : 11;
+    for (let k = 0; k < branches; k++) {
+      const a = k * 2.399, up = trunkH + k * (height - trunkH) / branches * 0.9;
+      const len = (kind === "columnar" ? spread * 0.35 : spread * 0.5) * (0.7 + rnd() * 0.6);
+      const mid = [Math.cos(a) * len * 0.5, up + 0.4, Math.sin(a) * len * 0.5];
+      const end = [Math.cos(a) * len, up + 0.9 + rnd() * 0.6, Math.sin(a) * len];
+      g.add(rod(spine[2], mid, 0.07, bark));
+      g.add(rod(mid, end, 0.035, bark));
+      for (let j = 0; j < 4; j++) {
+        const e = [end[0] + (rnd() - 0.5) * 1.1, end[1] + (rnd() - 0.2) * 0.9, end[2] + (rnd() - 0.5) * 1.1];
+        leafCluster(leaves, e[0], e[1], e[2], 0.7, 0.5, 0.7, 50, rnd);
+      }
+    }
+    // a top crown
+    leafCluster(leaves, 0.1, height * 0.92, 0, spread * 0.3, height * 0.12, spread * 0.3, 160, rnd);
+    g.add(leafMesh(leaves, foliageColor ?? "#5a7a3e", rnd));
+  }
+  return g;
+}
+
+/** Bush with instanced leaves; position=[x, z] or [x, y, z]. RECOMMENDED over bush(). */
+export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", stems = true }) {
+  const rnd = seeded(seed);
+  const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
+  const y = position.length === 3 ? position[1] : groundY(x, z);
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  const leaves = [];
+  const n = Math.max(160, Math.round(900 * radius * radius));
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * Math.PI * 2, cy = 2 * rnd() - 1, rr = radius * (0.4 + 0.6 * Math.cbrt(rnd())), ss = Math.sqrt(1 - cy * cy);
+    leaves.push([Math.cos(a) * ss * rr, radius * 0.6 + cy * rr * 0.65, Math.sin(a) * ss * rr]);
+  }
+  g.add(leafMesh(leaves, color, rnd, 0.6 + radius * 0.4));
+  if (stems) {
+    const twig = mat.wood("#6f6a58");
+    for (let i = 0; i < 5; i++) { const a = i * 2.4; g.add(rod([0, 0, 0], [Math.cos(a) * radius * 0.5, radius * 0.8, Math.sin(a) * radius * 0.5], 0.012, twig)); }
+  }
+  return g;
+}
+
+// --------------------------------------------------------------------------
+// Props
+// --------------------------------------------------------------------------
+
+/** Garden swing set (A-frames + beam + one seat). position=[x, z]. */
+export function swingSet({ position, rotationY = 0, width = 2.6, height = 2.3, color = "#7a6045" }) {
+  const g = new THREE.Group();
+  const [x, z] = position;
+  g.position.set(x, groundY(x, z), z);
+  g.rotation.y = rotationY;
+  const wood = mat.wood(color);
+  for (const s of [-1, 1]) {
+    g.add(rod([s * width / 2, 0, -0.7], [s * width / 2, height, 0], 0.05, wood));
+    g.add(rod([s * width / 2, 0, 0.7], [s * width / 2, height, 0], 0.05, wood));
+  }
+  g.add(rod([-width / 2 - 0.1, height, 0], [width / 2 + 0.1, height, 0], 0.055, wood));
+  const rope = mat.metal("#3a3a3a");
+  g.add(rod([-0.25, height, 0], [-0.25, 0.5, 0], 0.008, rope));
+  g.add(rod([0.25, height, 0], [0.25, 0.5, 0], 0.008, rope));
+  g.add(box({ size: [0.55, 0.04, 0.2], position: [0, 0.5, 0], material: mat.paint("#c0392b") }));
+  return g;
+}
+
+/** Garden bench. position=[x, z]. */
+export function bench({ position, rotationY = 0, color = "#7a6a52" }) {
+  const g = new THREE.Group();
+  const [x, z] = position;
+  g.position.set(x, groundY(x, z), z);
+  g.rotation.y = rotationY;
+  const wood = mat.wood(color), metal = mat.metal("#3a3d40");
+  g.add(box({ size: [1.6, 0.05, 0.45], position: [0, 0.45, 0], material: wood }));
+  g.add(box({ size: [1.6, 0.4, 0.05], position: [0, 0.75, -0.2], material: wood }));
+  for (const s of [-0.7, 0.7]) {
+    g.add(box({ size: [0.05, 0.45, 0.05], position: [s, 0.225, 0.18], material: metal }));
+    g.add(box({ size: [0.05, 0.95, 0.05], position: [s, 0.475, -0.18], material: metal }));
+  }
+  return g;
+}
+
+/** Bicycle leaning at position=[x, z]. */
+export function bicycle({ position, rotationY = 0, color = "#323a36" }) {
+  const g = new THREE.Group();
+  const [x, z] = position;
+  g.position.set(x, groundY(x, z), z);
+  g.rotation.y = rotationY;
+  const frame = mat.metal(color), tire = mat.paint("#272c28");
+  for (const wx of [-0.52, 0.52]) {
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.33, 0.025, 8, 32), tire);
+    wheel.position.set(wx, 0.35, 0);
+    g.add(wheel);
+    for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; g.add(rod([wx, 0.35, 0], [wx + Math.cos(a) * 0.31, 0.35 + Math.sin(a) * 0.31, 0], 0.003, frame)); }
+  }
+  for (const [a, b] of [[[-0.52, 0.35, 0], [-0.12, 0.43, 0]], [[-0.12, 0.43, 0], [-0.28, 0.86, 0]], [[-0.28, 0.86, 0], [-0.52, 0.35, 0]], [[-0.28, 0.86, 0], [0.34, 0.88, 0]], [[0.34, 0.88, 0], [-0.12, 0.43, 0]], [[0.34, 0.88, 0], [0.52, 0.35, 0]]]) g.add(rod(a, b, 0.02, frame));
+  g.add(rod([0.34, 0.88, 0], [0.28, 1.01, 0], 0.019, frame));
+  g.add(rod([0.28, 1.01, -0.2], [0.28, 1.01, 0.2], 0.018, frame));
+  g.add(box({ size: [0.25, 0.06, 0.14], position: [-0.28, 0.9, 0], material: tire }));
+  return g;
+}
+
 /** Convenience: bounding box of an object (world space). */
 export function boundsOf(obj) {
   obj.updateMatrixWorld(true);
@@ -651,4 +922,5 @@ export default {
   mat, box, slab, volume, wall, wallWithUnits, perimeterWalls, placeOnWall, UNIT_INSET, windowUnit, door, slidingDoor,
   flatRoof, gableRoof, shedRoof, chimney, railing, stairs, balcony, canopy, planter,
   tree, hedge, bush, pathway, groundPatch, gardenWall, fence, car, boundsOf,
+  terrain, groundY, rod, ribbon, pebbleStrip, leafTree, leafBush, swingSet, bench, bicycle,
 };

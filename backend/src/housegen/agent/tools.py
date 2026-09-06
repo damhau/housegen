@@ -33,12 +33,18 @@ VALID_VIEWS = [
 TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="list_files",
-        description="List the JavaScript modules in the scene workspace (src/).",
+        description=(
+            "List the JavaScript modules in the scene workspace (src/) and the read-only kit "
+            "sources (kit/house.js, kit/runtime.js)."
+        ),
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
     ),
     ToolSpec(
         name="read_file",
-        description="Read a module from the workspace.",
+        description=(
+            "Read a module from the workspace, or a kit source (kit/house.js, kit/runtime.js) "
+            "when you need to know exactly how a component or the runtime behaves."
+        ),
         input_schema={
             "type": "object",
             "properties": {"path": {"type": "string", "description": "e.g. src/shell.js"}},
@@ -100,7 +106,7 @@ TOOL_SPECS: list[ToolSpec] = [
                 "quality": {
                     "type": "string",
                     "enum": ["low", "medium", "high"],
-                    "description": "default high",
+                    "description": "default medium (fast); use high only for a final look",
                 },
             },
             "required": ["views"],
@@ -175,7 +181,11 @@ class BuilderTools:
         files = self.ws.list_files()
         return [
             TextPart(
-                text="\n".join(f"{f['path']}  ({f['lines']} lines)" for f in files) or "(empty)"
+                text="\n".join(
+                    f"{f['path']}  ({f['lines']} lines){'  [read-only]' if f.get('readonly') else ''}"
+                    for f in files
+                )
+                or "(empty)"
             )
         ], False
 
@@ -198,7 +208,9 @@ class BuilderTools:
 
     async def render_views(self, a: dict[str, Any]) -> ToolOutput:
         views = [str(v) for v in a.get("views", [])][:6] or ["southeast"]
-        quality = str(a.get("quality") or "high")
+        # medium is plenty to judge massing and openings and renders 2-3x faster than high;
+        # the version snapshot the user and the critic see is rendered at high by the pipeline
+        quality = str(a.get("quality") or "medium")
         res = await self.renderer.render(self.scene_url, views, self.renders_dir, quality=quality)
         self.last_render_errors = res.errors
         self.rendered_views.update(res.images)

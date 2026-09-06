@@ -1,12 +1,12 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { FileText, ImagePlus, Loader2 } from "lucide-react"
+import { FileText, ImagePlus, Images, Loader2, X } from "lucide-react"
 import { getListProjectsQueryKey, useCreateProject, useGenerate } from "@/api/endpoints/projects/projects"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { cn } from "@/lib/utils"
+import { cn, errorMessage } from "@/lib/utils"
 
 const SIDES = ["north", "east", "south", "west"] as const
 type Side = (typeof SIDES)[number]
@@ -18,64 +18,81 @@ export function NewProjectForm() {
   const generate = useGenerate()
   const [name, setName] = useState("")
   const [plan, setPlan] = useState<File | null>(null)
-  const [photos, setPhotos] = useState<Partial<Record<Side, File>>>({})
+  const [facades, setFacades] = useState<Partial<Record<Side, File>>>({})
+  const [extras, setExtras] = useState<File[]>([])
   const [error, setError] = useState<string | null>(null)
 
-  const chosen = SIDES.filter((s) => photos[s])
-  const canSubmit = name.trim().length > 0 && plan !== null && chosen.length > 0 && !create.isPending && !generate.isPending
+  const labelled = SIDES.filter((s) => facades[s])
+  const total = labelled.length + extras.length
+  const busy = create.isPending || generate.isPending
+  const canSubmit = name.trim().length > 0 && plan !== null && total > 0 && !busy
+
+  const extraUrls = useMemo(() => extras.map((f) => URL.createObjectURL(f)), [extras])
+
+  function addExtras(files: FileList | null) {
+    if (!files) return
+    const picked = Array.from(files).filter((f) => f.type.startsWith("image/"))
+    setExtras((prev) => [...prev, ...picked])
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!plan) return
     setError(null)
     try {
+      const photos = [...labelled.map((s) => facades[s]!), ...extras]
+      const sides = [...labelled, ...extras.map(() => "other")]
       // OpenAPI describes file fields as `string` (format: binary); the generated
       // call builds a FormData, so passing File objects is what actually goes over the wire.
       const project = await create.mutateAsync({
         data: {
           name: name.trim(),
           plan: plan as unknown as string,
-          photos: chosen.map((s) => photos[s]!) as unknown as string[],
-          sides: chosen,
+          photos: photos as unknown as string[],
+          sides,
         },
       })
       await generate.mutateAsync({ projectId: project.id })
       await qc.invalidateQueries({ queryKey: getListProjectsQueryKey() })
       await navigate({ to: "/projects/$projectId", params: { projectId: project.id } })
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
+      setError(errorMessage(err))
     }
   }
 
   return (
     <Card>
       <CardContent className="p-5">
-        <form onSubmit={submit} className="grid gap-4">
+        <form onSubmit={submit} className="grid gap-5">
           <label className="grid gap-1.5 text-sm">
             <span className="font-medium">Name</span>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Villa Rosemont" required />
           </label>
 
           <label className="grid gap-1.5 text-sm">
-            <span className="font-medium">Plan (PDF)</span>
+            <span className="font-medium">Plans (PDF)</span>
             <div
               className={cn(
-                "flex items-center gap-3 rounded-md border border-dashed px-3 py-3 text-sm",
-                plan ? "border-primary/50 bg-accent/40" : "border-input",
+                "flex cursor-pointer items-center gap-3 rounded-md border border-dashed px-3 py-3 text-sm",
+                plan ? "border-primary/50 bg-accent/40" : "border-input hover:bg-accent/30",
               )}
             >
               <FileText className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{plan ? plan.name : "Floor plans, elevations, site plan"}</span>
+              <span className="min-w-0 flex-1 truncate">{plan ? plan.name : "Floor plans, elevations, sections, site plan"}</span>
               <input type="file" accept="application/pdf" className="hidden" onChange={(e) => setPlan(e.target.files?.[0] ?? null)} />
               <span className="text-xs text-primary underline-offset-2 hover:underline">choose</span>
             </div>
           </label>
 
           <div className="grid gap-1.5 text-sm">
-            <span className="font-medium">Photos, one per façade</span>
-            <div className="grid grid-cols-2 gap-2">
+            <span className="font-medium">Photos</span>
+            <p className="text-xs text-muted-foreground">
+              Add every photo you have of the house: each side, close-ups of details, the garden and the surroundings.
+              The more the model sees, the more faithful it gets. Labelling the four sides helps the review compare like with like.
+            </p>
+            <div className="grid grid-cols-4 gap-2">
               {SIDES.map((side) => {
-                const f = photos[side]
+                const f = facades[side]
                 const url = f ? URL.createObjectURL(f) : null
                 return (
                   <label
@@ -91,23 +108,58 @@ export function NewProjectForm() {
                     </span>
                     <input
                       type="file"
-                      accept="image/jpeg,image/png,image/webp"
+                      accept="image/*"
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0]
-                        setPhotos((p) => ({ ...p, [side]: file ?? undefined }))
+                        setFacades((p) => ({ ...p, [side]: file ?? undefined }))
                       }}
                     />
                   </label>
                 )
               })}
             </div>
-            <p className="text-xs text-muted-foreground">Label each photo by the façade it shows. Four sides give the best result.</p>
+
+            <label
+              className="mt-1 flex cursor-pointer items-center gap-3 rounded-md border border-dashed border-input px-3 py-3 text-sm hover:bg-accent/30"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault()
+                addExtras(e.dataTransfer.files)
+              }}
+            >
+              <Images className="size-4 shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1">
+                More photos <span className="text-muted-foreground">· details, other angles, garden, street. Drop or choose, any number.</span>
+              </span>
+              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addExtras(e.target.files)} />
+              <span className="text-xs text-primary underline-offset-2 hover:underline">choose</span>
+            </label>
+            {extras.length > 0 && (
+              <div className="grid grid-cols-6 gap-1.5">
+                {extras.map((f, i) => (
+                  <div key={`${f.name}-${i}`} className="group relative aspect-square overflow-hidden rounded border">
+                    <img src={extraUrls[i]} alt="" className="size-full object-cover" />
+                    <button
+                      type="button"
+                      aria-label="Remove photo"
+                      className="absolute right-0.5 top-0.5 hidden rounded-full bg-background/90 p-0.5 group-hover:block"
+                      onClick={() => setExtras((prev) => prev.filter((_, k) => k !== i))}
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              {total === 0 ? "No photo yet." : `${total} photo${total > 1 ? "s" : ""}: ${labelled.length} labelled façade${labelled.length === 1 ? "" : "s"}, ${extras.length} other.`}
+            </p>
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={!canSubmit}>
-            {(create.isPending || generate.isPending) && <Loader2 className="animate-spin" />}
+            {busy && <Loader2 className="animate-spin" />}
             Upload and generate
           </Button>
         </form>

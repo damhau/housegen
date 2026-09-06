@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # agent loop
     BUILDER_MAX_STEPS: int = 60
     # independent critic rounds after the builder is done (0 disables the critic)
-    CRITIC_MAX_ITERATIONS: int = 1
+    CRITIC_MAX_ITERATIONS: int = 2
     CRITIC_SCORE_THRESHOLD: int = 80
     RENDER_IMAGE_WIDTH: int = 1024
     RENDER_JPEG_QUALITY: int = 82

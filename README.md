@@ -63,6 +63,22 @@ Regenerate `openapi.json` after changing the API:
 cd backend && uv run python -c "import json; from housegen.main import app; print(json.dumps(app.openapi()))" > ../frontend/openapi.json
 ```
 
+## Deploy (one image: API + UI + headless Chromium)
+
+The root `Dockerfile` builds the frontend, vendors three.js and packages the backend on the
+Playwright Python image, which ships Chromium. `deploy/serve.py` serves the built SPA from the
+same process. State lives in `/data` (SQLite + project files): run **one** replica.
+
+```bash
+docker compose up --build            # http://localhost:8000, key from backend/.env
+# or
+docker run -p 8000:8000 -v housegen-data:/data --env-file backend/.env --shm-size 1g ghcr.io/damhau/housegen:latest
+```
+
+`.github/workflows/docker-publish.yml` pushes `ghcr.io/damhau/housegen` on every push to `main`
+(`latest` + `sha-…`) and on `v*` tags (semver). `deploy/k8s.yaml` is a single-replica manifest
+with the `/dev/shm` volume Chromium needs.
+
 ## Configuration (backend/.env)
 
 | var | default | meaning |
@@ -90,6 +106,14 @@ cd frontend && npm run typecheck && npm run build
 1. Add a `ToolSpec` to `backend/src/housegen/agent/tools.py` and a handler on `BuilderTools`.
 2. Mention it in `BUILDER_SYSTEM` (`agent/prompts.py`).
 3. Both providers pick it up automatically (the loop is provider-agnostic).
+
+## Kit highlights
+
+* `perimeterWalls` builds a storey's walls with openings, auto-oriented; `windowUnit`/`door`/`slidingDoor` fill them.
+* `terrain` (spot heights or a function) registers itself so `groundY`, `ribbon` (draped paths), `pebbleStrip`,
+  `leafTree`/`leafBush` (instanced leaves) and the props (`swingSet`, `bench`, `bicycle`) sit on the ground.
+* The runtime gives every scene the same look: sun + shadows, environment light, ambient occlusion and anti-aliasing at
+  final quality, a lawn with grain, fog, named camera views. Headless renders reuse the shadow map across views.
 
 ## Kit conventions (the ones that bite)
 

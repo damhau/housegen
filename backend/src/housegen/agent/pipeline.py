@@ -40,7 +40,7 @@ class _Run:
         self.storage = ProjectStorage(ctx.project_id)
         self.storage.ensure()
         self.storage.init_scene_from_template()
-        self.workspace = Workspace(self.storage.scene_dir)
+        self.workspace = Workspace(self.storage.scene_dir, readonly={"kit": self.settings.KIT_DIR})
         self.scene_url = self.settings.render_base_url + self.storage.scene_url()
         self.renders_dir = self.storage.scene_dir / "renders"
         self.usage = Usage()
@@ -61,14 +61,19 @@ class _Run:
         else:
             await self.ctx.emit("builder_step", **{k: v for k, v in ev.items() if k != "kind"})
 
-    async def photos(self) -> dict[str, Path]:
+    async def photos(self) -> tuple[dict[str, Path], list[Path]]:
+        """(façade photos by side, other photos in upload order)."""
         async with session_factory()() as session:
             project = await crud.get_project(session, self.ctx.project_id)
-            return {
+            facades = {
                 p.side: self.storage.photos_dir / p.filename
                 for p in project.photos
                 if p.side != "other"
             }
+            extras = [
+                self.storage.photos_dir / p.filename for p in project.photos if p.side == "other"
+            ]
+            return facades, extras
 
     async def render_standard(self) -> dict[str, Path]:
         res = await renderer.render(
@@ -118,10 +123,11 @@ class _Run:
         )
         return run.summary
 
-    async def set_version_score(self, version: int, score: int) -> None:
+    async def set_version_critique(self, version: int, verdict: Critique) -> None:
         async with session_factory()() as session, session.begin():
-            v = await crud.get_version(session, self.ctx.project_id, version)
-            v.critic_score = score
+            await crud.set_version_critique(
+                session, self.ctx.project_id, version, verdict.overall_score, verdict.model_dump()
+            )
 
     async def emit_usage(self) -> None:
         await self.ctx.emit(
@@ -143,7 +149,7 @@ async def generate(ctx: JobContext) -> None:
     pid = ctx.project_id
     async with session_factory()() as session, session.begin():
         await crud.set_status(session, pid, "generating")
-    photos = await run.photos()
+    photos, extras = await run.photos()
     pages = run.storage.plan_page_paths()
 
     # 1. builder: reads the plans and photos itself, renders, self-corrects
@@ -151,7 +157,7 @@ async def generate(ctx: JobContext) -> None:
     await ctx.emit(
         "phase", name="builder", message="Reading the plans and photos, building the scene"
     )
-    messages = [Message.user(*_initial_parts(photos, pages))]
+    messages = [Message.user(*_initial_parts(photos, extras, pages))]
     summary = await run.build(messages)
     renders = await run.render_standard()
     version = await run.snapshot("generation", "Initial build", summary, None, renders)
@@ -170,13 +176,14 @@ async def generate(ctx: JobContext) -> None:
                 renders,
                 s.CRITIC_SCORE_THRESHOLD,
                 s.LLM_MAX_TOKENS,
+                extras=extras,
                 on_progress=live.on_event,
                 effort=s.CRITIC_EFFORT,
             )
         run.usage = run.usage + usage
         score = verdict.overall_score
         await _emit_critic(ctx, i, verdict)
-        await run.set_version_score(version, score)
+        await run.set_version_critique(version, verdict)
         no_major = not any(x.severity == "major" for x in verdict.issues)
         if verdict.done or (score >= s.CRITIC_SCORE_THRESHOLD and no_major):
             break
@@ -201,15 +208,19 @@ async def generate(ctx: JobContext) -> None:
     await ctx.emit("done", version=version, score=score, summary=summary)
 
 
-def _initial_parts(photos: dict[str, Path], pages: list[Path]) -> list[ImagePart | str]:
+def _initial_parts(
+    photos: dict[str, Path], extras: list[Path], pages: list[Path]
+) -> list[ImagePart | str]:
     parts: list[ImagePart | str] = [
-        "Build this house. Below are the plan sheets and one photograph per façade, "
-        "labelled with the side it shows."
+        "Build this house. Below are the plan sheets and the photographs. Photographs labelled "
+        "with a side show that façade; the others show details, other angles or the surroundings."
     ]
     for i, p in enumerate(pages, 1):
         parts.append(ImagePart.from_file(p, label=f"Plan sheet {i} of {len(pages)}"))
     for side, p in photos.items():
         parts.append(ImagePart.from_file(p, label=f"Photograph of the {side} façade"))
+    for i, p in enumerate(extras, 1):
+        parts.append(ImagePart.from_file(p, label=f"Additional photograph {i} of {len(extras)}"))
     parts.append(
         "The workspace holds a placeholder scene from a template; replace it entirely. "
         "Start whenever you are ready."
@@ -241,7 +252,7 @@ async def modify(ctx: JobContext) -> None:
         job = await crud.get_job(session, ctx.job_id)
         request = job.request_text
         history = await crud.list_chat(session, pid)
-    photos = await run.photos()
+    photos, extras = await run.photos()
 
     await ctx.emit("phase", name="render", message="Rendering the current state")
     before = await run.render_standard()
@@ -260,6 +271,8 @@ async def modify(ctx: JobContext) -> None:
         )
     for side, p in photos.items():
         parts.append(ImagePart.from_file(p, label=f"Photograph of the {side} façade (reference)"))
+    for i, p in enumerate(extras[:8], 1):
+        parts.append(ImagePart.from_file(p, label=f"Additional photograph {i} (reference)"))
     for view, p in before.items():
         if view in ("aerial", "south", "north"):
             parts.append(ImagePart.from_file(p, label=f"Current render — {view}"))
@@ -300,7 +313,7 @@ async def modify(ctx: JobContext) -> None:
                 "modification", request[:80], summary, verdict.overall_score, after
             )
         else:
-            await run.set_version_score(version, verdict.overall_score)
+            await run.set_version_critique(version, verdict)
         score: int | None = verdict.overall_score
     else:
         score = None

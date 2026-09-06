@@ -11,9 +11,62 @@ from typing import Any
 from housegen.agent.progress import LiveProgress
 from housegen.agent.tools import TOOL_SPECS, BuilderTools
 from housegen.core.exceptions import LLMError
-from housegen.llm import Completion, Message, Provider, TextPart, ToolResultPart, Usage
+from housegen.llm import (
+    Completion,
+    ImagePart,
+    Message,
+    Part,
+    Provider,
+    TextPart,
+    ToolResultPart,
+    Usage,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def prune_render_images(messages: list[Message], keep_last: int = 1) -> int:
+    """Replace screenshots in all but the most recent render result(s) with a short note.
+
+    Screenshots are the bulk of the context in a long build; the model's own comments about
+    them stay, so nothing it concluded is lost. Returns the number of images removed.
+    """
+
+    def has_images(m: Message) -> bool:
+        return m.role == "user" and any(
+            isinstance(p, ToolResultPart) and any(isinstance(c, ImagePart) for c in p.content)
+            for p in m.content
+        )
+
+    targets = [i for i, m in enumerate(messages) if has_images(m)]
+    if keep_last:
+        targets = targets[:-keep_last]
+    removed = 0
+    for i in targets:
+        parts: list[Part] = []
+        for p in messages[i].content:
+            if not isinstance(p, ToolResultPart):
+                parts.append(p)
+                continue
+            content: list[TextPart | ImagePart] = []
+            for c in p.content:
+                if isinstance(c, ImagePart):
+                    removed += 1
+                    content.append(
+                        TextPart(
+                            text=f"[{c.label or 'render'}: image dropped from context; render again to see it]"
+                        )
+                    )
+                else:
+                    content.append(c)
+            parts.append(
+                ToolResultPart(tool_call_id=p.tool_call_id, content=content, is_error=p.is_error)
+            )
+        messages[i] = Message(role="user", content=parts)
+    if removed:
+        logger.info("builder.pruned_images", extra={"removed": removed})
+    return removed
+
 
 StepCallback = Callable[[dict[str, Any]], Awaitable[None]]
 ProgressFactory = Callable[[int], LiveProgress]
@@ -84,6 +137,7 @@ async def run_builder(
 
     while run.steps < max_steps:
         run.steps += 1
+        prune_render_images(messages)
         completion = await complete(run.steps)
         run.usage = run.usage + completion.usage
         messages.append(completion.message)

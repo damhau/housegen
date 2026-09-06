@@ -12,9 +12,11 @@ from typing import Annotated
 import anyio
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
+from PIL import Image, ImageOps
 from sse_starlette.sse import EventSourceResponse
 
 from housegen.agent import pipeline
+from housegen.agent.schemas import Critique
 from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
 from housegen.jobs.manager import job_manager
@@ -38,7 +40,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 SIDES = {"north", "south", "east", "west", "other"}
-IMAGE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+MAX_PHOTO_PX = 1600  # phone photos are 4000 px; the model never needs more than this
+
+
+def _store_photo(raw: bytes, path: Path) -> None:
+    """Normalise an upload: apply EXIF rotation, cap the long side, save as JPEG."""
+    img = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
+    assert img is not None
+    img = img.convert("RGB")
+    img.thumbnail((MAX_PHOTO_PX, MAX_PHOTO_PX), Image.Resampling.LANCZOS)
+    img.save(path, "JPEG", quality=88, optimize=True)
 
 
 def _project_out(project: Project) -> ProjectOut:
@@ -64,6 +75,7 @@ def _project_out(project: Project) -> ProjectOut:
                 label=v.label,
                 summary=v.summary,
                 critic_score=v.critic_score,
+                critique=Critique.model_validate_json(v.critique_json) if v.critique_json else None,
                 created_at=v.created_at,
                 scene_url=st.scene_url(v.number),
                 render_urls=st.render_urls(v.number),
@@ -116,8 +128,9 @@ async def create_project(
     for s in sides:
         if s not in SIDES:
             raise InvalidInputError(f"invalid side '{s}'")
-    if len(sides) != len(set(sides)) and any(s != "other" for s in sides):
-        raise InvalidInputError("each side may only be given once")
+    labelled = [s for s in sides if s != "other"]
+    if len(labelled) != len(set(labelled)):
+        raise InvalidInputError("each façade side may only be given once")
 
     logger.info("projects.create.requested", extra={"photos": len(photos)})
     project = await crud.create_project(session, name)
@@ -125,11 +138,15 @@ async def create_project(
     st.ensure()
     st.plan_pdf.write_bytes(await plan.read())
     for i, (photo, side) in enumerate(zip(photos, sides, strict=True)):
-        ext = IMAGE_TYPES.get(
-            photo.content_type or "", Path(photo.filename or "").suffix.lower() or ".jpg"
-        )
-        filename = f"{side}{'' if side != 'other' else i}{ext}"
-        (st.photos_dir / filename).write_bytes(await photo.read())
+        if not (photo.content_type or "").startswith("image/"):
+            raise InvalidInputError(f"'{photo.filename}' is not an image")
+        filename = f"{side}{'' if side != 'other' else i}.jpg"
+        raw = await photo.read()
+        try:
+            await anyio.to_thread.run_sync(_store_photo, raw, st.photos_dir / filename)
+        except Exception as e:
+            logger.exception("projects.photo.store_failed", extra={"name": photo.filename})
+            raise InvalidInputError(f"could not read the photo '{photo.filename}': {e}") from e
         await crud.add_photo(session, project, side, filename, photo.filename or filename)
     try:
         project.plan_pages = await anyio.to_thread.run_sync(st.rasterize_plan)
@@ -188,6 +205,27 @@ async def modify(session: DbSession, project_id: str, body: ModifyRequest) -> Jo
     if project.current_version == 0:
         raise ConflictError("generate the scene before modifying it")
     return JobOut.model_validate(await _start_job(session, project_id, "modify", body.message))
+
+
+@router.post("/{project_id}/versions/{number}/fix", status_code=202)
+async def fix_version(session: DbSession, project_id: str, number: int) -> JobOut:
+    """Send the stored review findings of a version to the builder as a modification."""
+    project = await crud.get_project(session, project_id)
+    if number != project.current_version:
+        raise ConflictError("restore this version first: findings apply to the current scene")
+    v = await crud.get_version(session, project_id, number)
+    if not v.critique_json:
+        raise InvalidInputError("this version has no review findings")
+    critique = Critique.model_validate_json(v.critique_json)
+    if not critique.issues:
+        raise InvalidInputError("the review found nothing to fix")
+    text = (
+        f"Apply the findings of the independent review of version {number} "
+        f"(score {critique.overall_score}/100). Fix every point below, most impactful first, "
+        "verify with renders from the same sides, and keep everything else as it is.\n\n"
+        + critique.as_builder_feedback()
+    )
+    return JobOut.model_validate(await _start_job(session, project_id, "modify", text))
 
 
 @router.get("/{project_id}/jobs")

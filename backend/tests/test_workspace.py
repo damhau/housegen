@@ -36,6 +36,21 @@ def test_paths_outside_src_are_rejected(ws: Workspace, path: str) -> None:
         ws.write(path, "x")
 
 
+def test_readonly_roots_are_listed_and_readable_but_not_writable(tmp_path: Path) -> None:
+    kit = tmp_path / "kit"
+    kit.mkdir()
+    (kit / "house.js").write_text("export const x = 1;\n")
+    ws = Workspace(tmp_path / "scene", readonly={"kit": kit})
+    ws.write("src/scene.js", "//\n")
+    assert ws.read("kit/house.js") == "export const x = 1;\n"
+    listed = {f["path"]: f for f in ws.list_files()}
+    assert listed["kit/house.js"]["readonly"] == "yes"
+    with pytest.raises(WorkspaceError):
+        ws.write("kit/house.js", "hack")
+    with pytest.raises(WorkspaceError):
+        ws.read("kit/../scene/src/scene.js")
+
+
 def test_entry_point_cannot_be_deleted(ws: Workspace) -> None:
     with pytest.raises(WorkspaceError):
         ws.delete("src/scene.js")

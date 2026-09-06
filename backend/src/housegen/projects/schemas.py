@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from housegen.agent.schemas import Critique
+
 Side = Literal["north", "south", "east", "west", "other"]
 STANDARD_VIEWS = ["north", "south", "east", "west", "aerial"]
 
@@ -25,6 +27,7 @@ class SceneVersionOut(BaseModel):
     label: str
     summary: str
     critic_score: int | None
+    critique: Critique | None
     created_at: datetime
     scene_url: str
     render_urls: dict[str, str]

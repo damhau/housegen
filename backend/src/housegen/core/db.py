@@ -1,7 +1,8 @@
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends
+from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -44,6 +45,25 @@ async def init_db() -> None:
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_missing_columns)
+
+
+def _add_missing_columns(conn: Any) -> None:
+    """Tiny forward-only migration: add columns that exist in the models but not in the DB.
+
+    create_all never alters existing tables; this keeps a dev SQLite file usable across
+    model additions without a migration tool. Replace with Alembic when the schema settles.
+    """
+    inspector = inspect(conn)
+    for table in Base.metadata.sorted_tables:
+        if table.name not in inspector.get_table_names():
+            continue
+        existing = {c["name"] for c in inspector.get_columns(table.name)}
+        for col in table.columns:
+            if col.name in existing:
+                continue
+            ddl = f"ALTER TABLE {table.name} ADD COLUMN {col.name} {col.type.compile(conn.dialect)}"
+            conn.execute(text(ddl))
 
 
 async def dispose_db() -> None:

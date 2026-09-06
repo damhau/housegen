@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SceneVersionOutCriticScore } from './sceneVersionOutCriticScore';
+import type { SceneVersionOutCritique } from './sceneVersionOutCritique';
 import type { SceneVersionOutRenderUrls } from './sceneVersionOutRenderUrls';
 
 export interface SceneVersionOut {
@@ -14,6 +15,7 @@ export interface SceneVersionOut {
   label: string;
   summary: string;
   critic_score: SceneVersionOutCriticScore;
+  critique: SceneVersionOutCritique;
   created_at: string;
   scene_url: string;
   render_urls: SceneVersionOutRenderUrls;

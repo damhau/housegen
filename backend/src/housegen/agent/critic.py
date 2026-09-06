@@ -21,11 +21,13 @@ async def critique_against_photos(
     renders: dict[str, Path],
     threshold: int,
     max_tokens: int,
+    extras: list[Path] | None = None,
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
 ) -> tuple[Critique, Usage]:
     parts: list[ImagePart | str] = [f"Score threshold for done: {threshold}."]
     pairs = 0
+    extras = extras or []
     for side, photo in photos.items():
         render = renders.get(side)
         if render is None:
@@ -43,7 +45,24 @@ async def critique_against_photos(
             )
         )
     if pairs == 0:
-        raise LLMError("no photo/render pairs available for the critic")
+        # nothing labelled by side: give everything and let the critic match photos to renders
+        if not extras and not renders:
+            raise LLMError("no photos or renders available for the critic")
+        parts.append(
+            "The photographs are not labelled by side. Match each one to the render taken from "
+            "the same side yourself, and name the side you believe it shows in each issue."
+        )
+        for i, p in enumerate(extras, 1):
+            parts.append(ImagePart.from_file(p, label=f"PHOTO {i} of {len(extras)} (ground truth)"))
+        for view, p in renders.items():
+            parts.append(ImagePart.from_file(p, label=f"RENDER of the model, view '{view}'"))
+    elif extras:
+        parts.append(
+            "Additional photographs (details, other angles, surroundings) for reference; "
+            "use them to judge details the façade photos do not show:"
+        )
+        for i, p in enumerate(extras[:8], 1):
+            parts.append(ImagePart.from_file(p, label=f"Additional photograph {i}"))
     parts.append("Return the critique as JSON matching the schema.")
     completion = await provider.complete(
         model=model,

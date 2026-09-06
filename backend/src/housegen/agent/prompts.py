@@ -42,19 +42,29 @@ balcony({ width, depth, thickness, position:[x,yFloor,z] (centre of attached edg
 canopy({ width, depth, height, position, rotationY, frameColor, posts })       glass roof on slim posts (conservatory / entrance canopy)
 planter({ length, position, rotationY, color })
 
-### Landscape
-tree({ position:[x,0,z], height, kind:"round"|"conifer"|"willow", seed, foliageColor })
-hedge({ from, to, height=1.2, thickness=0.6, color })   bush({ position, radius, seed })
-pathway({ points:[[x,z],...], width, material })         groundPatch({ polygon, y=0.01, material })   (lawn/gravel/terrace areas)
-gardenWall({ from, to, height=0.6 })                     fence({ from, to, height })      car({ position, rotationY, color })
+### Terrain and site
+terrain({ size:[w,d], center:[x,z], points:[[x,z,y],...] | heightAt:(x,z)=>y, edgeHeight, material })
+    Sloped/shaped ground from spot heights (interpolated) or a function. Registers itself: afterwards groundY(x,z) and every
+    landscape component below sit on it. Hide the flat base ground when you use it: ctx.ground.visible = false.
+groundY(x, z) → ground height           rod(from:[x,y,z], to:[x,y,z], radius, material) → thin cylinder (branches, rails, posts)
+ribbon({ points:[[x,z],...], width, lift, material })     path / drive draped on the ground
+pebbleStrip({ from:[x,z], to:[x,z], width, density, seed })   river stones along a foundation
+pathway({ points, width, material })  (flat)   groundPatch({ polygon, y, material })  (flat lawn/gravel/terrace areas)
+gardenWall({ from, to, height=0.6 })   fence({ from, to, height })
+
+### Vegetation and props (all sit on the ground at position=[x,z]; give [x,y,z] to override)
+leafTree({ position, height=7, spread=3.2, kind:"broadleaf"|"pine"|"columnar", seed, foliageColor })   RECOMMENDED: instanced leaves
+leafBush({ position, radius=0.8, seed, color })                                                          RECOMMENDED
+hedge({ from, to, height=1.2, thickness=0.6, color })      tree(...) / bush(...)  (older blob versions, avoid)
+swingSet({ position, rotationY })   bench({ position, rotationY })   bicycle({ position, rotationY })   car({ position, rotationY, color })
 boundsOf(object) → THREE.Box3
 
 ### Runtime
-The runtime adds sky, sun with shadows, a 400 m grass ground at y=0, orbit controls and named camera views:
-north/south/east/west (camera placed on that side looking at the house), northeast/…/southwest, aerial, top.
+The runtime adds sky, sun with shadows, environment lighting, ambient occlusion and anti-aliasing at final quality, a lawn at y=0,
+orbit controls and named camera views: north/south/east/west (camera placed on that side looking at the house),
+northeast/…/southwest, aerial, top.
 buildScene(ctx) may return { views: { name: { position:[x,y,z], target:[x,y,z] } } } to add custom views (e.g. "entrance").
 You can also use raw three.js (ctx.THREE) for anything the kit lacks: ExtrudeGeometry from THREE.Shape is the workhorse.
-Sloped terrain: build it from slabs/volumes with a grass material, or a THREE.PlaneGeometry with displaced vertices.
 """.strip()
 
 BUILDER_SYSTEM = f"""
@@ -66,7 +76,8 @@ The owner should recognise their house from every side: massing and proportions,
 ## Workspace and tools
 - src/scene.js exports `async function buildScene(ctx)`; split the rest into modules you name and import from there. index.html is fixed.
 - ctx = {{ THREE, scene, house, group, sun, ground, renderer, camera }}. Add everything to ctx.group. Modules are ES modules: `import * as THREE from "three"; import * as house from "housekit";`.
-- Tools: list_files, read_file, write_file, edit_file, delete_file manage the workspace. render_views(views) renders the scene headless and returns screenshots plus any JavaScript errors. check_scene() returns errors only. finish(summary) ends your turn.
+- Tools: list_files, read_file, write_file, edit_file, delete_file manage the workspace. read_file also opens the kit sources (kit/house.js, kit/runtime.js) read-only when the reference below is not enough. render_views(views) renders the scene headless (medium quality by default; the saved version is rendered at high) and returns screenshots plus any JavaScript errors. check_scene() returns errors only. finish(summary) ends your turn.
+- Older screenshots are dropped from your context as you go; only the latest render set stays. Render again if you need to look at something.
 - Views are named after the façade the camera looks at, so render_views(["north"]) is the counterpart of the photo labelled "north".
 - A grey empty render or "scene did not become ready" means your code threw: the error text is in the tool result.
 - Keep the scene deterministic (fixed seeds). Keep modules under ~250 lines and write a large module in pieces: a single very long write can be cut off by the output limit.
@@ -74,8 +85,11 @@ The owner should recognise their house from every side: massing and proportions,
 
 {KIT_REFERENCE}
 
+## Code style
+This code will be edited for weeks by chat, so write it to be read: normal formatting, blank lines, descriptive names, no minification. Keep the plan dimensions as named constants in one module (e.g. src/dimensions.js) with a comment saying which sheet each comes from, and derive geometry from them. Prefer the kit components, and use raw three.js for what the kit lacks rather than re-implementing a component that exists.
+
 ## How to work
-Study the plans and the photographs first and fix a coordinate frame. Then work the way an architect building a study model would: block out, render, compare with the photograph from the same side, correct what differs, biggest discrepancies first, and repeat. Each render is your own quality check; be your own harshest critic and keep going until you would be comfortable showing every façade to the owner. Reach for raw three.js whenever the kit lacks a shape. When you finish, summarise what the model contains and where you knowingly deviated from the photographs.
+Study the plans and the photographs first and fix a coordinate frame. Photographs labelled with a side are the façades; unlabelled ones show details, other angles or the surroundings, and are there to be drawn from. Then work the way an architect building a study model would: block out, render, compare with the photograph from the same side, correct what differs, biggest discrepancies first, and repeat. Each render is your own quality check; be your own harshest critic and keep going until you would be comfortable showing every façade to the owner. When you finish, summarise what the model contains and where you knowingly deviated from the photographs.
 """.strip()
 
 MODIFY_ADDENDUM = """
