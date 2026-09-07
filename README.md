@@ -66,7 +66,7 @@ cd backend && uv run python -c "import json; from housegen.main import app; prin
 ## Deploy (one image: API + UI + headless Chromium)
 
 The root `Dockerfile` builds the frontend, vendors three.js and packages the backend on the
-Playwright Python image, which ships Chromium. `deploy/serve.py` serves the built SPA from the
+Playwright Python image, which ships Chromium. `STATIC_DIR` (set in the image) makes `housegen.main` serve the built SPA from the
 same process. State lives in `/data` (SQLite + project files): run **one** replica.
 
 ```bash

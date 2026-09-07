@@ -519,38 +519,6 @@ function seeded(seed) {
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
-/** Tree. kind: "round" | "conifer" | "willow". position=[x,y,z] at trunk base. */
-export function tree({ position = [0, 0, 0], height = 6, kind = "round", seed = 1, foliageColor }) {
-  const g = new THREE.Group();
-  const rnd = seeded(seed);
-  const trunkH = height * (kind === "conifer" ? 0.25 : 0.4);
-  const trunk = shadow(new THREE.Mesh(new THREE.CylinderGeometry(height * 0.03, height * 0.05, trunkH, 7), mat.wood("#6b4f34")));
-  trunk.position.y = trunkH / 2;
-  g.add(trunk);
-  const leaf = mat.foliage(foliageColor ?? (kind === "conifer" ? "#3f6b3a" : "#5f8a3f"));
-  if (kind === "conifer") {
-    const tiers = 4;
-    for (let i = 0; i < tiers; i++) {
-      const r = height * 0.28 * (1 - i / tiers) + 0.3;
-      const h = height * 0.3;
-      const cone = shadow(new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), leaf));
-      cone.position.y = trunkH + i * h * 0.55 + h / 2;
-      g.add(cone);
-    }
-  } else {
-    const blobs = kind === "willow" ? 9 : 6;
-    for (let i = 0; i < blobs; i++) {
-      const r = height * (0.16 + rnd() * 0.12);
-      const s = shadow(new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), leaf));
-      s.position.set((rnd() - 0.5) * height * 0.45, trunkH + height * 0.25 + (rnd() - 0.2) * height * 0.35, (rnd() - 0.5) * height * 0.45);
-      if (kind === "willow") s.scale.y = 1.6;
-      g.add(s);
-    }
-  }
-  g.position.set(...position);
-  return g;
-}
-
 /** Hedge along a line. */
 export function hedge({ from, to, height = 1.2, thickness = 0.6, y = 0, color = "#4f7a3a" }) {
   const dx = to[0] - from[0], dz = to[1] - from[1];
@@ -566,19 +534,6 @@ export function hedge({ from, to, height = 1.2, thickness = 0.6, y = 0, color = 
   }
   g.position.set(from[0], y, from[1]);
   g.rotation.y = -Math.atan2(dz, dx);
-  return g;
-}
-
-/** A single bush. */
-export function bush({ position = [0, 0, 0], radius = 0.6, color = "#5b8a45", seed = 3 }) {
-  const g = new THREE.Group();
-  const rnd = seeded(seed);
-  for (let i = 0; i < 4; i++) {
-    const s = shadow(new THREE.Mesh(new THREE.IcosahedronGeometry(radius * (0.6 + rnd() * 0.5), 1), mat.foliage(color)));
-    s.position.set((rnd() - 0.5) * radius, radius * 0.6 + (rnd() - 0.5) * radius * 0.3, (rnd() - 0.5) * radius);
-    g.add(s);
-  }
-  g.position.set(...position);
   return g;
 }
 
@@ -921,6 +876,6 @@ export function boundsOf(obj) {
 export default {
   mat, box, slab, volume, wall, wallWithUnits, perimeterWalls, placeOnWall, UNIT_INSET, windowUnit, door, slidingDoor,
   flatRoof, gableRoof, shedRoof, chimney, railing, stairs, balcony, canopy, planter,
-  tree, hedge, bush, pathway, groundPatch, gardenWall, fence, car, boundsOf,
+  hedge, pathway, groundPatch, gardenWall, fence, car, boundsOf,
   terrain, groundY, rod, ribbon, pebbleStrip, leafTree, leafBush, swingSet, bench, bicycle,
 };

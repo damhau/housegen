@@ -1,8 +1,10 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from housegen.api.v1 import router as api_router
@@ -60,7 +62,30 @@ def create_app() -> FastAPI:
     app.mount("/kit", StaticFiles(directory=settings.KIT_DIR), name="kit")
     # per-project files: scene working copy, versions, renders, photos, plan pages
     app.mount("/scenes", StaticFiles(directory=settings.projects_dir), name="scenes")
+    if settings.STATIC_DIR is not None:
+        mount_spa(app, settings.STATIC_DIR)
     return app
+
+
+def mount_spa(app: FastAPI, static_dir: Path) -> None:
+    """Serve the built SPA from "/" (prod: one process for the API and the frontend).
+
+    Must come last: the history-fallback route catches everything the API, the kit and
+    the scene mounts did not.
+    """
+    static_dir = static_dir.resolve()
+    index = static_dir / "index.html"
+    if not index.is_file():
+        logger.warning("spa.missing", extra={"static_dir": str(static_dir)})
+        return
+    app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="spa-assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa(path: str) -> FileResponse:
+        candidate = (static_dir / path).resolve()
+        if path and candidate.is_file() and static_dir in candidate.parents:
+            return FileResponse(candidate)
+        return FileResponse(index)
 
 
 app = create_app()

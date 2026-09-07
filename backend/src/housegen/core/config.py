@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     DATA_DIR: Path = _BACKEND_ROOT / "data"
     DATABASE_URL: str = ""  # defaults to sqlite file under DATA_DIR
     KIT_DIR: Path = _REPO_ROOT / "kit"
+    # built frontend (Vite dist/) served from "/" by this process; unset in dev (Vite dev server)
+    STATIC_DIR: Path | None = None
 
     # LLM
     LLM_PROVIDER: Literal["anthropic", "openai"] = "anthropic"

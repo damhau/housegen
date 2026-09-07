@@ -16,8 +16,8 @@ COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
 COPY frontend/ ./
-# vite build first: it generates src/routeTree.gen.ts (git-ignored) that the type check needs
-RUN npm run api:gen && npx vite build && npx tsc --noEmit -p tsconfig.app.json   # outputs /web/dist
+# `npm run build` = vite build (generates src/routeTree.gen.ts) then tsc; outputs /web/dist
+RUN npm run api:gen && npm run build
 
 WORKDIR /kit
 COPY kit/package.json kit/package-lock.json* ./
@@ -52,9 +52,8 @@ COPY kit/house.js kit/runtime.js ./kit/
 COPY kit/template ./kit/template
 COPY --from=web /kit/node_modules/three ./kit/node_modules/three
 
-# Built frontend, served from "/" by deploy/serve.py
+# Built frontend, served from "/" by the API process (STATIC_DIR)
 COPY --from=web /web/dist ./web/dist
-COPY deploy/serve.py ./serve.py
 
 ENV PATH="/app/.venv/bin:$PATH" \
     ENV=prod \
@@ -74,4 +73,4 @@ EXPOSE 8000
 
 # Single process: jobs run in-process and state lives in SQLite + /data, so do NOT
 # scale to multiple workers or replicas without adding a job queue + shared storage.
-CMD ["uvicorn", "serve:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "housegen.main:app", "--host", "0.0.0.0", "--port", "8000"]
