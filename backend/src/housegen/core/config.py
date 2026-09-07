@@ -53,9 +53,9 @@ class Settings(BaseSettings):
         default_factory=lambda: {
             # Anthropic list price (2026-06): $5 / $25 per MTok; cache reads 0.1x, writes 1.25x
             "claude-opus-5": {"input": 5.0, "cached": 0.5, "output": 25.0, "cache_write": 6.25},
-            # TO REVIEW by the owner: OpenAI's list price for gpt-6-astra was not available
-            # here; these are the gpt-5 list prices as a placeholder
-            "gpt-6-astra": {"input": 1.25, "cached": 0.125, "output": 10.0},
+            # OpenAI list price (developers.openai.com/api/docs/pricing, 2026-09-07):
+            # $10 / $1 cached / $50 per MTok
+            "gpt-6-astra": {"input": 10.0, "cached": 1.0, "output": 50.0},
         }
     )
 
