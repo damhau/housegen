@@ -9,7 +9,9 @@
 # ---------------------------------------------------------------------------
 # Stage 1 — build the React frontend and vendor three.js for the kit
 # ---------------------------------------------------------------------------
-FROM node:22-alpine AS web
+# Node 24 = npm 11, the npm that writes package-lock.json on the developer machine: npm 10
+# (Node 22) reads the same lock differently and `npm ci` refuses it.
+FROM node:24-alpine AS web
 WORKDIR /web
 
 COPY frontend/package.json frontend/package-lock.json ./
