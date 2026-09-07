@@ -28,7 +28,12 @@ VALID_VIEWS = [
     "southwest",
     "aerial",
     "top",
+    "north-photo",
+    "south-photo",
+    "east-photo",
+    "west-photo",
 ]
+CAMERA_OVERRIDES = ("eye_height", "distance", "azimuth", "fov", "target_height")
 
 TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
@@ -92,7 +97,12 @@ TOOL_SPECS: list[ToolSpec] = [
             "Render the current scene headless from the given named views and return the screenshots plus any "
             "JavaScript errors. Views: "
             + ", ".join(VALID_VIEWS)
-            + " or a custom view returned by buildScene."
+            + " or a custom view returned by buildScene. north/south/east/west are elevated wide shots "
+            "(eye about 4 m, whole building in frame): use them for massing and roof shape. The '-photo' "
+            "views stand at 1.6 m in front of the façade like the photographer: use them to compare "
+            "heights, sill/lintel levels, roof visibility and overhangs with a photo. The optional camera "
+            "parameters apply to every side view of this call and replace the preset (aerial/top/custom "
+            "views ignore them): use them to reproduce a photo's viewpoint."
         ),
         input_schema={
             "type": "object",
@@ -107,6 +117,26 @@ TOOL_SPECS: list[ToolSpec] = [
                     "type": "string",
                     "enum": ["low", "medium", "high"],
                     "description": "default medium (fast); use high only for a final look",
+                },
+                "eye_height": {
+                    "type": "number",
+                    "description": "camera height in metres above the house base (a person: 1.6)",
+                },
+                "distance": {
+                    "type": "number",
+                    "description": "distance from the house centre as a factor of the auto-framing radius (1 = preset; 0.5 = twice as close)",
+                },
+                "azimuth": {
+                    "type": "number",
+                    "description": "camera direction in degrees, 0 = looking at the north façade, 90 = at the east façade (clockwise)",
+                },
+                "fov": {
+                    "type": "number",
+                    "description": "vertical field of view in degrees (phone about 50 to 60)",
+                },
+                "target_height": {
+                    "type": "number",
+                    "description": "height in metres above the house base the camera looks at",
                 },
             },
             "required": ["views"],
@@ -211,7 +241,10 @@ class BuilderTools:
         # medium is plenty to judge massing and openings and renders 2-3x faster than high;
         # the version snapshot the user and the critic see is rendered at high by the pipeline
         quality = str(a.get("quality") or "medium")
-        res = await self.renderer.render(self.scene_url, views, self.renders_dir, quality=quality)
+        camera = {k: float(a[k]) for k in CAMERA_OVERRIDES if a.get(k) is not None}
+        res = await self.renderer.render(
+            self.scene_url, views, self.renders_dir, quality=quality, camera=camera or None
+        )
         self.last_render_errors = res.errors
         self.rendered_views.update(res.images)
         if self.on_render:

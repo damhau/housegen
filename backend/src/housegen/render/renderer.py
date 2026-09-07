@@ -71,9 +71,18 @@ class Renderer:
             self._pw = None
 
     async def render(
-        self, scene_url: str, views: list[str], out_dir: Path, quality: str = "high"
+        self,
+        scene_url: str,
+        views: list[str],
+        out_dir: Path,
+        quality: str = "high",
+        camera: dict[str, float] | None = None,
     ) -> RenderResult:
-        """Render `views` of the scene served at `scene_url` (absolute) into out_dir/<view>.jpg."""
+        """Render `views` of the scene served at `scene_url` (absolute) into out_dir/<view>.jpg.
+
+        `camera` holds optional overrides applied to every side view of this render
+        (eye_height, distance, azimuth, fov, target_height; see kit/runtime.js).
+        """
         s = get_settings()
         out_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240 — tiny local mkdir
         result = RenderResult()
@@ -95,6 +104,8 @@ class Renderer:
             page.on("pageerror", lambda e: result.errors.append(f"pageerror: {e}"))
             sep = "&" if "?" in scene_url else "?"
             url = f"{scene_url}{sep}headless=1&quality={quality}&view={views[0] if views else 'southeast'}&w={s.RENDER_WIDTH}&h={s.RENDER_HEIGHT}&t={int(time.time())}"
+            for k, v in (camera or {}).items():
+                url += f"&{k}={v:g}"
             logger.info("render.start", extra={"url": scene_url, "views": views})
             try:
                 await page.goto(url, wait_until="load", timeout=s.RENDER_TIMEOUT_MS)

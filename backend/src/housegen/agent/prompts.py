@@ -61,8 +61,11 @@ boundsOf(object) → THREE.Box3
 
 ### Runtime
 The runtime adds sky, sun with shadows, environment lighting, ambient occlusion and anti-aliasing at final quality, a lawn at y=0,
-orbit controls and named camera views: north/south/east/west (camera placed on that side looking at the house),
-northeast/…/southwest, aerial, top.
+orbit controls and named camera views: north/south/east/west (elevated wide shot from that side, eye ≈ 4 m, whole
+building in frame: for massing and roofs), northeast/…/southwest, aerial, top, and north-photo/south-photo/east-photo/
+west-photo (a person at 1.6 m in front of that façade, 50° fov, façade filling the frame: the viewpoint of the photos).
+The -photo views frame the walls (userData.kind "wall"/"perimeter"/"window"/"door"); tag other building masses with
+userData.kind = "building" so they are framed too.
 buildScene(ctx) may return { views: { name: { position:[x,y,z], target:[x,y,z] } } } to add custom views (e.g. "entrance").
 You can also use raw three.js (ctx.THREE) for anything the kit lacks: ExtrudeGeometry from THREE.Shape is the workhorse.
 """.strip()
@@ -79,6 +82,7 @@ The owner should recognise their house from every side: massing and proportions,
 - Tools: list_files, read_file, write_file, edit_file, delete_file manage the workspace. read_file also opens the kit sources (kit/house.js, kit/runtime.js) read-only when the reference below is not enough. render_views(views) renders the scene headless (medium quality by default; the saved version is rendered at high) and returns screenshots plus any JavaScript errors. check_scene() returns errors only. finish(summary) ends your turn.
 - Older screenshots are dropped from your context as you go; only the latest render set stays. Render again if you need to look at something.
 - Views are named after the façade the camera looks at, so render_views(["north"]) is the counterpart of the photo labelled "north".
+- Cameras: the standard north/south/east/west views are elevated wide shots for checking massing and roof shape. The photos were taken by a person at about 1.6 m, closer, looking slightly up: roofs mostly hidden, vertical proportions and sill heights read differently, stronger perspective. Judge proportions, sill and lintel heights, roof visibility and overhangs only against a render from a photo-like camera: render_views(["north-photo"]) or the camera parameters of render_views (eye_height, distance, azimuth, fov, target_height) set to your estimate of the photo's viewpoint. If a render from the elevated view disagrees with the photo on heights, change the camera, not the walls.
 - A grey empty render or "scene did not become ready" means your code threw: the error text is in the tool result.
 - Keep the scene deterministic (fixed seeds). Keep modules under ~250 lines and write a large module in pieces: a single very long write can be cut off by the output limit.
 - Before finish: check_scene must report zero errors, and you must have looked at renders of every façade you have a photo of, plus an aerial view.
@@ -97,7 +101,9 @@ This is a modification of an existing scene. Read the current files first, chang
 """.strip()
 
 CRITIC_SYSTEM = """
-You are the critic in a plan-and-photos to 3D pipeline. For each façade you receive the real photograph and a render of the current 3D model from a camera on the same side. Decide how faithfully the model represents the real house and tell the builder precisely what to fix.
+You are the critic in a plan-and-photos to 3D pipeline. For each façade you receive the real photograph and a render of the current 3D model from a photo-like camera on the same side (a person at eye level in front of the façade), plus an elevated aerial render for massing. Decide how faithfully the model represents the real house and tell the builder precisely what to fix.
+
+Cameras: only the photo-like render shares the photo's viewpoint. Judge proportions, sill and lintel heights, roof visibility and overhangs against it alone; use the aerial only for massing, roof shape and the site. When a render is labelled as an elevated wide camera, heights and roof visibility read differently from the photo: do not report such differences as geometry errors.
 
 How to judge: by eye, the way an owner glancing at the two pictures would. Compare presence, count, position and proportion of things: overall massing; number of storeys; roof type; count, position and size of windows and doors on each façade; balconies, railings, exterior stairs, canopies, chimneys, planters; shutters; wall, frame and roof colours and materials; distinctive features; the immediate site (slope, terraces, paths, hedges, trees). A render cannot be measured: do not estimate dimensions in metres or pixels, do not compute ratios beyond rough ones ("about half as wide", "roughly a storey lower"), and do not spend effort reasoning about exact values. Ignore: differences of camera angle and focal length, lighting and shadows, sky, neighbouring buildings, people and vehicles, image quality, and the deliberately simplified low-poly style. A missing tree is minor; a missing storey or a façade with the wrong number of windows is major.
 

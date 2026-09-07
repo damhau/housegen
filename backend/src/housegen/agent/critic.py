@@ -29,14 +29,26 @@ async def critique_against_photos(
     pairs = 0
     extras = extras or []
     for side, photo in photos.items():
-        render = renders.get(side)
+        # the photo-like view shares the photographer's viewpoint (eye 1.6 m, in front of the
+        # façade); the elevated wide shot is only a fallback for scenes rendered before it existed
+        render = renders.get(f"{side}-photo")
+        elevated = render is None
+        if elevated:
+            render = renders.get(side)
         if render is None:
             continue
         pairs += 1
         parts.append(f"--- Façade: {side} ---")
         parts.append(ImagePart.from_file(photo, label=f"PHOTO of the {side} side (ground truth)"))
         parts.append(
-            ImagePart.from_file(render, label=f"RENDER of the model, camera on the {side} side")
+            ImagePart.from_file(
+                render,
+                label=(
+                    f"RENDER of the model, elevated wide camera on the {side} side (heights read differently than in the photo)"
+                    if elevated
+                    else f"RENDER of the model, photo-like camera at eye level in front of the {side} façade"
+                ),
+            )
         )
     if "aerial" in renders:
         parts.append(
@@ -54,7 +66,7 @@ async def critique_against_photos(
         )
         for i, p in enumerate(extras, 1):
             parts.append(ImagePart.from_file(p, label=f"PHOTO {i} of {len(extras)} (ground truth)"))
-        for view, p in renders.items():
+        for view, p in _critic_views(renders).items():
             parts.append(ImagePart.from_file(p, label=f"RENDER of the model, view '{view}'"))
     elif extras:
         parts.append(
@@ -87,10 +99,10 @@ async def verify_modification(
     effort: str | None = None,
 ) -> tuple[Critique, Usage]:
     parts: list[ImagePart | str] = [f"User request:\n{request}", "Renders BEFORE the change:"]
-    for view, p in before.items():
+    for view, p in _critic_views(before).items():
         parts.append(ImagePart.from_file(p, label=f"BEFORE — view {view}"))
     parts.append("Renders AFTER the change:")
-    for view, p in after.items():
+    for view, p in _critic_views(after).items():
         parts.append(ImagePart.from_file(p, label=f"AFTER — view {view}"))
     parts.append("Return the verdict as JSON matching the schema (threshold 85).")
     completion = await provider.complete(
@@ -103,6 +115,17 @@ async def verify_modification(
         effort=effort,
     )
     return _parse(completion.message.text), completion.usage
+
+
+def _critic_views(renders: dict[str, Path]) -> dict[str, Path]:
+    """The critic's set: photo-like façade views + the aerial for massing; the elevated side
+    views only when no photo-like view exists (older versions)."""
+    photo = {v: p for v, p in renders.items() if v.endswith("-photo")}
+    if not photo:
+        return renders
+    if "aerial" in renders:
+        photo["aerial"] = renders["aerial"]
+    return photo
 
 
 def _parse(text: str) -> Critique:

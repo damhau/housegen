@@ -8,7 +8,18 @@ from pydantic import BaseModel, ConfigDict, Field
 from housegen.agent.schemas import Critique
 
 Side = Literal["north", "south", "east", "west", "other"]
-STANDARD_VIEWS = ["north", "south", "east", "west", "aerial"]
+# elevated wide shots (massing, roof) + photo-like eye-level views (what the critic pairs with the photos)
+STANDARD_VIEWS = [
+    "north",
+    "south",
+    "east",
+    "west",
+    "aerial",
+    "north-photo",
+    "south-photo",
+    "east-photo",
+    "west-photo",
+]
 
 
 class PhotoOut(BaseModel):

@@ -8,7 +8,8 @@ export function ComparePanel({ photos, version }: { photos: PhotoOut[]; version:
   return (
     <div className="grid gap-3 p-3">
       {sides.map((p) => {
-        const render = version?.render_urls[p.side]
+        // the photo-like render shares the photographer's viewpoint; older versions only have the elevated view
+        const render = version?.render_urls[`${p.side}-photo`] ?? version?.render_urls[p.side]
         return (
           <div key={p.id} className="grid gap-1">
             <div className="text-xs font-medium capitalize text-muted-foreground">{p.side}</div>
