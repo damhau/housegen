@@ -16,20 +16,24 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
-import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
-import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
-import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
 import { Sky } from "three/addons/objects/Sky.js";
+import { CSM } from "three/addons/csm/CSM.js";
+import { EffectComposer, RenderPass, EffectPass, SMAAEffect, SMAAPreset, VignetteEffect, ToneMappingEffect, ToneMappingMode } from "postprocessing";
+import { N8AOPostPass } from "n8ao";
 import * as house from "housekit";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
 const QUALITY = params.get("quality") ?? (HEADLESS ? "high" : "medium");
-// ambient occlusion + anti-aliasing: the final look. Interactive pages fall back to plain
-// rendering automatically when the machine cannot sustain it (see the frame-time guard).
+// ambient occlusion (N8AO) + SMAA + a light vignette through the pmndrs postprocessing
+// composer: the final look. Interactive pages fall back to plain rendering automatically when
+// the machine cannot sustain it (see the frame-time guard).
 const EFFECTS = QUALITY === "high";
+// cascaded shadow maps (#17): interactive (GPU) pages only. The headless renderer keeps its
+// single 4096 map computed once per page and reused across views: CSM re-renders three
+// cascades for every camera, far more than the +20 % the software renderer can afford.
+const USE_CSM = !HEADLESS && QUALITY !== "low";
+const TONE_MAPPING_EXPOSURE = 1.05;
 const DEFAULT_FOV = 42; // the elevated auto-framed views
 const PHOTO_FOV = 50; // the "-photo" views: a person with a phone
 // the "-elevation" views: a straight-on camera far away with a narrow field of view, so the
@@ -124,7 +128,7 @@ export async function boot(buildScene) {
   // AgX: soft highlights, no plastic whites on plaster. The composer's OutputPass applies the
   // renderer's tone mapping too, so both paths (effects on / off) look the same.
   renderer.toneMapping = THREE.AgXToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
@@ -171,19 +175,33 @@ export async function boot(buildScene) {
   controls.target.set(0, 2, 0);
   state.controls = controls;
 
-  // post-processing (final look): ambient occlusion + anti-aliasing
+  // post-processing (final look): N8AO ambient occlusion, SMAA, a light vignette, AgX. The
+  // composer owns tone mapping (its ToneMappingEffect, same exposure), so the renderer's is
+  // switched off while it runs and restored if the frame-time guard drops the effects.
   if (EFFECTS) {
-    const composer = new EffectComposer(renderer);
+    renderer.toneMapping = THREE.NoToneMapping;
+    const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
     composer.addPass(new RenderPass(scene, camera));
-    const gtao = new GTAOPass(scene, camera, W, H);
-    gtao.output = GTAOPass.OUTPUT.Default;
-    gtao.blendIntensity = 0.9;
-    gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1, thickness: 1, scale: 1, samples: QUALITY === "high" ? 16 : 8, distanceFallOff: 1, screenSpaceRadius: false });
-    composer.addPass(gtao);
-    composer.addPass(new OutputPass());
-    composer.addPass(new SMAAPass(W, H));
+    const ao = new N8AOPostPass(scene, camera, W, H);
+    ao.configuration.aoRadius = 1.2;
+    ao.configuration.distanceFalloff = 0.6;
+    ao.configuration.intensity = 2.5;
+    ao.configuration.aoSamples = HEADLESS ? 8 : 16;
+    ao.configuration.denoiseSamples = HEADLESS ? 4 : 8;
+    ao.configuration.denoiseRadius = 6;
+    ao.configuration.halfRes = HEADLESS; // software GL: a quarter of the AO fragments
+    ao.configuration.screenSpaceRadius = false;
+    composer.addPass(ao);
+    composer.addPass(
+      new EffectPass(
+        camera,
+        new SMAAEffect({ preset: SMAAPreset.HIGH }),
+        new VignetteEffect({ offset: 0.35, darkness: 0.22 }),
+        new ToneMappingEffect({ mode: ToneMappingMode.AGX }),
+      ),
+    );
     state.composer = composer;
-    state.gtao = gtao;
+    state.ao = ao;
   }
 
   // ---- user scene ----
@@ -197,6 +215,7 @@ export async function boot(buildScene) {
   }
   // sky, sun and environment: deterministic, from the scene's choice (or the default afternoon)
   setupSky(scene, renderer, sun, sunOptions(result));
+  if (USE_CSM) setupCSM(scene, camera, sun);
   // textures load asynchronously: the first (headless) frame must not race them
   try { await house.texturesReady(); } catch { /* a missing map is only a look problem */ }
 
@@ -258,6 +277,7 @@ export async function boot(buildScene) {
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
     state.composer?.setSize(w, h);
+    state.csm?.updateFrustums();
     state.needsRender = true;
   });
   window.addEventListener("message", (e) => {
@@ -286,6 +306,7 @@ export async function boot(buildScene) {
       // one frame over 250 ms (< 4 fps) or 8 frames averaging over 90 ms: not sustainable
       if (dt > 250 || (frames === 8 && slowMs / frames > 90)) {
         state.composer = null;
+        renderer.toneMapping = THREE.AgXToneMapping; // the composer applied it until now
         state.needsRender = true; // redraw once without effects
         console.warn(`housekit: effects disabled, ${Math.round(dt)} ms frame on this machine`);
         try { parent.postMessage({ type: "house:effects", enabled: false }, "*"); } catch { /* noop */ }
@@ -377,8 +398,47 @@ function framingBounds(root) {
 function renderFrame() {
   const { renderer, scene, camera, composer } = state;
   if (!renderer) return;
+  state.csm?.update();
   if (composer) composer.render();
   else renderer.render(scene, camera);
+}
+
+/**
+ * Cascaded shadow maps for the sun (#17): three cascades over the plot, crisp next to the
+ * house and soft far away. The CSM's own lights replace the single sun light (which keeps
+ * its position for the sky); every lit material is set up once, including the builder's raw
+ * ones (traversed after buildScene).
+ */
+function setupCSM(scene, camera, sun) {
+  const dir = sun.position.clone().normalize().negate();
+  const csm = new CSM({
+    camera,
+    parent: scene,
+    cascades: 3,
+    mode: "practical",
+    maxFar: 140,
+    shadowMapSize: QUALITY === "high" ? 2048 : 1024,
+    lightDirection: dir,
+    lightIntensity: sun.intensity,
+    lightNear: 1,
+    lightFar: 400,
+    lightMargin: 80,
+    shadowBias: -0.0002,
+  });
+  csm.fade = true;
+  for (const l of csm.lights) l.color.copy(sun.color);
+  sun.castShadow = false;
+  sun.intensity = 0;
+  const done = new Set();
+  scene.traverse((o) => {
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of mats) {
+      if (done.has(m) || !(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial || m.isMeshPhongMaterial || m.isMeshLambertMaterial)) continue;
+      csm.setupMaterial(m);
+      done.add(m);
+    }
+  });
+  state.csm = csm;
 }
 
 /**
@@ -483,6 +543,7 @@ async function setView(name) {
   state.camera.far = Math.max(500, v.far ?? 0);
   state.camera.fov = v.fov ?? DEFAULT_FOV;
   state.camera.updateProjectionMatrix();
+  state.csm?.updateFrustums();
   state.camera.position.set(...v.pos);
   state.controls.target.copy(v.target);
   state.controls.update();

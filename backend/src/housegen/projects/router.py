@@ -577,9 +577,17 @@ async def export_zip(
         for p in (kit / "assets").rglob("*"):
             if p.is_file():
                 z.write(p, f"kit/assets/{p.relative_to(kit / 'assets')}")
-        eztree = kit / "node_modules" / "@dgreenheck" / "ez-tree" / "build" / "ez-tree.es.js"
-        if eztree.exists():  # the tree generator with its textures inlined (#15)
-            z.write(eztree, "kit/vendor/ez-tree/ez-tree.es.js")
+        # the vendored kit dependencies the importmap names (#15 ez-tree, #17 postprocessing, n8ao)
+        for rel in (
+            "@dgreenheck/ez-tree/build/ez-tree.es.js",
+            "postprocessing/build/index.js",
+            "n8ao/dist/N8AO.js",
+        ):
+            src = kit / "node_modules" / rel
+            if src.exists():
+                name = rel.split("/")[-1]
+                pkg = "ez-tree" if "ez-tree" in rel else rel.split("/")[0]
+                z.write(src, f"kit/vendor/{pkg}/{name}")
         three = kit / "node_modules" / "three"
         z.write(three / "build" / "three.module.js", "kit/vendor/three/build/three.module.js")
         z.write(three / "build" / "three.core.js", "kit/vendor/three/build/three.core.js")

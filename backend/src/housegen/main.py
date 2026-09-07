@@ -19,6 +19,13 @@ from housegen.render.renderer import renderer
 
 logger = logging.getLogger(__name__)
 
+# importmap name → directory under kit/node_modules served at /kit/vendor/<name>/
+VENDORED = {
+    "ez-tree": Path("@dgreenheck/ez-tree/build"),
+    "postprocessing": Path("postprocessing/build"),
+    "n8ao": Path("n8ao/dist"),
+}
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -70,9 +77,14 @@ def create_app() -> FastAPI:
         StaticFiles(directory=settings.KIT_DIR / "node_modules" / "three"),
         name="three",
     )
-    eztree = settings.KIT_DIR / "node_modules" / "@dgreenheck" / "ez-tree" / "build"
-    if eztree.is_dir():  # vendored tree generator (#15); the kit falls back to its own trees
-        app.mount("/kit/vendor/ez-tree", StaticFiles(directory=eztree), name="ez-tree")
+    modules = settings.KIT_DIR / "node_modules"
+    # vendored kit dependencies (#15 ez-tree, #17 pmndrs postprocessing + n8ao), by importmap name
+    for name, sub in VENDORED.items():
+        d = modules / sub
+        if d.is_dir():
+            app.mount(f"/kit/vendor/{name}", StaticFiles(directory=d), name=name)
+        else:
+            logger.warning("kit.vendor.missing", extra={"package": name, "dir": str(d)})
     app.mount("/kit", StaticFiles(directory=settings.KIT_DIR), name="kit")
     # per-project files: scene working copy, versions, renders, photos, plan pages
     app.mount("/scenes", StaticFiles(directory=settings.projects_dir), name="scenes")

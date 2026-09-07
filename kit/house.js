@@ -121,6 +121,119 @@ function tex(name, { color = "#ffffff", scale, roughness = 1, metalness } = {}) 
 }
 const TEXTURES_WITH_AO = new Set(["membrane", "tiles", "cladding", "decking", "gravel", "asphalt", "lawn", "pebbles"]);
 
+// --------------------------------------------------------------------------
+// Interior mapping (#17): a window pane that shows a lit room with depth behind it, computed
+// per fragment from the view direction (parallax-corrected box), no extra geometry.
+// --------------------------------------------------------------------------
+
+const INTERIOR_VERT = /* glsl */ `
+  varying vec3 vLocal;      // fragment on the pane, local metres (z = 0)
+  varying vec3 vCamLocal;   // camera in the pane's local space
+  #include <fog_pars_vertex>
+  void main() {
+    vLocal = position;
+    vCamLocal = (inverse(modelMatrix) * vec4(cameraPosition, 1.0)).xyz;
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    #include <fog_vertex>
+  }
+`;
+
+const INTERIOR_FRAG = /* glsl */ `
+  uniform vec3 uRoom;        // width, height, depth of a room cell (metres)
+  uniform vec3 uWall;        // colours, linear
+  uniform vec3 uFloor;
+  uniform vec3 uCeiling;
+  uniform vec3 uGlass;       // reflection tint
+  uniform float uLight;      // 0 = dark room, 1 = lit room
+  uniform float uSeed;
+  varying vec3 vLocal;
+  varying vec3 vCamLocal;
+  #include <fog_pars_fragment>
+
+  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed * 0.731) * 43758.5453); }
+
+  void main() {
+    vec3 ro = vLocal;
+    vec3 rd = normalize(vLocal - vCamLocal);
+    // the room is behind the pane (local -z); a grazing ray still has to go inwards
+    rd.z = min(rd.z, -0.05);
+    rd = normalize(rd);
+    // cell of the room grid the fragment belongs to (a wide window spans several rooms)
+    vec2 cell = floor(ro.xy / uRoom.xy);
+    // distance to the next wall in x and y, and to the back wall in z
+    float bx = (cell.x + (rd.x > 0.0 ? 1.0 : 0.0)) * uRoom.x;
+    float by = (cell.y + (rd.y > 0.0 ? 1.0 : 0.0)) * uRoom.y;
+    float tx = abs(rd.x) < 1e-4 ? 1e9 : (bx - ro.x) / rd.x;
+    float ty = abs(rd.y) < 1e-4 ? 1e9 : (by - ro.y) / rd.y;
+    float tz = -uRoom.z / rd.z;
+    float t = min(min(tx, ty), tz);
+    vec3 hit = ro + rd * t;
+    float depth = clamp(-hit.z / uRoom.z, 0.0, 1.0);
+    vec3 col;
+    float variant = hash(cell);
+    if (t == tz) {
+      // back wall: a painted wall with a lighter panel (a picture, a doorway) in some rooms
+      col = uWall * (0.55 + 0.45 * (1.0 - depth * 0.35));
+      vec2 rel = fract(hit.xy / uRoom.xy);
+      float panel = step(0.55, variant) * step(0.3, rel.x) * step(0.7 + 0.0, 1.0 - rel.x + 0.7) * step(0.25, rel.y) * step(rel.y, 0.8);
+      col = mix(col, uWall * 1.25 + vec3(0.05), panel * 0.6);
+    } else if (t == ty) {
+      col = rd.y > 0.0 ? uCeiling * (0.9 - 0.4 * depth) : uFloor * (0.7 - 0.35 * depth);
+    } else {
+      col = uWall * (0.6 - 0.3 * depth) * (rd.x > 0.0 ? 0.92 : 1.0);
+    }
+    // a dark room shows little; a lit one glows warm
+    vec3 lit = col * mix(0.22, 1.35, uLight) * mix(vec3(0.85, 0.9, 1.0), vec3(1.0, 0.93, 0.8), uLight);
+    // glass: fresnel reflection of the sky/surroundings over the interior
+    float fresnel = pow(1.0 - clamp(dot(-rd, vec3(0.0, 0.0, 1.0)), 0.0, 1.0), 3.0);
+    vec3 color = mix(lit, uGlass, 0.18 + 0.6 * fresnel);
+    gl_FragColor = vec4(color, 1.0);
+    #include <tonemapping_fragment>
+    #include <colorspace_fragment>
+    #include <fog_fragment>
+  }
+`;
+
+// warm and cool room palettes; the seed picks one per pane so a façade is not uniform
+const INTERIOR_PALETTES = [
+  { wall: "#d9d2c3", floor: "#8a6a4a", ceiling: "#efece4" },
+  { wall: "#cfd6d8", floor: "#6f6a62", ceiling: "#f0f0ee" },
+  { wall: "#e2d8c0", floor: "#a08a6a", ceiling: "#f2efe6" },
+  { wall: "#c9c4b6", floor: "#5c5650", ceiling: "#e9e6df" },
+];
+let _interiorSeed = 0;
+
+/**
+ * Window pane material showing a room behind the glass (interior mapping). Options:
+ * roomDepth/roomWidth/roomHeight (metres), palette (index or { wall, floor, ceiling }),
+ * lightOn (0..1, or true/false), tint (the glass reflection colour), seed (variant; each
+ * pane gets its own by default, in build order, so renders are deterministic).
+ */
+function interior({ roomDepth = 3.5, roomWidth = 3.2, roomHeight = 2.6, palette, lightOn = 0.35, tint = "#9fb8c8", seed } = {}) {
+  const sd = seed ?? _interiorSeed++;
+  const pal = typeof palette === "object" && palette ? palette : INTERIOR_PALETTES[(typeof palette === "number" ? palette : sd) % INTERIOR_PALETTES.length];
+  const m = new THREE.ShaderMaterial({
+    uniforms: THREE.UniformsUtils.merge([
+      THREE.UniformsLib.fog,
+      {
+        uRoom: { value: new THREE.Vector3(roomWidth, roomHeight, roomDepth) },
+        uWall: { value: new THREE.Color(pal.wall) },
+        uFloor: { value: new THREE.Color(pal.floor) },
+        uCeiling: { value: new THREE.Color(pal.ceiling) },
+        uGlass: { value: new THREE.Color(tint) },
+        uLight: { value: lightOn === true ? 1 : lightOn === false ? 0 : Number(lightOn) },
+        uSeed: { value: sd },
+      },
+    ]),
+    vertexShader: INTERIOR_VERT,
+    fragmentShader: INTERIOR_FRAG,
+    fog: true,
+  });
+  m.userData = { interior: true, seed: sd };
+  return m;
+}
+
 /** `mat.plaster({ color, texture, scale })` next to the positional `mat.plaster(color)` form. */
 function withTexture(plain, defaultTexture) {
   return (arg, ...rest) => {
@@ -172,6 +285,7 @@ const plainMat = {
 export const mat = {
   ...plainMat,
   tex,
+  interior,
   // object form: mat.plaster({ color, texture: "roughcast", scale }); the texture defaults
   // to the natural one for the material, and { texture: null } keeps it flat
   plaster: withTexture(plainMat.plaster, "plaster"),
@@ -385,6 +499,8 @@ export function windowUnit({
   shutterOpen = 0.35, // 0 = fully closed, 1 = fully open (roller only)
   shutterColor = "#d9d9d9",
   sillDepth = 0.12,
+  glassOnly = false, // true: plain physical glass (a conservatory, glass blocks) instead of a room behind the pane
+  interior: interiorOptions,
 }) {
   const g = new THREE.Group();
   const frame = mat.paint(frameColor);
@@ -407,7 +523,8 @@ export function windowUnit({
   for (const [w, h, d, x, y, z] of parts) {
     g.add(box({ size: [w, h, d], position: [x, y, z], material: frame }));
   }
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(width - 2 * t, height - 2 * t), mat.glass(glassTint));
+  const pane = glassOnly ? mat.glass(glassTint) : mat.interior({ tint: glassTint, ...(interiorOptions ?? {}) });
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(width - 2 * t, height - 2 * t), pane);
   glass.position.set(0, height / 2, -0.01);
   g.add(glass);
   // The unit is recessed UNIT_INSET into the wall by placeOnWall, so anything that must
@@ -442,12 +559,12 @@ export function windowUnit({
 }
 
 /** Door unit (solid or glazed). Local origin bottom-centre, faces +z. */
-export function door({ width = 1.0, height = 2.1, color = "#3b3f42", glass = false, frameColor = "#4b4f52" }) {
+export function door({ width = 1.0, height = 2.1, color = "#3b3f42", glass = false, frameColor = "#4b4f52", glassOnly = false }) {
   const g = new THREE.Group();
   const t = 0.07;
   g.add(box({ size: [width, height, 0.1], position: [0, height / 2, 0], material: mat.paint(frameColor) }));
   const leaf = glass
-    ? new THREE.Mesh(new THREE.PlaneGeometry(width - 2 * t, height - 2 * t), mat.glass("#8fa9bb", 0.7))
+    ? new THREE.Mesh(new THREE.PlaneGeometry(width - 2 * t, height - 2 * t), glassOnly ? mat.glass("#8fa9bb", 0.7) : mat.interior({ tint: "#8fa9bb", lightOn: 0.5 }))
     : box({ size: [width - 2 * t, height - 2 * t, 0.05], position: [0, 0, 0], material: mat.paint(color) });
   leaf.position.set(0, height / 2, 0.03);
   g.add(leaf);
@@ -458,8 +575,8 @@ export function door({ width = 1.0, height = 2.1, color = "#3b3f42", glass = fal
 }
 
 /** Large sliding glass door / glazed bay. */
-export function slidingDoor({ width = 2.4, height = 2.2, panels = 2, frameColor = "#4b4f52" }) {
-  return windowUnit({ width, height, frameColor, mullions: panels - 1, transoms: 0, glassTint: "#8fa9bb", sillDepth: 0.04 });
+export function slidingDoor({ width = 2.4, height = 2.2, panels = 2, frameColor = "#4b4f52", glassOnly = false, interior }) {
+  return windowUnit({ width, height, frameColor, mullions: panels - 1, transoms: 0, glassTint: "#8fa9bb", sillDepth: 0.04, glassOnly, interior });
 }
 
 // --------------------------------------------------------------------------

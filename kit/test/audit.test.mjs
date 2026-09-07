@@ -196,3 +196,31 @@ test("bushes use the bush presets and keep their kind tag", () => {
   const p = house.proceduralTree({ position: [0, 0], height: 6, seed: 3 });
   assert.equal(p.userData.kind, "tree"); // the fallback keeps the audit's tag
 });
+
+// ---- interior mapping (#17) ----
+test("window panes carry the interior mapping material unless glassOnly", () => {
+  const w = house.windowUnit({ width: 1.2, height: 1.3 });
+  const panes = [];
+  w.traverse((o) => { if (o.isMesh && o.material?.userData?.interior) panes.push(o); });
+  assert.equal(panes.length, 1);
+  const m = panes[0].material;
+  assert.ok(m.isShaderMaterial);
+  assert.deepEqual(m.uniforms.uRoom.value.toArray(), [3.2, 2.6, 3.5]);
+  const w2 = house.windowUnit({ width: 1.2, height: 1.3 });
+  let m2 = null;
+  w2.traverse((o) => { if (o.isMesh && o.material?.userData?.interior) m2 = o.material; });
+  assert.notEqual(m2.userData.seed, m.userData.seed); // each pane its own variant, in build order
+  const plain = house.windowUnit({ width: 1.2, height: 1.3, glassOnly: true });
+  let glass = null;
+  plain.traverse((o) => { if (o.isMesh && o.material?.isMeshPhysicalMaterial) glass = o.material; });
+  assert.ok(glass, "glassOnly keeps the physical glass");
+  const lit = house.mat.interior({ lightOn: true, palette: 2, seed: 9, roomDepth: 5 });
+  assert.equal(lit.uniforms.uLight.value, 1);
+  assert.equal(lit.uniforms.uRoom.value.z, 5);
+  assert.equal(lit.userData.seed, 9);
+  const d = house.door({ glass: true });
+  let dm = null;
+  d.traverse((o) => { if (o.isMesh && o.material?.userData?.interior) dm = o.material; });
+  assert.ok(dm, "a glazed door shows a room too");
+  assert.equal(house.slidingDoor({ glassOnly: true }).userData.kind, "window");
+});

@@ -54,8 +54,11 @@ deploy/    serve.py (SPA from the API process), k8s.yaml. Root Dockerfile = sing
   Terrain is excluded from camera framing (`userData.kind === "terrain"`).
 - Every new component: add to `house.js` **and** to the default export **and** to `KIT_REFERENCE` in
   `agent/prompts.py`, then render the template headless to prove it.
-- Headless: shadow map computed once per page; interactive: render only on camera change; effects (GTAO+SMAA) only at
-  `quality=high`, auto-disabled if a frame exceeds 250 ms.
+- Headless: shadow map computed once per page (no CSM there: three cascades per view cost far more than +20 %);
+  interactive: render only on camera change, cascaded shadow maps (`three/addons/csm`), materials set up once after
+  `buildScene`. Effects (pmndrs `postprocessing`: N8AO, SMAA, vignette, AgX via `ToneMappingEffect`, the renderer's
+  tone mapping off while the composer runs) only at `quality=high`, auto-disabled if a frame exceeds 250 ms.
+- Windows: `mat.interior` (interior mapping shader) is the default pane; `glassOnly` keeps `mat.glass`.
 - Look: physical sky (`three/addons/objects/Sky.js`) + PMREM environment from it, sun from `buildScene`'s `{ sun | time }`,
   AgX tone mapping. Textures: CC0 sets under `kit/assets/textures/<name>/` (`TEXTURES` in house.js is the manifest;
   `LICENSES.md` the sources), loaded through one LoadingManager; the runtime awaits `house.texturesReady()` before the

@@ -23,7 +23,7 @@ RUN npm run api:gen && npm run build
 
 WORKDIR /kit
 COPY kit/package.json kit/package-lock.json* ./
-RUN npm install --omit=dev                  # node_modules/three, @dgreenheck/ez-tree
+RUN npm install --omit=dev                  # node_modules/three, @dgreenheck/ez-tree, postprocessing, n8ao
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +63,8 @@ COPY kit/template ./kit/template
 COPY kit/assets ./kit/assets
 COPY --from=web /kit/node_modules/three ./kit/node_modules/three
 COPY --from=web /kit/node_modules/@dgreenheck/ez-tree/build ./kit/node_modules/@dgreenheck/ez-tree/build
+COPY --from=web /kit/node_modules/postprocessing/build ./kit/node_modules/postprocessing/build
+COPY --from=web /kit/node_modules/n8ao/dist ./kit/node_modules/n8ao/dist
 
 # Built frontend, served from "/" by the API process (STATIC_DIR)
 COPY --from=web /web/dist ./web/dist

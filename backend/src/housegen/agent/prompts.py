@@ -31,9 +31,11 @@ wallWithUnits(sameOptionsAsWall, (opening) => unit)                        → w
 placeOnWall(wallGroup, unit, offsetOfUnitCentre, sill)                     → manual placement of a unit into a wall
 
 ### Openings (local origin bottom-centre, face +z; sized to fill the hole)
-windowUnit({ width, height, frameColor="#4b4f52", mullions=1, transoms=0, glassTint, shutter:"none"|"roller"|"louvered", shutterOpen=0.35 (roller, 0=closed..1=open), shutterColor, sillDepth })
-door({ width=1, height=2.1, color, glass=false, frameColor })
-slidingDoor({ width=2.4, height=2.2, panels=2, frameColor })
+windowUnit({ width, height, frameColor="#4b4f52", mullions=1, transoms=0, glassTint, shutter:"none"|"roller"|"louvered", shutterOpen=0.35 (roller, 0=closed..1=open), shutterColor, sillDepth, glassOnly=false, interior })
+door({ width=1, height=2.1, color, glass=false, frameColor, glassOnly })
+slidingDoor({ width=2.4, height=2.2, panels=2, frameColor, glassOnly, interior })
+Panes show a room with depth behind the glass by default (interior mapping, deterministic per pane); interior:{ lightOn:0..1, palette:0..3,
+roomDepth } tunes it, glassOnly:true keeps plain physical glass (conservatories, glass blocks; mat.glass for raw panes).
 
 ### Roofs
 flatRoof({ polygon, y (top of slab), thickness=0.3, parapet=0.35, parapetThickness, material, edgeMaterial })
@@ -71,7 +73,7 @@ group.userData.kind = "prop" and group.name = "trampoline" so the plausibility a
 check_scene) checks them for intersections, floating and scale like the kit's own.
 
 ### Runtime
-The runtime adds a physical sky, a sun with shadows, environment lighting from the sky, AgX tone mapping, ambient occlusion and anti-aliasing at final quality, a textured lawn at y=0,
+The runtime adds a physical sky, a sun with shadows (cascaded in the interactive viewer), environment lighting from the sky, AgX tone mapping, ambient occlusion (N8AO), anti-aliasing and a light vignette at final quality, a textured lawn at y=0,
 orbit controls and named camera views: north/south/east/west (elevated wide shot from that side, eye ≈ 4 m, whole
 building in frame: for massing and roofs), northeast/…/southwest, aerial, top, north-photo/south-photo/east-photo/
 west-photo (a person at 1.6 m in front of that façade, 50° fov, façade filling the frame: the viewpoint of the photos),
