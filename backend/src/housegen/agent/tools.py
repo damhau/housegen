@@ -97,12 +97,10 @@ TOOL_SPECS: list[ToolSpec] = [
             "*** Begin Patch\n*** Update File: src/shell.js\n@@ optional anchor line\n context line\n"
             "-old line\n+new line\n*** Add File: src/entrance.js\n+every line of the new file prefixed with +\n"
             "*** Delete File: src/old.js\n*** End Patch\n"
-            "Hunks are located by their context lines (exact, then ignoring whitespace, quote style "
-            "and trailing // comments). Atomic per file: a file is written only if all its hunks "
-            "apply; the files that fail are named in the error with the closest line the file "
-            "really has, the others are written, so resend only the rejected file(s) after reading "
-            "them again. Prefer this over several edit_file calls: decide all the changes for a "
-            "round, apply them in one patch, then render. Paths: src/*.js only."
+            "Hunks are located by their context lines (exact, then ignoring whitespace). The whole "
+            "patch is rejected on the first hunk that does not apply and nothing is written; the "
+            "error names the hunk. Prefer this over several edit_file calls: decide all the changes "
+            "for a round, apply them in one patch, then render. Paths: src/*.js only."
         ),
         input_schema={
             "type": "object",
@@ -180,8 +178,7 @@ TOOL_SPECS: list[ToolSpec] = [
         description=(
             "Zoom: return a region of a photo, plan sheet or render at native resolution "
             "(plan sheets are re-rendered from the PDF at 300 dpi). name = a photo label "
-            "('north', 'south', 'east', 'west', 'extra-3', 'attached-1' for a photo attached to the "
-            "request), a plan sheet ('plan-2') or a render view "
+            "('north', 'south', 'east', 'west', 'extra-3'), a plan sheet ('plan-2') or a render view "
             "('render-north'). x, y, w, h are pixel coordinates in the image as you received it; "
             "the result says the crop's scale. Use it to read dimension strings on the plans and "
             "small façade details (window divisions, shutters, cladding lines) instead of guessing."
@@ -361,7 +358,6 @@ class BuilderTools:
         self.renders_dir = renders_dir
         self.on_render = on_render
         self.last_render_errors: list[str] = []
-        self.last_audit: list[str] = []
         self.rendered_views: set[str] = set()
         self.last_check_ok = False
         self.render_ms_total = 0  # every render this instance ran (per-turn deltas, #13)
@@ -435,7 +431,6 @@ class BuilderTools:
             self.scene_url, views, self.renders_dir, quality=quality, camera=camera or None
         )
         self.last_render_errors = res.errors
-        self.last_audit = res.audit
         self.render_ms_total += res.duration_ms
         self.rendered_views.update(res.images)
         if self.on_render:
@@ -447,8 +442,6 @@ class BuilderTools:
             content.append(
                 TextPart(text="Console warnings/errors:\n" + "\n".join(res.console[:20]))
             )
-        if res.audit:
-            content.append(TextPart(text=audit_text(res.audit)))
         for view, path in res.images.items():
             content.append(ImagePart.from_file(path, label=f"Render — view '{view}'"))
         if not res.images:
@@ -488,22 +481,8 @@ class BuilderTools:
     async def check_scene(self, _: dict[str, Any]) -> ToolOutput:
         res = await self.renderer.render(self.scene_url, [], self.renders_dir, quality="low")
         self.last_render_errors = res.errors
-        self.last_audit = res.audit
         self.render_ms_total += res.duration_ms
         self.last_check_ok = not res.errors
         if res.errors:
             return [TextPart(text="Errors:\n" + "\n".join(res.errors))], True
-        if res.audit:
-            return [
-                TextPart(text="OK — scene loaded with no errors.\n" + audit_text(res.audit))
-            ], False
-        return [
-            TextPart(text="OK — scene loaded with no errors; the plausibility audit found nothing.")
-        ], False
-
-
-def audit_text(lines: list[str]) -> str:
-    """The runtime's plausibility findings as one block for a tool result or the critic."""
-    return "Plausibility audit (deterministic, from bounding boxes; fix every line):\n" + "\n".join(
-        f"- {x}" for x in lines
-    )
+        return [TextPart(text="OK — scene loaded with no errors.")], False

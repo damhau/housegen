@@ -42,6 +42,10 @@ deploy/    serve.py (SPA from the API process), k8s.yaml. Root Dockerfile = sing
 - Versions are directory snapshots (`versions/<n>/` + renders); restore = copy back. Reviews are stored on the version
   (`critique_json`) and can be replayed as a modification ("Apply the review's findings").
 
+- **The build path is frozen at v0.1.0** (what the builder, critic and intake see: prompts, tool descriptions, message
+  contents, views, response schemas). Any change to it ships with a measured run against a v0.1.0 run of the same
+  project; see `docs/build-path-2026-09-07.md` for what was removed and why.
+
 ## Kit conventions
 
 - Metres; `+x` east, `+z` south, `+y` up, ground `y=0`. Views are named after the façade the camera LOOKS AT.

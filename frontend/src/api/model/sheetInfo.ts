@@ -9,15 +9,10 @@ import type { SheetInfoElevationsItem } from './sheetInfoElevationsItem';
 
 export interface SheetInfo {
   /**
-   * 1-based sheet number over the whole set, as captioned
+   * 1-based sheet number, in upload order
    * @minimum 1
    */
   page: number;
-  /**
-   * the plan document the sheet belongs to (1 when there is one)
-   * @minimum 1
-   */
-  document?: number;
   kind: SheetInfoKind;
   /** short, e.g. 'ground floor plan 1:100', 'south elevation' */
   label: string;

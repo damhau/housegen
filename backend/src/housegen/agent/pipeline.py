@@ -112,7 +112,6 @@ class _Run:
         self.usage = Usage()  # everything, builder + critic
         self.critic_usage = Usage()  # the critic's share, reported separately in the usage event
         self.metrics = RunMetrics(self.settings)  # time and tokens per turn (#13)
-        self.last_audit: list[str] = []  # plausibility audit of the last standard render (#3)
         self.views = standard_views(True)  # what every saved version is rendered from
         self.tools = BuilderTools(
             self.workspace, renderer, self.scene_url, self.renders_dir, on_render=self._on_render
@@ -237,7 +236,6 @@ class _Run:
 
     async def render_standard(self) -> dict[str, Path]:
         res = await renderer.render(self.scene_url, self.views, self.renders_dir, quality="high")
-        self.last_audit = list(res.audit)  # the critic gets the runtime's plausibility findings
         await self._on_render(res.images, res.errors)
         return res.images
 
@@ -488,7 +486,6 @@ async def _critic_rounds(
                         extras=inp.extras,
                         on_progress=live.on_event,
                         effort=rs.critic_effort,
-                        audit=run.last_audit,
                     )
                 else:
                     verdict, completion = await critic.critique_against_plans(
@@ -501,7 +498,6 @@ async def _critic_rounds(
                         rs.max_tokens,
                         on_progress=live.on_event,
                         effort=rs.critic_effort,
-                        audit=run.last_audit,
                     )
             await run.add_call("critic", completion, step=i)
             score = verdict.overall_score
@@ -735,7 +731,6 @@ async def _modify_verify(
                 on_progress=live.on_event,
                 effort=rs.critic_effort,
                 attachments=inp.attachments,
-                audit=run.last_audit,
             )
         await run.add_call("critic", completion)
         await _emit_critic(ctx, 1, verdict)

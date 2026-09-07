@@ -10,9 +10,6 @@ from pydantic import BaseModel, Field
 class CritiqueIssue(BaseModel):
     view: str
     severity: Literal["major", "minor"]
-    # fidelity: the model differs from the reference; plausibility: the scene is physically
-    # impossible (objects intersecting, floating, impossible scale), whatever the reference says
-    kind: Literal["fidelity", "plausibility"] = "fidelity"
     description: str
     fix: str
 
@@ -28,13 +25,8 @@ class Critique(BaseModel):
         if not self.issues:
             lines.append("No issues listed.")
         for i, issue in enumerate(self.issues, 1):
-            tag = (
-                f"{issue.severity}, {issue.kind}"
-                if issue.kind == "plausibility"
-                else issue.severity
-            )
             lines.append(
-                f"{i}. [{tag}] view={issue.view}: {issue.description}\n   Fix: {issue.fix}"
+                f"{i}. [{issue.severity}] view={issue.view}: {issue.description}\n   Fix: {issue.fix}"
             )
         return "\n".join(lines)
 
@@ -48,10 +40,7 @@ Facade = Literal["north", "south", "east", "west"]
 
 
 class SheetInfo(BaseModel):
-    page: int = Field(ge=1, description="1-based sheet number over the whole set, as captioned")
-    document: int = Field(
-        default=1, ge=1, description="the plan document the sheet belongs to (1 when there is one)"
-    )
+    page: int = Field(ge=1, description="1-based sheet number, in upload order")
     kind: SheetKind
     label: str = Field(description="short, e.g. 'ground floor plan 1:100', 'south elevation'")
     elevations: list[Facade] = Field(
@@ -81,11 +70,9 @@ class Intake(BaseModel):
 
     def sheet_map(self) -> str:
         lines = []
-        multi = len({s.document for s in self.sheets}) > 1
         for s in self.sheets:
             extra = f" ({', '.join(s.elevations)})" if s.elevations else ""
-            doc = f" [document {s.document}]" if multi else ""
-            lines.append(f"- Sheet {s.page}{doc}: {s.kind.replace('_', ' ')}{extra}: {s.label}")
+            lines.append(f"- Sheet {s.page}: {s.kind.replace('_', ' ')}{extra}: {s.label}")
         return "\n".join(lines)
 
     def as_builder_text(self) -> str:
