@@ -81,9 +81,11 @@ def test_apply_add_update_delete(tmp_path: Path) -> None:
     assert not ws.exists("src/old.js")
 
 
-def test_failing_hunk_rejects_whole_patch(tmp_path: Path) -> None:
+def test_failing_hunk_rejects_only_its_file(tmp_path: Path) -> None:
+    """Atomic per file (#23): the good files are written, the bad one is reported with the
+    closest line the file really has, so the model resends that file only."""
     ws = make_ws(tmp_path)
-    with pytest.raises(WorkspaceError, match="hunk 1"):
+    with pytest.raises(WorkspaceError) as exc:
         ws.apply_patch(
             "*** Begin Patch\n"
             "*** Add File: src/new.js\n"
@@ -93,8 +95,35 @@ def test_failing_hunk_rejects_whole_patch(tmp_path: Path) -> None:
             "+  const x = 2;\n"
             "*** End Patch\n"
         )
-    assert not ws.exists("src/new.js")  # nothing written
-    assert ws.read("src/shell.js") == SHELL
+    msg = str(exc.value)
+    assert "applied: src/new.js" in msg
+    assert "src/shell.js, hunk 1" in msg
+    assert "closest line the file has is line 2: 'const x = 1;'" in msg
+    assert "resend this file only" in msg
+    assert ws.exists("src/new.js")  # the good file went in
+    assert ws.read("src/shell.js") == SHELL  # the bad one is untouched
+
+
+def test_context_matches_across_quote_style_and_trailing_comment() -> None:
+    """The scene.js import line of #23: the model wrote it from memory with the other quotes."""
+    text = 'import * as THREE from "three"; // three.js\nimport * as house from "housekit";\nexport function a() {}\n'
+    ps = parse_patch(
+        "*** Begin Patch\n*** Update File: src/scene.js\n"
+        " import * as THREE from 'three';\n"
+        "-import * as house from 'housekit';\n"
+        "+import * as house from 'housekit';\n+import { buildGarden } from './garden.js';\n"
+        "*** End Patch\n"
+    )
+    out = apply_hunks(text, ps[0].hunks, "src/scene.js")
+    assert out.startswith('import * as THREE from "three"; // three.js\n')
+    assert "buildGarden" in out
+    # a genuinely different line is still rejected, and the closest line is quoted back
+    ps = parse_patch(
+        "*** Begin Patch\n*** Update File: src/scene.js\n"
+        " import { Mesh } from 'three';\n-export function a() {}\n+export function b() {}\n*** End Patch\n"
+    )
+    with pytest.raises(PatchError, match="closest line the file has is line 1"):
+        apply_hunks(text, ps[0].hunks, "src/scene.js")
 
 
 def test_path_escape_and_non_src_rejected(tmp_path: Path) -> None:

@@ -97,10 +97,12 @@ TOOL_SPECS: list[ToolSpec] = [
             "*** Begin Patch\n*** Update File: src/shell.js\n@@ optional anchor line\n context line\n"
             "-old line\n+new line\n*** Add File: src/entrance.js\n+every line of the new file prefixed with +\n"
             "*** Delete File: src/old.js\n*** End Patch\n"
-            "Hunks are located by their context lines (exact, then ignoring whitespace). The whole "
-            "patch is rejected on the first hunk that does not apply and nothing is written; the "
-            "error names the hunk. Prefer this over several edit_file calls: decide all the changes "
-            "for a round, apply them in one patch, then render. Paths: src/*.js only."
+            "Hunks are located by their context lines (exact, then ignoring whitespace, quote style "
+            "and trailing // comments). Atomic per file: a file is written only if all its hunks "
+            "apply; the files that fail are named in the error with the closest line the file "
+            "really has, the others are written, so resend only the rejected file(s) after reading "
+            "them again. Prefer this over several edit_file calls: decide all the changes for a "
+            "round, apply them in one patch, then render. Paths: src/*.js only."
         ),
         input_schema={
             "type": "object",

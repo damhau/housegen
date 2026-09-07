@@ -119,11 +119,11 @@ class Workspace:
         return self._resolve(rel).exists()
 
     def apply_patch(self, text: str) -> str:
-        """Multi-file edit in the Codex patch grammar; atomic (see agent/patch.py)."""
+        """Multi-file edit in the Codex patch grammar; atomic per file (see agent/patch.py)."""
         try:
             out = patchlib.apply_patch(text, self.read, self.exists, self.write, self.delete)
         except patchlib.PatchError as e:
-            raise WorkspaceError(f"patch rejected, nothing was written: {e}") from e
+            raise WorkspaceError(f"patch partly rejected: {e}") from e
         logger.info("workspace.patch", extra={"files": out.count(chr(10)) + 1})
         return out
 
