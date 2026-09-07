@@ -96,7 +96,7 @@ function ProjectPage() {
     let edited = false
     for (const e of events) {
       const p = e.payload as { errors?: unknown[]; tool?: string } | null
-      if (e.type === "builder_step" && (p?.tool === "write_file" || p?.tool === "edit_file")) edited = true
+      if (e.type === "builder_step" && (p?.tool === "write_file" || p?.tool === "edit_file" || p?.tool === "apply_patch")) edited = true
       if (e.type === "render" && edited && Array.isArray(p?.errors) && p.errors.length === 0) seq = e.seq
     }
     return seq

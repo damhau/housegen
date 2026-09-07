@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -107,6 +108,11 @@ def _arg_preview(name: str, args: dict[str, Any]) -> str:
         return str(args.get("path", ""))
     if name == "render_views":
         return ", ".join(str(v) for v in args.get("views", []))
+    if name == "apply_patch":
+        files = re.findall(
+            r"^\*\*\* (?:Update|Add|Delete) File: (.+)$", str(args.get("patch", "")), re.M
+        )
+        return ", ".join(f.strip() for f in files)[:200]
     if name == "finish":
         return str(args.get("summary", ""))[:200]
     return json.dumps(args)[:120]

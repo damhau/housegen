@@ -69,7 +69,10 @@ TOOL_SPECS: list[ToolSpec] = [
     ),
     ToolSpec(
         name="edit_file",
-        description="Replace one exact, unique occurrence of old_string with new_string in a module.",
+        description=(
+            "Replace one exact, unique occurrence of old_string with new_string in a module. For a "
+            "single tiny change; use apply_patch for several edits or several files at once."
+        ),
         input_schema={
             "type": "object",
             "properties": {
@@ -78,6 +81,25 @@ TOOL_SPECS: list[ToolSpec] = [
                 "new_string": {"type": "string"},
             },
             "required": ["path", "old_string", "new_string"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolSpec(
+        name="apply_patch",
+        description=(
+            "Apply several edits across one or more modules in ONE call, in the patch grammar:\n"
+            "*** Begin Patch\n*** Update File: src/shell.js\n@@ optional anchor line\n context line\n"
+            "-old line\n+new line\n*** Add File: src/entrance.js\n+every line of the new file prefixed with +\n"
+            "*** Delete File: src/old.js\n*** End Patch\n"
+            "Hunks are located by their context lines (exact, then ignoring whitespace). The whole "
+            "patch is rejected on the first hunk that does not apply and nothing is written; the "
+            "error names the hunk. Prefer this over several edit_file calls: decide all the changes "
+            "for a round, apply them in one patch, then render. Paths: src/*.js only."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {"patch": {"type": "string"}},
+            "required": ["patch"],
             "additionalProperties": False,
         },
     ),
@@ -208,6 +230,7 @@ class BuilderTools:
             "read_file": self.read_file,
             "write_file": self.write_file,
             "edit_file": self.edit_file,
+            "apply_patch": self.apply_patch,
             "delete_file": self.delete_file,
             "render_views": self.render_views,
             "check_scene": self.check_scene,
@@ -251,6 +274,10 @@ class BuilderTools:
         return [
             TextPart(text=self.ws.edit(str(a["path"]), str(a["old_string"]), str(a["new_string"])))
         ], False
+
+    async def apply_patch(self, a: dict[str, Any]) -> ToolOutput:
+        self.last_check_ok = False
+        return [TextPart(text=self.ws.apply_patch(str(a["patch"])))], False
 
     async def delete_file(self, a: dict[str, Any]) -> ToolOutput:
         self.last_check_ok = False
