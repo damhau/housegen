@@ -17,10 +17,9 @@ import {
   useFixVersion,
 } from "@/api/endpoints/projects/projects"
 import { BuildingPlaceholder } from "@/components/BuildingPlaceholder"
-import { ChatPanel } from "@/components/ChatPanel"
 import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
-import { JobTimeline } from "@/components/JobTimeline"
+import { ConversationPanel } from "@/components/ConversationPanel"
 import { SceneViewer } from "@/components/SceneViewer"
 import { VersionList } from "@/components/VersionList"
 import { Button } from "@/components/ui/button"
@@ -30,7 +29,7 @@ import { StatusBadge } from "@/routes/index"
 
 export const Route = createFileRoute("/projects/$projectId")({ component: ProjectPage })
 
-type Tab = "activity" | "chat" | "compare" | "versions" | "code"
+type Tab = "conversation" | "compare" | "versions" | "code"
 
 /** "m:ss" since an ISO timestamp, ticking every second; null when no timestamp. */
 function useElapsed(sinceIso: string | null) {
@@ -58,7 +57,7 @@ function ProjectPage() {
   const fix = useFixVersion()
   const del = useDeleteProject()
 
-  const [tab, setTab] = useState<Tab>("activity")
+  const [tab, setTab] = useState<Tab>("conversation")
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
 
@@ -106,7 +105,7 @@ function ProjectPage() {
   }, [lastGoodRender, autoReload]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (activeJob) setTab("activity")
+    if (activeJob) setTab("conversation")
   }, [activeJob?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (project.isPending) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
@@ -135,7 +134,7 @@ function ProjectPage() {
   async function onFix(n: number) {
     await fix.mutateAsync({ projectId, number: n })
     setSelectedVersion(null)
-    setTab("activity")
+    setTab("conversation")
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
   }
@@ -152,8 +151,7 @@ function ProjectPage() {
   }
 
   const tabs: { id: Tab; label: string }[] = [
-    { id: "activity", label: "Activity" },
-    { id: "chat", label: "Modify" },
+    { id: "conversation", label: "Conversation" },
     { id: "compare", label: "Photo vs render" },
     { id: "versions", label: `Versions (${p.versions.length})` },
     { id: "code", label: "Code" },
@@ -237,18 +235,19 @@ function ProjectPage() {
             ))}
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            {tab === "activity" && (
-              <JobTimeline
-                events={events}
-                live={live}
-                progress={progress}
-                liveText={liveText}
-                liveThought={liveThought}
-                onOpenChat={() => setTab("chat")}
+            {tab === "conversation" && (
+              <ConversationPanel
+                projectId={projectId}
+                jobs={jobs.data ?? []}
+                messages={chat.data ?? []}
+                versions={p.versions}
+                currentVersion={p.current_version}
+                liveJob={{ jobId: followed?.id ?? null, events, live, progress, liveText, liveThought, elapsed }}
+                busy={busy}
+                disabled={p.current_version === 0}
+                onSend={onSend}
+                onFix={(n) => void onFix(n)}
               />
-            )}
-            {tab === "chat" && (
-              <ChatPanel messages={chat.data ?? []} versions={p.versions} busy={busy} disabled={p.current_version === 0} onSend={onSend} />
             )}
             {tab === "compare" && <ComparePanel photos={p.photos} version={version} />}
             {tab === "versions" && (

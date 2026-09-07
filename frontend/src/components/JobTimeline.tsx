@@ -15,15 +15,12 @@ export function JobTimeline({
   progress = null,
   liveText = "",
   liveThought = "",
-  onOpenChat,
 }: {
   events: JobEvent[]
   live: boolean
   progress?: LlmProgress | null
   liveText?: string
   liveThought?: string
-  /** the builder left suggestions/questions: where to go to act on them */
-  onOpenChat?: () => void
 }) {
   const endRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -36,7 +33,7 @@ export function JobTimeline({
     <div>
       <ol className="space-y-1.5 p-3 text-sm">
         {events.map((ev) => (
-          <Row key={ev.seq} ev={ev} onOpenChat={onOpenChat} />
+          <Row key={ev.seq} ev={ev} />
         ))}
         {live && !progress && (
           <li className="flex items-center gap-2 pl-1 text-xs text-muted-foreground">
@@ -52,7 +49,7 @@ export function JobTimeline({
 
 const strList = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [])
 
-function Row({ ev, onOpenChat }: { ev: JobEvent; onOpenChat?: () => void }) {
+function Row({ ev }: { ev: JobEvent }) {
   const p = ev.payload as P
   switch (ev.type) {
     case "phase":
@@ -140,11 +137,7 @@ function Row({ ev, onOpenChat }: { ev: JobEvent; onOpenChat?: () => void }) {
       return (
         <li className="mt-2 flex flex-wrap items-center gap-2 font-medium text-success">
           <CheckCircle2 className="size-4" /> Done{num(p.score) !== undefined ? ` · score ${String(p.score)}` : ""}
-          {hint && (
-            <button type="button" className="text-xs font-normal text-muted-foreground underline-offset-2 hover:underline" onClick={onOpenChat}>
-              {hint} → Modify
-            </button>
-          )}
+          {hint && <span className="text-xs font-normal text-muted-foreground">{hint} below</span>}
         </li>
       )
     }
