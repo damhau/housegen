@@ -89,11 +89,15 @@ function ProjectPage() {
   // the viewer follows the build: reload after every error-free render (never on a broken scene),
   // unless the user paused it to keep orbiting a given state
   const [autoReload, setAutoReload] = useState(true)
+  // (only renders taken after the builder's first write count: before that the working copy is
+  // still the kit's template box, which must never be shown as "the house")
   const lastGoodRender = useMemo(() => {
     let seq = 0
+    let edited = false
     for (const e of events) {
-      const errors = (e.payload as { errors?: unknown[] } | null)?.errors
-      if (e.type === "render" && Array.isArray(errors) && errors.length === 0) seq = e.seq
+      const p = e.payload as { errors?: unknown[]; tool?: string } | null
+      if (e.type === "builder_step" && (p?.tool === "write_file" || p?.tool === "edit_file")) edited = true
+      if (e.type === "render" && edited && Array.isArray(p?.errors) && p.errors.length === 0) seq = e.seq
     }
     return seq
   }, [events])
