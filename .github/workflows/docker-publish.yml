@@ -51,3 +51,35 @@ jobs:
             BUILD_VERSION=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Bump the image tag in the GitOps repo; Argo CD rolls it out from there.
+  # Only on v* tags: a workflow_dispatch from a branch publishes no semver tag.
+  deploy:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout gitops repo
+        uses: actions/checkout@v4
+        with:
+          repository: damhau/k8s-argocd
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+
+      - name: Install kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update image tag
+        run: |
+          TAG=${GITHUB_REF_NAME#v}
+          cd base/applications/housegen
+          kustomize edit set image ${IMAGE}=${IMAGE}:${TAG}
+
+      - name: Commit and push
+        run: |
+          TAG=${GITHUB_REF_NAME#v}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add base/applications/housegen/kustomization.yaml
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: deploy housegen ${TAG}"
+          git push origin main
