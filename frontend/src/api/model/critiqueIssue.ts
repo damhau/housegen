@@ -5,10 +5,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { CritiqueIssueSeverity } from './critiqueIssueSeverity';
+import type { CritiqueIssueKind } from './critiqueIssueKind';
 
 export interface CritiqueIssue {
   view: string;
   severity: CritiqueIssueSeverity;
+  kind?: CritiqueIssueKind;
   description: string;
   fix: string;
 }

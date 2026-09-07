@@ -60,6 +60,7 @@ deploy/    serve.py (SPA from the API process), k8s.yaml. Root Dockerfile = sing
 ```bash
 cd backend  && uv run ruff check . && uv run ruff format . && uv run mypy src/ && uv run pytest -q
 cd frontend && npm run typecheck && npm run build
+cd kit      && npm test            # Node tests over house.js (plausibility audit)
 # after any API change:
 cd backend  && uv run python -c "import json; from housegen.main import app; print(json.dumps(app.openapi()))" > ../frontend/openapi.json
 cd frontend && npm run api:gen

@@ -349,6 +349,7 @@ class BuilderTools:
         self.renders_dir = renders_dir
         self.on_render = on_render
         self.last_render_errors: list[str] = []
+        self.last_audit: list[str] = []
         self.rendered_views: set[str] = set()
         self.last_check_ok = False
         self.handlers: dict[str, Handler] = {
@@ -420,6 +421,7 @@ class BuilderTools:
             self.scene_url, views, self.renders_dir, quality=quality, camera=camera or None
         )
         self.last_render_errors = res.errors
+        self.last_audit = res.audit
         self.rendered_views.update(res.images)
         if self.on_render:
             await self.on_render(res.images, res.errors)
@@ -430,6 +432,8 @@ class BuilderTools:
             content.append(
                 TextPart(text="Console warnings/errors:\n" + "\n".join(res.console[:20]))
             )
+        if res.audit:
+            content.append(TextPart(text=audit_text(res.audit)))
         for view, path in res.images.items():
             content.append(ImagePart.from_file(path, label=f"Render — view '{view}'"))
         if not res.images:
@@ -469,7 +473,21 @@ class BuilderTools:
     async def check_scene(self, _: dict[str, Any]) -> ToolOutput:
         res = await self.renderer.render(self.scene_url, [], self.renders_dir, quality="low")
         self.last_render_errors = res.errors
+        self.last_audit = res.audit
         self.last_check_ok = not res.errors
         if res.errors:
             return [TextPart(text="Errors:\n" + "\n".join(res.errors))], True
-        return [TextPart(text="OK — scene loaded with no errors.")], False
+        if res.audit:
+            return [
+                TextPart(text="OK — scene loaded with no errors.\n" + audit_text(res.audit))
+            ], False
+        return [
+            TextPart(text="OK — scene loaded with no errors; the plausibility audit found nothing.")
+        ], False
+
+
+def audit_text(lines: list[str]) -> str:
+    """The runtime's plausibility findings as one block for a tool result or the critic."""
+    return "Plausibility audit (deterministic, from bounding boxes; fix every line):\n" + "\n".join(
+        f"- {x}" for x in lines
+    )

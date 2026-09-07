@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from housegen.agent.prompts import CRITIC_MODIFY_SYSTEM, CRITIC_PLAN_SYSTEM, CRITIC_SYSTEM
 from housegen.agent.schemas import Critique
+from housegen.agent.tools import audit_text
 from housegen.core.exceptions import LLMError
 from housegen.llm import ImagePart, Message, ProgressCallback, Provider, Usage
 
@@ -24,6 +25,7 @@ async def critique_against_photos(
     extras: list[Path] | None = None,
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
+    audit: list[str] | None = None,
 ) -> tuple[Critique, Usage]:
     parts: list[ImagePart | str] = [f"Score threshold for done: {threshold}."]
     pairs = 0
@@ -50,12 +52,7 @@ async def critique_against_photos(
                 ),
             )
         )
-    if "aerial" in renders:
-        parts.append(
-            ImagePart.from_file(
-                renders["aerial"], label="RENDER aerial view (for massing and site)"
-            )
-        )
+    parts.extend(_overview_renders(renders))
     if pairs == 0:
         # nothing labelled by side: give everything and let the critic match photos to renders
         if not extras and not renders:
@@ -75,6 +72,7 @@ async def critique_against_photos(
         )
         for i, p in enumerate(extras[:8], 1):
             parts.append(ImagePart.from_file(p, label=f"Additional photograph {i}"))
+    parts.extend(_audit_parts(audit))
     parts.append("Return the critique as JSON matching the schema.")
     completion = await provider.complete(
         model=model,
@@ -98,6 +96,7 @@ async def critique_against_plans(
     max_tokens: int,
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
+    audit: list[str] | None = None,
 ) -> tuple[Critique, Usage]:
     """No photographs: judge the model against the elevation drawings of the plan set.
 
@@ -138,14 +137,10 @@ async def critique_against_plans(
                     ),
                 )
             )
-    if "aerial" in renders:
-        parts.append(
-            ImagePart.from_file(
-                renders["aerial"], label="RENDER aerial view (for massing and site)"
-            )
-        )
+    parts.extend(_overview_renders(renders))
     if pairs == 0:
         raise LLMError("no elevation drawing / render pair available for the critic")
+    parts.extend(_audit_parts(audit))
     parts.append("Return the critique as JSON matching the schema.")
     completion = await provider.complete(
         model=model,
@@ -169,6 +164,7 @@ async def verify_modification(
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
     attachments: list[Path] | None = None,
+    audit: list[str] | None = None,
 ) -> tuple[Critique, Usage]:
     parts: list[ImagePart | str] = [f"User request:\n{request}"]
     if attachments:
@@ -183,6 +179,7 @@ async def verify_modification(
     parts.append("Renders AFTER the change:")
     for view, p in _critic_views(after).items():
         parts.append(ImagePart.from_file(p, label=f"AFTER — view {view}"))
+    parts.extend(_audit_parts(audit))
     parts.append("Return the verdict as JSON matching the schema (threshold 85).")
     completion = await provider.complete(
         model=model,
@@ -196,14 +193,44 @@ async def verify_modification(
     return _parse(completion.message.text), completion.usage
 
 
+def _overview_renders(renders: dict[str, Path]) -> list[ImagePart]:
+    """The aerial (massing, site) and the straight-down top view (where object clashes show)."""
+    out = []
+    if "aerial" in renders:
+        out.append(
+            ImagePart.from_file(
+                renders["aerial"], label="RENDER aerial view (for massing and site)"
+            )
+        )
+    if "top" in renders:
+        out.append(
+            ImagePart.from_file(
+                renders["top"],
+                label="RENDER top view, straight down (for the site layout and objects that intersect or float)",
+            )
+        )
+    return out
+
+
+def _audit_parts(audit: list[str] | None) -> list[str]:
+    if not audit:
+        return []
+    return [
+        audit_text(audit)
+        + "\n(These come from the scene's geometry, not from a picture: report each one as a "
+        "plausibility issue with severity major, and add what you see yourself.)"
+    ]
+
+
 def _critic_views(renders: dict[str, Path]) -> dict[str, Path]:
-    """The critic's set: photo-like façade views + the aerial for massing; the elevated side
+    """The critic's set: photo-like façade views + the aerial and top views; the elevated side
     views only when no photo-like view exists (older versions)."""
     photo = {v: p for v, p in renders.items() if v.endswith("-photo")}
     if not photo:
         return renders
-    if "aerial" in renders:
-        photo["aerial"] = renders["aerial"]
+    for v in ("aerial", "top"):
+        if v in renders:
+            photo[v] = renders[v]
     return photo
 
 

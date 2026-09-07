@@ -129,3 +129,28 @@ async def test_plain_text_ending_is_nudged_then_accepted(tools: BuilderTools) ->
     assert any(
         isinstance(p, TextPart) and "finish" in p.text for m in provider.calls[1] for p in m.content
     )
+
+
+async def test_render_and_check_results_carry_the_plausibility_audit(tmp_path: Path) -> None:
+    """The runtime's audit lines land in the tool results so the builder fixes them (#3)."""
+    from housegen.render.renderer import RenderResult
+
+    class AuditingRenderer:
+        async def render(
+            self, scene_url: str, views: list[str], out_dir: Path, quality: str = "high", **_: Any
+        ) -> RenderResult:
+            return RenderResult(
+                images={}, errors=[], audit=["tree at (4, 6) intersects trampoline at (4, 6)"]
+            )
+
+    ws = Workspace(tmp_path)
+    ws.write("src/scene.js", "export async function buildScene() {}\n")
+    tools = BuilderTools(ws, AuditingRenderer(), "http://x/index.html", tmp_path / "renders")  # type: ignore[arg-type]
+    content, is_error = await tools.check_scene({})
+    assert not is_error
+    assert "trampoline" in content[0].text  # type: ignore[union-attr]
+    assert tools.last_check_ok
+    content, is_error = await tools.render_views({"views": ["top"]})
+    texts = [c.text for c in content if isinstance(c, TextPart)]
+    assert any("Plausibility audit" in t and "trampoline" in t for t in texts)
+    assert tools.last_audit == ["tree at (4, 6) intersects trampoline at (4, 6)"]

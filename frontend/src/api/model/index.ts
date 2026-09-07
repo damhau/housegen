@@ -12,6 +12,7 @@ export * from './chatMessageOutJobId';
 export * from './chatMessageOutVersionNumber';
 export * from './critique';
 export * from './critiqueIssue';
+export * from './critiqueIssueKind';
 export * from './critiqueIssueSeverity';
 export * from './generateBody';
 export * from './generateRequest';

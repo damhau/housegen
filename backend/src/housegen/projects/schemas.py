@@ -8,13 +8,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from housegen.agent.schemas import Critique, Intake
 
 Side = Literal["north", "south", "east", "west", "other"]
-# elevated wide shots (massing, roof) + photo-like eye-level views (what the critic pairs with the photos)
+# elevated wide shots (massing, roof) + photo-like eye-level views (what the critic pairs with
+# the photos) + aerial and straight-down top (site layout; where object clashes show, #3)
 STANDARD_VIEWS = [
     "north",
     "south",
     "east",
     "west",
     "aerial",
+    "top",
     "north-photo",
     "south-photo",
     "east-photo",
@@ -27,6 +29,7 @@ PLAN_ONLY_VIEWS = [
     "east",
     "west",
     "aerial",
+    "top",
     "north-elevation",
     "south-elevation",
     "east-elevation",

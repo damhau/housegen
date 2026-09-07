@@ -10,6 +10,9 @@ from pydantic import BaseModel, Field
 class CritiqueIssue(BaseModel):
     view: str
     severity: Literal["major", "minor"]
+    # fidelity: the model differs from the reference; plausibility: the scene is physically
+    # impossible (objects intersecting, floating, impossible scale), whatever the reference says
+    kind: Literal["fidelity", "plausibility"] = "fidelity"
     description: str
     fix: str
 
@@ -25,8 +28,13 @@ class Critique(BaseModel):
         if not self.issues:
             lines.append("No issues listed.")
         for i, issue in enumerate(self.issues, 1):
+            tag = (
+                f"{issue.severity}, {issue.kind}"
+                if issue.kind == "plausibility"
+                else issue.severity
+            )
             lines.append(
-                f"{i}. [{issue.severity}] view={issue.view}: {issue.description}\n   Fix: {issue.fix}"
+                f"{i}. [{tag}] view={issue.view}: {issue.description}\n   Fix: {issue.fix}"
             )
         return "\n".join(lines)
 

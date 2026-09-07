@@ -81,6 +81,9 @@ window.__house = {
     return { building: b(f.building), site: b(f.bounds), aspect: state.camera?.aspect };
   },
   renderOnce: () => renderFrame(),
+  // deterministic plausibility audit of the built scene (see house.audit): the renderer
+  // appends it to the builder's tool results and gives it to the critic
+  audit: () => (state.houseGroup ? house.audit(state.houseGroup) : []),
 };
 
 function recordError(msg) {

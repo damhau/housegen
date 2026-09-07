@@ -507,6 +507,7 @@ export function planter({ length = 1.5, position = [0, 0, 0], rotationY = 0, col
   }
   g.position.set(...position);
   g.rotation.y = rotationY;
+  g.userData = { kind: "planter" };
   return g;
 }
 
@@ -534,6 +535,7 @@ export function hedge({ from, to, height = 1.2, thickness = 0.6, y = 0, color = 
   }
   g.position.set(from[0], y, from[1]);
   g.rotation.y = -Math.atan2(dz, dx);
+  g.userData = { kind: "hedge" };
   return g;
 }
 
@@ -593,6 +595,7 @@ export function car({ position = [0, 0, 0], rotationY = 0, color = "#2f3a48" }) 
   }
   g.position.set(...position);
   g.rotation.y = rotationY;
+  g.userData = { kind: "car" };
   return g;
 }
 
@@ -784,6 +787,7 @@ export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf
     leafCluster(leaves, 0.1, height * 0.92, 0, spread * 0.3, height * 0.12, spread * 0.3, 160, rnd);
     g.add(leafMesh(leaves, foliageColor ?? "#5a7a3e", rnd));
   }
+  g.userData = { kind: "tree", height, spread };
   return g;
 }
 
@@ -805,6 +809,7 @@ export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", 
     const twig = mat.wood("#6f6a58");
     for (let i = 0; i < 5; i++) { const a = i * 2.4; g.add(rod([0, 0, 0], [Math.cos(a) * radius * 0.5, radius * 0.8, Math.sin(a) * radius * 0.5], 0.012, twig)); }
   }
+  g.userData = { kind: "bush", radius };
   return g;
 }
 
@@ -812,11 +817,11 @@ export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", 
 // Props
 // --------------------------------------------------------------------------
 
-/** Garden swing set (A-frames + beam + one seat). position=[x, z]. */
+/** Garden swing set (A-frames + beam + one seat). position=[x, z] (on the ground) or [x, y, z]. */
 export function swingSet({ position, rotationY = 0, width = 2.6, height = 2.3, color = "#7a6045" }) {
   const g = new THREE.Group();
-  const [x, z] = position;
-  g.position.set(x, groundY(x, z), z);
+  const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
+  g.position.set(x, position.length === 3 ? position[1] : groundY(x, z), z);
   g.rotation.y = rotationY;
   const wood = mat.wood(color);
   for (const s of [-1, 1]) {
@@ -828,14 +833,15 @@ export function swingSet({ position, rotationY = 0, width = 2.6, height = 2.3, c
   g.add(rod([-0.25, height, 0], [-0.25, 0.5, 0], 0.008, rope));
   g.add(rod([0.25, height, 0], [0.25, 0.5, 0], 0.008, rope));
   g.add(box({ size: [0.55, 0.04, 0.2], position: [0, 0.5, 0], material: mat.paint("#c0392b") }));
+  g.userData = { kind: "swingSet" };
   return g;
 }
 
-/** Garden bench. position=[x, z]. */
+/** Garden bench. position=[x, z] (on the ground) or [x, y, z]. */
 export function bench({ position, rotationY = 0, color = "#7a6a52" }) {
   const g = new THREE.Group();
-  const [x, z] = position;
-  g.position.set(x, groundY(x, z), z);
+  const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
+  g.position.set(x, position.length === 3 ? position[1] : groundY(x, z), z);
   g.rotation.y = rotationY;
   const wood = mat.wood(color), metal = mat.metal("#3a3d40");
   g.add(box({ size: [1.6, 0.05, 0.45], position: [0, 0.45, 0], material: wood }));
@@ -844,14 +850,15 @@ export function bench({ position, rotationY = 0, color = "#7a6a52" }) {
     g.add(box({ size: [0.05, 0.45, 0.05], position: [s, 0.225, 0.18], material: metal }));
     g.add(box({ size: [0.05, 0.95, 0.05], position: [s, 0.475, -0.18], material: metal }));
   }
+  g.userData = { kind: "bench" };
   return g;
 }
 
-/** Bicycle leaning at position=[x, z]. */
+/** Bicycle leaning at position=[x, z] (on the ground) or [x, y, z]. */
 export function bicycle({ position, rotationY = 0, color = "#323a36" }) {
   const g = new THREE.Group();
-  const [x, z] = position;
-  g.position.set(x, groundY(x, z), z);
+  const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
+  g.position.set(x, position.length === 3 ? position[1] : groundY(x, z), z);
   g.rotation.y = rotationY;
   const frame = mat.metal(color), tire = mat.paint("#272c28");
   for (const wx of [-0.52, 0.52]) {
@@ -864,6 +871,7 @@ export function bicycle({ position, rotationY = 0, color = "#323a36" }) {
   g.add(rod([0.34, 0.88, 0], [0.28, 1.01, 0], 0.019, frame));
   g.add(rod([0.28, 1.01, -0.2], [0.28, 1.01, 0.2], 0.018, frame));
   g.add(box({ size: [0.25, 0.06, 0.14], position: [-0.28, 0.9, 0], material: tire }));
+  g.userData = { kind: "bicycle" };
   return g;
 }
 
@@ -873,9 +881,152 @@ export function boundsOf(obj) {
   return new THREE.Box3().setFromObject(obj);
 }
 
+// --------------------------------------------------------------------------
+// Plausibility audit (deterministic, from bounding boxes; no rendering, no model)
+// --------------------------------------------------------------------------
+
+// what the audit treats as a movable/planted object: the kit's props and vegetation, plus
+// anything the scene tags itself (userData.kind = "prop", or a name like "trampoline")
+const AUDIT_PROP_KINDS = new Set(["tree", "bush", "hedge", "planter", "swingSet", "bench", "bicycle", "car", "prop"]);
+const AUDIT_WALL_KINDS = new Set(["wall", "building"]);
+
+function fmt(n) { return (Math.round(n * 10) / 10).toString(); }
+
+/** The solid part of an object for clash tests: a tree is its trunk column, not its canopy. */
+function auditSolid(o, box) {
+  const kind = o.userData.kind;
+  if (kind === "tree") {
+    const p = new THREE.Vector3();
+    o.getWorldPosition(p);
+    return new THREE.Box3(new THREE.Vector3(p.x - 0.35, box.min.y, p.z - 0.35), new THREE.Vector3(p.x + 0.35, box.max.y, p.z + 0.35));
+  }
+  if (kind === "bush") {
+    const c = box.getCenter(new THREE.Vector3()), sz = box.getSize(new THREE.Vector3());
+    return new THREE.Box3().setFromCenterAndSize(c, new THREE.Vector3(sz.x * 0.6, sz.y, sz.z * 0.6));
+  }
+  return box;
+}
+
+function auditLabel(o, box) {
+  const c = box.getCenter(new THREE.Vector3());
+  const kind = o.userData.kind === "prop" ? (o.name || "prop") : o.userData.kind;
+  return `${kind} at (${fmt(c.x)}, ${fmt(c.z)})`;
+}
+
+/**
+ * Walk a scene group and report what a glance at the aerial view would call impossible:
+ * props/vegetation intersecting each other or a wall, props floating above or sunk into the
+ * ground, ground-storey walls floating above the terrain, objects far from the house, and
+ * openings of impossible size. Returns a list of short strings (empty = nothing found).
+ * Objects are recognised by `userData.kind` (the kit sets it; tag raw three.js props with
+ * userData.kind = "prop" and a name). `heightAt(x, z)` defaults to the registered terrain.
+ */
+export function audit(root, { heightAt = groundY, maxLines = 20 } = {}) {
+  root.updateMatrixWorld(true);
+  const props = [], walls = [], openings = [];
+  root.traverse((o) => {
+    const kind = o.userData?.kind;
+    if (!kind) return;
+    if (AUDIT_PROP_KINDS.has(kind)) {
+      // a tagged object inside a tagged object (a bench in a "prop" group) counts once: the outer
+      let p = o.parent, nested = false;
+      while (p && p !== root) { if (AUDIT_PROP_KINDS.has(p.userData?.kind)) { nested = true; break; } p = p.parent; }
+      if (!nested) props.push(o);
+    } else if (AUDIT_WALL_KINDS.has(kind)) walls.push(o);
+    else if (kind === "window" || kind === "door") openings.push(o);
+  });
+  const lines = [];
+  const boxOf = (o) => new THREE.Box3().setFromObject(o);
+  const items = props.map((o) => { const box = boxOf(o); return { o, box, solid: auditSolid(o, box), label: auditLabel(o, box) }; })
+    .filter((it) => !it.box.isEmpty());
+  const wallItems = walls.map((o) => { const box = boxOf(o); return { o, box, solid: box, label: `${o.userData.kind} at (${fmt((box.min.x + box.max.x) / 2)}, ${fmt((box.min.z + box.max.z) / 2)})` }; })
+    .filter((it) => !it.box.isEmpty());
+
+  // 1. clashes: the horizontal overlap covers most of the smaller footprint and the heights
+  //    overlap; for a thin (axis-aligned) wall: the object passes through its thickness
+  const overlap = (a, b) => ({
+    ix: Math.min(a.max.x, b.max.x) - Math.max(a.min.x, b.min.x),
+    iz: Math.min(a.max.z, b.max.z) - Math.max(a.min.z, b.min.z),
+    iy: Math.min(a.max.y, b.max.y) - Math.max(a.min.y, b.min.y),
+  });
+  const clash = (a, b) => {
+    const { ix, iz, iy } = overlap(a, b);
+    if (ix <= 0 || iz <= 0 || iy < 0.2) return false;
+    const areaA = (a.max.x - a.min.x) * (a.max.z - a.min.z), areaB = (b.max.x - b.min.x) * (b.max.z - b.min.z);
+    return ix * iz >= 0.5 * Math.min(areaA, areaB);
+  };
+  const wallClash = (prop, wall) => {
+    const sx = wall.max.x - wall.min.x, sz = wall.max.z - wall.min.z;
+    const thickness = Math.min(sx, sz);
+    if (thickness > 1.0) return clash(prop, wall); // a mass or a diagonal wall: footprint rule
+    const { ix, iz, iy } = overlap(prop, wall);
+    if (ix <= 0 || iz <= 0 || iy < 0.2) return false;
+    const across = sx < sz ? ix : iz, along = sx < sz ? iz : ix;
+    return across >= 0.8 * thickness && along >= 0.5;
+  };
+  for (let i = 0; i < items.length; i++) {
+    for (let j = i + 1; j < items.length; j++) {
+      const a = items[i], b = items[j];
+      const ka = a.o.userData.kind, kb = b.o.userData.kind;
+      const veg = (k) => k === "tree" || k === "bush" || k === "hedge";
+      if (veg(ka) && veg(kb)) continue; // planting overlaps naturally
+      if (clash(a.solid, b.solid)) lines.push(`${a.label} intersects ${b.label}`);
+    }
+    for (const w of wallItems) {
+      if (wallClash(items[i].solid, w.solid)) lines.push(`${items[i].label} intersects the ${w.label}`);
+    }
+  }
+
+  // 2. floating / sunk props (their base against the ground under their centre)
+  for (const it of items) {
+    const c = it.box.getCenter(new THREE.Vector3());
+    const g = heightAt(c.x, c.z);
+    const gap = it.box.min.y - g;
+    if (gap > 0.15) lines.push(`${it.label} floats ${fmt(gap)} m above the ground`);
+    else if (gap < -0.5) lines.push(`${it.label} is sunk ${fmt(-gap)} m into the ground`);
+  }
+
+  // 3. ground-storey walls floating above the terrain (no plinth / basement under them)
+  if (wallItems.length) {
+    const lowest = Math.min(...wallItems.map((w) => w.box.min.y));
+    for (const w of wallItems) {
+      if (w.box.min.y > lowest + 0.5) continue; // upper storeys sit on the storey below
+      const cx = (w.box.min.x + w.box.max.x) / 2, cz = (w.box.min.z + w.box.max.z) / 2;
+      const gap = w.box.min.y - heightAt(cx, cz);
+      if (gap > 0.3) lines.push(`${w.label} floats ${fmt(gap)} m above the terrain: add a plinth or lower the terrain`);
+    }
+  }
+
+  // 4. far from the house (a typo in a coordinate)
+  if (wallItems.length) {
+    const site = new THREE.Box3();
+    for (const w of wallItems) site.union(w.box);
+    const c = site.getCenter(new THREE.Vector3());
+    for (const it of items) {
+      const p = it.box.getCenter(new THREE.Vector3());
+      const d = Math.hypot(p.x - c.x, p.z - c.z);
+      if (d > 60) lines.push(`${it.label} is ${fmt(d)} m from the house: outside the plot?`);
+    }
+  }
+
+  // 5. impossible scale
+  for (const o of openings) {
+    const { kind, width, height } = o.userData;
+    if (kind === "door" && (height < 1.7 || height > 3.2)) lines.push(`a door is ${fmt(height)} m tall`);
+    if (kind === "window" && (height > 4 || width > 8)) lines.push(`a window is ${fmt(width)} x ${fmt(height)} m`);
+  }
+  for (const it of items) {
+    const sz = it.box.getSize(new THREE.Vector3());
+    const k = it.o.userData.kind;
+    if (k === "tree" && sz.y > 30) lines.push(`${it.label} is ${fmt(sz.y)} m tall`);
+    if (k === "car" && Math.max(sz.x, sz.z) > 7) lines.push(`${it.label} is ${fmt(Math.max(sz.x, sz.z))} m long`);
+  }
+  return lines.slice(0, maxLines);
+}
+
 export default {
   mat, box, slab, volume, wall, wallWithUnits, perimeterWalls, placeOnWall, UNIT_INSET, windowUnit, door, slidingDoor,
   flatRoof, gableRoof, shedRoof, chimney, railing, stairs, balcony, canopy, planter,
-  hedge, pathway, groundPatch, gardenWall, fence, car, boundsOf,
+  hedge, pathway, groundPatch, gardenWall, fence, car, boundsOf, audit,
   terrain, groundY, rod, ribbon, pebbleStrip, leafTree, leafBush, swingSet, bench, bicycle,
 };

@@ -23,6 +23,8 @@ class RenderResult:
     images: dict[str, Path] = field(default_factory=dict)  # view -> jpeg path
     errors: list[str] = field(default_factory=list)
     console: list[str] = field(default_factory=list)
+    # deterministic plausibility findings from the runtime (window.__house.audit, #3)
+    audit: list[str] = field(default_factory=list)
     duration_ms: int = 0
 
 
@@ -124,6 +126,13 @@ class Renderer:
                     return result
                 js_errors = await page.evaluate("() => window.__house.errors")
                 result.errors.extend(str(e) for e in js_errors)
+                try:
+                    found = await page.evaluate(
+                        "() => (window.__house.audit ? window.__house.audit() : [])"
+                    )
+                    result.audit = [str(x) for x in found][:20]
+                except Exception as exc:  # the audit must never break a render
+                    logger.warning("render.audit_failed", extra={"error": str(exc)[:200]})
                 for view in views:
                     ok = await page.evaluate("(v) => window.__house.setView(v)", view)
                     if not ok:
@@ -148,6 +157,7 @@ class Renderer:
             extra={
                 "views": list(result.images),
                 "errors": len(result.errors),
+                "audit": len(result.audit),
                 "duration_ms": result.duration_ms,
             },
         )

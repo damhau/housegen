@@ -120,22 +120,37 @@ function Row({ ev }: { ev: JobEvent }) {
       )
     }
     case "critic": {
-      const issues = (p.issues as { severity: string; view: string; description: string }[] | undefined) ?? []
+      const issues = (p.issues as { severity: string; kind?: string; view: string; description: string }[] | undefined) ?? []
       const score = num(p.score) ?? 0
+      // fidelity (the model vs the reference) and plausibility (physically impossible) apart
+      const fidelity = issues.filter((i) => i.kind !== "plausibility")
+      const plausibility = issues.filter((i) => i.kind === "plausibility")
       return (
         <li className="ml-6 rounded-md border bg-muted/40 p-2">
           <div className="flex items-start gap-2">
             <ScoreBadge score={score} />
             <Markdown text={str(p.summary)} className="min-w-0" />
           </div>
-          {issues.length > 0 && (
+          {fidelity.length > 0 && (
             <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-              {issues.slice(0, 8).map((i, k) => (
+              {fidelity.slice(0, 8).map((i, k) => (
                 <li key={k}>
                   <span className={cn("font-medium", i.severity === "major" ? "text-destructive" : "")}>[{i.severity}]</span> {i.view}: {i.description}
                 </li>
               ))}
             </ul>
+          )}
+          {plausibility.length > 0 && (
+            <div className="mt-1.5 text-xs text-muted-foreground">
+              <div className="font-medium text-amber-700 dark:text-amber-300">Not physically plausible</div>
+              <ul className="space-y-0.5">
+                {plausibility.slice(0, 8).map((i, k) => (
+                  <li key={k}>
+                    <span className="font-medium text-destructive">[{i.severity}]</span> {i.view}: {i.description}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </li>
       )
