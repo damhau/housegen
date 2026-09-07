@@ -59,8 +59,10 @@ pathway({ points, width, material })  (flat)   groundPatch({ polygon, y, materia
 gardenWall({ from, to, height=0.6 })   fence({ from, to, height })
 
 ### Vegetation and props (all sit on the ground at position=[x,z]; give [x,y,z] to override)
-leafTree({ position, height=7, spread=3.2, kind:"broadleaf"|"pine"|"columnar", seed, foliageColor })   RECOMMENDED: instanced leaves
-leafBush({ position, radius=0.8, seed, color })                                                          RECOMMENDED
+leafTree({ position, height=7, spread=3.2, kind:"broadleaf"|"pine"|"columnar"|<preset>, seed, foliageColor })   RECOMMENDED
+    ez-tree trees (textured bark, leaf cards, tapered branches); presets: "Oak Small|Medium|Large", "Ash …", "Aspen …", "Pine …".
+    Same seed → same tree. Sized to height x spread metres.
+leafBush({ position, radius=0.8, seed, color })                                                          RECOMMENDED (ez-tree bush presets)
 hedge({ from, to, height=1.2, thickness=0.6, color })
 swingSet({ position, rotationY })   bench({ position, rotationY })   bicycle({ position, rotationY })   car({ position, rotationY, color })
 boundsOf(object) → THREE.Box3

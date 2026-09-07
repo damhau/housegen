@@ -70,6 +70,9 @@ def create_app() -> FastAPI:
         StaticFiles(directory=settings.KIT_DIR / "node_modules" / "three"),
         name="three",
     )
+    eztree = settings.KIT_DIR / "node_modules" / "@dgreenheck" / "ez-tree" / "build"
+    if eztree.is_dir():  # vendored tree generator (#15); the kit falls back to its own trees
+        app.mount("/kit/vendor/ez-tree", StaticFiles(directory=eztree), name="ez-tree")
     app.mount("/kit", StaticFiles(directory=settings.KIT_DIR), name="kit")
     # per-project files: scene working copy, versions, renders, photos, plan pages
     app.mount("/scenes", StaticFiles(directory=settings.projects_dir), name="scenes")

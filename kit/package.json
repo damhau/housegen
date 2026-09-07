@@ -11,6 +11,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@dgreenheck/ez-tree": "^1.1.0",
     "three": "^0.181.2"
   }
 }

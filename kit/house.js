@@ -29,6 +29,33 @@ function cached(key, make) {
 }
 
 // --------------------------------------------------------------------------
+// Vegetation engine (#15): ez-tree (MIT, vendored at /kit/vendor/ez-tree) when it can load
+// (a browser, or Node with a document stub); otherwise the kit's own procedural trees.
+// --------------------------------------------------------------------------
+
+let eztree = null;
+if (typeof document !== "undefined") {
+  // "ez-tree" is the importmap name in the browser; the package name resolves in Node
+  for (const specifier of ["ez-tree", "@dgreenheck/ez-tree"]) {
+    try {
+      eztree = await import(specifier);
+      break;
+    } catch (err) {
+      if (specifier === "@dgreenheck/ez-tree") console.warn(`housekit: ez-tree unavailable, using procedural trees (${err?.message ?? err})`);
+    }
+  }
+}
+// "high" for the saved version, "low" for the builder's in-loop renders (software GL); the
+// runtime sets it from ?quality before buildScene
+let _vegetationDetail = "high";
+export function setVegetationDetail(level) {
+  _vegetationDetail = level === "low" ? "low" : "high";
+}
+export function vegetationEngine() {
+  return eztree ? "ez-tree" : "procedural";
+}
+
+// --------------------------------------------------------------------------
 // Textures (#16): CC0 sets under kit/assets/textures/<name>/ (colour, normal, roughness[, ao]),
 // tiled by world size. Loaded through one LoadingManager so the runtime can wait for them
 // before the first headless frame. Outside a browser (Node tests) the untextured material
@@ -860,11 +887,79 @@ function leafMesh(leaves, color, rnd, scale = 1) {
   return inst;
 }
 
+// the kit's kinds → ez-tree presets; any preset name ("Oak Large", "Ash Small", "Bush 2"…) works too
+const KIND_PRESET = {
+  broadleaf: "Oak Medium", oak: "Oak Medium", ash: "Ash Medium", aspen: "Aspen Medium",
+  columnar: "Aspen Medium", pine: "Pine Medium", conifer: "Pine Medium",
+};
+
+function ezOptions(preset, seed, detail) {
+  const { TreePreset } = eztree;
+  const source = TreePreset[preset] ?? TreePreset["Oak Medium"];
+  const tree = new eztree.Tree();
+  tree.options.copy(source);
+  tree.options.seed = seed >>> 0;
+  if (detail === "low") {
+    // fewer branch levels, coarser tubes, fewer leaves: about a quarter of the triangles
+    tree.options.branch.levels = Math.min(tree.options.branch.levels, 2);
+    for (const k of Object.keys(tree.options.branch.segments)) tree.options.branch.segments[k] = Math.max(3, Math.floor(tree.options.branch.segments[k] * 0.6));
+    for (const k of Object.keys(tree.options.branch.sections)) tree.options.branch.sections[k] = Math.max(3, Math.floor(tree.options.branch.sections[k] * 0.7));
+    tree.options.leaves.count = Math.max(4, Math.ceil(tree.options.leaves.count * 0.6));
+  }
+  return tree;
+}
+
+/** Fit an ez-tree (arbitrary units) into height × spread metres, base on y = 0. */
+function fitTree(tree, height, spread) {
+  tree.generate();
+  tree.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  tree.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(tree);
+  const size = box.getSize(new THREE.Vector3());
+  const sy = height / Math.max(size.y, 1e-3);
+  const sxz = spread ? spread / Math.max(size.x, size.z, 1e-3) : sy;
+  tree.scale.set(sxz, sy, sxz);
+  tree.position.y = -box.min.y * sy;
+  return tree;
+}
+
 /**
- * A tree that reads as foliage (instanced leaves), not as blobs. position=[x, z] (sits on the
- * ground) or [x, y, z]. kind: "broadleaf" | "pine" | "columnar". RECOMMENDED over tree().
+ * A tree. position=[x, z] (sits on the ground) or [x, y, z]. kind: "broadleaf" | "pine" |
+ * "columnar" (or an ez-tree preset name: "Oak Large", "Ash Small", "Aspen Medium"…). Same
+ * seed → same tree. detail: "low" | "high" (default: what the runtime set from the quality).
+ * ez-tree (textured bark, leaf cards, tapered branches) when it is loaded, else procedural.
  */
-export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf", seed = 3, foliageColor, trunkColor = "#655d48" }) {
+export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf", seed = 3, foliageColor, trunkColor = "#655d48", detail }) {
+  if (!eztree) return proceduralTree({ position, height, spread, kind, seed, foliageColor, trunkColor });
+  const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
+  const y = position.length === 3 ? position[1] : groundY(x, z);
+  const preset = eztree.TreePreset[kind] ? kind : KIND_PRESET[kind] ?? "Oak Medium";
+  const tree = ezOptions(preset, seed, detail ?? _vegetationDetail);
+  if (foliageColor) tree.options.leaves.tint = new THREE.Color(foliageColor).getHex();
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  g.add(fitTree(tree, height, spread));
+  g.userData = { kind: "tree", height, spread, preset };
+  return g;
+}
+
+/** Bush; position=[x, z] or [x, y, z]. ez-tree's bush presets (by seed) scaled to `radius`. */
+export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", stems = true, detail }) {
+  if (!eztree) return proceduralBush({ position, radius, seed, color, stems });
+  const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
+  const y = position.length === 3 ? position[1] : groundY(x, z);
+  const preset = `Bush ${1 + ((seed >>> 0) % 3)}`;
+  const tree = ezOptions(preset, seed, detail ?? _vegetationDetail);
+  if (color) tree.options.leaves.tint = new THREE.Color(color).getHex();
+  const g = new THREE.Group();
+  g.position.set(x, y, z);
+  g.add(fitTree(tree, radius * 1.6, radius * 2));
+  g.userData = { kind: "bush", radius };
+  return g;
+}
+
+/** The kit's own tree (instanced leaves on stacked cylinders): the fallback without ez-tree. */
+export function proceduralTree({ position, height = 7, spread = 3.2, kind = "broadleaf", seed = 3, foliageColor, trunkColor = "#655d48" }) {
   const rnd = seeded(seed);
   const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
   const y = position.length === 3 ? position[1] : groundY(x, z);
@@ -910,8 +1005,8 @@ export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf
   return g;
 }
 
-/** Bush with instanced leaves; position=[x, z] or [x, y, z]. RECOMMENDED over bush(). */
-export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", stems = true }) {
+/** The kit's own bush (instanced leaves): the fallback without ez-tree. */
+export function proceduralBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", stems = true }) {
   const rnd = seeded(seed);
   const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
   const y = position.length === 3 ? position[1] : groundY(x, z);
@@ -1148,5 +1243,5 @@ export default {
   flatRoof, gableRoof, shedRoof, chimney, railing, stairs, balcony, canopy, planter,
   hedge, pathway, groundPatch, gardenWall, fence, car, boundsOf, audit,
   terrain, groundY, rod, ribbon, pebbleStrip, leafTree, leafBush, swingSet, bench, bicycle,
-  TEXTURES, texturesReady, uvsInMetres,
+  TEXTURES, texturesReady, uvsInMetres, setVegetationDetail, vegetationEngine, proceduralTree, proceduralBush,
 };

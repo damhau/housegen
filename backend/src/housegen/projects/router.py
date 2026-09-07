@@ -577,6 +577,9 @@ async def export_zip(
         for p in (kit / "assets").rglob("*"):
             if p.is_file():
                 z.write(p, f"kit/assets/{p.relative_to(kit / 'assets')}")
+        eztree = kit / "node_modules" / "@dgreenheck" / "ez-tree" / "build" / "ez-tree.es.js"
+        if eztree.exists():  # the tree generator with its textures inlined (#15)
+            z.write(eztree, "kit/vendor/ez-tree/ez-tree.es.js")
         three = kit / "node_modules" / "three"
         z.write(three / "build" / "three.module.js", "kit/vendor/three/build/three.module.js")
         z.write(three / "build" / "three.core.js", "kit/vendor/three/build/three.core.js")

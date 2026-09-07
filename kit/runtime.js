@@ -187,6 +187,8 @@ export async function boot(buildScene) {
   }
 
   // ---- user scene ----
+  // trees: full detail for the saved version (quality=high), lighter for in-loop renders (#15)
+  house.setVegetationDetail(QUALITY === "high" ? "high" : "low");
   let result = null;
   try {
     result = await buildScene({ THREE, scene, house, group: houseGroup, sun, ground, renderer, camera });

@@ -1,4 +1,5 @@
 // Plausibility audit (#3): bounding-box checks over a scene group, no renderer needed.
+import "./setup-dom.mjs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
@@ -31,7 +32,7 @@ test("a tree planted through a trampoline is reported", () => {
   g.add(house.leafTree({ position: [4.2, 6.1], height: 7, seed: 3 }));
   const lines = house.audit(g);
   assert.equal(lines.length, 1, lines.join("\n"));
-  assert.match(lines[0], /trampoline at \(4, 6\) intersects tree at \(4\.1, 6\.3\)/);
+  assert.match(lines[0], /trampoline at \(4, 6\) intersects tree at \(4(\.\d)?, 6(\.\d)?\)/);
 });
 
 test("a bench under the canopy but away from the trunk is fine", () => {
@@ -133,4 +134,65 @@ test("boxes and planes get UVs in metres so textures tile by world size", () => 
   assert.equal(Math.max(...Array.from({ length: p.count }, (_, i) => p.getY(i))), 20);
   const r = house.ribbon({ points: [[0, 0], [0, 6]], width: 1.4 });
   assert.ok(r.geometry.attributes.uv, "ribbon has UVs");
+});
+
+
+// ---- vegetation (#15) ----
+function triangles(obj) {
+  let n = 0;
+  obj.traverse((o) => { if (o.isMesh && o.geometry?.index) n += o.geometry.index.count / 3; });
+  return n;
+}
+
+/** A cheap fingerprint of the geometry (sum of the first positions of every mesh). */
+function fingerprint(obj) {
+  let h = 0;
+  obj.traverse((o) => {
+    const p = o.isMesh && o.geometry?.attributes.position;
+    if (p) for (let i = 0; i < Math.min(p.count, 300); i++) h += p.getX(i) * 3 + p.getY(i) * 7 + p.getZ(i) * 11;
+  });
+  return Math.round(h * 1000);
+}
+
+test("trees come from ez-tree, sized to height and spread, deterministic by seed", () => {
+  assert.equal(house.vegetationEngine(), "ez-tree");
+  fresh();
+  const a = house.leafTree({ position: [2, 3], height: 8, spread: 4, kind: "broadleaf", seed: 11, detail: "high" });
+  assert.equal(a.userData.kind, "tree");
+  assert.equal(a.userData.preset, "Oak Medium");
+  a.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(a);
+  const size = box.getSize(new THREE.Vector3());
+  assert.ok(Math.abs(size.y - 8) < 0.05, `height ${size.y}`);
+  assert.ok(Math.abs(Math.max(size.x, size.z) - 4) < 0.05, `spread ${Math.max(size.x, size.z)}`);
+  assert.ok(Math.abs(box.min.y) < 0.05, `base at ${box.min.y}`);
+  const b = house.leafTree({ position: [2, 3], height: 8, spread: 4, kind: "broadleaf", seed: 11, detail: "high" });
+  assert.equal(triangles(a), triangles(b));
+  assert.equal(fingerprint(a), fingerprint(b)); // same seed → the same tree
+  const c = house.leafTree({ position: [2, 3], height: 8, spread: 4, kind: "broadleaf", seed: 12, detail: "high" });
+  assert.notEqual(fingerprint(a), fingerprint(c));
+  assert.equal(house.leafTree({ position: [0, 0], kind: "pine", seed: 1 }).userData.preset, "Pine Medium");
+  assert.equal(house.leafTree({ position: [0, 0], kind: "Ash Large", seed: 1 }).userData.preset, "Ash Large");
+});
+
+test("low detail trees carry far fewer triangles; the runtime's default applies", () => {
+  fresh();
+  const hi = triangles(house.leafTree({ position: [0, 0], height: 7, seed: 5, detail: "high" }));
+  const lo = triangles(house.leafTree({ position: [0, 0], height: 7, seed: 5, detail: "low" }));
+  assert.ok(lo < hi / 2, `low ${lo} vs high ${hi}`);
+  house.setVegetationDetail("low");
+  assert.equal(triangles(house.leafTree({ position: [0, 0], height: 7, seed: 5 })), lo);
+  house.setVegetationDetail("high");
+  assert.equal(triangles(house.leafTree({ position: [0, 0], height: 7, seed: 5 })), hi);
+});
+
+test("bushes use the bush presets and keep their kind tag", () => {
+  fresh();
+  const b = house.leafBush({ position: [1, 1], radius: 0.8, seed: 4 });
+  assert.equal(b.userData.kind, "bush");
+  b.updateMatrixWorld(true);
+  const size = new THREE.Box3().setFromObject(b).getSize(new THREE.Vector3());
+  assert.ok(Math.abs(Math.max(size.x, size.z) - 1.6) < 0.05, `width ${Math.max(size.x, size.z)}`);
+  const p = house.proceduralTree({ position: [0, 0], height: 6, seed: 3 });
+  assert.equal(p.userData.kind, "tree"); // the fallback keeps the audit's tag
 });
