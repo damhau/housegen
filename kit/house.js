@@ -1144,6 +1144,58 @@ export function proceduralBush({ position, radius = 0.8, seed = 2, color = "#6a8
   return g;
 }
 
+/**
+ * Instanced grass blades around the house (#20, interactive viewer only: the runtime adds it
+ * at quality=high on a GPU; the headless renders never contain it). `around` is a Box3 (the
+ * building); blades fill a ring from `inner` to `outer` metres outside it, thinning towards
+ * the outside so they fade into the textured lawn, and sit on groundY. Seeded, deterministic.
+ */
+export function grassField({ around, inner = 0.4, outer = 6, count = 30000, seed = 1, height = 0.16, color = "#6f8f45" }) {
+  const rnd = seeded(seed);
+  const min = around.min, max = around.max;
+  const width = max.x - min.x + 2 * outer, depth = max.z - min.z + 2 * outer;
+  // a blade: a narrow card bent at mid height, base at the origin
+  const geo = new THREE.BufferGeometry();
+  const w = 0.03;
+  geo.setAttribute("position", new THREE.Float32BufferAttribute([
+    -w, 0, 0, w, 0, 0, -w * 0.7, 0.55, 0.02, w * 0.7, 0.55, 0.02, 0, 1, 0.06,
+  ], 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 0.55, 1, 0.55, 0.5, 1], 2));
+  geo.setIndex([0, 1, 2, 2, 1, 3, 2, 3, 4]);
+  geo.computeVertexNormals();
+  const material = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.9, side: THREE.DoubleSide });
+  const placed = [];
+  const d = new THREE.Object3D();
+  const base = new THREE.Color(color);
+  const hsl = { h: 0, s: 0, l: 0 };
+  base.getHSL(hsl);
+  let tries = 0;
+  while (placed.length < count && tries < count * 4) {
+    tries++;
+    const x = min.x - outer + rnd() * width, z = min.z - outer + rnd() * depth;
+    // distance outside the building box (0 inside)
+    const dx = Math.max(min.x - x, 0, x - max.x), dz = Math.max(min.z - z, 0, z - max.z);
+    const dist = Math.hypot(dx, dz);
+    if (dist < inner || dist > outer) continue;
+    if (rnd() < (dist - inner) / (outer - inner)) continue; // thin out towards the lawn
+    placed.push([x, z, dist]);
+  }
+  const inst = new THREE.InstancedMesh(geo, material, placed.length);
+  placed.forEach(([x, z], i) => {
+    const h = height * (0.6 + rnd() * 0.8);
+    d.position.set(x, groundY(x, z), z);
+    d.rotation.set((rnd() - 0.5) * 0.25, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.25);
+    d.scale.set(0.8 + rnd() * 0.6, h, 1);
+    d.updateMatrix();
+    inst.setMatrixAt(i, d.matrix);
+    inst.setColorAt(i, new THREE.Color().setHSL(hsl.h + (rnd() - 0.5) * 0.04, hsl.s * (0.8 + rnd() * 0.4), hsl.l * (0.75 + rnd() * 0.5)));
+  });
+  inst.castShadow = false; // tens of thousands of cards: not worth a shadow pass
+  inst.receiveShadow = true;
+  inst.userData = { kind: "grass", excludeFromBounds: true, count: placed.length };
+  return inst;
+}
+
 // --------------------------------------------------------------------------
 // Props
 // --------------------------------------------------------------------------
@@ -1360,5 +1412,5 @@ export default {
   flatRoof, gableRoof, shedRoof, chimney, railing, stairs, balcony, canopy, planter,
   hedge, pathway, groundPatch, gardenWall, fence, car, boundsOf, audit,
   terrain, groundY, rod, ribbon, pebbleStrip, leafTree, leafBush, swingSet, bench, bicycle,
-  TEXTURES, texturesReady, uvsInMetres, setVegetationDetail, vegetationEngine, proceduralTree, proceduralBush,
+  TEXTURES, texturesReady, uvsInMetres, setVegetationDetail, vegetationEngine, proceduralTree, proceduralBush, grassField,
 };

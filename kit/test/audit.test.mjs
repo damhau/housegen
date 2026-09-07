@@ -224,3 +224,33 @@ test("window panes carry the interior mapping material unless glassOnly", () => 
   assert.ok(dm, "a glazed door shows a room too");
   assert.equal(house.slidingDoor({ glassOnly: true }).userData.kind, "window");
 });
+
+// ---- instanced grass (#20) ----
+test("grass blades fill a seeded ring around the building, on the ground, outside the audit", () => {
+  fresh();
+  const around = new THREE.Box3(new THREE.Vector3(-5, 0, -4), new THREE.Vector3(5, 6, 4));
+  const g = house.grassField({ around, inner: 0.4, outer: 6, count: 3000, seed: 3 });
+  assert.ok(g.isInstancedMesh);
+  assert.ok(g.count > 2000 && g.count <= 3000, `count ${g.count}`);
+  assert.equal(g.userData.kind, "grass");
+  assert.ok(g.userData.excludeFromBounds);
+  const m = new THREE.Matrix4(), p = new THREE.Vector3();
+  let near = 0, far = 0;
+  for (let i = 0; i < g.count; i++) {
+    g.getMatrixAt(i, m);
+    p.setFromMatrixPosition(m);
+    const dx = Math.max(-5 - p.x, 0, p.x - 5), dz = Math.max(-4 - p.z, 0, p.z - 4);
+    const dist = Math.hypot(dx, dz);
+    assert.ok(dist >= 0.4 - 1e-6 && dist <= 6 + 1e-6, `blade ${i} at distance ${dist}`);
+    assert.ok(Math.abs(p.y) < 1e-6, `blade ${i} on the ground`);
+    if (dist < 2) near++; else if (dist > 4.5) far++;
+  }
+  assert.ok(near > far, `denser near the house: ${near} vs ${far}`);
+  const g2 = house.grassField({ around, inner: 0.4, outer: 6, count: 3000, seed: 3 });
+  const a = new THREE.Matrix4(), b = new THREE.Matrix4();
+  g.getMatrixAt(7, a); g2.getMatrixAt(7, b);
+  assert.deepEqual(a.elements, b.elements); // deterministic
+  const group = new THREE.Group();
+  group.add(g);
+  assert.deepEqual(house.audit(group), []); // not a prop for the plausibility audit
+});

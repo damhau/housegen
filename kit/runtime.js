@@ -18,7 +18,8 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Sky } from "three/addons/objects/Sky.js";
 import { CSM } from "three/addons/csm/CSM.js";
-import { EffectComposer, RenderPass, EffectPass, SMAAEffect, SMAAPreset, VignetteEffect, ToneMappingEffect, ToneMappingMode } from "postprocessing";
+import { EffectComposer, RenderPass, EffectPass, SMAAEffect, SMAAPreset, VignetteEffect, ToneMappingEffect, ToneMappingMode, Pass } from "postprocessing";
+import { SSRPass } from "three/addons/postprocessing/SSRPass.js";
 import { N8AOPostPass } from "n8ao";
 import * as house from "housekit";
 
@@ -33,6 +34,10 @@ const EFFECTS = QUALITY === "high";
 // single 4096 map computed once per page and reused across views: CSM re-renders three
 // cascades for every camera, far more than the +20 % the software renderer can afford.
 const USE_CSM = !HEADLESS && QUALITY !== "low";
+// interactive-only extras (#20): instanced grass around the house and screen-space reflections
+// on glass. GPU pages at quality=high only, dropped with the effects by the frame-time guard;
+// the headless renderer (the critic's eyes) never sees them. ?extras=0 switches them off.
+const EXTRAS = !HEADLESS && EFFECTS && params.get("extras") !== "0";
 const TONE_MAPPING_EXPOSURE = 1.05;
 const DEFAULT_FOV = 42; // the elevated auto-framed views
 const PHOTO_FOV = 50; // the "-photo" views: a person with a phone
@@ -182,6 +187,9 @@ export async function boot(buildScene) {
     renderer.toneMapping = THREE.NoToneMapping;
     const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
     composer.addPass(new RenderPass(scene, camera));
+    // screen-space reflections on glass, half resolution, before the AO so it shades them too
+    // (the pass re-renders the scene for its beauty/normal buffers: GPU pages only)
+    if (EXTRAS) state.ssrSlot = composer.passes.length; // filled in after buildScene (needs the glass)
     const ao = new N8AOPostPass(scene, camera, W, H);
     ao.configuration.aoRadius = 1.2;
     ao.configuration.distanceFalloff = 0.6;
@@ -216,6 +224,7 @@ export async function boot(buildScene) {
   // sky, sun and environment: deterministic, from the scene's choice (or the default afternoon)
   setupSky(scene, renderer, sun, sunOptions(result));
   if (USE_CSM) setupCSM(scene, camera, sun);
+  if (EXTRAS) setupExtras(scene, renderer, camera, houseGroup, W, H);
   // textures load asynchronously: the first (headless) frame must not race them
   try { await house.texturesReady(); } catch { /* a missing map is only a look problem */ }
 
@@ -307,6 +316,7 @@ export async function boot(buildScene) {
       if (dt > 250 || (frames === 8 && slowMs / frames > 90)) {
         state.composer = null;
         renderer.toneMapping = THREE.AgXToneMapping; // the composer applied it until now
+        if (state.grass) state.grass.visible = false; // no GPU: the extras go with the effects
         state.needsRender = true; // redraw once without effects
         console.warn(`housekit: effects disabled, ${Math.round(dt)} ms frame on this machine`);
         try { parent.postMessage({ type: "house:effects", enabled: false }, "*"); } catch { /* noop */ }
@@ -401,6 +411,63 @@ function renderFrame() {
   state.csm?.update();
   if (composer) composer.render();
   else renderer.render(scene, camera);
+}
+
+/** three's SSRPass inside the pmndrs composer: same render(renderer, write, read) shape. */
+class ThreePassAdapter extends Pass {
+  constructor(pass, scale = 0.5) {
+    super("ThreePassAdapter");
+    this.pass = pass;
+    this.scale = scale;
+    this.needsSwap = true;
+  }
+  render(renderer, inputBuffer, outputBuffer, deltaTime, stencilTest) {
+    this.pass.render(renderer, outputBuffer, inputBuffer, deltaTime, stencilTest);
+  }
+  setSize(width, height) {
+    this.pass.setSize(Math.max(2, Math.floor(width * this.scale)), Math.max(2, Math.floor(height * this.scale)));
+  }
+}
+
+/**
+ * The interactive-only extras (#20): grass blades in a ring around the building, and
+ * screen-space reflections restricted to the glass (panes, conservatory, glass railings).
+ * Either one failing to set up only logs a warning: the scene must never depend on them.
+ */
+function setupExtras(scene, renderer, camera, houseGroup, W, H) {
+  try {
+    const building = buildingBounds(houseGroup);
+    const around = building.isEmpty() ? framingBounds(houseGroup) : building;
+    if (!around.isEmpty()) {
+      const grass = house.grassField({ around, inner: 0.4, outer: 6, count: 30000, seed: 1 });
+      scene.add(grass);
+      state.grass = grass;
+    }
+  } catch (err) {
+    console.warn(`housekit: grass skipped (${err?.message ?? err})`);
+  }
+  if (!state.composer || state.ssrSlot === undefined) return;
+  try {
+    const glass = [];
+    scene.traverse((o) => {
+      const m = o.material;
+      if (o.isMesh && m && (m.userData?.interior || (m.isMeshPhysicalMaterial && m.transparent))) glass.push(o);
+    });
+    if (glass.length === 0) return;
+    const ssr = new SSRPass({ renderer, scene, camera, width: Math.floor(W / 2), height: Math.floor(H / 2), selects: glass });
+    ssr.opacity = 0.35;
+    ssr.maxDistance = 14;
+    ssr.thickness = 0.06;
+    ssr.blur = true;
+    ssr.fresnel = true;
+    ssr.distanceAttenuation = true;
+    const adapter = new ThreePassAdapter(ssr, 0.5);
+    adapter.initialize?.(renderer, false, THREE.HalfFloatType);
+    state.composer.addPass(adapter, state.ssrSlot);
+    state.ssr = adapter;
+  } catch (err) {
+    console.warn(`housekit: screen-space reflections skipped (${err?.message ?? err})`);
+  }
 }
 
 /**

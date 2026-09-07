@@ -59,6 +59,8 @@ deploy/    serve.py (SPA from the API process), k8s.yaml. Root Dockerfile = sing
   `buildScene`. Effects (pmndrs `postprocessing`: N8AO, SMAA, vignette, AgX via `ToneMappingEffect`, the renderer's
   tone mapping off while the composer runs) only at `quality=high`, auto-disabled if a frame exceeds 250 ms.
 - Windows: `mat.interior` (interior mapping shader) is the default pane; `glassOnly` keeps `mat.glass`.
+- Interactive-only extras (`EXTRAS`: GPU page at `quality=high`, `?extras=0` to disable): `house.grassField` around the
+  building and three's `SSRPass` (half res, glass only) adapted into the pmndrs composer. Never in headless renders.
 - Look: physical sky (`three/addons/objects/Sky.js`) + PMREM environment from it, sun from `buildScene`'s `{ sun | time }`,
   AgX tone mapping. Textures: CC0 sets under `kit/assets/textures/<name>/` (`TEXTURES` in house.js is the manifest;
   `LICENSES.md` the sources), loaded through one LoadingManager; the runtime awaits `house.texturesReady()` before the

@@ -78,7 +78,8 @@ orbit controls and named camera views: north/south/east/west (elevated wide shot
 building in frame: for massing and roofs), northeast/…/southwest, aerial, top, north-photo/south-photo/east-photo/
 west-photo (a person at 1.6 m in front of that façade, 50° fov, façade filling the frame: the viewpoint of the photos),
 and north-elevation/south-elevation/east-elevation/west-elevation (straight-on, near-orthographic, no fog: the
-façade as an architect's elevation drawing, to compare with the elevation sheets).
+façade as an architect's elevation drawing, to compare with the elevation sheets). The owner's interactive viewer also
+adds grass blades around the house and reflections on the glass; your renders (and the critic's) do not show them.
 The -photo and -elevation views frame the walls (userData.kind "wall"/"perimeter"/"window"/"door"); tag other building
 masses with userData.kind = "building" so they are framed too.
 buildScene(ctx) may return { views: { name: { position:[x,y,z], target:[x,y,z] } } } to add custom views (e.g. "entrance"), and
