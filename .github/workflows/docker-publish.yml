@@ -20,9 +20,22 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # The one version string: image tag, GitOps rollout and what the app displays.
+      #   v1.2.3 tag → 1.2.3     main → sha-<7 chars> (same as metadata-action's sha tag)
+      - name: Version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -54,8 +67,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            BUILD_SHA=${{ github.sha }}
-            BUILD_VERSION=${{ github.ref_name }}
+            APP_VERSION=${{ steps.version.outputs.version }}
+            APP_COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -75,13 +88,12 @@ jobs:
       - name: Choose target
         id: target
         run: |
+          echo "tag=${{ needs.build.outputs.version }}" >> "$GITHUB_OUTPUT"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             echo "app=housegen" >> "$GITHUB_OUTPUT"
-            echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
             echo "env=prod" >> "$GITHUB_OUTPUT"
           else
             echo "app=housegen-dev" >> "$GITHUB_OUTPUT"
-            echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
             echo "env=dev" >> "$GITHUB_OUTPUT"
           fi
 

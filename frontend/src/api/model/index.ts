@@ -15,7 +15,7 @@ export * from './critiqueIssueSeverity';
 export * from './generateBody';
 export * from './generateRequest';
 export * from './hTTPValidationError';
-export * from './health200';
+export * from './healthOut';
 export * from './intakeAnswer';
 export * from './intakeOut';
 export * from './intakeQuestion';

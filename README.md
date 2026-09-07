@@ -84,6 +84,8 @@ docker run -p 8000:8000 -v housegen-data:/data --env-file backend/.env --shm-siz
 (`damhau/k8s-argocd`) for Argo CD to roll out: `main` → the **dev** environment
 (`base/applications/housegen-dev`, `sha-<short>` tags), `v*` → **prod** (`base/applications/housegen`).
 `deploy/k8s.yaml` is a standalone single-replica manifest with the `/dev/shm` volume Chromium needs.
+The image carries its own version (`APP_VERSION` = that tag, `APP_COMMIT`): `/api/v1/health` returns it and
+the UI header shows it; a local build or `uvicorn` says `dev`.
 
 ## Configuration (backend/.env)
 

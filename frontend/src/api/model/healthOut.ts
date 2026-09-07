@@ -5,4 +5,9 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export type Health200 = {[key: string]: string};
+export interface HealthOut {
+  status: string;
+  version: string;
+  commit: string;
+  env: string;
+}

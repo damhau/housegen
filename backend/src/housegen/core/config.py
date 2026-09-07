@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     ENV: Literal["dev", "prod"] = "dev"
+    # What is running: the image tag the workflow built ("1.2.3" on a v* tag, "sha-abc1234"
+    # from main) and the full commit, baked into the image as env vars; "dev" outside it.
+    APP_VERSION: str = "dev"
+    APP_COMMIT: str = ""
     LOG_LEVEL: str = "INFO"
     HOST: str = "127.0.0.1"
     PORT: int = 8000

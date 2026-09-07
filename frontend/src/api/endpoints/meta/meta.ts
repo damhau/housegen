@@ -20,7 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
-  Health200
+  HealthOut
 } from '../../model';
 
 import { httpClient } from '../../http-client';
@@ -41,9 +41,9 @@ export const getHealthUrl = () => {
   return `/api/v1/health`
 }
 
-export const health = async ( options?: RequestInit): Promise<Health200> => {
+export const health = async ( options?: RequestInit): Promise<HealthOut> => {
   
-  return httpClient<Health200>(getHealthUrl(),
+  return httpClient<HealthOut>(getHealthUrl(),
   {      
     ...options,
     method: 'GET'

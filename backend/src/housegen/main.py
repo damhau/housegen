@@ -28,6 +28,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         "app.startup",
         extra={
             "env": settings.ENV,
+            "version": settings.APP_VERSION,
+            "commit": settings.APP_COMMIT,
             "provider": settings.LLM_PROVIDER,
             "data_dir": str(settings.DATA_DIR),
         },
@@ -43,6 +45,8 @@ def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
         title="housegen",
+        # the API contract's version, deliberately not the build's (APP_VERSION, see
+        # /health): it is written into every generated client file
         version="0.1.0",
         lifespan=lifespan,
         # short operationIds → clean generated hook names (useListProjects, …)

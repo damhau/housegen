@@ -76,6 +76,14 @@ ENV PATH="/app/.venv/bin:$PATH" \
     BROWSER_CHANNEL="" \
     RENDER_BASE_URL=http://127.0.0.1:8000
 
+# The build that is running, shown by /api/v1/health and in the UI header. Set by the
+# workflow to the image tag ("1.2.3" on a v* tag, "sha-abc1234" from main) and the commit;
+# a local `docker build` gets "dev". Last, so a new version never invalidates the layers above.
+ARG APP_VERSION=dev
+ARG APP_COMMIT=""
+ENV APP_VERSION=${APP_VERSION} \
+    APP_COMMIT=${APP_COMMIT}
+
 # Same user name and uid as the Playwright image had, so files on an existing /data
 # volume keep their owner. /app stays root-owned and read-only for it: a recursive
 # chown would rewrite the whole .venv into one more layer.
