@@ -227,8 +227,6 @@ function ProjectPage() {
               running={Boolean(activeJob)}
               kind={activeJob?.kind ?? null}
               events={events}
-              progress={progress}
-              elapsed={elapsed}
               failedMessage={failedMessage}
               awaitingAnswers={awaitingAnswers}
               hasPhotos={hasPhotos}

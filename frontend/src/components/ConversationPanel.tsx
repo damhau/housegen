@@ -124,6 +124,8 @@ export function ConversationPanel({
               hasPhotos={hasPhotos}
               // the intake's questions are answered on its own turn, only while nothing came after it
               intakeToAnswer={t.job.kind === "intake" && t.job.status === "done" && t.job === lastJob && intake?.job_id === t.job.id ? intake : null}
+              // chips need a version to modify (busy || disabled); the intake form only needs no job running
+              anyJobRunning={busy}
               busy={busy || disabled}
               onSend={(txt) => void send(txt)}
               onPrefill={setText}
@@ -188,6 +190,7 @@ function JobBlock({
   currentVersion,
   hasPhotos,
   intakeToAnswer,
+  anyJobRunning,
   busy,
   onSend,
   onPrefill,
@@ -201,6 +204,9 @@ function JobBlock({
   currentVersion: number
   hasPhotos: boolean
   intakeToAnswer: IntakeOut | null
+  /** some job is running or being started (this block's own state is `running` below) */
+  anyJobRunning: boolean
+  /** no interaction possible: a job is running, or there is no version to modify yet */
   busy: boolean
   onSend: (text: string) => void
   onPrefill: (text: string) => void
@@ -290,7 +296,7 @@ function JobBlock({
             {answer}
             {answerVersion != null && <div className="mt-1 text-[11px] opacity-70">→ version {answerVersion}</div>}
           </Bubble>
-          {intakeToAnswer && !busy && <IntakeForm intake={intakeToAnswer} onSubmit={onAnswer} />}
+          {intakeToAnswer && !anyJobRunning && <IntakeForm intake={intakeToAnswer} onSubmit={onAnswer} />}
           {isLastAnswer && !busy && (
             <FinishChips
               suggestions={version?.suggestions ?? []}

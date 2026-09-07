@@ -1,6 +1,6 @@
-import { AlertTriangle, Brain, Eye, Hammer, Loader2, PenLine, Play, ScanSearch, Wrench } from "lucide-react"
+import { Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import type { JobEvent, LlmProgress } from "@/hooks/useJobStream"
+import type { JobEvent } from "@/hooks/useJobStream"
 
 const THUMB_VIEWS = ["south", "aerial", "north", "east", "west"]
 
@@ -22,24 +22,15 @@ function latestPhase(events: JobEvent[]): string | null {
   return null
 }
 
-function progressLine(p: LlmProgress): { Icon: typeof Brain; text: string } {
-  const who = p.role === "critic" ? "Critic" : p.role === "intake" ? "Intake" : "Builder"
-  const step = p.role === "builder" && p.step ? ` (step ${p.step})` : ""
-  if (p.phase === "writing") return { Icon: PenLine, text: `${who}${step} is writing…` }
-  if (p.phase === "tool_call") return { Icon: Wrench, text: `${who}${step} is calling ${p.tool_name ?? "a tool"}…` }
-  return { Icon: p.role === "critic" ? Eye : Brain, text: `${who}${step} is thinking…` }
-}
-
 /**
- * What the viewer shows while a project has no scene version yet: a clear
- * "in progress" state fed by the job's events instead of the kit's placeholder box.
+ * What the viewer shows while a project has no scene version yet: a heading, one line
+ * saying what the agent is doing, and the latest render when there is one. Deliberately
+ * static (no icons, spinners or counters): the live detail lives in the conversation.
  */
 export function BuildingPlaceholder({
   running,
   kind,
   events,
-  progress,
-  elapsed,
   failedMessage,
   awaitingAnswers,
   hasPhotos,
@@ -50,8 +41,6 @@ export function BuildingPlaceholder({
   /** kind of the running job (intake reads the plans, generate builds) */
   kind: string | null
   events: JobEvent[]
-  progress: LlmProgress | null
-  elapsed: string | null
   failedMessage: string | null
   /** the plans were read; the build starts from the answers in the conversation */
   awaitingAnswers: boolean
@@ -61,39 +50,18 @@ export function BuildingPlaceholder({
 }) {
   const thumb = latestRender(events)
   const phase = latestPhase(events)
-  const live = progress && running ? progressLine(progress) : null
   const reading = kind === "intake"
 
   return (
     <div className="absolute inset-0 grid place-items-center p-6">
       <div className="flex w-full max-w-md flex-col items-center gap-4 text-center">
         {running ? (
-          <>
-            <span className="relative grid size-12 place-items-center rounded-full bg-primary/15 text-primary">
-              {reading ? <ScanSearch className="size-5" /> : <Hammer className="size-5" />}
-              <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
-            </span>
-            <div>
-              <h2 className="text-base font-semibold tracking-tight">{reading ? "Reading your plans" : "Building your house"}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{phase ?? "Starting the agent…"}</p>
-            </div>
-            {live && (
-              <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <live.Icon className="size-3.5" />
-                {live.text}
-              </p>
-            )}
-            {elapsed && (
-              <p className="flex items-center gap-1.5 font-mono text-xs tabular-nums text-muted-foreground">
-                <Loader2 className="size-3 animate-spin" /> {elapsed}
-              </p>
-            )}
-          </>
+          <div>
+            <h2 className="text-base font-semibold tracking-tight">{reading ? "Reading your plans" : "Building your house"}</h2>
+            <p className="mt-1 text-sm text-muted-foreground">{phase ?? "Starting the agent…"}</p>
+          </div>
         ) : failedMessage ? (
           <>
-            <span className="grid size-12 place-items-center rounded-full bg-destructive/10 text-destructive">
-              <AlertTriangle className="size-5" />
-            </span>
             <div>
               <h2 className="text-base font-semibold tracking-tight">The run did not finish</h2>
               <p className="mt-1 max-w-sm break-words text-sm text-muted-foreground">{failedMessage}</p>
@@ -106,9 +74,6 @@ export function BuildingPlaceholder({
           </>
         ) : (
           <>
-            <span className="grid size-12 place-items-center rounded-full bg-muted text-muted-foreground">
-              <Hammer className="size-5" />
-            </span>
             <div>
               <h2 className="text-base font-semibold tracking-tight">No scene yet</h2>
               <p className="mt-1 text-sm text-muted-foreground">
