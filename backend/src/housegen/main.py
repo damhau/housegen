@@ -19,12 +19,9 @@ from housegen.render.renderer import renderer
 
 logger = logging.getLogger(__name__)
 
-# importmap name → directory under kit/node_modules served at /kit/vendor/<name>/
-VENDORED = {
-    "ez-tree": Path("@dgreenheck/ez-tree/build"),
-    "postprocessing": Path("postprocessing/build"),
-    "n8ao": Path("n8ao/dist"),
-}
+# kit/vendor/<name>/… (copied from node_modules by `npm install` in kit/, see
+# kit/scripts/vendor.mjs), served by the /kit static mount and imported by relative path
+VENDORED = ("postprocessing/index.js", "n8ao/N8AO.js", "ez-tree/ez-tree.es.js")
 
 
 @asynccontextmanager
@@ -77,14 +74,9 @@ def create_app() -> FastAPI:
         StaticFiles(directory=settings.KIT_DIR / "node_modules" / "three"),
         name="three",
     )
-    modules = settings.KIT_DIR / "node_modules"
-    # vendored kit dependencies (#15 ez-tree, #17 pmndrs postprocessing + n8ao), by importmap name
-    for name, sub in VENDORED.items():
-        d = modules / sub
-        if d.is_dir():
-            app.mount(f"/kit/vendor/{name}", StaticFiles(directory=d), name=name)
-        else:
-            logger.warning("kit.vendor.missing", extra={"package": name, "dir": str(d)})
+    for rel in VENDORED:  # (#15 ez-tree, #17 pmndrs postprocessing + n8ao)
+        if not (settings.KIT_DIR / "vendor" / rel).is_file():
+            logger.warning("kit.vendor.missing", extra={"file": rel, "hint": "npm install in kit/"})
     app.mount("/kit", StaticFiles(directory=settings.KIT_DIR), name="kit")
     # per-project files: scene working copy, versions, renders, photos, plan pages
     app.mount("/scenes", StaticFiles(directory=settings.projects_dir), name="scenes")

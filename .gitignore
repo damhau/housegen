@@ -11,6 +11,7 @@ backend/.env
 
 # --- Node / frontend / kit ---
 node_modules/
+kit/vendor/
 frontend/dist/
 frontend/src/routeTree.gen.ts
 *.tsbuildinfo

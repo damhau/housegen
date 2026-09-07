@@ -18,9 +18,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { Sky } from "three/addons/objects/Sky.js";
 import { CSM } from "three/addons/csm/CSM.js";
-import { EffectComposer, RenderPass, EffectPass, SMAAEffect, SMAAPreset, VignetteEffect, ToneMappingEffect, ToneMappingMode, Pass } from "postprocessing";
 import { SSRPass } from "three/addons/postprocessing/SSRPass.js";
-import { N8AOPostPass } from "n8ao";
+// vendored by kit/scripts/vendor.mjs (npm postinstall); relative paths, so a scene's
+// index.html needs no importmap entry for them (projects keep the template of their day)
+import { EffectComposer, RenderPass, EffectPass, SMAAEffect, SMAAPreset, VignetteEffect, ToneMappingEffect, ToneMappingMode, Pass } from "./vendor/postprocessing/index.js";
+import { N8AOPostPass } from "./vendor/n8ao/N8AO.js";
 import * as house from "housekit";
 
 const params = new URLSearchParams(location.search);

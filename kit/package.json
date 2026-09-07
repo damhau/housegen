@@ -4,6 +4,8 @@
   "main": "house.js",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/vendor.mjs",
+    "vendor": "node scripts/vendor.mjs",
     "test": "node --test \"test/**/*.test.mjs\""
   },
   "keywords": [],

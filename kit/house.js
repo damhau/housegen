@@ -35,8 +35,9 @@ function cached(key, make) {
 
 let eztree = null;
 if (typeof document !== "undefined") {
-  // "ez-tree" is the importmap name in the browser; the package name resolves in Node
-  for (const specifier of ["ez-tree", "@dgreenheck/ez-tree"]) {
+  // the vendored copy next to this file (kit/scripts/vendor.mjs) in the browser and in Node
+  // after npm install; the package name as a last resort
+  for (const specifier of ["./vendor/ez-tree/ez-tree.es.js", "@dgreenheck/ez-tree"]) {
     try {
       eztree = await import(specifier);
       break;
