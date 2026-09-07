@@ -1,8 +1,9 @@
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import Depends
-from sqlalchemy import inspect, text
+from sqlalchemy import Dialect, inspect, text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -10,12 +11,36 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.types import DateTime, TypeDecorator
 
 from housegen.core.config import get_settings
 
 
 class Base(DeclarativeBase):
     pass
+
+
+class UTCDateTime(TypeDecorator[datetime]):
+    """Timezone-aware UTC datetimes, whatever the database keeps.
+
+    SQLite has no timezone type: ``DateTime(timezone=True)`` is stored and read back
+    naive, so FastAPI serialised ``created_at`` without an offset and browsers parsed
+    it as local time (#1). Values are normalised to UTC on the way in and get
+    ``tzinfo=UTC`` on the way out, so the JSON always carries ``Z``.
+    """
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is not None and value.tzinfo is not None:
+            value = value.astimezone(UTC)
+        return value
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value
 
 
 _engine: AsyncEngine | None = None

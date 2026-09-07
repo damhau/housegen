@@ -45,7 +45,7 @@ async def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 async def test_many_unlabelled_photos_are_accepted_and_downscaled(client: AsyncClient) -> None:
     files = [("plan", ("plan.pdf", _pdf(), "application/pdf"))]
     sides = ["north", "south"] + ["other"] * 5
-    for i, s in enumerate(sides):
+    for i in range(len(sides)):
         files.append(("photos", (f"p{i}.jpg", _jpeg(), "image/jpeg")))
     r = await client.post("/api/v1/projects", data={"name": "t", "sides": sides}, files=files)
     assert r.status_code == 201, r.text

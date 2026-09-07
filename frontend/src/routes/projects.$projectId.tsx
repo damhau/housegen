@@ -24,7 +24,7 @@ import { SceneViewer } from "@/components/SceneViewer"
 import { VersionList } from "@/components/VersionList"
 import { Button } from "@/components/ui/button"
 import { useJobStream } from "@/hooks/useJobStream"
-import { cn, errorMessage } from "@/lib/utils"
+import { cn, errorMessage, parseIso } from "@/lib/utils"
 import { StatusBadge } from "@/routes/index"
 
 export const Route = createFileRoute("/projects/$projectId")({ component: ProjectPage })
@@ -40,7 +40,7 @@ function useElapsed(sinceIso: string | null) {
     return () => clearInterval(id)
   }, [sinceIso])
   if (!sinceIso) return null
-  const s = Math.max(0, Math.floor((now - new Date(sinceIso).getTime()) / 1000))
+  const s = Math.max(0, Math.floor((now - parseIso(sinceIso).getTime()) / 1000))
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 }
 

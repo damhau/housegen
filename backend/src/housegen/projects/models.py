@@ -3,10 +3,10 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from housegen.core.db import Base
+from housegen.core.db import Base, UTCDateTime
 
 
 def _uid() -> str:
@@ -23,7 +23,7 @@ class Project(Base):
     id: Mapped[str] = mapped_column(String(16), primary_key=True, default=_uid)
     name: Mapped[str] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(20), default="new")  # new|generating|ready|failed
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
     plan_filename: Mapped[str | None] = mapped_column(String(300), nullable=True)
     plan_pages: Mapped[int] = mapped_column(Integer, default=0)
     current_version: Mapped[int] = mapped_column(Integer, default=0)
@@ -66,7 +66,7 @@ class SceneVersion(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     critic_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     critique_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
     project: Mapped[Project] = relationship(back_populates="versions")
 
@@ -83,8 +83,8 @@ class Job(Base):
     request_text: Mapped[str] = mapped_column(Text, default="")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
 
 class JobEvent(Base):
@@ -95,7 +95,7 @@ class JobEvent(Base):
     seq: Mapped[int] = mapped_column(Integer)
     type: Mapped[str] = mapped_column(String(40))
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
 
 class ChatMessage(Base):
@@ -109,4 +109,4 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text)
     job_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
