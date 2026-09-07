@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, ChevronDown, ChevronRight, Hammer, Loader2, MessageCircleQuestion, Play, Plus, ScanSearch, Send, Wrench } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronRight, Hammer, ImagePlus, Loader2, MessageCircleQuestion, Play, Plus, ScanSearch, Send, Wrench, X } from "lucide-react"
 import { useJobEvents } from "@/api/endpoints/projects/projects"
 import type { ChatMessageOut, IntakeAnswer, IntakeOut, JobOut, SceneVersionOut } from "@/api/model"
 import { JobTimeline, ScoreBadge } from "@/components/JobTimeline"
@@ -61,12 +61,18 @@ export function ConversationPanel({
   busy: boolean
   /** no version yet: nothing to modify */
   disabled: boolean
-  onSend: (text: string) => Promise<void>
+  /** a modification request, with optional photos of the detail to change (#8) */
+  onSend: (text: string, photos?: File[], keep?: boolean) => Promise<void>
   onFix: (version: number) => void
   /** answers to the intake's questions: starts the build */
   onAnswer: (answers: IntakeAnswer[], notes: string) => Promise<void>
 }) {
   const [text, setText] = useState("")
+  // photos attached to the next request; kept as reference photos of the project unless unticked
+  const [files, setFiles] = useState<File[]>([])
+  const [keep, setKeep] = useState(true)
+  const fileUrls = useMemo(() => files.map((f) => URL.createObjectURL(f)), [files])
+  useEffect(() => () => fileUrls.forEach((u) => URL.revokeObjectURL(u)), [fileUrls])
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const turns = useMemo<Turn[]>(() => {
@@ -90,14 +96,28 @@ export function ConversationPanel({
     bottomRef.current?.scrollIntoView({ block: "end" })
   }, [turns.length, liveJob.jobId])
 
+  function addFiles(list: FileList | File[] | null) {
+    if (!list) return
+    const picked = Array.from(list).filter((f) => f.type.startsWith("image/"))
+    if (picked.length > 0) setFiles((prev) => [...prev, ...picked].slice(0, 12))
+  }
+
   async function send(t = text) {
     t = t.trim()
     if (!t || busy || disabled) return
+    const photos = t === text.trim() ? files : []
     setText("")
-    await onSend(t)
+    if (photos.length > 0) setFiles([])
+    await onSend(t, photos, keep)
   }
 
-  const placeholder = disabled ? "Generate the scene first" : busy ? "The agent is working… you can write when it is done" : "Ask for a change…"
+  const placeholder = disabled
+    ? "Generate the scene first"
+    : busy
+      ? "The agent is working… you can write when it is done"
+      : files.length > 0
+        ? "What should change, as the photos show it?"
+        : "Ask for a change… (drop or paste a photo of the detail to change)"
 
   return (
     <div className="flex h-full flex-col">
@@ -137,24 +157,76 @@ export function ConversationPanel({
         </div>
         <div ref={bottomRef} />
       </div>
-      <div className="flex gap-2 border-t p-2">
-        <Textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault()
-              void send()
-            }
-          }}
-          placeholder={placeholder}
-          disabled={disabled || busy}
-          className="min-h-[44px] resize-none"
-          rows={2}
-        />
-        <Button size="icon" onClick={() => void send()} disabled={disabled || busy || !text.trim()} aria-label="Send">
-          <Send />
-        </Button>
+      <div
+        className="border-t p-2"
+        onDragOver={(e) => {
+          if (!disabled && !busy) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          if (disabled || busy) return
+          e.preventDefault()
+          addFiles(e.dataTransfer.files)
+        }}
+      >
+        {files.length > 0 && (
+          <div className="mb-2 flex flex-wrap items-center gap-1.5">
+            {files.map((f, i) => (
+              <div key={`${f.name}-${i}`} className="group relative size-14 overflow-hidden rounded border">
+                <img src={fileUrls[i]} alt="" className="size-full object-cover" />
+                <button
+                  type="button"
+                  aria-label="Remove photo"
+                  className="absolute right-0.5 top-0.5 hidden rounded-full bg-background/90 p-0.5 group-hover:block"
+                  onClick={() => setFiles((prev) => prev.filter((_, k) => k !== i))}
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ))}
+            <label className="ml-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
+              keep as reference photos of the house
+            </label>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault()
+                void send()
+              }
+            }}
+            onPaste={(e) => {
+              const items = Array.from(e.clipboardData.files)
+              if (items.some((f) => f.type.startsWith("image/"))) {
+                e.preventDefault()
+                addFiles(items)
+              }
+            }}
+            placeholder={placeholder}
+            disabled={disabled || busy}
+            className="min-h-[44px] resize-none"
+            rows={2}
+          />
+          <div className="flex flex-col gap-1">
+            <Button size="icon" onClick={() => void send()} disabled={disabled || busy || !text.trim()} aria-label="Send">
+              <Send />
+            </Button>
+            <label
+              className={cn(
+                "grid size-9 cursor-pointer place-items-center rounded-md border text-muted-foreground hover:bg-accent",
+                (disabled || busy) && "pointer-events-none opacity-50",
+              )}
+              title="Attach photos of the detail to change"
+            >
+              <ImagePlus className="size-4" />
+              <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => addFiles(e.target.files)} />
+            </label>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -238,7 +310,18 @@ function JobBlock({
   return (
     <div className="space-y-2">
       {userMsg ? (
-        <Bubble role="user">{userMsg.content}</Bubble>
+        <Bubble role="user">
+          {userMsg.content}
+          {(userMsg.attachments ?? []).length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {(userMsg.attachments ?? []).map((url) => (
+                <a key={url} href={url} target="_blank" rel="noreferrer">
+                  <img src={url} alt="attached photo" className="h-16 rounded border border-primary-foreground/30 object-cover" />
+                </a>
+              ))}
+            </div>
+          )}
+        </Bubble>
       ) : (
         <div className="flex justify-end">
           <span className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs text-primary">{requestLabel}</span>

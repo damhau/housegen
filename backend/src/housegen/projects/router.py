@@ -21,14 +21,13 @@ from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
 from housegen.jobs.manager import job_manager
 from housegen.projects import crud
-from housegen.projects.models import Job, Project
+from housegen.projects.models import ChatMessage, Job, Project
 from housegen.projects.schemas import (
     ChatMessageOut,
     GenerateRequest,
     IntakeOut,
     JobEventOut,
     JobOut,
-    ModifyRequest,
     PhotoOut,
     ProjectOut,
     ProjectSummaryOut,
@@ -205,18 +204,49 @@ async def delete_project(session: DbSession, project_id: str) -> None:
 _PIPELINES = {"intake": pipeline.intake, "generate": pipeline.generate, "modify": pipeline.modify}
 
 
-async def _start_job(session: DbSession, project_id: str, kind: str, request_text: str = "") -> Job:
-    await crud.get_project(session, project_id)
+async def _start_job(
+    session: DbSession,
+    project_id: str,
+    kind: str,
+    request_text: str = "",
+    photos: list[UploadFile] | None = None,
+    keep_photos: bool = True,
+) -> Job:
+    project = await crud.get_project(session, project_id)
     if await crud.active_job(session, project_id):
         raise ConflictError("a job is already running for this project")
     job = await crud.create_job(session, project_id, kind, request_text)
+    # photos attached to a modification request (#8): stored like uploads, named after the
+    # job, given to the builder and the verifier as ground truth for this request and,
+    # unless the user opted out, kept as project extras for every later pass
+    attachments: list[str] = []
+    st = ProjectStorage(project_id)
+    for i, photo in enumerate(photos or [], 1):
+        if not (photo.content_type or "").startswith("image/"):
+            raise InvalidInputError(f"'{photo.filename}' is not an image")
+        filename = f"modify-{job.id}-{i}.jpg"
+        raw = await photo.read()
+        try:
+            await anyio.to_thread.run_sync(_store_photo, raw, st.photos_dir / filename)
+        except Exception as e:
+            logger.exception("projects.photo.store_failed", extra={"name": photo.filename})
+            raise InvalidInputError(f"could not read the photo '{photo.filename}': {e}") from e
+        attachments.append(filename)
+        if keep_photos:
+            await crud.add_photo(session, project, "other", filename, photo.filename or filename)
+    if attachments:
+        await crud.update_job(session, job.id, attachments=attachments)
     if request_text:
         # the request is the user's turn of the conversation (a modification, or the answers
         # to the intake's questions that start a build)
-        await crud.add_chat_message(session, project_id, "user", request_text, job.id)
+        await crud.add_chat_message(
+            session, project_id, "user", request_text, job.id, attachments=attachments
+        )
     await session.commit()
     job_manager.submit(job.id, project_id, _PIPELINES[kind])
-    logger.info("jobs.started", extra={"job_id": job.id, "kind": kind})
+    logger.info(
+        "jobs.started", extra={"job_id": job.id, "kind": kind, "attachments": len(attachments)}
+    )
     return job
 
 
@@ -247,11 +277,30 @@ async def generate(
 
 
 @router.post("/{project_id}/modify", status_code=202)
-async def modify(session: DbSession, project_id: str, body: ModifyRequest) -> JobOut:
+async def modify(
+    session: DbSession,
+    project_id: str,
+    message: Annotated[str, Form(min_length=1, max_length=4000)],
+    photos: Annotated[
+        list[UploadFile],
+        File(
+            description="photos of the detail to change (optional): ground truth for this request"
+        ),
+    ] = [],  # noqa: B006
+    keep: Annotated[
+        bool,
+        Form(description="also keep the attached photos as reference photos of the project"),
+    ] = True,
+) -> JobOut:
+    """Ask for a change, optionally with photographs of the detail to change."""
     project = await crud.get_project(session, project_id)
     if project.current_version == 0:
         raise ConflictError("generate the scene before modifying it")
-    return JobOut.model_validate(await _start_job(session, project_id, "modify", body.message))
+    if len(photos) > 12:
+        raise InvalidInputError("at most 12 photos per request")
+    return JobOut.model_validate(
+        await _start_job(session, project_id, "modify", message, photos, keep)
+    )
 
 
 @router.post("/{project_id}/versions/{number}/fix", status_code=202)
@@ -331,10 +380,23 @@ async def job_stream(
     return EventSourceResponse(gen())
 
 
+def _chat_out(m: ChatMessage, st: ProjectStorage) -> ChatMessageOut:
+    return ChatMessageOut(
+        id=m.id,
+        role=m.role,
+        content=m.content,
+        job_id=m.job_id,
+        version_number=m.version_number,
+        attachments=[st.photo_url(f) for f in m.attachments],
+        created_at=m.created_at,
+    )
+
+
 @router.get("/{project_id}/chat")
 async def chat_history(session: DbSession, project_id: str) -> list[ChatMessageOut]:
     await crud.get_project(session, project_id)
-    return [ChatMessageOut.model_validate(m) for m in await crud.list_chat(session, project_id)]
+    st = ProjectStorage(project_id)
+    return [_chat_out(m, st) for m in await crud.list_chat(session, project_id)]
 
 
 @router.post("/{project_id}/versions/{number}/restore")

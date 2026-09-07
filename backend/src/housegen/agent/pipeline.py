@@ -61,6 +61,8 @@ class _Inputs:
     pages: list[Path]
     brief: str
     intake: Intake | None
+    # photos attached to this job's request (#8): ground truth for the request, not extras
+    attachments: list[Path] = field(default_factory=list)
 
     @property
     def has_photos(self) -> bool:
@@ -106,9 +108,11 @@ class _Run:
             self.workspace, renderer, self.scene_url, self.renders_dir, on_render=self._on_render
         )
 
-    def set_image_sources(self, photos: dict[str, Path], extras: list[Path]) -> None:
+    def set_image_sources(
+        self, photos: dict[str, Path], extras: list[Path], attached: list[Path] | None = None
+    ) -> None:
         self.tools.images = ImageSources(
-            photos, extras, self.storage.plan_page_paths(), self.storage.plan_pdf
+            photos, extras, self.storage.plan_page_paths(), self.storage.plan_pdf, attached
         )
 
     async def _on_render(self, images: dict[str, Path], errors: list[str]) -> None:
@@ -124,8 +128,10 @@ class _Run:
         else:
             await self.ctx.emit("builder_step", **{k: v for k, v in ev.items() if k != "kind"})
 
-    async def photos(self) -> tuple[dict[str, Path], list[Path]]:
-        """(façade photos by side, other photos in upload order)."""
+    async def photos(self, exclude: set[str] | None = None) -> tuple[dict[str, Path], list[Path]]:
+        """(façade photos by side, other photos in upload order), minus `exclude` file names
+        (this job's own attachments, which are not extras for it)."""
+        exclude = exclude or set()
         async with session_factory()() as session:
             project = await crud.get_project(session, self.ctx.project_id)
             facades = {
@@ -134,7 +140,9 @@ class _Run:
                 if p.side != "other"
             }
             extras = [
-                self.storage.photos_dir / p.filename for p in project.photos if p.side == "other"
+                self.storage.photos_dir / p.filename
+                for p in project.photos
+                if p.side == "other" and p.filename not in exclude
             ]
             return facades, extras
 
@@ -152,11 +160,17 @@ class _Run:
 
     async def inputs(self) -> _Inputs:
         """Load the project's files and point the tools and the version views at them."""
-        photos, extras = await self.photos()
+        async with session_factory()() as session:
+            job = await crud.get_job(session, self.ctx.job_id)
+            names = job.attachments
+        attached = [
+            self.storage.photos_dir / n for n in names if (self.storage.photos_dir / n).exists()
+        ]
+        photos, extras = await self.photos(exclude=set(names))
         brief, intake = await self.context()
-        inp = _Inputs(photos, extras, self.storage.plan_page_paths(), brief, intake)
+        inp = _Inputs(photos, extras, self.storage.plan_page_paths(), brief, intake, attached)
         self.views = standard_views(inp.has_photos)
-        self.set_image_sources(photos, extras)
+        self.set_image_sources(photos, extras, attached)
         return inp
 
     async def render_standard(self) -> dict[str, Path]:
@@ -528,7 +542,7 @@ async def modify(ctx: JobContext) -> None:
 
     parts = _modify_message(request, history, inp, before)
     messages = [Message.user(*parts)]
-    await _modify_apply(run, request, messages, before_copy)
+    await _modify_apply(run, inp, request, messages, before_copy)
 
 
 def _keep_before_renders(run: _Run, before: dict[str, Path]) -> dict[str, Path]:
@@ -551,6 +565,13 @@ def _modify_message(
     if resume:
         parts.append(RESUME_ADDENDUM)
     parts.append(f"## Request\n{request}")
+    if inp.attachments:
+        parts.append(
+            "## Photographs attached to this request (ground truth for what is asked; "
+            "zoom with inspect_image('attached-1', …))"
+        )
+        for i, p in enumerate(inp.attachments, 1):
+            parts.append(ImagePart.from_file(p, label=f"Attached photograph {i}"))
     recent = [m for m in history if m.role == "user"][-6:-1]
     if recent:
         parts.append(
@@ -572,17 +593,18 @@ def _modify_message(
 
 
 async def _modify_apply(
-    run: _Run, request: str, messages: list[Message], before: dict[str, Path]
+    run: _Run, inp: _Inputs, request: str, messages: list[Message], before: dict[str, Path]
 ) -> None:
     await run.ctx.emit("phase", name="builder", message="Applying the modification")
     summary = await run.build(messages)
     after = await run.render_standard()
     version = await run.snapshot("modification", request[:80], summary, None, after)
-    await _modify_verify(run, request, messages, before, after, version, summary)
+    await _modify_verify(run, inp, request, messages, before, after, version, summary)
 
 
 async def _modify_verify(
     run: _Run,
+    inp: _Inputs,
     request: str,
     messages: list[Message],
     before: dict[str, Path],
@@ -603,6 +625,7 @@ async def _modify_verify(
                 s.LLM_MAX_TOKENS,
                 on_progress=live.on_event,
                 effort=s.CRITIC_EFFORT,
+                attachments=inp.attachments,
             )
         run.add_critic_usage(usage)
         await _emit_critic(ctx, 1, verdict)
@@ -827,7 +850,7 @@ async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None
         before = await run.render_standard()
         before_copy = _keep_before_renders(run, before)
         messages = [Message.user(*_modify_message(request, history, inp, before))]
-        await _modify_apply(run, request, messages, before_copy)
+        await _modify_apply(run, inp, request, messages, before_copy)
         return
 
     await ctx.emit("phase", name="render", message="Rendering the scene as the restart left it")
@@ -841,7 +864,7 @@ async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None
         if verdict is not None:
             await _modify_after_verdict(run, request, messages, verdict, version, summary)
         else:
-            await _modify_verify(run, request, messages, kept, after, version, summary)
+            await _modify_verify(run, inp, request, messages, kept, after, version, summary)
         return
 
     parts = _modify_message(request, history, inp, after, resume=True)
@@ -853,4 +876,4 @@ async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None
         version, summary = await _modify_fix(run, request, messages, verdict)
         await _modify_finish(run, version, summary, verdict.overall_score)
     else:
-        await _modify_apply(run, request, messages, kept)
+        await _modify_apply(run, inp, request, messages, kept)

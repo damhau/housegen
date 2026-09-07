@@ -148,8 +148,10 @@ function ProjectPage() {
   const hasScene = p.current_version > 0 || p.versions.length > 0 || (Boolean(activeJob) && lastGoodRender > 0)
   const failedMessage = !activeJob && latestJob?.status === "failed" ? (latestJob.error ?? "the run failed") : null
 
-  async function onSend(text: string) {
-    await modify.mutateAsync({ projectId, data: { message: text } })
+  async function onSend(text: string, photos: File[] = [], keep = true) {
+    // OpenAPI describes file fields as `string` (format: binary); the generated call builds
+    // a FormData, so File objects are what actually goes over the wire
+    await modify.mutateAsync({ projectId, data: { message: text, photos: photos as unknown as string[], keep } })
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })

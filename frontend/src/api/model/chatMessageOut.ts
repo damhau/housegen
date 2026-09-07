@@ -13,5 +13,6 @@ export interface ChatMessageOut {
   content: string;
   job_id: ChatMessageOutJobId;
   version_number: ChatMessageOutVersionNumber;
+  attachments?: string[];
   created_at: string;
 }

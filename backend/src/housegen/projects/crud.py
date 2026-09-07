@@ -191,8 +191,11 @@ async def update_job(
     status: str | None = None,
     error: str | None = None,
     result_version: int | None = None,
+    attachments: list[str] | None = None,
 ) -> Job:
     job = await get_job(session, job_id)
+    if attachments is not None:
+        job.attachments_json = json.dumps(attachments)
     if status:
         job.status = status
         if status in ("done", "failed"):
@@ -251,6 +254,7 @@ async def add_chat_message(
     content: str,
     job_id: str | None = None,
     version_number: int | None = None,
+    attachments: list[str] | None = None,
 ) -> ChatMessage:
     m = ChatMessage(
         project_id=project_id,
@@ -258,10 +262,20 @@ async def add_chat_message(
         content=content,
         job_id=job_id,
         version_number=version_number,
+        attachments_json=json.dumps(attachments) if attachments else None,
     )
     session.add(m)
     await session.flush()
     return m
+
+
+async def set_chat_attachments(
+    session: AsyncSession, message_id: str, attachments: list[str]
+) -> None:
+    m = await session.get(ChatMessage, message_id)
+    if m is not None:
+        m.attachments_json = json.dumps(attachments) if attachments else None
+        await session.flush()
 
 
 async def list_chat(session: AsyncSession, project_id: str) -> list[ChatMessage]:

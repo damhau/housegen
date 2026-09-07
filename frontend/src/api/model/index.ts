@@ -6,6 +6,7 @@
  */
 
 export * from './bodyCreateProject';
+export * from './bodyModify';
 export * from './chatMessageOut';
 export * from './chatMessageOutJobId';
 export * from './chatMessageOutVersionNumber';
@@ -26,7 +27,6 @@ export * from './jobOut';
 export * from './jobOutError';
 export * from './jobOutFinishedAt';
 export * from './jobOutResultVersion';
-export * from './modifyRequest';
 export * from './photoOut';
 export * from './photoOutSide';
 export * from './projectOut';

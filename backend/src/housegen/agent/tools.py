@@ -177,7 +177,8 @@ TOOL_SPECS: list[ToolSpec] = [
         description=(
             "Zoom: return a region of a photo, plan sheet or render at native resolution "
             "(plan sheets are re-rendered from the PDF at 300 dpi). name = a photo label "
-            "('north', 'south', 'east', 'west', 'extra-3'), a plan sheet ('plan-2') or a render view "
+            "('north', 'south', 'east', 'west', 'extra-3', 'attached-1' for a photo attached to the "
+            "request), a plan sheet ('plan-2') or a render view "
             "('render-north'). x, y, w, h are pixel coordinates in the image as you received it; "
             "the result says the crop's scale. Use it to read dimension strings on the plans and "
             "small façade details (window divisions, shutters, cladding lines) instead of guessing."
@@ -247,10 +248,13 @@ class ImageSources:
         extras: list[Path] | None = None,
         plan_pages: list[Path] | None = None,
         plan_pdf: Path | None = None,
+        attached: list[Path] | None = None,
     ) -> None:
         self.photos = dict(photos or {})
         for i, p in enumerate(extras or [], 1):
             self.photos[f"extra-{i}"] = p
+        for i, p in enumerate(attached or [], 1):
+            self.photos[f"attached-{i}"] = p
         self.plan_pages = list(plan_pages or [])
         self.plan_pdf = plan_pdf
 

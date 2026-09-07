@@ -117,8 +117,7 @@ class JobEventOut(BaseModel):
     created_at: datetime
 
 
-class ModifyRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=4000)
+# (the modify request is multipart since #8: `message` + `photos[]` + `keep`, see the router)
 
 
 class IntakeAnswer(BaseModel):
@@ -147,6 +146,8 @@ class ChatMessageOut(BaseModel):
     content: str
     job_id: str | None
     version_number: int | None
+    # photos attached to a modification request (#8), as URLs
+    attachments: list[str] = []
     created_at: datetime
 
 

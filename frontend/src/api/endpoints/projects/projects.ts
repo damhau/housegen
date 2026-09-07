@@ -25,13 +25,13 @@ import type {
 
 import type {
   BodyCreateProject,
+  BodyModify,
   ChatMessageOut,
   GenerateBody,
   HTTPValidationError,
   JobEventOut,
   JobEventsParams,
   JobOut,
-  ModifyRequest,
   ProjectOut,
   ProjectSummaryOut,
   SceneFilesOut,
@@ -544,6 +544,7 @@ export const useGenerate = <TError = HTTPValidationError,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * Ask for a change, optionally with photographs of the detail to change.
  * @summary Modify
  */
 export const getModifyUrl = (projectId: string,) => {
@@ -555,15 +556,23 @@ export const getModifyUrl = (projectId: string,) => {
 }
 
 export const modify = async (projectId: string,
-    modifyRequest: ModifyRequest, options?: RequestInit): Promise<JobOut> => {
-  
+    bodyModify: BodyModify, options?: RequestInit): Promise<JobOut> => {
+    const formData = new FormData();
+formData.append(`message`, bodyModify.message)
+if(bodyModify.photos !== undefined) {
+ bodyModify.photos.forEach(value => formData.append(`photos`, value));
+ }
+if(bodyModify.keep !== undefined) {
+ formData.append(`keep`, bodyModify.keep.toString())
+ }
+
   return httpClient<JobOut>(getModifyUrl(projectId),
   {      
     ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      modifyRequest,)
+    method: 'POST'
+    ,
+    body: 
+      formData,
   }
 );}
 
@@ -571,8 +580,8 @@ export const modify = async (projectId: string,
 
 
 export const getModifyMutationOptions = <TError = HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof modify>>, TError,{projectId: string;data: ModifyRequest}, TContext>, request?: SecondParameter<typeof httpClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof modify>>, TError,{projectId: string;data: ModifyRequest}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof modify>>, TError,{projectId: string;data: BodyModify}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof modify>>, TError,{projectId: string;data: BodyModify}, TContext> => {
 
 const mutationKey = ['modify'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -584,7 +593,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof modify>>, {projectId: string;data: ModifyRequest}> = (props) => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof modify>>, {projectId: string;data: BodyModify}> = (props) => {
           const {projectId,data} = props ?? {};
 
           return  modify(projectId,data,requestOptions)
@@ -596,18 +605,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ModifyMutationResult = NonNullable<Awaited<ReturnType<typeof modify>>>
-    export type ModifyMutationBody = ModifyRequest
+    export type ModifyMutationBody = BodyModify
     export type ModifyMutationError = HTTPValidationError
 
     /**
  * @summary Modify
  */
 export const useModify = <TError = HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof modify>>, TError,{projectId: string;data: ModifyRequest}, TContext>, request?: SecondParameter<typeof httpClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof modify>>, TError,{projectId: string;data: BodyModify}, TContext>, request?: SecondParameter<typeof httpClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof modify>>,
         TError,
-        {projectId: string;data: ModifyRequest},
+        {projectId: string;data: BodyModify},
         TContext
       > => {
 

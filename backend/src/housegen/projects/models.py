@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 
@@ -90,10 +91,16 @@ class Job(Base):
     # queued|running|done|failed|interrupted (a server restart: resumed at the next startup, #7)
     status: Mapped[str] = mapped_column(String(20), default="queued")
     request_text: Mapped[str] = mapped_column(Text, default="")
+    # photos attached to a modification request (#8): file names under photos/, JSON list
+    attachments_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+
+    @property
+    def attachments(self) -> list[str]:
+        return list(json.loads(self.attachments_json)) if self.attachments_json else []
 
 
 class JobEvent(Base):
@@ -118,4 +125,10 @@ class ChatMessage(Base):
     content: Mapped[str] = mapped_column(Text)
     job_id: Mapped[str | None] = mapped_column(String(16), nullable=True)
     version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # photos the user attached to this message (#8): file names under photos/, JSON list
+    attachments_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+
+    @property
+    def attachments(self) -> list[str]:
+        return list(json.loads(self.attachments_json)) if self.attachments_json else []

@@ -168,8 +168,16 @@ async def verify_modification(
     max_tokens: int,
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
+    attachments: list[Path] | None = None,
 ) -> tuple[Critique, Usage]:
-    parts: list[ImagePart | str] = [f"User request:\n{request}", "Renders BEFORE the change:"]
+    parts: list[ImagePart | str] = [f"User request:\n{request}"]
+    if attachments:
+        parts.append(
+            "Photographs the user attached to the request (ground truth for what was asked):"
+        )
+        for i, p in enumerate(attachments, 1):
+            parts.append(ImagePart.from_file(p, label=f"ATTACHED photograph {i}"))
+    parts.append("Renders BEFORE the change:")
     for view, p in _critic_views(before).items():
         parts.append(ImagePart.from_file(p, label=f"BEFORE — view {view}"))
     parts.append("Renders AFTER the change:")

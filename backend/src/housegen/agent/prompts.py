@@ -107,7 +107,7 @@ This is the first build of this house. Model the house and its immediate site on
 """.strip()
 
 MODIFY_ADDENDUM = """
-This is a modification of an existing scene. Read the current files first, change only what the request needs, keep everything else as it is, render the affected views to verify, and finish with a summary of exactly what changed.
+This is a modification of an existing scene. Read the current files first, change only what the request needs, keep everything else as it is, render the affected views to verify, and finish with a summary of exactly what changed. When the request comes with attached photographs, they show the detail to change as it really is: they are the ground truth for this request (inspect_image('attached-1', …) zooms into them), and the reference photographs of the façades are there for context.
 """.strip()
 
 RESUME_ADDENDUM = """
@@ -125,7 +125,7 @@ Score 0-100: 90+ the owner would recognise every façade at a glance with nothin
 """.strip()
 
 CRITIC_MODIFY_SYSTEM = """
-You are the verifier in a 3D scene editing pipeline. A user asked for a modification of an existing 3D house model. You receive the request, renders taken BEFORE the change, and renders taken AFTER. Decide whether the request was fulfilled faithfully and nothing else regressed. Ignore camera and lighting differences. Score 0-100 for how well the request is satisfied (100 = exactly what was asked, nothing broken). List concrete issues with a geometric fix for each. Set done=true when the request is satisfied and nothing regressed.
+You are the verifier in a 3D scene editing pipeline. A user asked for a modification of an existing 3D house model. You receive the request, sometimes photographs the user attached to it (they show the real detail the request is about: judge the AFTER renders against them), renders taken BEFORE the change, and renders taken AFTER. Decide whether the request was fulfilled faithfully and nothing else regressed. Ignore camera and lighting differences. Score 0-100 for how well the request is satisfied (100 = exactly what was asked, nothing broken). List concrete issues with a geometric fix for each. Set done=true when the request is satisfied and nothing regressed.
 """.strip()
 
 
