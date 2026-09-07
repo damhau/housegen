@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import logging
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -166,6 +167,29 @@ TOOL_SPECS: list[ToolSpec] = [
         },
     ),
     ToolSpec(
+        name="inspect_image",
+        description=(
+            "Zoom: return a region of a photo, plan sheet or render at native resolution "
+            "(plan sheets are re-rendered from the PDF at 300 dpi). name = a photo label "
+            "('north', 'south', 'east', 'west', 'extra-3'), a plan sheet ('plan-2') or a render view "
+            "('render-north'). x, y, w, h are pixel coordinates in the image as you received it; "
+            "the result says the crop's scale. Use it to read dimension strings on the plans and "
+            "small façade details (window divisions, shutters, cladding lines) instead of guessing."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "x": {"type": "integer", "minimum": 0},
+                "y": {"type": "integer", "minimum": 0},
+                "w": {"type": "integer", "minimum": 8},
+                "h": {"type": "integer", "minimum": 8},
+            },
+            "required": ["name", "x", "y", "w", "h"],
+            "additionalProperties": False,
+        },
+    ),
+    ToolSpec(
         name="check_scene",
         description="Load the scene headless and report JavaScript errors without returning images (fast).",
         input_schema={"type": "object", "properties": {}, "additionalProperties": False},
@@ -208,6 +232,96 @@ TOOL_SPECS: list[ToolSpec] = [
 ]
 
 
+class ImageSources:
+    """Where inspect_image finds the images the model has seen (photos by label, plan sheets)."""
+
+    def __init__(
+        self,
+        photos: dict[str, Path] | None = None,
+        extras: list[Path] | None = None,
+        plan_pages: list[Path] | None = None,
+        plan_pdf: Path | None = None,
+    ) -> None:
+        self.photos = dict(photos or {})
+        for i, p in enumerate(extras or [], 1):
+            self.photos[f"extra-{i}"] = p
+        self.plan_pages = list(plan_pages or [])
+        self.plan_pdf = plan_pdf
+
+    def photo_names(self) -> list[str]:
+        return list(self.photos)
+
+    def photo(self, name: str) -> Path | None:
+        return self.photos.get(name)
+
+    def plan_page(self, page: int) -> Path | None:
+        if 1 <= page <= len(self.plan_pages):
+            return self.plan_pages[page - 1]
+        return None
+
+    def plan_clip(self, page: int, x: int, y: int, w: int, h: int, shown: Path) -> ImagePart | None:
+        """Re-render a region of the PDF page at 300 dpi (dimension strings become readable)."""
+        if self.plan_pdf is None or not self.plan_pdf.exists():
+            return None
+        import pymupdf
+        from PIL import Image
+
+        with Image.open(shown) as im:
+            sw, sh = im.size
+        doc = pymupdf.open(self.plan_pdf)  # type: ignore[no-untyped-call]
+        try:
+            pg = doc[page - 1]
+            rect = pg.rect
+            fx, fy = rect.width / sw, rect.height / sh
+            clip = pymupdf.Rect(x * fx, y * fy, (x + w) * fx, (y + h) * fy) & rect  # type: ignore[no-untyped-call]
+            if clip.is_empty:
+                return None
+            zoom = 300 / 72
+            pix = pg.get_pixmap(matrix=pymupdf.Matrix(zoom, zoom), clip=clip, alpha=False)  # type: ignore[no-untyped-call]
+            data = pix.tobytes("png")  # type: ignore[no-untyped-call]
+        finally:
+            doc.close()  # type: ignore[no-untyped-call]
+        scale = 300 / (72 / fx) if fx else 1.0
+        return ImagePart.from_bytes(
+            data,
+            "image/png",
+            label=f"{shown.stem} region x={x} y={y} w={w} h={h} at 300 dpi (scale {scale:.1f}x)",
+        )
+
+
+def crop_image(
+    shown: Path, source: Path, x: int, y: int, w: int, h: int, label: str
+) -> list[TextPart | ImagePart]:
+    """Crop `source` (the original, possibly larger than `shown`) using coordinates in `shown`."""
+    from PIL import Image, ImageOps
+
+    with Image.open(shown) as im:
+        sw, sh = im.size
+    with Image.open(source) as raw:
+        src: Image.Image = ImageOps.exif_transpose(raw) or raw
+        fx, fy = src.width / sw, src.height / sh
+        box = (
+            max(0, int(x * fx)),
+            max(0, int(y * fy)),
+            min(src.width, int((x + w) * fx)),
+            min(src.height, int((y + h) * fy)),
+        )
+        if box[2] - box[0] < 4 or box[3] - box[1] < 4:
+            return [TextPart(text=f"region outside the image ({sw}x{sh})")]
+        crop = src.crop(box).convert("RGB")
+        if max(crop.size) > 1600:
+            crop.thumbnail((1600, 1600))
+        buf = io.BytesIO()
+        crop.save(buf, "JPEG", quality=90)
+    return [
+        ImagePart.from_bytes(
+            buf.getvalue(),
+            "image/jpeg",
+            label=f"{label} region x={x} y={y} w={w} h={h} (source {src.width}x{src.height}, scale {fx:.1f}x)",
+        )
+    ]
+
+
 class BuilderTools:
     def __init__(
         self,
@@ -216,8 +330,10 @@ class BuilderTools:
         scene_url: str,
         renders_dir: Path,
         on_render: Callable[[dict[str, Path], list[str]], Awaitable[None]] | None = None,
+        images: ImageSources | None = None,
     ) -> None:
         self.ws = workspace
+        self.images = images or ImageSources()
         self.renderer = renderer
         self.scene_url = scene_url
         self.renders_dir = renders_dir
@@ -233,6 +349,7 @@ class BuilderTools:
             "apply_patch": self.apply_patch,
             "delete_file": self.delete_file,
             "render_views": self.render_views,
+            "inspect_image": self.inspect_image,
             "check_scene": self.check_scene,
         }
 
@@ -308,6 +425,36 @@ class BuilderTools:
         if not res.images:
             content.append(TextPart(text="No image could be produced."))
         return content, bool(res.errors) and not res.images
+
+    async def inspect_image(self, a: dict[str, Any]) -> ToolOutput:
+        name = str(a["name"]).strip().lower()
+        x, y, w, h = (int(a[k]) for k in ("x", "y", "w", "h"))
+        if name.startswith("render-"):
+            src = self.renders_dir / f"{name.removeprefix('render-')}.jpg"
+            if not src.exists():
+                return [TextPart(text=f"no render named '{name}'; render it first")], True
+            return [*crop_image(src, src, x, y, w, h, label=name)], False
+        if name.startswith("plan-"):
+            try:
+                page = int(name.removeprefix("plan-"))
+            except ValueError:
+                return [TextPart(text="plan sheets are named plan-1, plan-2, …")], True
+            shown = self.images.plan_page(page)
+            if shown is None:
+                return [TextPart(text=f"no plan sheet {page}")], True
+            hi = self.images.plan_clip(page, x, y, w, h, shown)
+            if hi is not None:
+                return [hi], False
+            return [*crop_image(shown, shown, x, y, w, h, label=name)], False
+        shown = self.images.photo(name)
+        if shown is None:
+            return [
+                TextPart(
+                    text=f"no photo named '{name}'. Photos: {', '.join(self.images.photo_names())}"
+                )
+            ], True
+        orig = shown.parent / "orig" / shown.name
+        return [*crop_image(shown, orig if orig.exists() else shown, x, y, w, h, label=name)], False
 
     async def check_scene(self, _: dict[str, Any]) -> ToolOutput:
         res = await self.renderer.render(self.scene_url, [], self.renders_dir, quality="low")

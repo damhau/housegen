@@ -16,7 +16,7 @@ from housegen.agent.builder import BuilderRun, run_builder
 from housegen.agent.progress import LiveProgress
 from housegen.agent.prompts import BUILDER_SYSTEM, FIRST_RUN_ADDENDUM, MODIFY_ADDENDUM
 from housegen.agent.schemas import Critique
-from housegen.agent.tools import BuilderTools
+from housegen.agent.tools import BuilderTools, ImageSources
 from housegen.agent.workspace import Workspace
 from housegen.core.config import get_settings
 from housegen.core.db import session_factory
@@ -50,6 +50,11 @@ class _Run:
         self.critic_usage = Usage()  # the critic's share, reported separately in the usage event
         self.tools = BuilderTools(
             self.workspace, renderer, self.scene_url, self.renders_dir, on_render=self._on_render
+        )
+
+    def set_image_sources(self, photos: dict[str, Path], extras: list[Path]) -> None:
+        self.tools.images = ImageSources(
+            photos, extras, self.storage.plan_page_paths(), self.storage.plan_pdf
         )
 
     async def _on_render(self, images: dict[str, Path], errors: list[str]) -> None:
@@ -186,6 +191,7 @@ async def generate(ctx: JobContext) -> None:
         await crud.set_status(session, pid, "generating")
     photos, extras = await run.photos()
     pages = run.storage.plan_page_paths()
+    run.set_image_sources(photos, extras)
 
     # 1. builder: reads the plans and photos itself, renders, self-corrects
     run.storage.init_scene_from_template(force=True)
@@ -288,6 +294,7 @@ async def modify(ctx: JobContext) -> None:
         request = job.request_text
         history = await crud.list_chat(session, pid)
     photos, extras = await run.photos()
+    run.set_image_sources(photos, extras)
 
     await ctx.emit("phase", name="render", message="Rendering the current state")
     before = await run.render_standard()

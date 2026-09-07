@@ -26,11 +26,19 @@ from housegen.llm import (
 logger = logging.getLogger(__name__)
 
 
-def prune_render_images(messages: list[Message], keep_last: int = 1) -> int:
+PRUNE_EVERY = 3
+
+
+def prune_render_images(messages: list[Message], keep_last: int = 1, batch: int = 1) -> int:
     """Replace screenshots in all but the most recent render result(s) with a short note.
 
     Screenshots are the bulk of the context in a long build; the model's own comments about
     them stay, so nothing it concluded is lost. Returns the number of images removed.
+
+    Rewriting an old message invalidates the provider's prefix cache from that point, which
+    costs far more than the images it saves (#5): with `batch` > 1 nothing is pruned until at
+    least `batch` stale render results have piled up, then all of them go at once, so the
+    cache is lost at most once per `batch` render rounds.
     """
 
     def has_images(m: Message) -> bool:
@@ -42,6 +50,8 @@ def prune_render_images(messages: list[Message], keep_last: int = 1) -> int:
     targets = [i for i, m in enumerate(messages) if has_images(m)]
     if keep_last:
         targets = targets[:-keep_last]
+    if len(targets) < batch:
+        return 0
     removed = 0
     for i in targets:
         parts: list[Part] = []
@@ -164,7 +174,7 @@ async def run_builder(
 
     while run.steps < max_steps:
         run.steps += 1
-        prune_render_images(messages)
+        prune_render_images(messages, batch=PRUNE_EVERY)
         completion = await complete(run.steps)
         run.usage = run.usage + completion.usage
         messages.append(completion.message)

@@ -44,6 +44,10 @@ MAX_PHOTO_PX = 1600  # phone photos are 4000 px; the model never needs more than
 
 
 def _store_photo(raw: bytes, path: Path) -> None:
+    # the original feeds inspect_image crops; the working copy is what goes in every LLM call
+    orig = path.parent / "orig" / path.name
+    orig.parent.mkdir(parents=True, exist_ok=True)
+    orig.write_bytes(raw)
     """Normalise an upload: apply EXIF rotation, cap the long side, save as JPEG."""
     img = ImageOps.exif_transpose(Image.open(io.BytesIO(raw)))
     assert img is not None

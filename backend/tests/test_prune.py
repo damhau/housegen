@@ -43,3 +43,18 @@ def test_only_the_latest_render_set_keeps_its_images() -> None:
     assert any(isinstance(c, ImagePart) for c in last.content)
     # idempotent
     assert prune_render_images(messages) == 0
+
+
+def test_prune_batches_to_limit_cache_invalidations() -> None:
+    from housegen.agent.builder import prune_render_images as prune
+    from housegen.llm import ImagePart, Message, ToolResultPart
+
+    def render_result(i: int) -> Message:
+        img = ImagePart.from_bytes(b"x", "image/jpeg", label=f"r{i}")
+        return Message(role="user", content=[ToolResultPart(tool_call_id=f"c{i}", content=[img])])
+
+    msgs = [render_result(1), render_result(2)]
+    assert prune(msgs, batch=3) == 0  # only one stale result: keep the cache
+    msgs += [render_result(3), render_result(4)]
+    assert prune(msgs, batch=3) == 3  # three stale results: prune them all at once
+    assert prune(msgs, batch=3) == 0
