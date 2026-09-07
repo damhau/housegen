@@ -11,6 +11,7 @@ from typing import Any
 from housegen.agent.workspace import Workspace, WorkspaceError
 from housegen.core.exceptions import RenderError
 from housegen.llm.types import ImagePart, TextPart, ToolSpec, thumbnail_size
+from housegen.projects.storage import PlanSheet
 from housegen.render.renderer import Renderer
 
 logger = logging.getLogger(__name__)
@@ -256,7 +257,10 @@ class ImageSources:
         plan_pdf: Path | None = None,
         attached: list[Path] | None = None,
         thumb_px: int | None = None,
+        plan_sheets: list[PlanSheet] | None = None,
     ) -> None:
+        """`plan_sheets` (#10) maps each 'plan-N' onto its document's PDF and page; the older
+        `plan_pages` + `plan_pdf` pair describes a single document."""
         self.photos = dict(photos or {})
         self.thumbs: set[str] = set()
         for i, p in enumerate(extras or [], 1):
@@ -265,8 +269,13 @@ class ImageSources:
                 self.thumbs.add(f"extra-{i}")
         for i, p in enumerate(attached or [], 1):
             self.photos[f"attached-{i}"] = p
-        self.plan_pages = list(plan_pages or [])
-        self.plan_pdf = plan_pdf
+        if plan_sheets is not None:
+            self.sheets = list(plan_sheets)
+        else:
+            self.sheets = [
+                PlanSheet(index=i, document=1, page=i, png=png, pdf=plan_pdf or Path())
+                for i, png in enumerate(plan_pages or [], 1)
+            ]
         self.thumb_px = thumb_px
 
     def photo_names(self) -> list[str]:
@@ -285,22 +294,23 @@ class ImageSources:
             return im.size
 
     def plan_page(self, page: int) -> Path | None:
-        if 1 <= page <= len(self.plan_pages):
-            return self.plan_pages[page - 1]
+        if 1 <= page <= len(self.sheets):
+            return self.sheets[page - 1].png
         return None
 
     def plan_clip(self, page: int, x: int, y: int, w: int, h: int, shown: Path) -> ImagePart | None:
         """Re-render a region of the PDF page at 300 dpi (dimension strings become readable)."""
-        if self.plan_pdf is None or not self.plan_pdf.exists():
+        sheet = self.sheets[page - 1] if 1 <= page <= len(self.sheets) else None
+        if sheet is None or not sheet.pdf.exists():
             return None
         import pymupdf
         from PIL import Image
 
         with Image.open(shown) as im:
             sw, sh = im.size
-        doc = pymupdf.open(self.plan_pdf)  # type: ignore[no-untyped-call]
+        doc = pymupdf.open(sheet.pdf)  # type: ignore[no-untyped-call]
         try:
-            pg = doc[page - 1]
+            pg = doc[sheet.page - 1]
             rect = pg.rect
             fx, fy = rect.width / sw, rect.height / sh
             clip = pymupdf.Rect(x * fx, y * fy, (x + w) * fx, (y + h) * fy) & rect  # type: ignore[no-untyped-call]

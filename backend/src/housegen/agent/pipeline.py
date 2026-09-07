@@ -42,7 +42,7 @@ from housegen.llm import Completion, ImagePart, Message, Usage, get_provider
 from housegen.projects import crud
 from housegen.projects.models import Job
 from housegen.projects.schemas import standard_views
-from housegen.projects.storage import ProjectStorage
+from housegen.projects.storage import PlanSheet, ProjectStorage
 from housegen.render.renderer import renderer
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,9 @@ class _Inputs:
     intake: Intake | None
     # photos attached to this job's request (#8): ground truth for the request, not extras
     attachments: list[Path] = field(default_factory=list)
+    # the sheets with their documents (#10); `pages` is their PNGs in the same order
+    sheets: list[PlanSheet] = field(default_factory=list)
+    documents: dict[int, str] = field(default_factory=dict)  # document number → label
 
     @property
     def has_photos(self) -> bool:
@@ -134,10 +137,9 @@ class _Run:
         self.tools.images = ImageSources(
             photos,
             extras,
-            self.storage.plan_page_paths(),
-            self.storage.plan_pdf,
-            attached,
+            attached=attached,
             thumb_px=EXTRA_THUMB_PX,
+            plan_sheets=self.storage.plan_sheets(),
         )
 
     async def _on_render(self, images: dict[str, Path], errors: list[str]) -> None:
@@ -225,12 +227,17 @@ class _Run:
         async with session_factory()() as session:
             job = await crud.get_job(session, self.ctx.job_id)
             names = job.attachments
+            project = await crud.get_project(session, self.ctx.project_id)
+            documents = {d.number: d.label for d in project.plans}
         attached = [
             self.storage.photos_dir / n for n in names if (self.storage.photos_dir / n).exists()
         ]
         photos, extras = await self.photos(exclude=set(names))
         brief, intake = await self.context()
-        inp = _Inputs(photos, extras, self.storage.plan_page_paths(), brief, intake, attached)
+        sheets = self.storage.plan_sheets()
+        inp = _Inputs(
+            photos, extras, [sh.png for sh in sheets], brief, intake, attached, sheets, documents
+        )
         self.views = standard_views(inp.has_photos)
         self.set_image_sources(photos, extras, attached)
         return inp
@@ -360,8 +367,9 @@ async def intake(ctx: JobContext) -> None:
     """Read the plan set before the first build of a project without photographs."""
     run = await _Run.create(ctx)
     pid = ctx.project_id
-    pages = run.storage.plan_page_paths()
-    brief, _ = await run.context()
+    inp = await run.inputs()
+    pages = inp.pages
+    brief = inp.brief
 
     await ctx.emit("phase", name="intake", message="Reading the plan sheets")
     async with LiveProgress(ctx, "intake", show_text=False) as live:
@@ -373,6 +381,11 @@ async def intake(ctx: JobContext) -> None:
             run.rs.max_tokens,
             on_progress=live.on_event,
             effort=run.rs.critic_effort,
+            labels=[
+                sheet_label(i, len(pages), inp.sheets, inp.documents)
+                for i in range(1, len(pages) + 1)
+            ],
+            preamble=plan_documents_text(inp.documents),
         )
     await run.add_call("intake", completion)
     await ctx.emit(
@@ -554,8 +567,11 @@ def _first_message(
     else:
         parts.append(PLAN_ONLY_ADDENDUM)
         parts.append("Build this house. Below are the plan sheets.")
+    parts.extend(plan_documents_text(inp.documents))
     for i, p in enumerate(pages, 1):
-        parts.append(ImagePart.from_file(p, label=f"Plan sheet {i} of {len(pages)}"))
+        parts.append(
+            ImagePart.from_file(p, label=sheet_label(i, len(pages), inp.sheets, inp.documents))
+        )
     for side, p in photos.items():
         parts.append(ImagePart.from_file(p, label=f"Photograph of the {side} façade"))
     for i, p in enumerate(extras, 1):
@@ -580,6 +596,28 @@ def _first_message(
         parts.extend(resume_renders)
         parts.append("Continue from here.")
     return parts
+
+
+def sheet_label(index: int, total: int, sheets: list[PlanSheet], documents: dict[int, str]) -> str:
+    """ "Plan sheet 3 of 6" plus, with several documents, which document and page it is."""
+    base = f"Plan sheet {index} of {total}"
+    if len(documents) <= 1 or index > len(sheets):
+        return base
+    sh = sheets[index - 1]
+    label = documents.get(sh.document, "")
+    return f"{base} (document {sh.document}{f' “{label}”' if label else ''}, page {sh.page})"
+
+
+def plan_documents_text(documents: dict[int, str]) -> list[str]:
+    """The list of plan documents and the rule for disagreements, when there are several."""
+    if len(documents) <= 1:
+        return []
+    lines = [f"- document {n}: {label or f'plans {n}'}" for n, label in sorted(documents.items())]
+    return [
+        "## Plan documents\nThe plan set comes from several documents, in the order they were "
+        "added:\n" + "\n".join(lines) + "\nWhere they disagree, the most recent one (the last) "
+        "describes the house as it is today, unless the owner says otherwise below."
+    ]
 
 
 def _elevation_sheets(intake: Intake | None, pages: list[Path], limit: int = 4) -> list[ImagePart]:

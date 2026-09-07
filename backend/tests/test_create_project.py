@@ -43,7 +43,7 @@ async def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 async def test_many_unlabelled_photos_are_accepted_and_downscaled(client: AsyncClient) -> None:
-    files = [("plan", ("plan.pdf", _pdf(), "application/pdf"))]
+    files = [("plans", ("plan.pdf", _pdf(), "application/pdf"))]
     sides = ["north", "south"] + ["other"] * 5
     for i in range(len(sides)):
         files.append(("photos", (f"p{i}.jpg", _jpeg(), "image/jpeg")))
@@ -56,7 +56,7 @@ async def test_many_unlabelled_photos_are_accepted_and_downscaled(client: AsyncC
 
 
 async def test_duplicate_facade_label_is_rejected(client: AsyncClient) -> None:
-    files = [("plan", ("plan.pdf", _pdf(), "application/pdf"))]
+    files = [("plans", ("plan.pdf", _pdf(), "application/pdf"))]
     sides = ["north", "north"]
     for i in range(2):
         files.append(("photos", (f"p{i}.jpg", _jpeg(200, 100), "image/jpeg")))
@@ -66,7 +66,7 @@ async def test_duplicate_facade_label_is_rejected(client: AsyncClient) -> None:
 
 
 async def test_project_without_photos_is_accepted_with_notes(client: AsyncClient) -> None:
-    files = [("plan", ("plan.pdf", _pdf(), "application/pdf"))]
+    files = [("plans", ("plan.pdf", _pdf(), "application/pdf"))]
     r = await client.post(
         "/api/v1/projects", data={"name": "t", "notes": "the roof is dark grey"}, files=files
     )
@@ -83,7 +83,7 @@ async def test_generate_with_answers_extends_the_brief(
     from housegen.jobs.manager import job_manager
 
     monkeypatch.setattr(job_manager, "submit", lambda *a, **k: None)  # no real run
-    files = [("plan", ("plan.pdf", _pdf(), "application/pdf"))]
+    files = [("plans", ("plan.pdf", _pdf(), "application/pdf"))]
     r = await client.post(
         "/api/v1/projects", data={"name": "t", "notes": "built 1972"}, files=files
     )

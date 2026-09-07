@@ -48,7 +48,10 @@ Facade = Literal["north", "south", "east", "west"]
 
 
 class SheetInfo(BaseModel):
-    page: int = Field(ge=1, description="1-based sheet number, in upload order")
+    page: int = Field(ge=1, description="1-based sheet number over the whole set, as captioned")
+    document: int = Field(
+        default=1, ge=1, description="the plan document the sheet belongs to (1 when there is one)"
+    )
     kind: SheetKind
     label: str = Field(description="short, e.g. 'ground floor plan 1:100', 'south elevation'")
     elevations: list[Facade] = Field(
@@ -78,9 +81,11 @@ class Intake(BaseModel):
 
     def sheet_map(self) -> str:
         lines = []
+        multi = len({s.document for s in self.sheets}) > 1
         for s in self.sheets:
             extra = f" ({', '.join(s.elevations)})" if s.elevations else ""
-            lines.append(f"- Sheet {s.page}: {s.kind.replace('_', ' ')}{extra}: {s.label}")
+            doc = f" [document {s.document}]" if multi else ""
+            lines.append(f"- Sheet {s.page}{doc}: {s.kind.replace('_', ' ')}{extra}: {s.label}")
         return "\n".join(lines)
 
     def as_builder_text(self) -> str:

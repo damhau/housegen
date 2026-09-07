@@ -117,7 +117,7 @@ async def test_settings_persist_and_the_job_takes_a_snapshot(client: AsyncClient
     r = await client.post(
         "/api/v1/projects",
         data={"name": "t"},
-        files=[("plan", ("p.pdf", _pdf(), "application/pdf"))],
+        files=[("plans", ("p.pdf", _pdf(), "application/pdf"))],
     )
     pid = r.json()["id"]
     assert r.json()["settings"] == {

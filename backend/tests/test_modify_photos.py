@@ -49,7 +49,7 @@ async def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 async def _ready_project(client: AsyncClient) -> str:
-    files = [("plan", ("plan.pdf", _pdf(), "application/pdf"))]
+    files = [("plans", ("plan.pdf", _pdf(), "application/pdf"))]
     files.append(("photos", ("n.jpg", _jpeg(), "image/jpeg")))
     files.append(("photos", ("x.jpg", _jpeg(), "image/jpeg")))
     r = await client.post(

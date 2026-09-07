@@ -9,7 +9,15 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from housegen.core.exceptions import NotFoundError
-from housegen.projects.models import ChatMessage, Job, JobEvent, Photo, Project, SceneVersion
+from housegen.projects.models import (
+    ChatMessage,
+    Job,
+    JobEvent,
+    Photo,
+    PlanDocument,
+    Project,
+    SceneVersion,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +49,37 @@ async def add_photo(
     session.add(photo)
     await session.flush()
     return photo
+
+
+async def add_plan_document(
+    session: AsyncSession,
+    project: Project,
+    number: int,
+    label: str,
+    original_name: str,
+    pages: int,
+) -> PlanDocument:
+    doc = PlanDocument(
+        project_id=project.id,
+        number=number,
+        label=label.strip() or original_name or f"Plans {number}",
+        original_name=original_name,
+        pages=pages,
+    )
+    session.add(doc)
+    project.plan_pages = (project.plan_pages or 0) + pages
+    await session.flush()
+    logger.info(
+        "plans.added",
+        extra={"project_id": project.id, "document": number, "pages": pages, "label": doc.label},
+    )
+    return doc
+
+
+async def projects_without_plan_documents(session: AsyncSession) -> list[Project]:
+    """Projects from before #10: a plan set but no PlanDocument row (the migration adds one)."""
+    res = await session.execute(select(Project).where(Project.plan_pages > 0))
+    return [p for p in res.scalars().all() if not p.plans]
 
 
 async def delete_project(session: AsyncSession, project: Project) -> None:

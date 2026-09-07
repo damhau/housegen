@@ -29,14 +29,20 @@ async def read_plans(
     max_tokens: int,
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
+    labels: list[str] | None = None,
+    preamble: list[str] | None = None,
 ) -> tuple[Intake, Completion]:
+    """`labels` (#10): one caption per sheet naming its document; `preamble`: the list of
+    documents and the disagreement rule, when there are several."""
     if not pages:
         raise LLMError("the plan set has no sheets to read")
     parts: list[ImagePart | str] = [
         "Read this plan set. There are no photographs of the house.",
+        *(preamble or []),
     ]
     for i, p in enumerate(pages, 1):
-        parts.append(ImagePart.from_file(p, label=f"Sheet {i} of {len(pages)}"))
+        label = labels[i - 1] if labels and i <= len(labels) else f"Sheet {i} of {len(pages)}"
+        parts.append(ImagePart.from_file(p, label=label))
     if notes.strip():
         parts.append("The owner wrote these notes; do not ask what they already answer:\n" + notes)
     parts.append("Return the intake as JSON matching the schema.")

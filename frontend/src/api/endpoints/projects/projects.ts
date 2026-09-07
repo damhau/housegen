@@ -24,6 +24,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  BodyAddPlanDocument,
   BodyCreateProject,
   BodyModify,
   ChatMessageOut,
@@ -162,7 +163,10 @@ export const getCreateProjectUrl = () => {
 export const createProject = async (bodyCreateProject: BodyCreateProject, options?: RequestInit): Promise<ProjectOut> => {
     const formData = new FormData();
 formData.append(`name`, bodyCreateProject.name)
-formData.append(`plan`, bodyCreateProject.plan)
+bodyCreateProject.plans.forEach(value => formData.append(`plans`, value));
+if(bodyCreateProject.plan_labels !== undefined) {
+ bodyCreateProject.plan_labels.forEach(value => formData.append(`plan_labels`, value));
+ }
 if(bodyCreateProject.photos !== undefined) {
  bodyCreateProject.photos.forEach(value => formData.append(`photos`, value));
  }
@@ -397,6 +401,85 @@ export const useDeleteProject = <TError = HTTPValidationError,
       > => {
 
       const mutationOptions = getDeleteProjectMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Add a plan document later (the extension drawings, a survey). The next run sees it;
+when documents disagree the builder trusts the most recent one for today's state.
+ * @summary Add Plan Document
+ */
+export const getAddPlanDocumentUrl = (projectId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/plans`
+}
+
+export const addPlanDocument = async (projectId: string,
+    bodyAddPlanDocument: BodyAddPlanDocument, options?: RequestInit): Promise<ProjectOut> => {
+    const formData = new FormData();
+formData.append(`plan`, bodyAddPlanDocument.plan)
+if(bodyAddPlanDocument.label !== undefined) {
+ formData.append(`label`, bodyAddPlanDocument.label)
+ }
+
+  return httpClient<ProjectOut>(getAddPlanDocumentUrl(projectId),
+  {      
+    ...options,
+    method: 'POST'
+    ,
+    body: 
+      formData,
+  }
+);}
+
+
+
+
+export const getAddPlanDocumentMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addPlanDocument>>, TError,{projectId: string;data: BodyAddPlanDocument}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof addPlanDocument>>, TError,{projectId: string;data: BodyAddPlanDocument}, TContext> => {
+
+const mutationKey = ['addPlanDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof addPlanDocument>>, {projectId: string;data: BodyAddPlanDocument}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  addPlanDocument(projectId,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AddPlanDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof addPlanDocument>>>
+    export type AddPlanDocumentMutationBody = BodyAddPlanDocument
+    export type AddPlanDocumentMutationError = HTTPValidationError
+
+    /**
+ * @summary Add Plan Document
+ */
+export const useAddPlanDocument = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof addPlanDocument>>, TError,{projectId: string;data: BodyAddPlanDocument}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof addPlanDocument>>,
+        TError,
+        {projectId: string;data: BodyAddPlanDocument},
+        TContext
+      > => {
+
+      const mutationOptions = getAddPlanDocumentMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

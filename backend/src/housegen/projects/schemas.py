@@ -52,6 +52,18 @@ class PhotoOut(BaseModel):
     url: str
 
 
+class PlanDocumentOut(BaseModel):
+    """One plan set of the project (#10) with its rasterised sheets."""
+
+    id: str
+    number: int
+    label: str
+    original_name: str
+    pages: int
+    page_urls: list[str]
+    created_at: datetime
+
+
 class SceneVersionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -81,6 +93,8 @@ class ProjectOut(BaseModel):
     name: str
     status: str
     created_at: datetime
+    # the plan documents in order; plan_pages / plan_page_urls are all their sheets together
+    plans: list[PlanDocumentOut]
     plan_pages: int
     current_version: int
     # the owner's notes and intake answers, given to the builder on every pass

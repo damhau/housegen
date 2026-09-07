@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './bodyAddPlanDocument';
 export * from './bodyCreateProject';
 export * from './bodyModify';
 export * from './chatMessageOut';
@@ -38,6 +39,7 @@ export * from './phaseSummary';
 export * from './phaseSummaryCostUsd';
 export * from './photoOut';
 export * from './photoOutSide';
+export * from './planDocumentOut';
 export * from './projectOut';
 export * from './projectOutBrief';
 export * from './projectOutIntake';

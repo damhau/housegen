@@ -14,6 +14,7 @@ from housegen.core.db import dispose_db, init_db
 from housegen.core.exceptions import register_exception_handlers
 from housegen.core.logging import RequestLoggingMiddleware, configure_logging
 from housegen.jobs.manager import job_manager
+from housegen.projects.migrations import migrate_plans
 from housegen.render.renderer import renderer
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "data_dir": str(settings.DATA_DIR),
         },
     )
+    await migrate_plans(settings.projects_dir)  # one-off: plan.pdf + plan/ → plans/1/ (#10)
     # jobs the previous process left behind (deploy, reload, crash) continue with the same id
     resumed = await resume_interrupted_jobs(job_manager)
     if resumed:

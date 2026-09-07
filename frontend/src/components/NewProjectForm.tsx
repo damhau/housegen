@@ -19,7 +19,8 @@ export function NewProjectForm() {
   const generate = useGenerate()
   const intake = useIntake()
   const [name, setName] = useState("")
-  const [plan, setPlan] = useState<File | null>(null)
+  // one or more plan documents (the 1935 original, the 2024 survey…), each with an optional label
+  const [plans, setPlans] = useState<{ file: File; label: string }[]>([])
   const [facades, setFacades] = useState<Partial<Record<Side, File>>>({})
   const [extras, setExtras] = useState<File[]>([])
   const [notes, setNotes] = useState("")
@@ -28,7 +29,13 @@ export function NewProjectForm() {
   const labelled = SIDES.filter((s) => facades[s])
   const total = labelled.length + extras.length
   const busy = create.isPending || generate.isPending || intake.isPending
-  const canSubmit = name.trim().length > 0 && plan !== null && !busy
+  const canSubmit = name.trim().length > 0 && plans.length > 0 && !busy
+
+  function addPlans(files: FileList | null) {
+    if (!files) return
+    const picked = Array.from(files).filter((f) => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"))
+    setPlans((prev) => [...prev, ...picked.map((file) => ({ file, label: "" }))])
+  }
 
   const extraUrls = useMemo(() => extras.map((f) => URL.createObjectURL(f)), [extras])
 
@@ -40,7 +47,7 @@ export function NewProjectForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!plan) return
+    if (plans.length === 0) return
     setError(null)
     try {
       const photos = [...labelled.map((s) => facades[s]!), ...extras]
@@ -50,7 +57,8 @@ export function NewProjectForm() {
       const project = await create.mutateAsync({
         data: {
           name: name.trim(),
-          plan: plan as unknown as string,
+          plans: plans.map((p) => p.file) as unknown as string[],
+          plan_labels: plans.some((p) => p.label.trim()) ? plans.map((p) => p.label.trim()) : undefined,
           photos: photos as unknown as string[],
           sides,
           notes: notes.trim(),
@@ -76,20 +84,45 @@ export function NewProjectForm() {
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Villa Rosemont" required />
           </label>
 
-          <label className="grid gap-1.5 text-sm">
+          <div className="grid gap-1.5 text-sm">
             <span className="font-medium">Plans (PDF)</span>
-            <div
+            <label
               className={cn(
                 "flex cursor-pointer items-center gap-3 rounded-md border border-dashed px-3 py-3 text-sm",
-                plan ? "border-primary/50 bg-accent/40" : "border-input hover:bg-accent/30",
+                plans.length > 0 ? "border-primary/50 bg-accent/40" : "border-input hover:bg-accent/30",
               )}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault()
+                addPlans(e.dataTransfer.files)
+              }}
             >
               <FileText className="size-4 shrink-0 text-muted-foreground" />
-              <span className="min-w-0 flex-1 truncate">{plan ? plan.name : "Floor plans, elevations, sections, site plan"}</span>
-              <input type="file" accept="application/pdf" className="hidden" onChange={(e) => setPlan(e.target.files?.[0] ?? null)} />
+              <span className="min-w-0 flex-1 truncate">
+                {plans.length === 0 ? "Floor plans, elevations, sections, site plan" : `${plans.length} document${plans.length > 1 ? "s" : ""}`}
+                <span className="text-muted-foreground"> · one or more PDFs (the original set, an extension, a survey)</span>
+              </span>
+              <input type="file" accept="application/pdf" multiple className="hidden" onChange={(e) => addPlans(e.target.files)} />
               <span className="text-xs text-primary underline-offset-2 hover:underline">choose</span>
-            </div>
-          </label>
+            </label>
+            {plans.map((p, i) => (
+              <div key={`${p.file.name}-${i}`} className="flex items-center gap-2 text-xs">
+                <span className="min-w-0 flex-1 truncate">
+                  {i + 1}. {p.file.name}
+                </span>
+                <input
+                  value={p.label}
+                  onChange={(e) => setPlans((prev) => prev.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)))}
+                  placeholder="label, e.g. original 1935"
+                  className="h-7 w-44 rounded-md border bg-background px-2 text-xs"
+                />
+                <button type="button" aria-label="Remove document" className="rounded p-0.5 text-muted-foreground hover:bg-accent" onClick={() => setPlans((prev) => prev.filter((_, k) => k !== i))}>
+                  <X className="size-3.5" />
+                </button>
+              </div>
+            ))}
+            {plans.length > 1 && <p className="text-xs text-muted-foreground">Where documents disagree, the last one describes the house as it is today (say otherwise in the notes).</p>}
+          </div>
 
           <div className="grid gap-1.5 text-sm">
             <span className="font-medium">

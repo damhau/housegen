@@ -4,6 +4,7 @@
  * housegen
  * OpenAPI spec version: 0.1.0
  */
+import type { PlanDocumentOut } from './planDocumentOut';
 import type { ProjectOutBrief } from './projectOutBrief';
 import type { ProjectOutIntake } from './projectOutIntake';
 import type { RunSettings } from './runSettings';
@@ -16,6 +17,7 @@ export interface ProjectOut {
   name: string;
   status: string;
   created_at: string;
+  plans: PlanDocumentOut[];
   plan_pages: number;
   current_version: number;
   brief: ProjectOutBrief;

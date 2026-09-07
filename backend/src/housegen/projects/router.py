@@ -32,6 +32,7 @@ from housegen.projects.schemas import (
     JobEventOut,
     JobOut,
     PhotoOut,
+    PlanDocumentOut,
     ProjectOut,
     ProjectSummaryOut,
     SceneFileOut,
@@ -72,6 +73,18 @@ def _project_out(project: Project) -> ProjectOut:
         name=project.name,
         status=project.status,
         created_at=project.created_at,
+        plans=[
+            PlanDocumentOut(
+                id=d.id,
+                number=d.number,
+                label=d.label,
+                original_name=d.original_name,
+                pages=d.pages,
+                page_urls=[st.plan_page_url(d.number, i + 1) for i in range(d.pages)],
+                created_at=d.created_at,
+            )
+            for d in project.plans
+        ],
         plan_pages=project.plan_pages,
         current_version=project.current_version,
         brief=project.brief,
@@ -102,7 +115,9 @@ def _project_out(project: Project) -> ProjectOut:
             for v in project.versions
         ],
         scene_url=st.scene_url(),
-        plan_page_urls=st.plan_page_urls(project.plan_pages),
+        plan_page_urls=[
+            st.plan_page_url(d.number, i + 1) for d in project.plans for i in range(d.pages)
+        ],
     )
 
 
@@ -126,13 +141,41 @@ async def list_projects(session: DbSession) -> list[ProjectSummaryOut]:
     return out
 
 
+def _is_pdf(upload: UploadFile) -> bool:
+    return upload.content_type in ("application/pdf", "application/x-pdf") or (
+        upload.filename or ""
+    ).lower().endswith(".pdf")
+
+
+async def _add_plan(
+    session: DbSession, project: Project, st: ProjectStorage, upload: UploadFile, label: str
+) -> None:
+    """Store one plan document under plans/<n>/ and rasterise its sheets (#10)."""
+    if not _is_pdf(upload):
+        raise InvalidInputError(f"'{upload.filename}' is not a PDF")
+    n = st.next_plan_document()
+    st.plan_dir(n).mkdir(parents=True, exist_ok=True)
+    st.plan_pdf(n).write_bytes(await upload.read())
+    try:
+        pages = await anyio.to_thread.run_sync(st.rasterize_plan, n)
+    except Exception as e:
+        logger.exception("projects.plan.rasterize_failed", extra={"project_id": project.id})
+        shutil.rmtree(st.plan_dir(n), ignore_errors=True)
+        raise InvalidInputError(f"could not read the PDF '{upload.filename}': {e}") from e
+    await crud.add_plan_document(session, project, n, label, upload.filename or "", pages)
+
+
 @router.post("", status_code=201)
 async def create_project(
     session: DbSession,
     name: Annotated[str, Form(min_length=1, max_length=200)],
-    plan: Annotated[UploadFile, File(description="PDF plan set")],
-    # plain lists with an empty default (not `| None`): the generated client only knows how
-    # to put an array of files in the multipart body
+    # one or more PDF plan sets (the 1935 original, the 2024 survey…), with an optional label
+    # each, same order. Plain lists with an empty default (not `| None`): the generated
+    # client only knows how to put an array of files in the multipart body
+    plans: Annotated[list[UploadFile], File(description="PDF plan set(s)")],
+    plan_labels: Annotated[
+        list[str], Form(description="label per plan document, same order (optional)")
+    ] = [],  # noqa: B006
     photos: Annotated[
         list[UploadFile],
         File(description="photos of the house (optional: without any, the plans are read first)"),
@@ -149,10 +192,13 @@ async def create_project(
         ),
     ] = "",
 ) -> ProjectOut:
-    if plan.content_type not in ("application/pdf", "application/x-pdf") and not (
-        plan.filename or ""
-    ).lower().endswith(".pdf"):
-        raise InvalidInputError("plan must be a PDF")
+    if not plans:
+        raise InvalidInputError("at least one PDF plan set is required")
+    for up in plans:
+        if not _is_pdf(up):
+            raise InvalidInputError(f"'{up.filename}' is not a PDF")
+    if plan_labels and len(plan_labels) != len(plans):
+        raise InvalidInputError("one label per plan document (or none)")
     if len(photos) != len(sides):
         raise InvalidInputError("one side label per photo is required")
     for s in sides:
@@ -168,7 +214,6 @@ async def create_project(
     project = await crud.create_project(session, name, brief=notes.strip() or None)
     st = ProjectStorage(project.id)
     st.ensure()
-    st.plan_pdf.write_bytes(await plan.read())
     for i, (photo, side) in enumerate(zip(photos, sides, strict=True)):
         if not (photo.content_type or "").startswith("image/"):
             raise InvalidInputError(f"'{photo.filename}' is not an image")
@@ -181,12 +226,12 @@ async def create_project(
             raise InvalidInputError(f"could not read the photo '{photo.filename}': {e}") from e
         await crud.add_photo(session, project, side, filename, photo.filename or filename)
     try:
-        project.plan_pages = await anyio.to_thread.run_sync(st.rasterize_plan)
-    except Exception as e:
-        logger.exception("projects.plan.rasterize_failed", extra={"project_id": project.id})
+        for k, up in enumerate(plans):
+            await _add_plan(session, project, st, up, plan_labels[k] if plan_labels else "")
+    except InvalidInputError:
         await session.rollback()
         shutil.rmtree(st.root, ignore_errors=True)
-        raise InvalidInputError(f"could not read the PDF: {e}") from e
+        raise
     st.init_scene_from_template()
     await session.commit()
     await session.refresh(project)
@@ -199,6 +244,24 @@ async def create_project(
 @router.get("/{project_id}")
 async def get_project(session: DbSession, project_id: str) -> ProjectOut:
     return _project_out(await crud.get_project(session, project_id))
+
+
+@router.post("/{project_id}/plans", status_code=201)
+async def add_plan_document(
+    session: DbSession,
+    project_id: str,
+    plan: Annotated[UploadFile, File(description="PDF plan set")],
+    label: Annotated[str, Form(max_length=200)] = "",
+) -> ProjectOut:
+    """Add a plan document later (the extension drawings, a survey). The next run sees it;
+    when documents disagree the builder trusts the most recent one for today's state."""
+    project = await crud.get_project(session, project_id)
+    st = ProjectStorage(project_id)
+    st.ensure()
+    await _add_plan(session, project, st, plan, label)
+    await session.commit()
+    await session.refresh(project)
+    return _project_out(project)
 
 
 @router.delete("/{project_id}", status_code=204)

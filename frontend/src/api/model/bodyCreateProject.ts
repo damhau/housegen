@@ -11,8 +11,10 @@ export interface BodyCreateProject {
    * @maxLength 200
    */
   name: string;
-  /** PDF plan set */
-  plan: string;
+  /** PDF plan set(s) */
+  plans: string[];
+  /** label per plan document, same order (optional) */
+  plan_labels?: string[];
   /** photos of the house (optional: without any, the plans are read first) */
   photos?: string[];
   /** side per photo, same order: north|south|east|west|other */

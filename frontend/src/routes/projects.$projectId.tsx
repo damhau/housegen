@@ -23,6 +23,7 @@ import { BuildingPlaceholder } from "@/components/BuildingPlaceholder"
 import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
 import { ConversationPanel } from "@/components/ConversationPanel"
+import { PlansPanel } from "@/components/PlansPanel"
 import { fmtUsd } from "@/components/RunSummaryCard"
 import { SceneViewer } from "@/components/SceneViewer"
 import { SettingsSheet } from "@/components/SettingsSheet"
@@ -34,7 +35,7 @@ import { StatusBadge } from "@/routes/index"
 
 export const Route = createFileRoute("/projects/$projectId")({ component: ProjectPage })
 
-type Tab = "conversation" | "compare" | "versions" | "code"
+type Tab = "conversation" | "compare" | "plans" | "versions" | "code"
 
 /** "m:ss" since an ISO timestamp, ticking every second; null when no timestamp. */
 function useElapsed(sinceIso: string | null) {
@@ -203,6 +204,7 @@ function ProjectPage() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "conversation", label: "Conversation" },
     { id: "compare", label: hasPhotos ? "Photo vs render" : "Plan vs render" },
+    { id: "plans", label: `Plans (${p.plans.length})` },
     { id: "versions", label: `Versions (${p.versions.length})` },
     { id: "code", label: "Code" },
   ]
@@ -317,6 +319,7 @@ function ProjectPage() {
               />
             )}
             {tab === "compare" && <ComparePanel photos={p.photos} version={version} planPageUrls={p.plan_page_urls} intake={p.intake} />}
+            {tab === "plans" && <PlansPanel project={p} busy={busy} />}
             {tab === "versions" && (
               <VersionList
                 versions={p.versions}

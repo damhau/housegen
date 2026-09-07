@@ -44,6 +44,12 @@ class Project(Base):
     photos: Mapped[list[Photo]] = relationship(
         back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )
+    plans: Mapped[list[PlanDocument]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        order_by="PlanDocument.number",
+    )
     versions: Mapped[list[SceneVersion]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
@@ -64,6 +70,24 @@ class Photo(Base):
     original_name: Mapped[str] = mapped_column(String(300))
 
     project: Mapped[Project] = relationship(back_populates="photos")
+
+
+class PlanDocument(Base):
+    """One uploaded plan set (PDF) of a project (#10): the 1935 original, the 2024 survey…"""
+
+    __tablename__ = "plan_documents"
+
+    id: Mapped[str] = mapped_column(String(16), primary_key=True, default=_uid)
+    project_id: Mapped[str] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    number: Mapped[int] = mapped_column(Integer)  # 1-based, upload order; plans/<number>/
+    label: Mapped[str] = mapped_column(String(200), default="")
+    original_name: Mapped[str] = mapped_column(String(300), default="")
+    pages: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+
+    project: Mapped[Project] = relationship(back_populates="plans")
 
 
 class SceneVersion(Base):
