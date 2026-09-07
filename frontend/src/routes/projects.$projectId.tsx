@@ -16,6 +16,7 @@ import {
   useRestoreVersion,
   useFixVersion,
 } from "@/api/endpoints/projects/projects"
+import { BuildingPlaceholder } from "@/components/BuildingPlaceholder"
 import { ChatPanel } from "@/components/ChatPanel"
 import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
@@ -96,6 +97,9 @@ function ProjectPage() {
   const busy = Boolean(activeJob) || generate.isPending || modify.isPending
   const version = selectedVersion === null ? p.versions.find((v) => v.number === p.current_version) : p.versions.find((v) => v.number === selectedVersion)
   const sceneUrl = selectedVersion === null || !version ? p.scene_url : version.scene_url
+  // no version yet: the working copy is only the kit's template box, don't show it as "the house"
+  const hasScene = p.current_version > 0 || p.versions.length > 0
+  const failedMessage = !activeJob && latestJob?.status === "failed" ? (latestJob.error ?? "the run failed") : null
 
   async function onSend(text: string) {
     await modify.mutateAsync({ projectId, data: { message: text } })
@@ -178,7 +182,22 @@ function ProjectPage() {
       </div>
 
       <div className="grid min-h-0 gap-3 lg:grid-cols-[1fr_420px]">
-        <SceneViewer sceneUrl={sceneUrl} reloadKey={`${reloadKey}-${selectedVersion ?? "c"}`} className="min-h-[420px]" />
+        <SceneViewer
+          sceneUrl={hasScene ? sceneUrl : null}
+          reloadKey={`${reloadKey}-${selectedVersion ?? "c"}`}
+          className="min-h-[420px]"
+          placeholder={
+            <BuildingPlaceholder
+              running={Boolean(activeJob)}
+              events={events}
+              progress={progress}
+              elapsed={elapsed}
+              failedMessage={failedMessage}
+              canGenerate={!busy}
+              onGenerate={() => void onGenerate()}
+            />
+          }
+        />
         <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border bg-card">
           <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b p-1">
             {tabs.map((t) => (

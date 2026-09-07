@@ -1,22 +1,40 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 const VIEWS = ["north", "east", "south", "west", "aerial"] as const
 
-export function SceneViewer({ sceneUrl, reloadKey, className }: { sceneUrl: string; reloadKey?: string | number; className?: string }) {
+const CHROME = "relative overflow-hidden rounded-xl border bg-[#d9e0e4]"
+
+/**
+ * The interactive three.js scene in an iframe. With `sceneUrl === null` nothing is
+ * loaded and `placeholder` is shown on the same chrome instead (project has no
+ * version yet: the workspace only holds the kit's template box).
+ */
+export function SceneViewer({
+  sceneUrl,
+  reloadKey,
+  className,
+  placeholder,
+}: {
+  sceneUrl: string | null
+  reloadKey?: string | number
+  className?: string
+  placeholder?: ReactNode
+}) {
   const ref = useRef<HTMLIFrameElement>(null)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [finalLook, setFinalLook] = useState(true)
   const [effectsDropped, setEffectsDropped] = useState(false)
-  const src = `${sceneUrl}?quality=${finalLook ? "high" : "medium"}&view=southeast&r=${reloadKey ?? ""}`
+  const src = sceneUrl === null ? null : `${sceneUrl}?quality=${finalLook ? "high" : "medium"}&view=southeast&r=${reloadKey ?? ""}`
 
   useEffect(() => {
     setReady(false)
     setError(null)
     setEffectsDropped(false)
+    if (src === null) return
     const onMsg = (e: MessageEvent) => {
       if (e.source !== ref.current?.contentWindow) return
       const d = e.data as { type?: string; message?: string; enabled?: boolean }
@@ -32,8 +50,10 @@ export function SceneViewer({ sceneUrl, reloadKey, className }: { sceneUrl: stri
     ref.current?.contentWindow?.postMessage({ type: "house:setView", view }, "*")
   }
 
+  if (src === null) return <div className={cn(CHROME, className)}>{placeholder}</div>
+
   return (
-    <div className={cn("relative overflow-hidden rounded-xl border bg-[#d9e0e4]", className)}>
+    <div className={cn(CHROME, className)}>
       <iframe ref={ref} key={src} src={src} title="3D scene" className="size-full border-0" />
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3">
         <div className="pointer-events-auto flex gap-1 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
