@@ -217,7 +217,8 @@ function JobBlock({
 }) {
   const { job, userMsg, assistantMsg, version } = turn
   const followed = liveJob.jobId === job.id
-  const running = job.status === "running" || job.status === "queued"
+  // interrupted = the server is restarting and will resume it with the same id: still in progress
+  const running = job.status === "running" || job.status === "queued" || job.status === "interrupted"
   const [open, setOpen] = useState(followed)
   useEffect(() => {
     if (followed && running) setOpen(true)
@@ -252,7 +253,9 @@ function JobBlock({
           aria-expanded={open}
         >
           {open ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronRight className="size-3.5 shrink-0" />}
-          {running ? (
+          {job.status === "interrupted" ? (
+            <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+          ) : running ? (
             <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
           ) : job.status === "failed" ? (
             <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
@@ -263,7 +266,7 @@ function JobBlock({
           )}
           <span className="font-medium">
             {KIND_LABEL[job.kind] ?? job.kind}
-            {running ? " in progress" : job.status === "failed" ? " failed" : ""}
+            {job.status === "interrupted" ? " waiting for the server" : running ? " in progress" : job.status === "failed" ? " failed" : ""}
           </span>
           <span className="text-muted-foreground">
             {running && followed && liveJob.elapsed ? <span className="font-mono tabular-nums">{liveJob.elapsed}</span> : duration(job)}

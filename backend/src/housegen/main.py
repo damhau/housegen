@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from housegen.agent.pipeline import resume_interrupted_jobs
 from housegen.api.v1 import router as api_router
 from housegen.core.config import get_settings
 from housegen.core.db import dispose_db, init_db
@@ -34,6 +35,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             "data_dir": str(settings.DATA_DIR),
         },
     )
+    # jobs the previous process left behind (deploy, reload, crash) continue with the same id
+    resumed = await resume_interrupted_jobs(job_manager)
+    if resumed:
+        logger.info("app.resumed_jobs", extra={"count": resumed})
     yield
     await job_manager.shutdown()
     await renderer.close()

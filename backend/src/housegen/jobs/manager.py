@@ -61,8 +61,11 @@ class JobManager:
     def __init__(self) -> None:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._subscribers: dict[str, list[asyncio.Queue[Event | None]]] = {}
+        self._shutting_down = False
 
     def submit(self, job_id: str, project_id: str, body: JobBody) -> None:
+        """Run `body` for the job. The same job id may be submitted again after a restart:
+        the event sequence continues where the persisted events stopped (#7)."""
         ctx = JobContext(self, job_id, project_id)
         task = asyncio.create_task(self._run(ctx, body), name=f"job-{job_id}")
         self._tasks[job_id] = task
@@ -70,6 +73,7 @@ class JobManager:
     async def _run(self, ctx: JobContext, body: JobBody) -> None:
         job_id = ctx.job_id
         async with session_factory()() as session, session.begin():
+            ctx._seq = await crud.last_event_seq(session, job_id)
             await crud.update_job(session, job_id, status="running")
         try:
             await body(ctx)
@@ -77,13 +81,21 @@ class JobManager:
                 await crud.update_job(session, job_id, status="done")
             logger.info("job.done", extra={"job_id": job_id})
         except asyncio.CancelledError:
+            # a graceful stop (deploy, reload) leaves the job `interrupted`: the next process
+            # resumes it with the same id. Any other cancellation is a failure.
             async with session_factory()() as session, session.begin():
-                await crud.update_job(session, job_id, status="failed", error="cancelled")
+                if self._shutting_down:
+                    await crud.update_job(session, job_id, status="interrupted")
+                    logger.info("job.interrupted", extra={"job_id": job_id})
+                else:
+                    await crud.update_job(session, job_id, status="failed", error="cancelled")
+                    await crud.settle_project_status(session, ctx.project_id)
             raise
         except Exception as exc:
             logger.exception("job.failed", extra={"job_id": job_id})
             async with session_factory()() as session, session.begin():
                 await crud.update_job(session, job_id, status="failed", error=str(exc)[:2000])
+                await crud.settle_project_status(session, ctx.project_id)
             await ctx.emit("error", message=str(exc)[:2000])
         finally:
             self._fanout(job_id, None)
@@ -130,6 +142,9 @@ class JobManager:
             yield ev
 
     async def shutdown(self) -> None:
+        """Stop every job now (a deploy cannot wait 40 min for a build): they are marked
+        `interrupted` and resumed by the next process, see `pipeline.resume_interrupted_jobs`."""
+        self._shutting_down = True
         for t in list(self._tasks.values()):
             t.cancel()
         await asyncio.gather(*self._tasks.values(), return_exceptions=True)

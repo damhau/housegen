@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { Download, Loader2, Play, Trash2 } from "lucide-react"
+import { Download, Loader2, Play, RefreshCw, Trash2 } from "lucide-react"
 import {
   getChatHistoryQueryKey,
   getGetProjectQueryKey,
@@ -46,6 +46,22 @@ function useElapsed(sinceIso: string | null) {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`
 }
 
+/**
+ * "Server is restarting, reconnecting…": true once the job stream has been broken, or the
+ * page's queries have been failing, for more than a few seconds; false again on the next
+ * successful event or response.
+ */
+function useReconnecting(disconnectedSince: number | null, failures: number) {
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    if (disconnectedSince === null && failures === 0) return
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [disconnectedSince, failures])
+  if (failures >= 2) return true
+  return disconnectedSince !== null && now - disconnectedSince > 5000
+}
+
 function ProjectPage() {
   const { projectId } = Route.useParams()
   const qc = useQueryClient()
@@ -64,8 +80,12 @@ function ProjectPage() {
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
 
-  // the job to follow: the most recent one that is still running, else the most recent one at all
-  const activeJob = useMemo(() => jobs.data?.find((j) => j.status === "running" || j.status === "queued") ?? null, [jobs.data])
+  // the job to follow: the most recent one that is still running (or interrupted by a server
+  // restart: it resumes with the same id), else the most recent one at all
+  const activeJob = useMemo(
+    () => jobs.data?.find((j) => j.status === "running" || j.status === "queued" || j.status === "interrupted") ?? null,
+    [jobs.data],
+  )
   const latestJob = jobs.data?.[0] ?? null
   const followed = activeJob ?? latestJob
 
@@ -76,8 +96,9 @@ function ProjectPage() {
     void qc.invalidateQueries({ queryKey: getListProjectsQueryKey() })
     setReloadKey((k) => k + 1)
   }
-  const { events, live, progress, liveText, liveThought } = useJobStream(projectId, followed?.id, refreshAll)
+  const { events, live, progress, liveText, liveThought, disconnectedSince } = useJobStream(projectId, followed?.id, refreshAll)
   const elapsed = useElapsed(activeJob?.created_at ?? null)
+  const reconnecting = useReconnecting(disconnectedSince, project.failureCount + jobs.failureCount)
 
   // reload the viewer whenever a version lands mid-job
   const versionEvents = events.filter((e) => e.type === "version").length
@@ -174,6 +195,12 @@ function ProjectPage() {
 
   return (
     <div className="grid h-full grid-rows-[auto_1fr] gap-3 p-3">
+      <div className="grid gap-2">
+      {reconnecting && (
+        <div role="status" className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+          <RefreshCw className="size-3.5 animate-spin" /> Server is restarting, reconnecting… {activeJob ? "The running job continues where it was." : ""}
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <Link to="/" className="text-sm text-muted-foreground hover:underline">
           Projects
@@ -212,6 +239,7 @@ function ProjectPage() {
             <Trash2 />
           </Button>
         </div>
+      </div>
       </div>
 
       <div className="grid min-h-0 gap-3 lg:grid-cols-[1fr_420px]">

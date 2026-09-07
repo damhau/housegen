@@ -3,13 +3,19 @@
 intake:    read the plan sheets (no photographs) → summary, sheet map, questions for the owner
 generate:  builder(plans [+ photos] [+ brief], self-assessing via renders) → [critic ⇄ builder]* → version
 modify:    builder(request) → verifier → [builder]? → version
+resume:    after a server restart, continue an interrupted job from its files (#7)
+
+generate and modify are written as stages (build → critic rounds, apply → verify → fix) so that
+`resume` can enter them at the stage the persisted events show was in progress.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import re
 import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -22,15 +28,17 @@ from housegen.agent.prompts import (
     FIRST_RUN_ADDENDUM,
     MODIFY_ADDENDUM,
     PLAN_ONLY_ADDENDUM,
+    RESUME_ADDENDUM,
 )
 from housegen.agent.schemas import Critique, Intake
 from housegen.agent.tools import BuilderTools, ImageSources
 from housegen.agent.workspace import Workspace
-from housegen.core.config import get_settings
+from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
-from housegen.jobs.manager import JobContext
+from housegen.jobs.manager import JobContext, JobManager
 from housegen.llm import ImagePart, Message, Usage, get_provider
 from housegen.projects import crud
+from housegen.projects.models import Job
 from housegen.projects.schemas import standard_views
 from housegen.projects.storage import ProjectStorage
 from housegen.render.renderer import renderer
@@ -38,6 +46,41 @@ from housegen.render.renderer import renderer
 logger = logging.getLogger(__name__)
 
 BRIEF_HEADING = "## About this house, from the owner"
+# a job interrupted this many times is given up on: a crash loop must not burn money forever
+RESUME_MAX_ATTEMPTS = 3
+# the renders shown to a resumed builder (the whole standard set would be nine images)
+RESUME_VIEWS = ("aerial", "north", "south", "east", "west")
+
+
+@dataclass
+class _Inputs:
+    """What the builder and the critic are given: the project's files as stored."""
+
+    photos: dict[str, Path]
+    extras: list[Path]
+    pages: list[Path]
+    brief: str
+    intake: Intake | None
+
+    @property
+    def has_photos(self) -> bool:
+        return bool(self.photos or self.extras)
+
+    @property
+    def elevations(self) -> dict[str, int]:
+        # (a sheet number the intake got wrong must not fail the run after version 1 is saved)
+        return {
+            side: page
+            for side, page in (self.intake.elevation_pages() if self.intake else {}).items()
+            if 1 <= page <= len(self.pages)
+        }
+
+    @property
+    def reference(self) -> str | None:
+        """What the critic compares the renders with, or None when there is nothing."""
+        if self.has_photos:
+            return "photos"
+        return "elevation drawings" if self.elevations else None
 
 
 class _Run:
@@ -106,6 +149,15 @@ class _Run:
                 else None
             )
         return brief, intake
+
+    async def inputs(self) -> _Inputs:
+        """Load the project's files and point the tools and the version views at them."""
+        photos, extras = await self.photos()
+        brief, intake = await self.context()
+        inp = _Inputs(photos, extras, self.storage.plan_page_paths(), brief, intake)
+        self.views = standard_views(inp.has_photos)
+        self.set_image_sources(photos, extras)
+        return inp
 
     async def render_standard(self) -> dict[str, Path]:
         res = await renderer.render(self.scene_url, self.views, self.renders_dir, quality="high")
@@ -198,6 +250,15 @@ class _Run:
         logger.info("run.usage", extra=fields)
         await self.ctx.emit("usage", **fields)
 
+    def current_renders(self, views: tuple[str, ...] = RESUME_VIEWS) -> list[ImagePart]:
+        """The latest renders of the working copy, for a builder that has no conversation."""
+        out: list[ImagePart] = []
+        for view in views:
+            p = self.renders_dir / f"{view}.jpg"
+            if p.exists():
+                out.append(ImagePart.from_file(p, label=f"Current render — {view}"))
+        return out
+
 
 # --------------------------------------------------------------------------
 # intake
@@ -258,16 +319,10 @@ async def intake(ctx: JobContext) -> None:
 
 async def generate(ctx: JobContext) -> None:
     run = _Run(ctx)
-    s = run.settings
     pid = ctx.project_id
     async with session_factory()() as session, session.begin():
         await crud.set_status(session, pid, "generating")
-    photos, extras = await run.photos()
-    pages = run.storage.plan_page_paths()
-    brief, intake = await run.context()
-    has_photos = bool(photos or extras)
-    run.views = standard_views(has_photos)
-    run.set_image_sources(photos, extras)
+    inp = await run.inputs()
 
     # 1. builder: reads the plans (and photos) itself, renders, self-corrects
     run.storage.init_scene_from_template(force=True)
@@ -276,80 +331,88 @@ async def generate(ctx: JobContext) -> None:
         name="builder",
         message=(
             "Reading the plans and photos, building the scene"
-            if has_photos
+            if inp.has_photos
             else "Reading the plans, building the scene"
         ),
     )
-    messages = [Message.user(*_first_message(photos, extras, pages, brief, intake))]
+    messages = [Message.user(*_first_message(inp))]
     summary = await run.build(messages)
     renders = await run.render_standard()
     version = await run.snapshot("generation", "Initial build", summary, None, renders)
 
-    # 2. independent critic (optional, CRITIC_MAX_ITERATIONS=0 disables): against the photos,
-    #    or against the elevation drawings the intake identified when there are none
-    score: int | None = None
-    # (a sheet number the intake got wrong must not fail the run after version 1 is saved)
-    elevations = {
-        side: page
-        for side, page in (intake.elevation_pages() if intake else {}).items()
-        if 1 <= page <= len(pages)
-    }
-    reference = "photos" if has_photos else "elevation drawings" if elevations else None
-    if reference is None and s.CRITIC_MAX_ITERATIONS > 0:
+    # 2. independent critic (optional, CRITIC_MAX_ITERATIONS=0 disables)
+    await _critic_rounds(run, inp, messages, renders, version, summary)
+
+
+async def _critic_rounds(
+    run: _Run,
+    inp: _Inputs,
+    messages: list[Message],
+    renders: dict[str, Path],
+    version: int,
+    summary: str,
+    start: int = 1,
+    judged: Critique | None = None,
+) -> None:
+    """Critic rounds `start`… against the photos, or against the elevation drawings the intake
+    identified when there are none; then the run's closing bookkeeping.
+
+    `judged` (resume): round `start` was already judged by the interrupted process and its
+    verdict persisted; the builder's fix pass is what was lost.
+    """
+    ctx, s, pid = run.ctx, run.settings, run.ctx.project_id
+    score: int | None = judged.overall_score if judged else None
+    reference = inp.reference
+    if reference is None and s.CRITIC_MAX_ITERATIONS > 0 and start == 1:
         logger.info("critic.skipped", extra={"project_id": pid, "reason": "no reference"})
         await ctx.emit(
             "phase",
             name="critic",
             message="Independent review skipped: no photographs and no elevation sheet to compare with",
         )
-    for i in range(1, (s.CRITIC_MAX_ITERATIONS if reference else 0) + 1):
-        await ctx.emit(
-            "phase",
-            name="critic",
-            message=f"Independent review against the {reference} (round {i})",
-        )
-        async with LiveProgress(ctx, "critic", show_text=False) as live:
-            if has_photos:
-                verdict, usage = await critic.critique_against_photos(
-                    run.provider,
-                    s.resolve_model("critic"),
-                    photos,
-                    renders,
-                    s.CRITIC_SCORE_THRESHOLD,
-                    s.LLM_MAX_TOKENS,
-                    extras=extras,
-                    on_progress=live.on_event,
-                    effort=s.CRITIC_EFFORT,
-                )
-            else:
-                verdict, usage = await critic.critique_against_plans(
-                    run.provider,
-                    s.resolve_model("critic"),
-                    elevations,
-                    pages,
-                    renders,
-                    s.CRITIC_SCORE_THRESHOLD,
-                    s.LLM_MAX_TOKENS,
-                    on_progress=live.on_event,
-                    effort=s.CRITIC_EFFORT,
-                )
-        run.add_critic_usage(usage)
-        score = verdict.overall_score
-        await _emit_critic(ctx, i, verdict)
-        await run.set_version_critique(version, verdict)
-        no_major = not any(x.severity == "major" for x in verdict.issues)
-        if verdict.done or (score >= s.CRITIC_SCORE_THRESHOLD and no_major):
-            break
-        if i == s.CRITIC_MAX_ITERATIONS:
+    rounds = s.CRITIC_MAX_ITERATIONS if reference else 0
+    for i in range(start, rounds + 1):
+        if judged is not None and i == start:
+            verdict = judged
+        else:
+            await ctx.emit(
+                "phase",
+                name="critic",
+                message=f"Independent review against the {reference} (round {i})",
+            )
+            async with LiveProgress(ctx, "critic", show_text=False) as live:
+                if inp.has_photos:
+                    verdict, usage = await critic.critique_against_photos(
+                        run.provider,
+                        s.resolve_model("critic"),
+                        inp.photos,
+                        renders,
+                        s.CRITIC_SCORE_THRESHOLD,
+                        s.LLM_MAX_TOKENS,
+                        extras=inp.extras,
+                        on_progress=live.on_event,
+                        effort=s.CRITIC_EFFORT,
+                    )
+                else:
+                    verdict, usage = await critic.critique_against_plans(
+                        run.provider,
+                        s.resolve_model("critic"),
+                        inp.elevations,
+                        inp.pages,
+                        renders,
+                        s.CRITIC_SCORE_THRESHOLD,
+                        s.LLM_MAX_TOKENS,
+                        on_progress=live.on_event,
+                        effort=s.CRITIC_EFFORT,
+                    )
+            run.add_critic_usage(usage)
+            score = verdict.overall_score
+            await _emit_critic(ctx, i, verdict)
+            await run.set_version_critique(version, verdict)
+        if _verdict_ends_rounds(verdict, i, s):
             break
         await ctx.emit("phase", name="builder", message=f"Fixing the critic's findings (round {i})")
-        messages.append(
-            Message.user(
-                f"An independent critic compared your renders with the {reference}. Address the "
-                "points below, most impactful first, verify with renders, run check_scene, "
-                "then finish.\n\n" + verdict.as_builder_feedback()
-            )
-        )
+        messages.append(Message.user(_critic_feedback_text(reference or "photos", verdict)))
         summary = await run.build(messages)
         renders = await run.render_standard()
         version = await run.snapshot("critique", f"After critic round {i}", summary, None, renders)
@@ -361,18 +424,34 @@ async def generate(ctx: JobContext) -> None:
     await ctx.emit("done", version=version, score=score, summary=summary, **run.finish_extras())
 
 
+def _verdict_ends_rounds(verdict: Critique, iteration: int, s: Settings) -> bool:
+    no_major = not any(x.severity == "major" for x in verdict.issues)
+    if verdict.done or (verdict.overall_score >= s.CRITIC_SCORE_THRESHOLD and no_major):
+        return True
+    return iteration >= s.CRITIC_MAX_ITERATIONS
+
+
+def _critic_feedback_text(reference: str, verdict: Critique) -> str:
+    return (
+        f"An independent critic compared your renders with the {reference}. Address the "
+        "points below, most impactful first, verify with renders, run check_scene, "
+        "then finish.\n\n" + verdict.as_builder_feedback()
+    )
+
+
 def _first_message(
-    photos: dict[str, Path],
-    extras: list[Path],
-    pages: list[Path],
-    brief: str = "",
-    intake: Intake | None = None,
+    inp: _Inputs, resume_renders: list[ImagePart] | None = None
 ) -> list[ImagePart | str]:
     """The builder's first turn: the addenda, the plan sheets, the photographs (or the intake's
-    reading of the plans when there are none) and the owner's brief."""
-    has_photos = bool(photos or extras)
+    reading of the plans when there are none) and the owner's brief.
+
+    `resume_renders` (a restart, #7): the current renders replace the "placeholder scene" line.
+    """
+    photos, extras, pages = inp.photos, inp.extras, inp.pages
     parts: list[ImagePart | str] = [FIRST_RUN_ADDENDUM]
-    if has_photos:
+    if resume_renders is not None:
+        parts.append(RESUME_ADDENDUM)
+    if inp.has_photos:
         parts.append(
             "Build this house. Below are the plan sheets and the photographs. Photographs labelled "
             "with a side show that façade; the others show details, other angles or the surroundings."
@@ -386,14 +465,19 @@ def _first_message(
         parts.append(ImagePart.from_file(p, label=f"Photograph of the {side} façade"))
     for i, p in enumerate(extras, 1):
         parts.append(ImagePart.from_file(p, label=f"Additional photograph {i} of {len(extras)}"))
-    if intake is not None:
-        parts.append(intake.as_builder_text())
-    if brief:
-        parts.append(f"{BRIEF_HEADING}\n{brief}")
-    parts.append(
-        "The workspace holds a placeholder scene from a template; replace it entirely. "
-        "Start whenever you are ready."
-    )
+    if inp.intake is not None:
+        parts.append(inp.intake.as_builder_text())
+    if inp.brief:
+        parts.append(f"{BRIEF_HEADING}\n{inp.brief}")
+    if resume_renders is None:
+        parts.append(
+            "The workspace holds a placeholder scene from a template; replace it entirely. "
+            "Start whenever you are ready."
+        )
+    else:
+        parts.append("## The scene as the interrupted session left it")
+        parts.extend(resume_renders)
+        parts.append("Continue from here.")
     return parts
 
 
@@ -432,52 +516,81 @@ async def _emit_critic(ctx: JobContext, iteration: int, verdict: Critique) -> No
 
 async def modify(ctx: JobContext) -> None:
     run = _Run(ctx)
-    s = run.settings
-    pid = ctx.project_id
     async with session_factory()() as session:
         job = await crud.get_job(session, ctx.job_id)
         request = job.request_text
-        history = await crud.list_chat(session, pid)
-    photos, extras = await run.photos()
-    pages = run.storage.plan_page_paths()
-    brief, intake = await run.context()
-    has_photos = bool(photos or extras)
-    run.views = standard_views(has_photos)
-    run.set_image_sources(photos, extras)
+        history = await crud.list_chat(session, ctx.project_id)
+    inp = await run.inputs()
 
     await ctx.emit("phase", name="render", message="Rendering the current state")
     before = await run.render_standard()
-    before_copy: dict[str, Path] = {}
-    keep = run.storage.scene_dir / "renders_before"
-    keep.mkdir(exist_ok=True)
-    for v, p in before.items():
-        before_copy[v] = Path(shutil.copy2(p, keep / p.name))
+    before_copy = _keep_before_renders(run, before)
 
-    parts: list[ImagePart | str] = [MODIFY_ADDENDUM, f"## Request\n{request}"]
+    parts = _modify_message(request, history, inp, before)
+    messages = [Message.user(*parts)]
+    await _modify_apply(run, request, messages, before_copy)
+
+
+def _keep_before_renders(run: _Run, before: dict[str, Path]) -> dict[str, Path]:
+    """Copy the "before" renders aside: the working copy's renders are overwritten by the
+    builder's own render calls (and the copies survive a restart, see `resume`)."""
+    keep = run.storage.scene_dir / "renders_before"
+    shutil.rmtree(keep, ignore_errors=True)
+    keep.mkdir(exist_ok=True)
+    return {v: Path(shutil.copy2(p, keep / p.name)) for v, p in before.items()}
+
+
+def _modify_message(
+    request: str,
+    history: list[Any],
+    inp: _Inputs,
+    renders: dict[str, Path],
+    resume: bool = False,
+) -> list[ImagePart | str]:
+    parts: list[ImagePart | str] = [MODIFY_ADDENDUM]
+    if resume:
+        parts.append(RESUME_ADDENDUM)
+    parts.append(f"## Request\n{request}")
     recent = [m for m in history if m.role == "user"][-6:-1]
     if recent:
         parts.append(
             "## Earlier requests on this scene (already applied)\n"
             + "\n".join(f"- {m.content}" for m in recent)
         )
-    if brief:
-        parts.append(f"{BRIEF_HEADING}\n{brief}")
-    for side, p in photos.items():
+    if inp.brief:
+        parts.append(f"{BRIEF_HEADING}\n{inp.brief}")
+    for side, p in inp.photos.items():
         parts.append(ImagePart.from_file(p, label=f"Photograph of the {side} façade (reference)"))
-    for i, p in enumerate(extras[:8], 1):
+    for i, p in enumerate(inp.extras[:8], 1):
         parts.append(ImagePart.from_file(p, label=f"Additional photograph {i} (reference)"))
-    if not has_photos:
-        parts.extend(_elevation_sheets(intake, pages))
-    for view, p in before.items():
+    if not inp.has_photos:
+        parts.extend(_elevation_sheets(inp.intake, inp.pages))
+    for view, p in renders.items():
         if view in ("aerial", "south", "north"):
             parts.append(ImagePart.from_file(p, label=f"Current render — {view}"))
-    messages = [Message.user(*parts)]
+    return parts
 
-    await ctx.emit("phase", name="builder", message="Applying the modification")
+
+async def _modify_apply(
+    run: _Run, request: str, messages: list[Message], before: dict[str, Path]
+) -> None:
+    await run.ctx.emit("phase", name="builder", message="Applying the modification")
     summary = await run.build(messages)
     after = await run.render_standard()
     version = await run.snapshot("modification", request[:80], summary, None, after)
+    await _modify_verify(run, request, messages, before, after, version, summary)
 
+
+async def _modify_verify(
+    run: _Run,
+    request: str,
+    messages: list[Message],
+    before: dict[str, Path],
+    after: dict[str, Path],
+    version: int,
+    summary: str,
+) -> None:
+    ctx, s = run.ctx, run.settings
     if s.CRITIC_MAX_ITERATIONS > 0:
         await ctx.emit("phase", name="critic", message="Verifying the modification")
         async with LiveProgress(ctx, "critic", show_text=False) as live:
@@ -485,7 +598,7 @@ async def modify(ctx: JobContext) -> None:
                 run.provider,
                 s.resolve_model("critic"),
                 request,
-                before_copy,
+                before,
                 after,
                 s.LLM_MAX_TOKENS,
                 on_progress=live.on_event,
@@ -493,28 +606,251 @@ async def modify(ctx: JobContext) -> None:
             )
         run.add_critic_usage(usage)
         await _emit_critic(ctx, 1, verdict)
-        if not verdict.done and verdict.issues:
-            await ctx.emit("phase", name="builder", message="Fixing what the verifier flagged")
-            messages.append(
-                Message.user(
-                    "A verifier compared before/after renders against the request. Address these "
-                    "points, render to verify, run check_scene, then finish.\n\n"
-                    + verdict.as_builder_feedback()
-                )
-            )
-            summary = await run.build(messages)
-            after = await run.render_standard()
-            version = await run.snapshot(
-                "modification", request[:80], summary, verdict.overall_score, after
-            )
-        else:
-            await run.set_version_critique(version, verdict)
-        score: int | None = verdict.overall_score
-    else:
-        score = None
+        await _modify_after_verdict(run, request, messages, verdict, version, summary)
+        return
+    await _modify_finish(run, version, summary, None)
 
-    shutil.rmtree(keep, ignore_errors=True)
+
+async def _modify_after_verdict(
+    run: _Run,
+    request: str,
+    messages: list[Message],
+    verdict: Critique,
+    version: int,
+    summary: str,
+) -> None:
+    if not verdict.done and verdict.issues:
+        messages.append(Message.user(_verifier_feedback_text(verdict)))
+        version, summary = await _modify_fix(run, request, messages, verdict)
+    else:
+        await run.set_version_critique(version, verdict)
+    await _modify_finish(run, version, summary, verdict.overall_score)
+
+
+def _verifier_feedback_text(verdict: Critique) -> str:
+    return (
+        "A verifier compared before/after renders against the request. Address these "
+        "points, render to verify, run check_scene, then finish.\n\n"
+        + verdict.as_builder_feedback()
+    )
+
+
+async def _modify_fix(
+    run: _Run, request: str, messages: list[Message], verdict: Critique
+) -> tuple[int, str]:
+    await run.ctx.emit("phase", name="builder", message="Fixing what the verifier flagged")
+    summary = await run.build(messages)
+    after = await run.render_standard()
+    version = await run.snapshot(
+        "modification", request[:80], summary, verdict.overall_score, after
+    )
+    return version, summary
+
+
+async def _modify_finish(run: _Run, version: int, summary: str, score: int | None) -> None:
+    shutil.rmtree(run.storage.scene_dir / "renders_before", ignore_errors=True)
     async with session_factory()() as session, session.begin():
-        await crud.add_chat_message(session, pid, "assistant", summary, ctx.job_id, version)
+        await crud.add_chat_message(
+            session, run.ctx.project_id, "assistant", summary, run.ctx.job_id, version
+        )
     await run.emit_usage()
-    await ctx.emit("done", version=version, score=score, summary=summary, **run.finish_extras())
+    await run.ctx.emit("done", version=version, score=score, summary=summary, **run.finish_extras())
+
+
+# --------------------------------------------------------------------------
+# resume (#7): continue an interrupted job from its files after a server restart
+# --------------------------------------------------------------------------
+
+
+@dataclass
+class _Progress:
+    """How far a job got, read back from its persisted events."""
+
+    last_phase: str | None = None  # name of the last `phase` event
+    last_phase_message: str = ""
+    versions: list[int] = field(default_factory=list)
+    critics: list[dict[str, Any]] = field(default_factory=list)  # completed critic rounds
+    done: bool = False
+    builder_summary: str = ""  # from the last builder_done
+    attempts: int = 0  # resumes so far
+
+    @classmethod
+    def from_events(cls, events: list[Any]) -> _Progress:
+        p = cls()
+        for ev in events:
+            payload = json.loads(ev.payload_json) if isinstance(ev.payload_json, str) else {}
+            if ev.type == "phase":
+                p.last_phase = str(payload.get("name") or "")
+                p.last_phase_message = str(payload.get("message") or "")
+            elif ev.type == "version":
+                p.versions.append(int(payload.get("number") or 0))
+            elif ev.type == "critic":
+                p.critics.append(payload)
+            elif ev.type == "builder_done":
+                p.builder_summary = str(payload.get("summary") or "")
+            elif ev.type == "done":
+                p.done = True
+            elif ev.type == "resumed":
+                p.attempts += 1
+        return p
+
+    @property
+    def fixing(self) -> bool:
+        """The builder was working on a critic's / verifier's findings."""
+        return self.last_phase == "builder" and self.last_phase_message.startswith("Fixing")
+
+    def round_number(self) -> int | None:
+        """The critic round named by the last phase ("… (round 2)"), if any."""
+        m = re.search(r"round (\d+)", self.last_phase_message)
+        return int(m.group(1)) if m else None
+
+    def last_verdict(self) -> Critique | None:
+        if not self.critics:
+            return None
+        c = self.critics[-1]
+        return Critique(
+            overall_score=int(c.get("score") or 0),
+            summary=str(c.get("summary") or ""),
+            done=bool(c.get("done")),
+            issues=c.get("issues") or [],
+        )
+
+
+async def resume_interrupted_jobs(manager: JobManager) -> int:
+    """At startup: every job the previous process left `queued`, `running` (a crash) or
+    `interrupted` (a graceful stop) is submitted again with the same id. Returns how many."""
+    async with session_factory()() as session:
+        jobs = await crud.list_unfinished_jobs(session)
+    n = 0
+    for job in jobs:
+        async with session_factory()() as session, session.begin():
+            attempts = await crud.count_job_events(session, job.id, "resumed")
+            if attempts >= RESUME_MAX_ATTEMPTS:
+                message = (
+                    f"Interrupted {attempts} times by server restarts: not resuming again. "
+                    "Start a new run to continue from the last version."
+                )
+                await crud.update_job(session, job.id, status="failed", error=message)
+                await crud.settle_project_status(session, job.project_id)
+                seq = await crud.last_event_seq(session, job.id) + 1
+                await crud.add_job_event(session, job.id, seq, "error", {"message": message})
+                logger.warning(
+                    "job.resume.given_up", extra={"job_id": job.id, "attempts": attempts}
+                )
+                continue
+        manager.submit(job.id, job.project_id, resume)
+        logger.info(
+            "job.resume", extra={"job_id": job.id, "kind": job.kind, "attempt": attempts + 1}
+        )
+        n += 1
+    return n
+
+
+async def resume(ctx: JobContext) -> None:
+    """Continue an interrupted job from the stage its events show was in progress: the files
+    the builder wrote are on disk, only its conversation is lost, so the stage's LLM step
+    is repeated with a fresh conversation that starts from the current renders."""
+    async with session_factory()() as session:
+        job = await crud.get_job(session, ctx.job_id)
+        events = await crud.list_job_events(session, ctx.job_id)
+    progress = _Progress.from_events(events)
+    if progress.done:
+        # crashed between the `done` event and the status update: nothing left to do
+        if job.kind == "generate":
+            async with session_factory()() as session, session.begin():
+                await crud.set_status(session, ctx.project_id, "ready")
+        return
+    await ctx.emit("resumed", reason="server restart", attempt=progress.attempts + 1)
+    if job.kind == "intake":
+        await intake(ctx)
+    elif job.kind == "generate":
+        await _resume_generate(ctx, progress)
+    else:
+        await _resume_modify(ctx, job, progress)
+
+
+async def _resume_generate(ctx: JobContext, progress: _Progress) -> None:
+    run = _Run(ctx)
+    async with session_factory()() as session, session.begin():
+        await crud.set_status(session, ctx.project_id, "generating")
+    inp = await run.inputs()
+    await ctx.emit("phase", name="render", message="Rendering the scene as the restart left it")
+    renders = await run.render_standard()
+    rounds_done = len(progress.critics)
+
+    if progress.last_phase == "critic" and progress.versions:
+        # the version is saved; the critic's round was lost (judge it again), or it was judged
+        # and the builder's fix pass is what was lost
+        version = progress.versions[-1]
+        summary = progress.builder_summary
+        messages = [Message.user(*_first_message(inp, resume_renders=run.current_renders()))]
+        current = progress.round_number() or rounds_done + 1
+        judged = progress.last_verdict() if rounds_done >= current else None
+        await _critic_rounds(
+            run, inp, messages, renders, version, summary, start=current, judged=judged
+        )
+        return
+
+    # the builder was working (first build or a fix round): give it the scene as it stands
+    verdict = progress.last_verdict() if progress.fixing else None
+    parts = _first_message(inp, resume_renders=run.current_renders())
+    if verdict is not None:
+        parts.append(_critic_feedback_text(inp.reference or "photos", verdict))
+    messages = [Message.user(*parts)]
+    await ctx.emit("phase", name="builder", message="Continuing the build after the restart")
+    summary = await run.build(messages)
+    renders = await run.render_standard()
+    if verdict is not None:
+        fixed = progress.round_number() or rounds_done
+        version = await run.snapshot(
+            "critique", f"After critic round {fixed}", summary, None, renders
+        )
+        await _critic_rounds(run, inp, messages, renders, version, summary, start=fixed + 1)
+    else:
+        version = await run.snapshot("generation", "Initial build", summary, None, renders)
+        await _critic_rounds(run, inp, messages, renders, version, summary)
+
+
+async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None:
+    run = _Run(ctx)
+    request = job.request_text
+    async with session_factory()() as session:
+        history = await crud.list_chat(session, ctx.project_id)
+    inp = await run.inputs()
+
+    # the "before" renders were copied aside before the builder started; when they are not
+    # there the builder had not started either, so the working copy still is the "before"
+    keep = run.storage.scene_dir / "renders_before"
+    kept = {p.stem: p for p in sorted(keep.glob("*.jpg"))} if keep.exists() else {}
+    if progress.last_phase in (None, "render") or not kept:
+        await ctx.emit("phase", name="render", message="Rendering the current state")
+        before = await run.render_standard()
+        before_copy = _keep_before_renders(run, before)
+        messages = [Message.user(*_modify_message(request, history, inp, before))]
+        await _modify_apply(run, request, messages, before_copy)
+        return
+
+    await ctx.emit("phase", name="render", message="Rendering the scene as the restart left it")
+    after = await run.render_standard()
+    verdict = progress.last_verdict()
+    if progress.last_phase == "critic" and progress.versions:
+        # the version is saved: verify it again, or act on the verdict if it was persisted
+        version = progress.versions[-1]
+        summary = progress.builder_summary
+        messages = [Message.user(*_modify_message(request, history, inp, after, resume=True))]
+        if verdict is not None:
+            await _modify_after_verdict(run, request, messages, verdict, version, summary)
+        else:
+            await _modify_verify(run, request, messages, kept, after, version, summary)
+        return
+
+    parts = _modify_message(request, history, inp, after, resume=True)
+    fixing = progress.fixing and verdict is not None
+    if fixing and verdict is not None:
+        parts.append(_verifier_feedback_text(verdict))
+    messages = [Message.user(*parts)]
+    if fixing and verdict is not None:
+        version, summary = await _modify_fix(run, request, messages, verdict)
+        await _modify_finish(run, version, summary, verdict.overall_score)
+    else:
+        await _modify_apply(run, request, messages, kept)

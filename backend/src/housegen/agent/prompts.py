@@ -110,6 +110,10 @@ MODIFY_ADDENDUM = """
 This is a modification of an existing scene. Read the current files first, change only what the request needs, keep everything else as it is, render the affected views to verify, and finish with a summary of exactly what changed.
 """.strip()
 
+RESUME_ADDENDUM = """
+A previous session on this scene was interrupted by a server restart before it finished. Its conversation is lost, but every file it wrote is in the workspace and the renders at the end of this message show the scene exactly as it stands now. Do not start over and do not reset the files: read the current modules first, judge the renders against the plans and photographs (and against the request below, if there is one), then continue from there: finish what is unfinished, fix what is wrong, biggest discrepancies first, run check_scene and call finish as usual. If the scene is already complete, verify it with renders and finish.
+""".strip()
+
 CRITIC_SYSTEM = """
 You are the critic in a plan-and-photos to 3D pipeline. For each façade you receive the real photograph and a render of the current 3D model from a photo-like camera on the same side (a person at eye level in front of the façade), plus an elevated aerial render for massing. Decide how faithfully the model represents the real house and tell the builder precisely what to fix.
 

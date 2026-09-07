@@ -11,7 +11,7 @@ import pytest
 from PIL import Image
 
 from housegen.agent import critic, intake
-from housegen.agent.pipeline import BRIEF_HEADING, _first_message
+from housegen.agent.pipeline import BRIEF_HEADING, _first_message, _Inputs
 from housegen.agent.prompts import PLAN_ONLY_ADDENDUM
 from housegen.agent.schemas import Intake
 from housegen.core.exceptions import LLMError
@@ -130,13 +130,13 @@ async def test_critic_needs_at_least_one_pair(tmp_path: Path) -> None:
 def test_first_message_without_photos_carries_the_plan_only_rules(tmp_path: Path) -> None:
     pages = [_png(tmp_path / "page-1.png")]
     parsed = Intake.model_validate(INTAKE_JSON)
-    parts = _first_message({}, [], pages, "walls: white render", parsed)
+    parts = _first_message(_Inputs({}, [], pages, "walls: white render", parsed))
     text = "\n".join(p for p in parts if isinstance(p, str))
     assert PLAN_ONLY_ADDENDUM in text
     assert "## Sheet map" in text
     assert f"{BRIEF_HEADING}\nwalls: white render" in text
 
-    with_photos = _first_message({"north": pages[0]}, [], pages, "", None)
+    with_photos = _first_message(_Inputs({"north": pages[0]}, [], pages, "", None))
     text = "\n".join(p for p in with_photos if isinstance(p, str))
     assert PLAN_ONLY_ADDENDUM not in text
     assert BRIEF_HEADING not in text

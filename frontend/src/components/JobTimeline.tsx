@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { AlertTriangle, Camera, CheckCircle2, Eye, FileCode2, Hammer, Loader2, ScanSearch, Sparkles } from "lucide-react"
+import { AlertTriangle, Camera, CheckCircle2, Eye, FileCode2, Hammer, Loader2, RefreshCw, ScanSearch, Sparkles } from "lucide-react"
 import type { JobEvent, LlmProgress } from "@/hooks/useJobStream"
 import { LiveStatus } from "@/components/LiveStatus"
 import { Markdown } from "@/components/Markdown"
@@ -174,6 +174,13 @@ function Row({ ev }: { ev: JobEvent }) {
       return (
         <li className="mt-2 flex items-start gap-2 text-destructive">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {str(p.message)}
+        </li>
+      )
+    case "resumed":
+      return (
+        <li className="mt-3 flex items-center gap-2 text-muted-foreground">
+          <RefreshCw className="size-4" /> Resumed after a server restart
+          {num(p.attempt) !== undefined && num(p.attempt)! > 1 ? ` (${String(p.attempt)}× so far)` : ""}
         </li>
       )
     default:

@@ -5,7 +5,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from housegen.core.exceptions import NotFoundError
@@ -52,6 +52,19 @@ async def delete_project(session: AsyncSession, project: Project) -> None:
 async def set_status(session: AsyncSession, project_id: str, status: str) -> None:
     project = await get_project(session, project_id)
     project.status = status
+    await session.flush()
+
+
+async def settle_project_status(session: AsyncSession, project_id: str) -> None:
+    """After a job failed for good: a project must not stay `generating` forever (#7).
+
+    With a version it is still usable (`ready`); without one the build failed (`failed`).
+    Other statuses (`new` after a failed intake) are left alone.
+    """
+    project = await get_project(session, project_id)
+    if project.status != "generating":
+        return
+    project.status = "ready" if project.current_version > 0 else "failed"
     await session.flush()
 
 
@@ -151,11 +164,24 @@ async def list_jobs(session: AsyncSession, project_id: str) -> list[Job]:
     return list(res.scalars().all())
 
 
+# a job that is not over: queued, running, or interrupted by a server restart and waiting
+# to be resumed (#7). No second job may start on the project meanwhile.
+UNFINISHED = ("queued", "running", "interrupted")
+
+
 async def active_job(session: AsyncSession, project_id: str) -> Job | None:
     res = await session.execute(
-        select(Job).where(Job.project_id == project_id, Job.status.in_(["queued", "running"]))
+        select(Job).where(Job.project_id == project_id, Job.status.in_(UNFINISHED))
     )
     return res.scalars().first()
+
+
+async def list_unfinished_jobs(session: AsyncSession) -> list[Job]:
+    """Every job a previous process left behind: to resume at startup (#7)."""
+    res = await session.execute(
+        select(Job).where(Job.status.in_(UNFINISHED)).order_by(Job.created_at)
+    )
+    return list(res.scalars().all())
 
 
 async def update_job(
@@ -200,6 +226,19 @@ async def list_job_events(session: AsyncSession, job_id: str, after_seq: int = 0
         .order_by(JobEvent.seq)
     )
     return list(res.scalars().all())
+
+
+async def last_event_seq(session: AsyncSession, job_id: str) -> int:
+    """The highest persisted seq of a job (0 when none): a resumed job continues from it."""
+    res = await session.execute(select(func.max(JobEvent.seq)).where(JobEvent.job_id == job_id))
+    return int(res.scalar_one() or 0)
+
+
+async def count_job_events(session: AsyncSession, job_id: str, type_: str) -> int:
+    res = await session.execute(
+        select(func.count()).where(JobEvent.job_id == job_id, JobEvent.type == type_)
+    )
+    return int(res.scalar_one() or 0)
 
 
 # ---- chat ----

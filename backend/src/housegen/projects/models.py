@@ -87,7 +87,8 @@ class Job(Base):
         ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
     kind: Mapped[str] = mapped_column(String(20))  # intake|generate|modify
-    status: Mapped[str] = mapped_column(String(20), default="queued")  # queued|running|done|failed
+    # queued|running|done|failed|interrupted (a server restart: resumed at the next startup, #7)
+    status: Mapped[str] = mapped_column(String(20), default="queued")
     request_text: Mapped[str] = mapped_column(Text, default="")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_version: Mapped[int | None] = mapped_column(Integer, nullable=True)

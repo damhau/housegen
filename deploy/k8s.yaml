@@ -35,6 +35,11 @@ spec:
           resources:
             requests: { cpu: "1", memory: 2Gi }
             limits: { cpu: "4", memory: 6Gi }   # software WebGL + image-heavy LLM calls: give it room
+          # a deploy does not wait for a running job (up to 40 min): the job is marked
+          # interrupted and the new pod resumes it with the same id (#7); the short sleep
+          # only lets in-flight HTTP responses finish before SIGTERM
+          lifecycle:
+            preStop: { exec: { command: ["sleep", "5"] } }
           volumeMounts:
             - { name: data, mountPath: /data }
             - { name: dshm, mountPath: /dev/shm }
