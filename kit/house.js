@@ -28,7 +28,85 @@ function cached(key, make) {
   return _cache.get(key);
 }
 
-export const mat = {
+// --------------------------------------------------------------------------
+// Textures (#16): CC0 sets under kit/assets/textures/<name>/ (colour, normal, roughness[, ao]),
+// tiled by world size. Loaded through one LoadingManager so the runtime can wait for them
+// before the first headless frame. Outside a browser (Node tests) the untextured material
+// is returned instead.
+// --------------------------------------------------------------------------
+
+/** name → metres per tile by default (how big the texture's photo is in reality). */
+export const TEXTURES = {
+  plaster: 2, roughcast: 1.5, concrete: 2, membrane: 2, tiles: 1.5, cladding: 2,
+  decking: 2, gravel: 1.5, asphalt: 3, lawn: 3, pebbles: 1, metal: 1,
+};
+const TEXTURE_BASE = typeof import.meta !== "undefined" && import.meta.url ? new URL("./assets/textures/", import.meta.url) : null;
+const CAN_LOAD_TEXTURES = typeof document !== "undefined" && TEXTURE_BASE !== null;
+const _manager = new THREE.LoadingManager();
+const _loader = new THREE.TextureLoader(_manager);
+let _pending = 0;
+let _texturesDone = Promise.resolve();
+let _resolveDone = null;
+_manager.onStart = () => {
+  if (_pending++ === 0) _texturesDone = new Promise((r) => { _resolveDone = r; });
+};
+_manager.onLoad = () => { _pending = 0; _resolveDone?.(); _resolveDone = null; };
+_manager.onError = (url) => { console.warn(`housekit: texture failed ${url}`); };
+
+/** Resolves once every texture requested so far has loaded (immediately when none). */
+export function texturesReady() {
+  return _pending > 0 ? _texturesDone : Promise.resolve();
+}
+
+function loadMap(name, kind, scale, srgb = false) {
+  const tex = _loader.load(new URL(`${name}/${kind}.jpg`, TEXTURE_BASE).href);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(1 / scale, 1 / scale);
+  tex.anisotropy = 4;
+  if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+/**
+ * A PBR material with one of the vendored texture sets. `color` tints the photo (white = as
+ * photographed), `scale` is metres per tile (geometry UVs are in metres: walls, slabs, roofs,
+ * boxes, terrain, patches). Same name + options → the same cached material.
+ */
+function tex(name, { color = "#ffffff", scale, roughness = 1, metalness } = {}) {
+  if (!(name in TEXTURES)) throw new Error(`unknown texture "${name}"; known: ${Object.keys(TEXTURES).join(", ")}`);
+  const s = scale ?? TEXTURES[name];
+  const key = `tex:${name}:${color}:${s}:${roughness}:${metalness ?? ""}`;
+  return cached(key, () => {
+    const m = new THREE.MeshStandardMaterial({ color, roughness, metalness: metalness ?? (name === "metal" ? 0.6 : 0) });
+    m.userData = { texture: name, scale: s };
+    if (!CAN_LOAD_TEXTURES) return m;
+    m.map = loadMap(name, "color", s, true);
+    m.normalMap = loadMap(name, "normal", s);
+    m.normalScale.set(0.8, 0.8);
+    m.roughnessMap = loadMap(name, "roughness", s);
+    if (TEXTURES_WITH_AO.has(name)) {
+      m.aoMap = loadMap(name, "ao", s);
+      m.aoMap.channel = 0;
+      m.aoMapIntensity = 0.7;
+    }
+    return m;
+  });
+}
+const TEXTURES_WITH_AO = new Set(["membrane", "tiles", "cladding", "decking", "gravel", "asphalt", "lawn", "pebbles"]);
+
+/** `mat.plaster({ color, texture, scale })` next to the positional `mat.plaster(color)` form. */
+function withTexture(plain, defaultTexture) {
+  return (arg, ...rest) => {
+    if (arg && typeof arg === "object") {
+      const { texture = defaultTexture, color, scale, roughness } = arg;
+      if (texture) return tex(texture, { color: color ?? "#ffffff", scale, roughness: roughness ?? 1 });
+      return plain(color, ...rest);
+    }
+    return plain(arg, ...rest);
+  };
+}
+
+const plainMat = {
   plaster: (color = "#e9e6dd", roughness = 0.9) =>
     cached(`plaster:${color}:${roughness}`, () => new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 })),
   concrete: (color = "#b9b7b0") =>
@@ -64,6 +142,43 @@ export const mat = {
     cached(`paint:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.6 })),
 };
 
+export const mat = {
+  ...plainMat,
+  tex,
+  // object form: mat.plaster({ color, texture: "roughcast", scale }); the texture defaults
+  // to the natural one for the material, and { texture: null } keeps it flat
+  plaster: withTexture(plainMat.plaster, "plaster"),
+  concrete: withTexture(plainMat.concrete, "concrete"),
+  wood: withTexture(plainMat.wood, "cladding"),
+  metal: withTexture(plainMat.metal, "metal"),
+  roof: withTexture(plainMat.roof, "membrane"),
+  tile: withTexture(plainMat.tile, "tiles"),
+  grass: withTexture(plainMat.grass, "lawn"),
+  gravel: withTexture(plainMat.gravel, "gravel"),
+  asphalt: withTexture(plainMat.asphalt, "asphalt"),
+};
+
+/**
+ * Scale a geometry's 0..1 UVs to metres so tiled textures repeat by world size: for a
+ * BoxGeometry the six faces get their own width/height; a plane gets (w, h).
+ */
+export function uvsInMetres(geo, w, h, d) {
+  const uv = geo.attributes.uv;
+  if (!uv) return geo;
+  if (d === undefined) {
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w, uv.getY(i) * h);
+  } else {
+    // BoxGeometry order: +x, -x (d × h), +y, -y (w × d), +z, -z (w × h); 4 vertices per face
+    const faces = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+    for (let i = 0; i < uv.count; i++) {
+      const [fw, fh] = faces[Math.min(5, Math.floor(i / 4))];
+      uv.setXY(i, uv.getX(i) * fw, uv.getY(i) * fh);
+    }
+  }
+  uv.needsUpdate = true;
+  return geo;
+}
+
 function shadow(mesh, cast = true, receive = true) {
   mesh.castShadow = cast;
   mesh.receiveShadow = receive;
@@ -84,7 +199,7 @@ function shapeFromPolygon(points) {
 /** Axis-aligned box. size=[w,h,d], position = centre of the box. */
 export function box({ size, position = [0, 0, 0], material = mat.plaster(), rotationY = 0 }) {
   const [w, h, d] = size;
-  const m = shadow(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material));
+  const m = shadow(new THREE.Mesh(uvsInMetres(new THREE.BoxGeometry(w, h, d), w, h, d), material));
   m.position.set(...position);
   m.rotation.y = rotationY;
   return m;
@@ -325,7 +440,7 @@ export function slidingDoor({ width = 2.4, height = 2.2, panels = 2, frameColor 
 // --------------------------------------------------------------------------
 
 /** Flat roof with parapet + gravel/membrane. `y` = top of the slab. */
-export function flatRoof({ polygon, y, thickness = 0.3, parapet = 0.35, parapetThickness = 0.25, material = mat.roof("#3f4144"), edgeMaterial = mat.plaster() }) {
+export function flatRoof({ polygon, y, thickness = 0.3, parapet = 0.35, parapetThickness = 0.25, material = mat.roof({ texture: "membrane" }), edgeMaterial = mat.plaster() }) {
   const g = new THREE.Group();
   g.add(slab({ polygon, y, thickness, material }));
   if (parapet > 0) {
@@ -342,7 +457,7 @@ export function flatRoof({ polygon, y, thickness = 0.3, parapet = 0.35, parapetT
  * Gable roof over a rectangle: ridge runs along local x.
  *   width = along ridge, depth = across, ridgeHeight above eave line (y).
  */
-export function gableRoof({ width, depth, ridgeHeight = 2, y = 0, overhang = 0.4, position = [0, 0, 0], rotationY = 0, material = mat.tile(), underside = mat.wood("#d8cdb5") }) {
+export function gableRoof({ width, depth, ridgeHeight = 2, y = 0, overhang = 0.4, position = [0, 0, 0], rotationY = 0, material = mat.tile({ texture: "tiles" }), underside = mat.wood("#d8cdb5") }) {
   const g = new THREE.Group();
   const w = width + 2 * overhang, d = depth + 2 * overhang;
   const shape = new THREE.Shape();
@@ -364,7 +479,7 @@ export function gableRoof({ width, depth, ridgeHeight = 2, y = 0, overhang = 0.4
 }
 
 /** Mono-pitch (shed) roof: high edge at local -z, low edge at +z. */
-export function shedRoof({ width, depth, rise = 1, y = 0, overhang = 0.3, position = [0, 0, 0], rotationY = 0, material = mat.roof("#3f4144") }) {
+export function shedRoof({ width, depth, rise = 1, y = 0, overhang = 0.3, position = [0, 0, 0], rotationY = 0, material = mat.roof({ texture: "membrane" }) }) {
   const g = new THREE.Group();
   const w = width + 2 * overhang, d = depth + 2 * overhang;
   const shape = new THREE.Shape();
@@ -540,7 +655,7 @@ export function hedge({ from, to, height = 1.2, thickness = 0.6, y = 0, color = 
 }
 
 /** Flat pathway / driveway along a polyline of [x,z] points. */
-export function pathway({ points, width = 1.2, y = 0.02, material = mat.gravel() }) {
+export function pathway({ points, width = 1.2, y = 0.02, material = mat.gravel({ texture: "gravel" }) }) {
   const g = new THREE.Group();
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i], b = points[i + 1];
@@ -556,7 +671,7 @@ export function pathway({ points, width = 1.2, y = 0.02, material = mat.gravel()
 }
 
 /** Ground patch (lawn, gravel area, terrace) from a polygon; sits slightly above the base ground. */
-export function groundPatch({ polygon, y = 0.01, material = mat.grass() }) {
+export function groundPatch({ polygon, y = 0.01, material = mat.grass({ texture: "lawn" }) }) {
   const geo = new THREE.ShapeGeometry(shapeFromPolygon(polygon));
   const m = new THREE.Mesh(geo, material);
   m.rotation.x = Math.PI / 2;
@@ -617,7 +732,7 @@ export function groundY(x, z) {
  * so groundY(), ribbon(), pebbleStrip(), leafTree()… follow it. Hide ctx.ground when you
  * use it: `ctx.ground.visible = false`.
  */
-export function terrain({ size = [90, 90], center = [0, 0], resolution = 0.5, heightAt, points, edgeHeight = 0, material = mat.grass("#8a9a68") }) {
+export function terrain({ size = [90, 90], center = [0, 0], resolution = 0.5, heightAt, points, edgeHeight = 0, material = mat.grass({ texture: "lawn" }) }) {
   let fn = heightAt;
   if (!fn && points) {
     fn = (x, z) => {
@@ -637,7 +752,7 @@ export function terrain({ size = [90, 90], center = [0, 0], resolution = 0.5, he
   _heightAt = fn;
   const [w, d] = size;
   const nx = Math.max(2, Math.round(w / resolution)), nz = Math.max(2, Math.round(d / resolution));
-  const geo = new THREE.PlaneGeometry(w, d, nx, nz);
+  const geo = uvsInMetres(new THREE.PlaneGeometry(w, d, nx, nz), w, d);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -664,7 +779,7 @@ export function rod(from, to, radius = 0.03, material = mat.metal()) {
 }
 
 /** Path / drive draped on the ground along a polyline of [x, z] points. */
-export function ribbon({ points, width = 1.2, lift = 0.03, material = mat.gravel() }) {
+export function ribbon({ points, width = 1.2, lift = 0.03, material = mat.gravel({ texture: "gravel" }) }) {
   const left = [], right = [];
   for (let i = 0; i < points.length; i++) {
     const p = points[i], q = points[Math.min(i + 1, points.length - 1)], o = points[Math.max(i - 1, 0)];
@@ -674,14 +789,18 @@ export function ribbon({ points, width = 1.2, lift = 0.03, material = mat.gravel
     left.push([p[0] + nx * width / 2, p[1] + nz * width / 2]);
     right.push([p[0] - nx * width / 2, p[1] - nz * width / 2]);
   }
-  const verts = [], idx = [];
+  const verts = [], idx = [], uvs = [];
+  let along = 0;
   for (let i = 0; i < points.length; i++) {
     const [lx, lz] = left[i], [rx, rz] = right[i];
+    if (i > 0) along += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
     verts.push(lx, groundY(lx, lz) + lift, lz, rx, groundY(rx, rz) + lift, rz);
+    uvs.push(0, along, width, along); // metres across, metres along: tiled textures repeat by size
     if (i > 0) { const a = 2 * (i - 1); idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
   const m = new THREE.Mesh(geo, material);
@@ -1029,4 +1148,5 @@ export default {
   flatRoof, gableRoof, shedRoof, chimney, railing, stairs, balcony, canopy, planter,
   hedge, pathway, groundPatch, gardenWall, fence, car, boundsOf, audit,
   terrain, groundY, rod, ribbon, pebbleStrip, leafTree, leafBush, swingSet, bench, bicycle,
+  TEXTURES, texturesReady, uvsInMetres,
 };

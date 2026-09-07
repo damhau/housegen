@@ -1,0 +1,106 @@
+{
+ "plaster": {
+  "id": "Plaster004",
+  "maps": [
+   "color",
+   "normal",
+   "roughness"
+  ]
+ },
+ "roughcast": {
+  "id": "Plaster001",
+  "maps": [
+   "color",
+   "normal",
+   "roughness"
+  ]
+ },
+ "concrete": {
+  "id": "Concrete034",
+  "maps": [
+   "color",
+   "normal",
+   "roughness"
+  ]
+ },
+ "membrane": {
+  "id": "Asphalt025C",
+  "maps": [
+   "color",
+   "normal",
+   "roughness",
+   "ao"
+  ]
+ },
+ "tiles": {
+  "id": "RoofingTiles012A",
+  "maps": [
+   "color",
+   "normal",
+   "roughness",
+   "ao"
+  ]
+ },
+ "cladding": {
+  "id": "WoodSiding009",
+  "maps": [
+   "color",
+   "normal",
+   "roughness",
+   "ao"
+  ]
+ },
+ "decking": {
+  "id": "Planks037A",
+  "maps": [
+   "color",
+   "normal",
+   "roughness",
+   "ao"
+  ]
+ },
+ "gravel": {
+  "id": "Gravel023",
+  "maps": [
+   "color",
+   "normal",
+   "roughness",
+   "ao"
+  ]
+ },
+ "asphalt": {
+  "id": "Asphalt031",
+  "maps": [
+   "color",
+   "normal",
+   "roughness",
+   "ao"
+  ]
+ },
+ "lawn": {
+  "id": "Grass004",
+  "maps": [
+   "color",
+   "normal",
+   "roughness",
+   "ao"
+  ]
+ },
+ "pebbles": {
+  "id": "Rocks022",
+  "maps": [
+   "color",
+   "normal",
+   "roughness",
+   "ao"
+  ]
+ },
+ "metal": {
+  "id": "Metal032",
+  "maps": [
+   "color",
+   "normal",
+   "roughness"
+  ]
+ }
+}

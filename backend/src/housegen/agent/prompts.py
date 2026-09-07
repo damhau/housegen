@@ -9,6 +9,12 @@ All builders return a THREE.Object3D; add it with ctx.group.add(...).
 ### Materials — house.mat.*  (all return cached THREE.MeshStandard/PhysicalMaterial)
 plaster(color="#e9e6dd", roughness) · concrete(color) · wood(color) · metal(color) · roof(color="#4a4a4a") · tile(color="#a0523d")
 glass(tint, opacity) · grass(color) · gravel(color) · asphalt(color) · foliage(color) · paint(color)
+Textured (PREFER these for walls, roofs and the ground; photographic PBR sets, tiled by world size):
+tex(name, { color:"#ffffff" (a tint: match the photo's colour), scale (metres per tile, sensible default per texture), roughness })
+names: plaster (smooth) · roughcast (crépi/stucco) · concrete · membrane (dark flat roof) · tiles (clay roof tiles) · cladding (horizontal wood boards)
+       decking (timber deck) · gravel · asphalt · lawn · pebbles · metal (painted)
+Object form of the plain ones picks the natural texture: mat.plaster({ color:"#e2d9c8", texture:"roughcast", scale:1.5 }), mat.roof({ texture:"tiles" }),
+mat.grass({ texture:"lawn" }); { texture: null } keeps a flat colour. Walls, slabs, roofs, boxes, terrain and patches have UVs in metres.
 
 ### Massing
 box({ size:[w,h,d], position:[x,y,z] (centre), material, rotationY })
@@ -63,7 +69,7 @@ group.userData.kind = "prop" and group.name = "trampoline" so the plausibility a
 check_scene) checks them for intersections, floating and scale like the kit's own.
 
 ### Runtime
-The runtime adds sky, sun with shadows, environment lighting, ambient occlusion and anti-aliasing at final quality, a lawn at y=0,
+The runtime adds a physical sky, a sun with shadows, environment lighting from the sky, AgX tone mapping, ambient occlusion and anti-aliasing at final quality, a textured lawn at y=0,
 orbit controls and named camera views: north/south/east/west (elevated wide shot from that side, eye ≈ 4 m, whole
 building in frame: for massing and roofs), northeast/…/southwest, aerial, top, north-photo/south-photo/east-photo/
 west-photo (a person at 1.6 m in front of that façade, 50° fov, façade filling the frame: the viewpoint of the photos),
@@ -71,7 +77,10 @@ and north-elevation/south-elevation/east-elevation/west-elevation (straight-on, 
 façade as an architect's elevation drawing, to compare with the elevation sheets).
 The -photo and -elevation views frame the walls (userData.kind "wall"/"perimeter"/"window"/"door"); tag other building
 masses with userData.kind = "building" so they are framed too.
-buildScene(ctx) may return { views: { name: { position:[x,y,z], target:[x,y,z] } } } to add custom views (e.g. "entrance").
+buildScene(ctx) may return { views: { name: { position:[x,y,z], target:[x,y,z] } } } to add custom views (e.g. "entrance"), and
+{ sun: { elevation, azimuth } } (degrees; azimuth clockwise from north = where the sun is, 180 = south) or { time: "morning"|"noon"|
+"afternoon"|"evening" } to set the light: a physical sky is built from it (environment light, sun colour, fog); default a late afternoon
+with the sun in the south-west. Match the photos' light (shadows on the north façade → sun in the south) so the critic compares like with like.
 You can also use raw three.js (ctx.THREE) for anything the kit lacks: ExtrudeGeometry from THREE.Shape is the workhorse.
 """.strip()
 

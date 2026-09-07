@@ -54,6 +54,10 @@ deploy/    serve.py (SPA from the API process), k8s.yaml. Root Dockerfile = sing
   `agent/prompts.py`, then render the template headless to prove it.
 - Headless: shadow map computed once per page; interactive: render only on camera change; effects (GTAO+SMAA) only at
   `quality=high`, auto-disabled if a frame exceeds 250 ms.
+- Look: physical sky (`three/addons/objects/Sky.js`) + PMREM environment from it, sun from `buildScene`'s `{ sun | time }`,
+  AgX tone mapping. Textures: CC0 sets under `kit/assets/textures/<name>/` (`TEXTURES` in house.js is the manifest;
+  `LICENSES.md` the sources), loaded through one LoadingManager; the runtime awaits `house.texturesReady()` before the
+  first frame. Geometry UVs are in metres (`uvsInMetres` for boxes/planes) so `scale` = metres per tile.
 
 ## Gates (run before saying "done")
 

@@ -80,3 +80,57 @@ test("the template scene audits clean", () => {
   buildGarden(ctx);
   assert.deepEqual(house.audit(group), []);
 });
+
+// ---- textures (#16) ----
+import { readdirSync, statSync, readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
+const TEX_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "textures");
+
+test("every texture set of the manifest is on disk, under the size caps, and licensed", () => {
+  const manifest = JSON.parse(readFileSync(join(TEX_DIR, "manifest.json"), "utf8"));
+  const licenses = readFileSync(join(TEX_DIR, "LICENSES.md"), "utf8");
+  assert.deepEqual(Object.keys(house.TEXTURES).sort(), Object.keys(manifest).sort());
+  let total = 0;
+  for (const [name, entry] of Object.entries(manifest)) {
+    for (const map of ["color", "normal", "roughness"]) assert.ok(entry.maps.includes(map), `${name} lacks ${map}`);
+    for (const map of entry.maps) {
+      const size = statSync(join(TEX_DIR, name, `${map}.jpg`)).size;
+      assert.ok(size <= 300_000, `${name}/${map}.jpg is ${size} bytes`);
+      total += size;
+    }
+    assert.match(licenses, new RegExp(entry.id), `${entry.id} missing from LICENSES.md`);
+  }
+  assert.ok(total < 10_000_000, `textures total ${total} bytes`);
+  const dirs = readdirSync(TEX_DIR).filter((n) => statSync(join(TEX_DIR, n)).isDirectory());
+  assert.deepEqual(dirs.sort(), Object.keys(manifest).sort());
+});
+
+test("textured materials: names, tint, cache, and the object form of the plain ones", () => {
+  const a = house.mat.tex("roughcast", { color: "#e2d9c8", scale: 1.5 });
+  assert.equal(a.userData.texture, "roughcast");
+  assert.equal(a.userData.scale, 1.5);
+  assert.equal(a.color.getHexString(), "e2d9c8");
+  assert.equal(house.mat.tex("roughcast", { color: "#e2d9c8", scale: 1.5 }), a); // cached
+  assert.throws(() => house.mat.tex("velvet"), /unknown texture/);
+  assert.equal(house.mat.plaster({ color: "#ffffff" }).userData.texture, "plaster");
+  assert.equal(house.mat.roof({ texture: "tiles" }).userData.texture, "tiles");
+  assert.equal(house.mat.plaster({ color: "#e9e6dd", texture: null }).userData.texture, undefined);
+  assert.equal(house.mat.plaster("#e9e6dd"), house.mat.plaster("#e9e6dd")); // positional form untouched
+});
+
+test("boxes and planes get UVs in metres so textures tile by world size", () => {
+  const b = house.box({ size: [4, 3, 0.5] });
+  const uv = b.geometry.attributes.uv;
+  let maxU = 0, maxV = 0;
+  for (let i = 0; i < uv.count; i++) { maxU = Math.max(maxU, uv.getX(i)); maxV = Math.max(maxV, uv.getY(i)); }
+  assert.equal(maxU, 4);
+  assert.equal(maxV, 3);
+  const plane = house.uvsInMetres(new THREE.PlaneGeometry(10, 20), 10, 20);
+  const p = plane.attributes.uv;
+  assert.equal(Math.max(...Array.from({ length: p.count }, (_, i) => p.getX(i))), 10);
+  assert.equal(Math.max(...Array.from({ length: p.count }, (_, i) => p.getY(i))), 20);
+  const r = house.ribbon({ points: [[0, 0], [0, 6]], width: 1.4 });
+  assert.ok(r.geometry.attributes.uv, "ribbon has UVs");
+});

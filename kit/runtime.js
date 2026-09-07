@@ -21,7 +21,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
-import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { Sky } from "three/addons/objects/Sky.js";
 import * as house from "housekit";
 
 const params = new URLSearchParams(location.search);
@@ -50,10 +50,20 @@ function readCameraOverrides(p) {
 }
 
 const PALETTE = {
-  sky: "#d9e0e4",
+  sky: "#d9e0e4", // fallback clear colour (quality=low, no sky dome)
   grass: "#8a9a68",
-  sun: "#fff3e0",
 };
+
+// Sun presets (#16): elevation / azimuth in degrees, azimuth clockwise from north = where the
+// sun IS (180 = due south, 225 = south-west: a pleasant late afternoon, the default).
+// buildScene may return { sun: { elevation, azimuth } } or { time: "morning"|"noon"|"evening" }.
+const SUN_PRESETS = {
+  morning: { elevation: 28, azimuth: 120 },
+  noon: { elevation: 58, azimuth: 180 },
+  afternoon: { elevation: 36, azimuth: 225 },
+  evening: { elevation: 16, azimuth: 262 },
+};
+const SKY_RADIUS = 300; // inside every camera's far plane (default 500; elevation views raise it)
 
 const state = {
   ready: false,
@@ -93,26 +103,6 @@ function recordError(msg) {
 window.addEventListener("error", (e) => recordError(e.message || e.error));
 window.addEventListener("unhandledrejection", (e) => recordError(e.reason?.message ?? e.reason));
 
-/** Subtle tileable noise so large flat surfaces (lawn) do not read as plastic. */
-function noiseTexture(size = 256, base = 200, spread = 26, seed = 1, repeat = 40) {
-  const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const ctx = c.getContext("2d");
-  const img = ctx.createImageData(size, size);
-  let s = seed >>> 0 || 1;
-  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
-  for (let i = 0; i < img.data.length; i += 4) {
-    const v = base + (rnd() - 0.5) * spread;
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-    img.data[i + 3] = 255;
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(repeat, repeat);
-  return tex;
-}
-
 export async function boot(buildScene) {
   const canvas = document.getElementById("view") ?? Object.assign(document.createElement("canvas"), { id: "view" });
   if (!canvas.isConnected) document.body.appendChild(canvas);
@@ -131,8 +121,10 @@ export async function boot(buildScene) {
     renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.needsUpdate = true;
   }
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.95;
+  // AgX: soft highlights, no plastic whites on plaster. The composer's OutputPass applies the
+  // renderer's tone mapping too, so both paths (effects on / off) look the same.
+  renderer.toneMapping = THREE.AgXToneMapping;
+  renderer.toneMappingExposure = 1.05;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
@@ -143,11 +135,11 @@ export async function boot(buildScene) {
   const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, W / H, 0.1, 500);
   camera.position.set(18, 10, 18);
 
-  // lights: sun + sky/ground hemisphere + a soft environment for the PBR materials
-  const hemi = new THREE.HemisphereLight("#e8eef5", "#6f7a5a", 0.55);
+  // lights: the sun (set from the sky below, once buildScene has said where it wants it) and
+  // a sky/ground hemisphere; the environment map comes from the physical sky
+  const hemi = new THREE.HemisphereLight("#e8eef5", "#6f7a5a", 0.35);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(PALETTE.sun, 2.0);
-  sun.position.set(-18, 28, 12);
+  const sun = new THREE.DirectionalLight("#fff3e0", 2.0);
   sun.castShadow = renderer.shadowMap.enabled;
   const shadowRes = QUALITY === "high" ? 4096 : 2048;
   sun.shadow.mapSize.set(shadowRes, shadowRes);
@@ -157,20 +149,11 @@ export async function boot(buildScene) {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.02;
   scene.add(sun);
-  if (QUALITY !== "low") {
-    const pmrem = new THREE.PMREMGenerator(renderer);
-    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
-    scene.environmentIntensity = 0.35;
-    pmrem.dispose();
-  } else {
-    scene.add(new THREE.AmbientLight("#ffffff", 0.2));
-  }
+  if (QUALITY === "low") scene.add(new THREE.AmbientLight("#ffffff", 0.25));
 
-  // base ground: lawn with a little grain
-  const grass = house.mat.grass(PALETTE.grass);
-  grass.map = noiseTexture(256, 205, 30, 3, 60);
-  grass.map.colorSpace = THREE.SRGBColorSpace;
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), grass);
+  // base ground: a tiled lawn (kit texture) that the terrain component replaces when used
+  const grass = house.mat.grass({ texture: "lawn", scale: 3 });
+  const ground = new THREE.Mesh(house.uvsInMetres(new THREE.PlaneGeometry(400, 400), 400, 400), grass);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   ground.position.y = -0.01;
@@ -210,6 +193,10 @@ export async function boot(buildScene) {
   } catch (err) {
     recordError(`buildScene failed: ${err?.stack ?? err}`);
   }
+  // sky, sun and environment: deterministic, from the scene's choice (or the default afternoon)
+  setupSky(scene, renderer, sun, sunOptions(result));
+  // textures load asynchronously: the first (headless) frame must not race them
+  try { await house.texturesReady(); } catch { /* a missing map is only a look problem */ }
 
   // ---- views ----
   houseGroup.updateMatrixWorld(true);
@@ -305,6 +292,67 @@ export async function boot(buildScene) {
   });
 }
 
+/** The sun the scene asked for: { sun: { elevation, azimuth } } wins over { time: "…" }. */
+function sunOptions(result) {
+  const preset = SUN_PRESETS[result?.time] ?? SUN_PRESETS.afternoon;
+  const elevation = Number(result?.sun?.elevation);
+  const azimuth = Number(result?.sun?.azimuth);
+  return {
+    elevation: Number.isFinite(elevation) ? Math.min(89, Math.max(2, elevation)) : preset.elevation,
+    azimuth: Number.isFinite(azimuth) ? azimuth : preset.azimuth,
+  };
+}
+
+/**
+ * Physical sky (three's Sky addon) driven by the sun's elevation and azimuth; the environment
+ * map is generated from it so surfaces get the warm sun and the blue sky bounce; the
+ * directional light is aligned with the sky's sun and coloured by its height; the fog and
+ * the clear colour follow the horizon. Skipped at quality=low (flat colour, no env map).
+ */
+function setupSky(scene, renderer, sun, { elevation, azimuth }) {
+  const el = THREE.MathUtils.degToRad(elevation);
+  const az = THREE.MathUtils.degToRad(azimuth);
+  // +x east, +z south: azimuth 0 = north (-z), 90 = east (+x), clockwise
+  const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+  sun.position.copy(dir).multiplyScalar(60);
+  sun.target.position.set(0, 0, 0);
+  scene.add(sun.target);
+  const t = Math.sin(el); // 0 at the horizon, 1 overhead
+  sun.color.set("#ffd2a3").lerp(new THREE.Color("#fff7ec"), Math.min(1, t * 1.6));
+  sun.intensity = 0.6 + 2.2 * Math.pow(t, 0.6);
+  // horizon: warm haze when the sun is low, pale blue when it is high
+  const horizon = new THREE.Color("#e9d9c4").lerp(new THREE.Color("#d5e1ea"), Math.min(1, t * 1.4));
+  renderer.setClearColor(horizon, 1);
+  if (state.fog) state.fog.color.copy(horizon);
+  state.horizon = horizon;
+  if (QUALITY === "low") {
+    scene.background = horizon;
+    return;
+  }
+  const sky = new Sky();
+  sky.scale.setScalar(SKY_RADIUS);
+  const u = sky.material.uniforms;
+  u.turbidity.value = 4;
+  u.rayleigh.value = 1.8;
+  u.mieCoefficient.value = 0.006;
+  u.mieDirectionalG.value = 0.8;
+  u.sunPosition.value.copy(dir);
+  sky.userData = { kind: "sky", excludeFromBounds: true };
+  // the sky is the background: no fog on it, always behind everything
+  sky.material.depthWrite = false;
+  sky.renderOrder = -1;
+  // the environment map is the sky itself (rendered alone, then the dome joins the scene)
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const skyScene = new THREE.Scene();
+  skyScene.add(sky);
+  scene.environment = pmrem.fromScene(skyScene, 0.04).texture;
+  scene.environmentIntensity = 0.45;
+  pmrem.dispose();
+  scene.add(sky);
+  scene.background = null;
+  state.sky = sky;
+}
+
 /**
  * Bounding box used to frame the named views: the house and its immediate site, not the
  * terrain sheet or anything flagged `userData.excludeFromBounds`, which would push the
@@ -389,7 +437,7 @@ function elevationView(side) {
   const pos = target.clone().addScaledVector(dir, dist);
   // the camera is far away: move the near plane up so the depth buffer (and the ambient
   // occlusion that reads it) keeps its precision around the building
-  return { pos: pos.toArray(), target, fov: ELEVATION_FOV, fog: false, fixed: true, near: dist * 0.5, far: dist + 200 };
+  return { pos: pos.toArray(), target, fov: ELEVATION_FOV, fog: false, fixed: true, near: dist * 0.5, far: dist + SKY_RADIUS * 2 };
 }
 
 /**

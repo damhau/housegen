@@ -60,6 +60,7 @@ RUN uv sync --frozen --no-dev
 # Scene kit (runtime + components + template) and vendored three.js
 COPY kit/house.js kit/runtime.js ./kit/
 COPY kit/template ./kit/template
+COPY kit/assets ./kit/assets
 COPY --from=web /kit/node_modules/three ./kit/node_modules/three
 
 # Built frontend, served from "/" by the API process (STATIC_DIR)
