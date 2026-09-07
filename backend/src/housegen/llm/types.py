@@ -20,11 +20,22 @@ class ImagePart(BaseModel):
     media_type: MediaType
     data: str  # base64
     label: str | None = None  # informative caption, rendered as text next to the image
+    # "low": a thumbnail the model only needs to recognise (OpenAI bills it a flat few tokens)
+    detail: Literal["high", "low"] = "high"
 
     @classmethod
-    def from_bytes(cls, raw: bytes, media_type: MediaType, label: str | None = None) -> ImagePart:
+    def from_bytes(
+        cls,
+        raw: bytes,
+        media_type: MediaType,
+        label: str | None = None,
+        detail: Literal["high", "low"] = "high",
+    ) -> ImagePart:
         return cls(
-            media_type=media_type, data=base64.standard_b64encode(raw).decode("ascii"), label=label
+            media_type=media_type,
+            data=base64.standard_b64encode(raw).decode("ascii"),
+            label=label,
+            detail=detail,
         )
 
     @classmethod
@@ -34,6 +45,43 @@ class ImagePart(BaseModel):
             "image/png" if suffix == ".png" else "image/webp" if suffix == ".webp" else "image/jpeg"
         )
         return cls.from_bytes(path.read_bytes(), media, label)
+
+    @classmethod
+    def thumbnail(cls, path: Path, px: int, label: str | None = None) -> ImagePart:
+        """A downscaled copy (long side ≤ px, JPEG): an index of a photo, not a source (#5).
+
+        The full photo stays on disk for inspect_image; see `thumbnail_size` for the mapping.
+        """
+        import io
+
+        from PIL import Image
+
+        with Image.open(path) as im:
+            small = im.convert("RGB")
+            small.thumbnail((px, px), Image.Resampling.LANCZOS)
+            buf = io.BytesIO()
+            small.save(buf, "JPEG", quality=80, optimize=True)
+        return cls.from_bytes(buf.getvalue(), "image/jpeg", label, detail="low")
+
+    @property
+    def size(self) -> tuple[int, int]:
+        """(width, height) in pixels of the encoded image."""
+        import io
+
+        from PIL import Image
+
+        with Image.open(io.BytesIO(base64.standard_b64decode(self.data))) as im:
+            return im.size
+
+
+def thumbnail_size(path: Path, px: int) -> tuple[int, int]:
+    """The pixel size `ImagePart.thumbnail(path, px)` produces, without encoding it."""
+    from PIL import Image
+
+    with Image.open(path) as im:
+        w, h = im.size
+    scale = min(1.0, px / max(w, h))
+    return max(1, round(w * scale)), max(1, round(h * scale))
 
 
 class ToolCallPart(BaseModel):

@@ -39,7 +39,7 @@ def _image_item(p: ImagePart) -> dict[str, Any]:
     return {
         "type": "input_image",
         "image_url": f"data:{p.media_type};base64,{p.data}",
-        "detail": "high",
+        "detail": p.detail,
     }
 
 
