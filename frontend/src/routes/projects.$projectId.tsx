@@ -302,6 +302,7 @@ function ProjectPage() {
             {tab === "versions" && (
               <VersionList
                 versions={p.versions}
+                jobs={jobs.data ?? []}
                 current={p.current_version}
                 selected={selectedVersion}
                 onSelect={setSelectedVersion}

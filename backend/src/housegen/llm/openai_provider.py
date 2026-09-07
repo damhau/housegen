@@ -172,6 +172,7 @@ class OpenAIProvider:
         )
         chars = 0
         terminal: Any = None  # response carried by response.incomplete / response.failed
+        first_output_at: float | None = None  # when the first non-reasoning item started
         try:
             async with self._client.responses.stream(**kwargs) as stream:
                 async for raw in stream:
@@ -181,6 +182,12 @@ class OpenAIProvider:
                         # the SDK helper only recognises response.completed; keep these ourselves
                         terminal = ev.response
                         continue
+                    if (
+                        t == "response.output_item.added"
+                        and ev.item.type != "reasoning"
+                        and first_output_at is None
+                    ):
+                        first_output_at = time.perf_counter()
                     if on_progress is None:
                         continue
                     if t == "response.output_item.added":
@@ -259,12 +266,20 @@ class OpenAIProvider:
 
         u = resp.usage
         cached = 0
+        reasoning = 0
         if u is not None and u.input_tokens_details is not None:
             cached = u.input_tokens_details.cached_tokens or 0
+        if u is not None and getattr(u, "output_tokens_details", None) is not None:
+            reasoning = getattr(u.output_tokens_details, "reasoning_tokens", 0) or 0
         usage = Usage(
             input_tokens=u.input_tokens if u else 0,
             output_tokens=u.output_tokens if u else 0,
             cache_read_tokens=cached,
+            reasoning_tokens=reasoning,
+        )
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        thinking_ms = (
+            int((first_output_at - started) * 1000) if first_output_at is not None else duration_ms
         )
         logger.info(
             "llm.openai.done",
@@ -275,7 +290,9 @@ class OpenAIProvider:
                 "in": usage.input_tokens,
                 "out": usage.output_tokens,
                 "cached": usage.cache_read_tokens,
-                "duration_ms": int((time.perf_counter() - started) * 1000),
+                "reasoning": usage.reasoning_tokens,
+                "duration_ms": duration_ms,
+                "thinking_ms": thinking_ms,
             },
         )
         return Completion(
@@ -284,4 +301,6 @@ class OpenAIProvider:
             usage=usage,
             model=resp.model,
             raw_stop_reason=resp.status,
+            duration_ms=duration_ms,
+            thinking_ms=thinking_ms,
         )

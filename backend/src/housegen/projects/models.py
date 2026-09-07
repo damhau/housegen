@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -95,12 +96,18 @@ class Job(Base):
     attachments_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     result_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # agent.metrics.RunSummary: time and tokens by phase and activity, cost (#13)
+    metrics_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     @property
     def attachments(self) -> list[str]:
         return list(json.loads(self.attachments_json)) if self.attachments_json else []
+
+    @property
+    def metrics(self) -> dict[str, Any] | None:
+        return dict(json.loads(self.metrics_json)) if self.metrics_json else None
 
 
 class JobEvent(Base):

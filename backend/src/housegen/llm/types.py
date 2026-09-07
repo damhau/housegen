@@ -89,15 +89,27 @@ class ToolSpec(BaseModel):
 
 
 class Usage(BaseModel):
+    """Token counts of one call (or a sum of calls).
+
+    `input_tokens` is the whole prompt, cached part included (OpenAI convention; the
+    Anthropic provider adds the cache reads/writes back in). `reasoning_tokens` are the
+    share of `output_tokens` spent thinking where the provider reports it (OpenAI;
+    Anthropic counts thinking inside output_tokens without a split).
+    """
+
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
 
     def __add__(self, other: Usage) -> Usage:
         return Usage(
             input_tokens=self.input_tokens + other.input_tokens,
             output_tokens=self.output_tokens + other.output_tokens,
             cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens,
+            cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
+            reasoning_tokens=self.reasoning_tokens + other.reasoning_tokens,
         )
 
 
@@ -121,6 +133,10 @@ class Completion(BaseModel):
     usage: Usage = Field(default_factory=Usage)
     model: str = ""
     raw_stop_reason: str | None = None
+    # timing of the call (#13): wall time, and how much of it passed before the first
+    # visible output (text or tool call) started streaming, i.e. spent reasoning
+    duration_ms: int = 0
+    thinking_ms: int = 0
 
     @property
     def tool_calls(self) -> list[ToolCallPart]:

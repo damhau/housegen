@@ -154,3 +154,41 @@ async def test_render_and_check_results_carry_the_plausibility_audit(tmp_path: P
     texts = [c.text for c in content if isinstance(c, TextPart)]
     assert any("Plausibility audit" in t and "trampoline" in t for t in texts)
     assert tools.last_audit == ["tree at (4, 6) intersects trampoline at (4, 6)"]
+
+
+async def test_each_step_emits_a_turn_record(tools: BuilderTools) -> None:
+    """One `turn` per model call with its tools and their timing (#13)."""
+    provider = FakeProvider(
+        [
+            [
+                ToolCallPart(id="1", name="write_file", input={"path": "src/a.js", "content": "1"}),
+                ToolCallPart(id="2", name="check_scene", input={}),
+            ],
+            [ToolCallPart(id="3", name="finish", input={"summary": "done"})],
+        ]
+    )
+    steps: list[dict[str, Any]] = []
+
+    async def on_step(ev: dict[str, Any]) -> None:
+        steps.append(ev)
+
+    await run_builder(
+        provider,
+        "m",
+        "sys",
+        [Message.user("go")],
+        tools,
+        max_steps=5,
+        max_tokens=100,
+        on_step=on_step,
+    )
+    turns = [s for s in steps if s.get("kind") == "turn"]
+    assert [t["step"] for t in turns] == [1, 2]
+    assert [c["name"] for c in turns[0]["tool_calls"]] == ["write_file", "check_scene"]
+    assert turns[0]["edits"] == 1
+    assert turns[0]["role"] == "builder"
+    assert turns[0]["model"] == "m"
+    assert [c["name"] for c in turns[1]["tool_calls"]] == ["finish"]
+    # the turn record comes after the step's tool events
+    order = [s.get("kind") for s in steps]
+    assert order.index("turn") > order.index("tool")

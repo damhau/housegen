@@ -16,7 +16,7 @@ from pydantic import ValidationError
 from housegen.agent.prompts import INTAKE_SYSTEM
 from housegen.agent.schemas import Intake
 from housegen.core.exceptions import LLMError
-from housegen.llm import ImagePart, Message, ProgressCallback, Provider, Usage
+from housegen.llm import Completion, ImagePart, Message, ProgressCallback, Provider
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ async def read_plans(
     max_tokens: int,
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
-) -> tuple[Intake, Usage]:
+) -> tuple[Intake, Completion]:
     if not pages:
         raise LLMError("the plan set has no sheets to read")
     parts: list[ImagePart | str] = [
@@ -49,7 +49,7 @@ async def read_plans(
         on_progress=on_progress,
         effort=effort,
     )
-    return _parse(completion.message.text), completion.usage
+    return _parse(completion.message.text), completion
 
 
 def _parse(text: str) -> Intake:

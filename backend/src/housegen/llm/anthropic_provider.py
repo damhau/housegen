@@ -102,13 +102,20 @@ class AnthropicProvider:
             extra={"model": model, "messages": len(messages), "tools": len(tools or [])},
         )
         chars = 0
+        first_output_at: float | None = None  # when the first non-thinking block started
         try:
             async with self._client.messages.stream(**kwargs) as stream:
                 async for raw in stream:
-                    if on_progress is None:
-                        continue
                     ev: Any = raw
                     t = ev.type
+                    if (
+                        t == "content_block_start"
+                        and ev.content_block.type != "thinking"
+                        and first_output_at is None
+                    ):
+                        first_output_at = time.perf_counter()
+                    if on_progress is None:
+                        continue
                     if t == "content_block_start":
                         bt = ev.content_block.type
                         if bt == "thinking":
@@ -166,10 +173,19 @@ class AnthropicProvider:
             "refusal": "refusal",
         }
         stop = stop_map.get(resp.stop_reason or "", "other")
+        # Anthropic's input_tokens is the uncached remainder only: add the cache traffic back
+        # so input_tokens means "the whole prompt" like on OpenAI (see Usage)
+        cache_read = resp.usage.cache_read_input_tokens or 0
+        cache_write = resp.usage.cache_creation_input_tokens or 0
         usage = Usage(
-            input_tokens=resp.usage.input_tokens,
+            input_tokens=resp.usage.input_tokens + cache_read + cache_write,
             output_tokens=resp.usage.output_tokens,
-            cache_read_tokens=resp.usage.cache_read_input_tokens or 0,
+            cache_read_tokens=cache_read,
+            cache_write_tokens=cache_write,
+        )
+        duration_ms = int((time.perf_counter() - started) * 1000)
+        thinking_ms = (
+            int((first_output_at - started) * 1000) if first_output_at is not None else duration_ms
         )
         logger.info(
             "llm.anthropic.done",
@@ -179,7 +195,9 @@ class AnthropicProvider:
                 "in": usage.input_tokens,
                 "out": usage.output_tokens,
                 "cached": usage.cache_read_tokens,
-                "duration_ms": int((time.perf_counter() - started) * 1000),
+                "cache_write": usage.cache_write_tokens,
+                "duration_ms": duration_ms,
+                "thinking_ms": thinking_ms,
             },
         )
         return Completion(
@@ -188,4 +206,6 @@ class AnthropicProvider:
             usage=usage,
             model=resp.model,
             raw_stop_reason=resp.stop_reason,
+            duration_ms=duration_ms,
+            thinking_ms=thinking_ms,
         )

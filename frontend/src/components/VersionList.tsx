@@ -1,11 +1,48 @@
+import { useState } from "react"
 import { History, RotateCcw, Wrench } from "lucide-react"
-import type { SceneVersionOut } from "@/api/model"
+import type { JobOut, SceneVersionOut } from "@/api/model"
 import { Button } from "@/components/ui/button"
 import { ScoreBadge } from "@/components/JobTimeline"
+import { RunCompare, RunSummaryCard, fmtMs, fmtUsd } from "@/components/RunSummaryCard"
 import { cn, relTime } from "@/lib/utils"
+
+const KIND_LABEL: Record<string, string> = { intake: "plans read", generate: "generation", modify: "modification" }
+
+function jobLabel(j: JobOut): string {
+  return `${KIND_LABEL[j.kind] ?? j.kind}${j.result_version != null ? ` → v${j.result_version}` : ""} · ${relTime(j.created_at)}`
+}
+
+/** Two finished runs of the project side by side (#13). */
+function CompareRuns({ jobs }: { jobs: JobOut[] }) {
+  const done = jobs.filter((j) => j.metrics)
+  const [a, setA] = useState<string>(done[1]?.id ?? "")
+  const [b, setB] = useState<string>(done[0]?.id ?? "")
+  if (done.length < 2) return null
+  const ja = done.find((j) => j.id === a)
+  const jb = done.find((j) => j.id === b)
+  const select = (v: string, set: (s: string) => void) => (
+    <select value={v} onChange={(e) => set(e.target.value)} className="h-7 max-w-[180px] rounded-md border bg-background px-1 text-xs">
+      {done.map((j) => (
+        <option key={j.id} value={j.id}>
+          {jobLabel(j)}
+        </option>
+      ))}
+    </select>
+  )
+  return (
+    <div className="space-y-2 border-t p-3">
+      <div className="text-xs font-medium">Compare two runs</div>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {select(a, setA)} <span className="text-muted-foreground">vs</span> {select(b, setB)}
+      </div>
+      {ja && jb && <RunCompare a={ja} b={jb} labelA="A" labelB="B" />}
+    </div>
+  )
+}
 
 export function VersionList({
   versions,
+  jobs = [],
   current,
   selected,
   onSelect,
@@ -14,6 +51,8 @@ export function VersionList({
   busy,
 }: {
   versions: SceneVersionOut[]
+  /** the project's jobs: the one that produced a version gives its run summary */
+  jobs?: JobOut[]
   current: number
   selected: number | null
   onSelect: (n: number | null) => void
@@ -21,14 +60,18 @@ export function VersionList({
   onFix: (n: number) => void
   busy: boolean
 }) {
+  const [details, setDetails] = useState<number | null>(null)
   if (versions.length === 0) return <p className="p-3 text-sm text-muted-foreground">No version yet.</p>
+  const jobOf = (v: SceneVersionOut) => jobs.find((j) => j.result_version === v.number && j.metrics)
   return (
+    <div>
     <ul className="divide-y">
       {[...versions].reverse().map((v) => {
         const isCurrent = v.number === current
         const isSelected = selected === v.number || (selected === null && isCurrent)
         const issues = v.critique?.issues.length ?? 0
         const suggestions = v.suggestions?.length ?? 0
+        const job = jobOf(v)
         return (
           <li
             key={v.id}
@@ -54,6 +97,19 @@ export function VersionList({
                   {issues > 0 && ` · ${issues} finding${issues > 1 ? "s" : ""}`}
                   {suggestions > 0 && ` · ${suggestions} suggestion${suggestions > 1 ? "s" : ""}`}
                 </div>
+                {job?.metrics && (
+                  <button
+                    type="button"
+                    className="text-[11px] text-muted-foreground underline-offset-2 hover:underline"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setDetails(details === v.number ? null : v.number)
+                    }}
+                  >
+                    {fmtMs(job.metrics.wall_ms)} · {job.metrics.turns ?? 0} turns · {fmtUsd(job.metrics.cost_usd)}
+                    {job.metrics.models?.length ? ` · ${job.metrics.models[0]}` : ""}
+                  </button>
+                )}
               </div>
               {v.critic_score != null && <ScoreBadge score={v.critic_score} />}
               {!isCurrent && (
@@ -72,6 +128,7 @@ export function VersionList({
                 </Button>
               )}
             </div>
+            {details === v.number && job?.metrics && <RunSummaryCard metrics={job.metrics} title="Run" className="mt-2" />}
             {isCurrent && issues > 0 && !busy && (
               <div className="mt-2 pl-[76px]">
                 <Button
@@ -90,5 +147,7 @@ export function VersionList({
         )
       })}
     </ul>
+    <CompareRuns jobs={jobs} />
+    </div>
   )
 }

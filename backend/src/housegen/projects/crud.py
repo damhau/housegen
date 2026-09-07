@@ -192,10 +192,13 @@ async def update_job(
     error: str | None = None,
     result_version: int | None = None,
     attachments: list[str] | None = None,
+    metrics: dict[str, Any] | None = None,
 ) -> Job:
     job = await get_job(session, job_id)
     if attachments is not None:
         job.attachments_json = json.dumps(attachments)
+    if metrics is not None:
+        job.metrics_json = json.dumps(metrics)
     if status:
         job.status = status
         if status in ("done", "failed"):

@@ -10,7 +10,7 @@ from housegen.agent.prompts import CRITIC_MODIFY_SYSTEM, CRITIC_PLAN_SYSTEM, CRI
 from housegen.agent.schemas import Critique
 from housegen.agent.tools import audit_text
 from housegen.core.exceptions import LLMError
-from housegen.llm import ImagePart, Message, ProgressCallback, Provider, Usage
+from housegen.llm import Completion, ImagePart, Message, ProgressCallback, Provider
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ async def critique_against_photos(
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
     audit: list[str] | None = None,
-) -> tuple[Critique, Usage]:
+) -> tuple[Critique, Completion]:
     parts: list[ImagePart | str] = [f"Score threshold for done: {threshold}."]
     pairs = 0
     extras = extras or []
@@ -83,7 +83,7 @@ async def critique_against_photos(
         on_progress=on_progress,
         effort=effort,
     )
-    return _parse(completion.message.text), completion.usage
+    return _parse(completion.message.text), completion
 
 
 async def critique_against_plans(
@@ -97,7 +97,7 @@ async def critique_against_plans(
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
     audit: list[str] | None = None,
-) -> tuple[Critique, Usage]:
+) -> tuple[Critique, Completion]:
     """No photographs: judge the model against the elevation drawings of the plan set.
 
     `elevation_pages` maps a façade side to the 1-based sheet that draws its elevation (from
@@ -151,7 +151,7 @@ async def critique_against_plans(
         on_progress=on_progress,
         effort=effort,
     )
-    return _parse(completion.message.text), completion.usage
+    return _parse(completion.message.text), completion
 
 
 async def verify_modification(
@@ -165,7 +165,7 @@ async def verify_modification(
     effort: str | None = None,
     attachments: list[Path] | None = None,
     audit: list[str] | None = None,
-) -> tuple[Critique, Usage]:
+) -> tuple[Critique, Completion]:
     parts: list[ImagePart | str] = [f"User request:\n{request}"]
     if attachments:
         parts.append(
@@ -190,7 +190,7 @@ async def verify_modification(
         on_progress=on_progress,
         effort=effort,
     )
-    return _parse(completion.message.text), completion.usage
+    return _parse(completion.message.text), completion
 
 
 def _overview_renders(renders: dict[str, Path]) -> list[ImagePart]:

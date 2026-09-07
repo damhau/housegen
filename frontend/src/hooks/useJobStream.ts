@@ -16,7 +16,7 @@ export interface LlmProgress {
 }
 
 const PERSISTED = [
-  "phase", "intake", "builder_text", "builder_step", "builder_done", "render", "version", "critic", "usage", "done", "error", "resumed",
+  "phase", "intake", "builder_text", "builder_step", "builder_done", "render", "version", "critic", "usage", "done", "error", "resumed", "turn",
 ]
 
 // while the backend is down (a deploy swaps the pod in 20–40 s) the browser's own EventSource

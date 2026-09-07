@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from housegen.agent.metrics import ToolCallMetric, TurnMetric
 from housegen.agent.progress import LiveProgress
 from housegen.agent.tools import TOOL_SPECS, BuilderTools
 from housegen.core.exceptions import LLMError
@@ -113,6 +115,14 @@ def budget_note(step: int, max_steps: int) -> str | None:
     return None
 
 
+def _group_tools(calls: list[ToolCallMetric]) -> str:
+    """ "edit_file x4, render_views" for a log line."""
+    counts: dict[str, int] = {}
+    for c in calls:
+        counts[c.name] = counts.get(c.name, 0) + 1
+    return ", ".join(f"{n} x{k}" if k > 1 else n for n, k in counts.items())
+
+
 def _arg_preview(name: str, args: dict[str, Any]) -> str:
     if name in ("write_file", "edit_file", "read_file", "delete_file"):
         return str(args.get("path", ""))
@@ -172,12 +182,46 @@ async def run_builder(
                 effort=effort,
             )
 
+    async def emit_turn(turn: TurnMetric) -> None:
+        """One persisted record per step: the call's time and tokens, the tools it ran (#13)."""
+        logger.info(
+            "llm.turn",
+            extra={
+                "step": turn.step,
+                "duration_ms": turn.duration_ms,
+                "thinking_ms": turn.thinking_ms,
+                "tools_ms": turn.tools_ms,
+                "render_ms": turn.render_ms,
+                "in": turn.input_tokens,
+                "cached": turn.cached_tokens,
+                "out": turn.output_tokens,
+                "cache_hit": round(turn.cache_hit, 3),
+                "tools": _group_tools(turn.tool_calls),
+            },
+        )
+        if on_step:
+            await on_step({"kind": "turn", **turn.event_payload()})
+
     while run.steps < max_steps:
         run.steps += 1
         prune_render_images(messages, batch=PRUNE_EVERY)
         completion = await complete(run.steps)
         run.usage = run.usage + completion.usage
         messages.append(completion.message)
+        turn = TurnMetric(
+            step=run.steps,
+            role="builder",
+            model=completion.model or model,
+            duration_ms=completion.duration_ms,
+            thinking_ms=completion.thinking_ms,
+            input_tokens=completion.usage.input_tokens,
+            cached_tokens=completion.usage.cache_read_tokens,
+            cache_write_tokens=completion.usage.cache_write_tokens,
+            output_tokens=completion.usage.output_tokens,
+            reasoning_tokens=completion.usage.reasoning_tokens,
+        )
+        render_ms_before = tools.render_ms_total
+        tools_started = time.perf_counter()
 
         if completion.stop_reason == "refusal":
             raise LLMError("the model refused to continue building the scene")
@@ -217,9 +261,11 @@ async def run_builder(
                         "step": run.steps,
                     }
                 )
+            await emit_turn(turn)
             continue
         if not calls:
             # no tool call: the model thinks it is done. Insist on the finish protocol, then accept.
+            await emit_turn(turn)
             if completion.stop_reason == "max_tokens":
                 messages.append(
                     Message.user(
@@ -257,6 +303,11 @@ async def run_builder(
                             is_error=True,
                         )
                     )
+                    turn.tool_calls.append(
+                        ToolCallMetric(
+                            name="finish", args=_arg_preview("finish", call.input), ok=False
+                        )
+                    )
                     if on_step:
                         await on_step(
                             {
@@ -272,6 +323,9 @@ async def run_builder(
                 run.suggestions = _str_list(call.input.get("suggestions"), 8)
                 run.questions = _str_list(call.input.get("questions"), 4)
                 run.finished = True
+                turn.tool_calls.append(
+                    ToolCallMetric(name="finish", args=_arg_preview("finish", call.input))
+                )
                 results.append(ToolResultPart(tool_call_id=call.id, content=[TextPart(text="ok")]))
                 if on_step:
                     await on_step(
@@ -285,7 +339,16 @@ async def run_builder(
                     )
                 continue
 
+            call_started = time.perf_counter()
             content, is_error = await tools.call(call.name, call.input)
+            turn.tool_calls.append(
+                ToolCallMetric(
+                    name=call.name,
+                    args=_arg_preview(call.name, call.input),
+                    duration_ms=int((time.perf_counter() - call_started) * 1000),
+                    ok=not is_error,
+                )
+            )
             results.append(ToolResultPart(tool_call_id=call.id, content=content, is_error=is_error))
             if on_step:
                 first_text = next((c.text for c in content if isinstance(c, TextPart)), "")
@@ -303,6 +366,9 @@ async def run_builder(
         if note and results and not run.finished:
             results[-1].content.append(TextPart(text=note))
         messages.append(Message(role="user", content=list(results)))
+        turn.tools_ms = int((time.perf_counter() - tools_started) * 1000)
+        turn.render_ms = tools.render_ms_total - render_ms_before
+        await emit_turn(turn)
         if run.finished:
             break
 

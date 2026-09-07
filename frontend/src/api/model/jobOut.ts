@@ -6,6 +6,7 @@
  */
 import type { JobOutError } from './jobOutError';
 import type { JobOutResultVersion } from './jobOutResultVersion';
+import type { JobOutMetrics } from './jobOutMetrics';
 import type { JobOutFinishedAt } from './jobOutFinishedAt';
 
 export interface JobOut {
@@ -16,6 +17,7 @@ export interface JobOut {
   request_text: string;
   error: JobOutError;
   result_version: JobOutResultVersion;
+  metrics?: JobOutMetrics;
   created_at: string;
   finished_at: JobOutFinishedAt;
 }

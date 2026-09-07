@@ -45,6 +45,19 @@ class Settings(BaseSettings):
     BUILDER_EFFORT: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = "xhigh"
     CRITIC_EFFORT: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = "medium"
     LLM_TIMEOUT_S: float = 600.0
+    # USD per million tokens, by model: input (uncached), cached input (cache read), output;
+    # optional cache_write. Seeded from public list prices (#13); override in .env with a JSON
+    # object, e.g. MODEL_PRICES='{"gpt-6-astra": {"input": 2, "cached": 0.2, "output": 12}}'.
+    # Models not listed cost 0 in the estimates (the summary then says "no price").
+    MODEL_PRICES: dict[str, dict[str, float]] = Field(
+        default_factory=lambda: {
+            # Anthropic list price (2026-06): $5 / $25 per MTok; cache reads 0.1x, writes 1.25x
+            "claude-opus-5": {"input": 5.0, "cached": 0.5, "output": 25.0, "cache_write": 6.25},
+            # TO REVIEW by the owner: OpenAI's list price for gpt-6-astra was not available
+            # here; these are the gpt-5 list prices as a placeholder
+            "gpt-6-astra": {"input": 1.25, "cached": 0.125, "output": 10.0},
+        }
+    )
 
     # agent loop
     BUILDER_MAX_STEPS: int = 60
@@ -76,6 +89,15 @@ class Settings(BaseSettings):
     @property
     def render_base_url(self) -> str:
         return self.RENDER_BASE_URL or f"http://{self.HOST}:{self.PORT}"
+
+    def price_for(self, model: str) -> dict[str, float] | None:
+        """The price row of a model, matched by exact name then by prefix ("gpt-6-astra-2026…")."""
+        if model in self.MODEL_PRICES:
+            return self.MODEL_PRICES[model]
+        for name, row in self.MODEL_PRICES.items():
+            if model.startswith(name):
+                return row
+        return None
 
     def resolve_model(self, role: Literal["builder", "critic"]) -> str:
         explicit = {"builder": self.BUILDER_MODEL, "critic": self.CRITIC_MODEL}[role]

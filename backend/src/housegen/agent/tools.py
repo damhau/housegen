@@ -352,6 +352,7 @@ class BuilderTools:
         self.last_audit: list[str] = []
         self.rendered_views: set[str] = set()
         self.last_check_ok = False
+        self.render_ms_total = 0  # every render this instance ran (per-turn deltas, #13)
         self.handlers: dict[str, Handler] = {
             "list_files": self.list_files,
             "read_file": self.read_file,
@@ -422,6 +423,7 @@ class BuilderTools:
         )
         self.last_render_errors = res.errors
         self.last_audit = res.audit
+        self.render_ms_total += res.duration_ms
         self.rendered_views.update(res.images)
         if self.on_render:
             await self.on_render(res.images, res.errors)
@@ -474,6 +476,7 @@ class BuilderTools:
         res = await self.renderer.render(self.scene_url, [], self.renders_dir, quality="low")
         self.last_render_errors = res.errors
         self.last_audit = res.audit
+        self.render_ms_total += res.duration_ms
         self.last_check_ok = not res.errors
         if res.errors:
             return [TextPart(text="Errors:\n" + "\n".join(res.errors))], True

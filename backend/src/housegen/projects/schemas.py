@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from housegen.agent.metrics import RunSummary
 from housegen.agent.schemas import Critique, Intake
 
 Side = Literal["north", "south", "east", "west", "other"]
@@ -109,6 +110,8 @@ class JobOut(BaseModel):
     request_text: str
     error: str | None
     result_version: int | None
+    # time and tokens by phase and activity, cost estimate; set when the job ends (#13)
+    metrics: RunSummary | None = None
     created_at: datetime
     finished_at: datetime | None
 

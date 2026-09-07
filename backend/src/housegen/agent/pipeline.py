@@ -22,6 +22,7 @@ from typing import Any
 from housegen.agent import critic
 from housegen.agent import intake as intake_agent
 from housegen.agent.builder import BuilderRun, run_builder
+from housegen.agent.metrics import Role, RunMetrics, TurnMetric
 from housegen.agent.progress import LiveProgress
 from housegen.agent.prompts import (
     BUILDER_SYSTEM,
@@ -36,7 +37,7 @@ from housegen.agent.workspace import Workspace
 from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
 from housegen.jobs.manager import JobContext, JobManager
-from housegen.llm import ImagePart, Message, Usage, get_provider
+from housegen.llm import Completion, ImagePart, Message, Usage, get_provider
 from housegen.projects import crud
 from housegen.projects.models import Job
 from housegen.projects.schemas import standard_views
@@ -103,6 +104,7 @@ class _Run:
         )
         self.usage = Usage()  # everything, builder + critic
         self.critic_usage = Usage()  # the critic's share, reported separately in the usage event
+        self.metrics = RunMetrics(self.settings)  # time and tokens per turn (#13)
         self.last_audit: list[str] = []  # plausibility audit of the last standard render (#3)
         self.views = standard_views(True)  # what every saved version is rendered from
         self.tools = BuilderTools(
@@ -124,10 +126,47 @@ class _Run:
         await self.ctx.emit("render", renders=urls, errors=errors[:5])
 
     async def on_step(self, ev: dict[str, Any]) -> None:
-        if ev.get("kind") == "text":
+        kind = ev.get("kind")
+        if kind == "text":
             await self.ctx.emit("builder_text", text=ev["text"], step=ev.get("step"))
+        elif kind == "turn":
+            payload = {k: v for k, v in ev.items() if k != "kind"}
+            self.metrics.add(TurnMetric.model_validate(payload))
+            await self.ctx.emit("turn", **payload)
         else:
             await self.ctx.emit("builder_step", **{k: v for k, v in ev.items() if k != "kind"})
+
+    async def add_call(self, role: Role, completion: Completion, step: int = 1) -> None:
+        """Book a critic or intake call: usage, and a persisted `turn` record like the builder's."""
+        self.usage = self.usage + completion.usage
+        if role == "critic":
+            self.critic_usage = self.critic_usage + completion.usage
+        turn = self.metrics.add(
+            TurnMetric(
+                step=step,
+                role=role,
+                model=completion.model or self.settings.resolve_model("critic"),
+                duration_ms=completion.duration_ms,
+                thinking_ms=completion.thinking_ms,
+                input_tokens=completion.usage.input_tokens,
+                cached_tokens=completion.usage.cache_read_tokens,
+                cache_write_tokens=completion.usage.cache_write_tokens,
+                output_tokens=completion.usage.output_tokens,
+                reasoning_tokens=completion.usage.reasoning_tokens,
+            )
+        )
+        logger.info(
+            "llm.turn",
+            extra={
+                "role": role,
+                "step": step,
+                "duration_ms": turn.duration_ms,
+                "in": turn.input_tokens,
+                "cached": turn.cached_tokens,
+                "out": turn.output_tokens,
+            },
+        )
+        await self.ctx.emit("turn", **turn.event_payload())
 
     async def photos(self, exclude: set[str] | None = None) -> tuple[dict[str, Path], list[Path]]:
         """(façade photos by side, other photos in upload order), minus `exclude` file names
@@ -251,11 +290,9 @@ class _Run:
             "questions": last.questions if last else [],
         }
 
-    def add_critic_usage(self, usage: Usage) -> None:
-        self.usage = self.usage + usage
-        self.critic_usage = self.critic_usage + usage
-
     async def emit_usage(self) -> None:
+        """The run's totals: the usage event (with the summary) and the summary on the job."""
+        summary = self.metrics.summary()
         fields = {
             "input_tokens": self.usage.input_tokens,
             "output_tokens": self.usage.output_tokens,
@@ -264,7 +301,23 @@ class _Run:
             "critic_output_tokens": self.critic_usage.output_tokens,
         }
         logger.info("run.usage", extra=fields)
-        await self.ctx.emit("usage", **fields)
+        logger.info(
+            "run.summary",
+            extra={
+                "wall_ms": summary.wall_ms,
+                "turns": summary.turns,
+                "builder_llm_ms": summary.builder.llm_ms,
+                "builder_tools_ms": summary.builder.tools_ms,
+                "render_ms": summary.builder.render_ms,
+                "critic_llm_ms": summary.critic.llm_ms,
+                "cache_miss_turns": summary.builder.cache_miss_turns,
+                "single_edit_turns": summary.single_edit_turns,
+                "cost_usd": summary.cost_usd,
+            },
+        )
+        async with session_factory()() as session, session.begin():
+            await crud.update_job(session, self.ctx.job_id, metrics=summary.model_dump())
+        await self.ctx.emit("usage", **fields, metrics=summary.model_dump())
 
     def current_renders(self, views: tuple[str, ...] = RESUME_VIEWS) -> list[ImagePart]:
         """The latest renders of the working copy, for a builder that has no conversation."""
@@ -291,7 +344,7 @@ async def intake(ctx: JobContext) -> None:
 
     await ctx.emit("phase", name="intake", message="Reading the plan sheets")
     async with LiveProgress(ctx, "intake", show_text=False) as live:
-        result, usage = await intake_agent.read_plans(
+        result, completion = await intake_agent.read_plans(
             run.provider,
             s.resolve_model("critic"),
             pages,
@@ -300,7 +353,7 @@ async def intake(ctx: JobContext) -> None:
             on_progress=live.on_event,
             effort=s.CRITIC_EFFORT,
         )
-    run.usage = run.usage + usage
+    await run.add_call("intake", completion)
     await ctx.emit(
         "intake",
         summary=result.summary,
@@ -398,7 +451,7 @@ async def _critic_rounds(
             )
             async with LiveProgress(ctx, "critic", show_text=False) as live:
                 if inp.has_photos:
-                    verdict, usage = await critic.critique_against_photos(
+                    verdict, completion = await critic.critique_against_photos(
                         run.provider,
                         s.resolve_model("critic"),
                         inp.photos,
@@ -411,7 +464,7 @@ async def _critic_rounds(
                         audit=run.last_audit,
                     )
                 else:
-                    verdict, usage = await critic.critique_against_plans(
+                    verdict, completion = await critic.critique_against_plans(
                         run.provider,
                         s.resolve_model("critic"),
                         inp.elevations,
@@ -423,7 +476,7 @@ async def _critic_rounds(
                         effort=s.CRITIC_EFFORT,
                         audit=run.last_audit,
                     )
-            run.add_critic_usage(usage)
+            await run.add_call("critic", completion, step=i)
             score = verdict.overall_score
             await _emit_critic(ctx, i, verdict)
             await run.set_version_critique(version, verdict)
@@ -620,7 +673,7 @@ async def _modify_verify(
     if s.CRITIC_MAX_ITERATIONS > 0:
         await ctx.emit("phase", name="critic", message="Verifying the modification")
         async with LiveProgress(ctx, "critic", show_text=False) as live:
-            verdict, usage = await critic.verify_modification(
+            verdict, completion = await critic.verify_modification(
                 run.provider,
                 s.resolve_model("critic"),
                 request,
@@ -632,7 +685,7 @@ async def _modify_verify(
                 attachments=inp.attachments,
                 audit=run.last_audit,
             )
-        run.add_critic_usage(usage)
+        await run.add_call("critic", completion)
         await _emit_critic(ctx, 1, verdict)
         await _modify_after_verdict(run, request, messages, verdict, version, summary)
         return
