@@ -120,6 +120,7 @@ function Row({ ev }: { ev: JobEvent }) {
       return (
         <li className="ml-6 text-xs text-muted-foreground">
           tokens: {String(p.input_tokens)} in / {String(p.output_tokens)} out{num(p.cache_read_tokens) ? ` (${String(p.cache_read_tokens)} cached)` : ""}
+          {num(p.critic_output_tokens) !== undefined && ` · critic ${String(p.critic_input_tokens)} in / ${String(p.critic_output_tokens)} out`}
         </li>
       )
     case "done":

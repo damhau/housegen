@@ -43,7 +43,8 @@ class _Run:
         self.workspace = Workspace(self.storage.scene_dir, readonly={"kit": self.settings.KIT_DIR})
         self.scene_url = self.settings.render_base_url + self.storage.scene_url()
         self.renders_dir = self.storage.scene_dir / "renders"
-        self.usage = Usage()
+        self.usage = Usage()  # everything, builder + critic
+        self.critic_usage = Usage()  # the critic's share, reported separately in the usage event
         self.tools = BuilderTools(
             self.workspace, renderer, self.scene_url, self.renders_dir, on_render=self._on_render
         )
@@ -129,13 +130,20 @@ class _Run:
                 session, self.ctx.project_id, version, verdict.overall_score, verdict.model_dump()
             )
 
+    def add_critic_usage(self, usage: Usage) -> None:
+        self.usage = self.usage + usage
+        self.critic_usage = self.critic_usage + usage
+
     async def emit_usage(self) -> None:
-        await self.ctx.emit(
-            "usage",
-            input_tokens=self.usage.input_tokens,
-            output_tokens=self.usage.output_tokens,
-            cache_read_tokens=self.usage.cache_read_tokens,
-        )
+        fields = {
+            "input_tokens": self.usage.input_tokens,
+            "output_tokens": self.usage.output_tokens,
+            "cache_read_tokens": self.usage.cache_read_tokens,
+            "critic_input_tokens": self.critic_usage.input_tokens,
+            "critic_output_tokens": self.critic_usage.output_tokens,
+        }
+        logger.info("run.usage", extra=fields)
+        await self.ctx.emit("usage", **fields)
 
 
 # --------------------------------------------------------------------------
@@ -180,7 +188,7 @@ async def generate(ctx: JobContext) -> None:
                 on_progress=live.on_event,
                 effort=s.CRITIC_EFFORT,
             )
-        run.usage = run.usage + usage
+        run.add_critic_usage(usage)
         score = verdict.overall_score
         await _emit_critic(ctx, i, verdict)
         await run.set_version_critique(version, verdict)
@@ -296,7 +304,7 @@ async def modify(ctx: JobContext) -> None:
                 on_progress=live.on_event,
                 effort=s.CRITIC_EFFORT,
             )
-        run.usage = run.usage + usage
+        run.add_critic_usage(usage)
         await _emit_critic(ctx, 1, verdict)
         if not verdict.done and verdict.issues:
             await ctx.emit("phase", name="builder", message="Fixing what the verifier flagged")

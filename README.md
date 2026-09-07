@@ -87,7 +87,7 @@ with the `/dev/shm` volume Chromium needs.
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` | | credentials |
 | `OPENAI_BASE_URL` | | any OpenAI-compatible endpoint |
 | `BUILDER_MODEL`, `CRITIC_MODEL` | `claude-opus-5` / `gpt-6-astra` | per-role model |
-| `BUILDER_EFFORT`, `CRITIC_EFFORT` | `xhigh`, `high` | reasoning effort per role (OpenAI none…xhigh, Anthropic low…max) |
+| `BUILDER_EFFORT`, `CRITIC_EFFORT` | `xhigh`, `medium` | reasoning effort per role (OpenAI none…xhigh, Anthropic low…max) |
 | `LLM_MAX_TOKENS` | 96000 | per-turn output cap (reasoning tokens count against it on OpenAI) |
 | `BUILDER_MAX_STEPS` | 60 | tool calls per builder pass |
 | `CRITIC_MAX_ITERATIONS` | 1 | independent critic rounds (0 disables) |

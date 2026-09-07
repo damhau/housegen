@@ -36,9 +36,10 @@ class Settings(BaseSettings):
     # so keep it generous; streaming means there is no timeout reason to keep it small.
     LLM_MAX_TOKENS: int = 96000
     # Reasoning effort per role. The builder designs (xhigh, like the reference Astra run);
-    # the critic judges (high is plenty). OpenAI: none…xhigh; Anthropic: low…max.
+    # the critic compares pictures by eye (medium: at high it paced itself against the output
+    # cap and tried to measure renders). OpenAI: none…xhigh; Anthropic: low…max.
     BUILDER_EFFORT: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = "xhigh"
-    CRITIC_EFFORT: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = "high"
+    CRITIC_EFFORT: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = "medium"
     LLM_TIMEOUT_S: float = 600.0
 
     # agent loop

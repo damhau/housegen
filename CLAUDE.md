@@ -36,7 +36,7 @@ deploy/    serve.py (SPA from the API process), k8s.yaml. Root Dockerfile = sing
   used as a final check (`CRITIC_MAX_ITERATIONS`, default 2).
 - Both providers must keep parity: Anthropic Messages API and OpenAI **Responses** API (Chat Completions refuses
   tools + reasoning on gpt-6-astra). Reasoning items are replayed verbatim (`Message.raw`). Both stream.
-- Effort is per role (`BUILDER_EFFORT=xhigh`, `CRITIC_EFFORT=high`). `LLM_MAX_TOKENS` is large because reasoning
+- Effort is per role (`BUILDER_EFFORT=xhigh`, `CRITIC_EFFORT=medium`: the critic compares pictures by eye, see #11). `LLM_MAX_TOKENS` is large because reasoning
   tokens count against `max_output_tokens` on OpenAI.
 - Photos: 4 optional labelled façades (north/south/east/west = the façade the photo SHOWS) + unlimited extras
   (`side="other"`), downscaled to 1600 px on upload.
