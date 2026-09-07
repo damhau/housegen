@@ -86,6 +86,21 @@ function ProjectPage() {
     }
   }, [versionEvents, projectId, qc])
 
+  // the viewer follows the build: reload after every error-free render (never on a broken scene),
+  // unless the user paused it to keep orbiting a given state
+  const [autoReload, setAutoReload] = useState(true)
+  const lastGoodRender = useMemo(() => {
+    let seq = 0
+    for (const e of events) {
+      const errors = (e.payload as { errors?: unknown[] } | null)?.errors
+      if (e.type === "render" && Array.isArray(errors) && errors.length === 0) seq = e.seq
+    }
+    return seq
+  }, [events])
+  useEffect(() => {
+    if (lastGoodRender > 0 && autoReload && Boolean(activeJob)) setReloadKey((k) => k + 1)
+  }, [lastGoodRender, autoReload]) // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     if (activeJob) setTab("activity")
   }, [activeJob?.id]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -97,8 +112,9 @@ function ProjectPage() {
   const busy = Boolean(activeJob) || generate.isPending || modify.isPending
   const version = selectedVersion === null ? p.versions.find((v) => v.number === p.current_version) : p.versions.find((v) => v.number === selectedVersion)
   const sceneUrl = selectedVersion === null || !version ? p.scene_url : version.scene_url
-  // no version yet: the working copy is only the kit's template box, don't show it as "the house"
-  const hasScene = p.current_version > 0 || p.versions.length > 0
+  // no version yet: the working copy is only the kit's template box, don't show it as "the house" —
+  // until the running job has produced an error-free render of it (then the viewer follows the build)
+  const hasScene = p.current_version > 0 || p.versions.length > 0 || (Boolean(activeJob) && lastGoodRender > 0)
   const failedMessage = !activeJob && latestJob?.status === "failed" ? (latestJob.error ?? "the run failed") : null
 
   async function onSend(text: string) {
@@ -186,6 +202,9 @@ function ProjectPage() {
           sceneUrl={hasScene ? sceneUrl : null}
           reloadKey={`${reloadKey}-${selectedVersion ?? "c"}`}
           className="min-h-[420px]"
+          live={Boolean(activeJob) && selectedVersion === null}
+          autoReload={autoReload}
+          onToggleAutoReload={() => setAutoReload((v) => !v)}
           placeholder={
             <BuildingPlaceholder
               running={Boolean(activeJob)}

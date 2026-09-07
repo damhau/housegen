@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { Sparkles } from "lucide-react"
+import { Pause, Play, Sparkles } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -17,11 +17,18 @@ export function SceneViewer({
   reloadKey,
   className,
   placeholder,
+  live = false,
+  autoReload = true,
+  onToggleAutoReload,
 }: {
   sceneUrl: string | null
   reloadKey?: string | number
   className?: string
   placeholder?: ReactNode
+  /** a job is running: the viewer follows the build (reloads after every error-free render) */
+  live?: boolean
+  autoReload?: boolean
+  onToggleAutoReload?: () => void
 }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const [ready, setReady] = useState(false)
@@ -55,6 +62,26 @@ export function SceneViewer({
   return (
     <div className={cn(CHROME, className)}>
       <iframe ref={ref} key={src} src={src} title="3D scene" className="size-full border-0" />
+      {live && (
+        <div className="absolute left-3 top-3 flex items-center gap-1 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
+          <span className="flex items-center gap-1.5 px-1.5 text-[11px] font-medium">
+            <span className={cn("size-2 rounded-full", autoReload ? "animate-pulse bg-emerald-500" : "bg-muted-foreground")} />
+            {autoReload ? "live" : "paused"}
+          </span>
+          {onToggleAutoReload && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2"
+              title={autoReload ? "Pause auto-reload to keep orbiting this state" : "Resume following the build"}
+              onClick={onToggleAutoReload}
+            >
+              {autoReload ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+              {autoReload ? "Pause" : "Follow"}
+            </Button>
+          )}
+        </div>
+      )}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3">
         <div className="pointer-events-auto flex gap-1 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
           {VIEWS.map((v) => (
