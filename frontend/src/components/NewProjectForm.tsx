@@ -84,11 +84,11 @@ export function NewProjectForm() {
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Villa Rosemont" required />
           </label>
 
-          <div className="grid gap-1.5 text-sm">
+          <div className="grid min-w-0 gap-1.5 text-sm">
             <span className="font-medium">Plans (PDF)</span>
             <label
               className={cn(
-                "flex cursor-pointer items-center gap-3 rounded-md border border-dashed px-3 py-3 text-sm",
+                "flex min-w-0 cursor-pointer items-center gap-3 rounded-md border border-dashed px-3 py-3 text-sm",
                 plans.length > 0 ? "border-primary/50 bg-accent/40" : "border-input hover:bg-accent/30",
               )}
               onDragOver={(e) => e.preventDefault()}
@@ -100,13 +100,13 @@ export function NewProjectForm() {
               <FileText className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">
                 {plans.length === 0 ? "Floor plans, elevations, sections, site plan" : `${plans.length} document${plans.length > 1 ? "s" : ""}`}
-                <span className="text-muted-foreground"> · one or more PDFs (the original set, an extension, a survey)</span>
+                <span className="text-muted-foreground"> · one or more PDFs</span>
               </span>
               <input type="file" accept="application/pdf" multiple className="hidden" onChange={(e) => addPlans(e.target.files)} />
               <span className="text-xs text-primary underline-offset-2 hover:underline">choose</span>
             </label>
             {plans.map((p, i) => (
-              <div key={`${p.file.name}-${i}`} className="flex items-center gap-2 text-xs">
+              <div key={`${p.file.name}-${i}`} className="flex min-w-0 items-center gap-2 text-xs">
                 <span className="min-w-0 flex-1 truncate">
                   {i + 1}. {p.file.name}
                 </span>
