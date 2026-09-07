@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react"
 import { AlertTriangle, Camera, CheckCircle2, Eye, FileCode2, Hammer, Loader2, ScanSearch, Sparkles } from "lucide-react"
 import type { JobEvent, LlmProgress } from "@/hooks/useJobStream"
 import { LiveStatus } from "@/components/LiveStatus"
+import { Markdown } from "@/components/Markdown"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 
@@ -64,7 +65,7 @@ function Row({ ev }: { ev: JobEvent }) {
       const questions = (p.questions as { question: string }[] | undefined) ?? []
       return (
         <li className="ml-6 rounded-md border bg-muted/40 p-2">
-          <div className="whitespace-pre-wrap">{str(p.summary)}</div>
+          <Markdown text={str(p.summary)} />
           {sheets.length > 0 && (
             <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
               {sheets.map((s) => (
@@ -84,7 +85,11 @@ function Row({ ev }: { ev: JobEvent }) {
       )
     }
     case "builder_text":
-      return <li className="ml-6 whitespace-pre-wrap text-muted-foreground">{str(p.text)}</li>
+      return (
+        <li className="ml-6 text-muted-foreground">
+          <Markdown text={str(p.text)} />
+        </li>
+      )
     case "builder_step": {
       const tool = str(p.tool)
       const isErr = p.is_error === true
@@ -119,9 +124,9 @@ function Row({ ev }: { ev: JobEvent }) {
       const score = num(p.score) ?? 0
       return (
         <li className="ml-6 rounded-md border bg-muted/40 p-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-start gap-2">
             <ScoreBadge score={score} />
-            <span>{str(p.summary)}</span>
+            <Markdown text={str(p.summary)} className="min-w-0" />
           </div>
           {issues.length > 0 && (
             <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">

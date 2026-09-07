@@ -3,6 +3,7 @@ import { AlertTriangle, ChevronDown, ChevronRight, Hammer, Loader2, MessageCircl
 import { useJobEvents } from "@/api/endpoints/projects/projects"
 import type { ChatMessageOut, IntakeAnswer, IntakeOut, JobOut, SceneVersionOut } from "@/api/model"
 import { JobTimeline, ScoreBadge } from "@/components/JobTimeline"
+import { Markdown } from "@/components/Markdown"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import type { JobEvent, LlmProgress } from "@/hooks/useJobStream"
@@ -110,7 +111,7 @@ export function ConversationPanel({
         <div className="space-y-4">
           {orphans.map((m) => (
             <Bubble key={m.id} role={m.role}>
-              {m.content}
+              {m.role === "assistant" ? <Markdown text={m.content} /> : m.content}
             </Bubble>
           ))}
           {turns.map((t) => (
@@ -159,13 +160,14 @@ export function ConversationPanel({
   )
 }
 
+/** user: plain text as typed; assistant: markdown (see Markdown.tsx) */
 function Bubble({ role, children }: { role: string; children: React.ReactNode }) {
   return (
     <div className={cn("flex", role === "user" ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[85%] whitespace-pre-wrap rounded-lg px-3 py-2",
-          role === "user" ? "bg-primary text-primary-foreground" : "bg-muted",
+          "max-w-[85%] rounded-lg px-3 py-2",
+          role === "user" ? "whitespace-pre-wrap bg-primary text-primary-foreground" : "bg-muted",
         )}
       >
         {children}
@@ -293,7 +295,7 @@ function JobBlock({
       {answer !== undefined && (
         <div className="flex flex-col items-start">
           <Bubble role="assistant">
-            {answer}
+            <Markdown text={answer} />
             {answerVersion != null && <div className="mt-1 text-[11px] opacity-70">→ version {answerVersion}</div>}
           </Bubble>
           {intakeToAnswer && !anyJobRunning && <IntakeForm intake={intakeToAnswer} onSubmit={onAnswer} />}
