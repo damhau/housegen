@@ -4,18 +4,13 @@ Plan PDF + photos → an agent writes a three.js exterior scene, renders it head
 the photos, fixes, and lets the user modify it by chat. Read `README.md` for the run instructions;
 this file is about how to work on the code.
 
-## The one rule that bites
-
-The user runs `uvicorn --reload` on `backend/` while long agent jobs (20–40 min, real money) execute
-**inside that process**. Any change under `backend/` restarts it and kills the running job.
-**Before editing anything in `backend/`, ask whether a job is running.** Frontend (Vite HMR) and
-`kit/` edits are safe during a run; `kit/` changes are picked up by the *next* render.
 
 ## Layout
 
 ```
 backend/   FastAPI + SQLite + Playwright (uv, Python 3.12). Domain-first: src/housegen/<domain>/
-  agent/     prompts.py (all system prompts), builder.py (tool loop), critic.py, pipeline.py (generate/modify),
+  agent/     prompts.py (all system prompts), builder.py (tool loop), critic.py (photos or elevation sheets),
+             intake.py (plans only: sheet map + questions), pipeline.py (intake/generate/modify),
              tools.py (tool specs + handlers), workspace.py (sandboxed src/ + read-only kit/), progress.py (live events)
   llm/       provider-agnostic layer: types.py (Message/Part/ToolSpec), anthropic_provider.py, openai_provider.py
   render/    headless Chromium renderer (shadow map reused across views)
@@ -39,13 +34,19 @@ deploy/    serve.py (SPA from the API process), k8s.yaml. Root Dockerfile = sing
 - Effort is per role (`BUILDER_EFFORT=xhigh`, `CRITIC_EFFORT=medium`: the critic compares pictures by eye, see #11). `LLM_MAX_TOKENS` is large because reasoning
   tokens count against `max_output_tokens` on OpenAI.
 - Photos: 4 optional labelled façades (north/south/east/west = the façade the photo SHOWS) + unlimited extras
-  (`side="other"`), downscaled to 1600 px on upload.
+  (`side="other"`), downscaled to 1600 px on upload. Photos are optional altogether: without any, an `intake` job
+  reads the sheets first (summary, sheet map, ≤ 6 questions with suggested defaults, answered in the conversation),
+  the saved versions render `<side>-elevation` views instead of `<side>-photo`, and the critic pairs them with the
+  elevation sheets the intake identified (skipped when it found none). `project.brief` (upload notes + answers) goes
+  to the builder on every pass.
 - Versions are directory snapshots (`versions/<n>/` + renders); restore = copy back. Reviews are stored on the version
   (`critique_json`) and can be replayed as a modification ("Apply the review's findings").
 
 ## Kit conventions
 
 - Metres; `+x` east, `+z` south, `+y` up, ground `y=0`. Views are named after the façade the camera LOOKS AT.
+  `<side>-photo` = the photographer's viewpoint; `<side>-elevation` = straight-on, 4° fov from far away, fog off,
+  near plane raised in headless mode (a perspective camera that reads like an elevation drawing).
 - Wall exterior is on the RIGHT walking `from→to` (counter-clockwise on a north-up map). Prefer `perimeterWalls`.
 - `terrain()` registers itself; `groundY`, `ribbon`, `pebbleStrip`, `leafTree`, `leafBush`, props all sit on it.
   Terrain is excluded from camera framing (`userData.kind === "terrain"`).
@@ -63,6 +64,7 @@ cd frontend && npm run typecheck && npm run build
 cd backend  && uv run python -c "import json; from housegen.main import app; print(json.dumps(app.openapi()))" > ../frontend/openapi.json
 cd frontend && npm run api:gen
 # after any kit/ change: render the template headless (see scripts / the Renderer) and LOOK at the image
+# (a visual check; see "Visual checks" below when it cannot run here)
 ```
 
 `frontend/openapi.json` is committed on purpose (CI builds without a backend). `src/routeTree.gen.ts` is generated
@@ -71,11 +73,15 @@ by the Vite plugin: run `vite build` before `tsc` on a clean checkout (the Docke
 ## Working habits for this repo
 
 - `uv` only for Python; never pip. Bash cwd persists between calls: always `cd` with absolute paths.
-- Validate UI in a real browser (Playwright MCP). Its browser has no GPU: WebGL screenshots time out there; use the
-  headless `Renderer` for scene checks instead.
+- **Visual checks** (the headless render after a kit change, clicking through the UI in a real browser via the
+  Playwright MCP) are best effort, not prerequisites. If the environment cannot run one (no Chromium system libs,
+  no Playwright MCP connected, no GPU), do not build workarounds: ask the user to run the check and say exactly what
+  to look at. When running unattended, skip it and state clearly in the report that it was not done.
+  The MCP browser has no GPU: WebGL screenshots time out there; scene checks need the headless `Renderer`.
 - Logs are structured events (`llm.openai.done in= out= cached=`, `render.done`, `builder.pruned_images`…). Read them
   before guessing.
-- Commits: plain messages, **no Co-Authored-By**. Tags `v*` publish the image.
+- Commits: plain messages, **no Co-Authored-By**. Every push to `main` builds the image and deploys it to the
+  dev environment (`housegen-dev.apps.dhconsulting.ch`); tags `v*` deploy prod. Both via commits to `damhau/k8s-argocd`.
 - The user's OpenAI key is in their shell env, not in `backend/.env`; Claude cannot call the LLM from its shell.
 - Open work is tracked in GitHub issues (#1 timezone bug, #2 conversation view, #3 critic plausibility). Add there
   rather than in TODO files.

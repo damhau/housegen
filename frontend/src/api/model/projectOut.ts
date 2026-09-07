@@ -4,6 +4,8 @@
  * housegen
  * OpenAPI spec version: 0.1.0
  */
+import type { ProjectOutBrief } from './projectOutBrief';
+import type { ProjectOutIntake } from './projectOutIntake';
 import type { PhotoOut } from './photoOut';
 import type { SceneVersionOut } from './sceneVersionOut';
 
@@ -14,6 +16,8 @@ export interface ProjectOut {
   created_at: string;
   plan_pages: number;
   current_version: number;
+  brief: ProjectOutBrief;
+  intake: ProjectOutIntake;
   photos: PhotoOut[];
   versions: SceneVersionOut[];
   scene_url: string;

@@ -1,11 +1,12 @@
 import { useEffect, useRef } from "react"
-import { Brain, Eye, Hammer, PenLine, Wrench } from "lucide-react"
+import { Brain, Eye, Hammer, PenLine, ScanSearch, Wrench } from "lucide-react"
 import type { LlmProgress } from "@/hooks/useJobStream"
 import { cn } from "@/lib/utils"
 
 const ROLE_LABEL: Record<string, string> = {
+  intake: "Reading the plan sheets",
   builder: "Builder",
-  critic: "Critic comparing renders with photos",
+  critic: "Critic comparing renders with the reference",
 }
 
 function fmtTokens(n: number, estimated: boolean) {
@@ -59,7 +60,7 @@ export function LiveStatus({
     phaseLabel = `calling ${progress.tool_name ?? "a tool"}…`
     Icon = Wrench
   }
-  const RoleIcon = progress.role === "critic" ? Eye : Hammer
+  const RoleIcon = progress.role === "critic" ? Eye : progress.role === "intake" ? ScanSearch : Hammer
   const thought = liveThought.trim()
 
   return (

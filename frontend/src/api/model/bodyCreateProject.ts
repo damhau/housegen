@@ -13,8 +13,13 @@ export interface BodyCreateProject {
   name: string;
   /** PDF plan set */
   plan: string;
-  /** façade photos */
-  photos: string[];
+  /** photos of the house (optional: without any, the plans are read first) */
+  photos?: string[];
   /** side per photo, same order: north|south|east|west|other */
-  sides: string[];
+  sides?: string[];
+  /**
+   * what the files cannot say: changes since the plan, materials, colours
+   * @maxLength 4000
+   */
+  notes?: string;
 }

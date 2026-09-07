@@ -24,6 +24,8 @@ from housegen.projects import crud
 from housegen.projects.models import Job, Project
 from housegen.projects.schemas import (
     ChatMessageOut,
+    GenerateRequest,
+    IntakeOut,
     JobEventOut,
     JobOut,
     ModifyRequest,
@@ -65,6 +67,8 @@ def _project_out(project: Project) -> ProjectOut:
         created_at=project.created_at,
         plan_pages=project.plan_pages,
         current_version=project.current_version,
+        brief=project.brief,
+        intake=IntakeOut.model_validate_json(project.intake_json) if project.intake_json else None,
         photos=[
             PhotoOut(
                 id=p.id, side=p.side, original_name=p.original_name, url=st.photo_url(p.filename)
@@ -118,10 +122,23 @@ async def create_project(
     session: DbSession,
     name: Annotated[str, Form(min_length=1, max_length=200)],
     plan: Annotated[UploadFile, File(description="PDF plan set")],
-    photos: Annotated[list[UploadFile], File(description="façade photos")],
+    # plain lists with an empty default (not `| None`): the generated client only knows how
+    # to put an array of files in the multipart body
+    photos: Annotated[
+        list[UploadFile],
+        File(description="photos of the house (optional: without any, the plans are read first)"),
+    ] = [],  # noqa: B006
     sides: Annotated[
-        list[str], Form(description="side per photo, same order: north|south|east|west|other")
-    ],
+        list[str],
+        Form(description="side per photo, same order: north|south|east|west|other"),
+    ] = [],  # noqa: B006
+    notes: Annotated[
+        str,
+        Form(
+            max_length=4000,
+            description="what the files cannot say: changes since the plan, materials, colours",
+        ),
+    ] = "",
 ) -> ProjectOut:
     if plan.content_type not in ("application/pdf", "application/x-pdf") and not (
         plan.filename or ""
@@ -129,8 +146,6 @@ async def create_project(
         raise InvalidInputError("plan must be a PDF")
     if len(photos) != len(sides):
         raise InvalidInputError("one side label per photo is required")
-    if len(photos) == 0:
-        raise InvalidInputError("at least one photo is required")
     for s in sides:
         if s not in SIDES:
             raise InvalidInputError(f"invalid side '{s}'")
@@ -138,8 +153,10 @@ async def create_project(
     if len(labelled) != len(set(labelled)):
         raise InvalidInputError("each façade side may only be given once")
 
-    logger.info("projects.create.requested", extra={"photos": len(photos)})
-    project = await crud.create_project(session, name)
+    logger.info(
+        "projects.create.requested", extra={"photos": len(photos), "notes": len(notes.strip())}
+    )
+    project = await crud.create_project(session, name, brief=notes.strip() or None)
     st = ProjectStorage(project.id)
     st.ensure()
     st.plan_pdf.write_bytes(await plan.read())
@@ -185,24 +202,48 @@ async def delete_project(session: DbSession, project_id: str) -> None:
     shutil.rmtree(ProjectStorage(project_id).root, ignore_errors=True)
 
 
+_PIPELINES = {"intake": pipeline.intake, "generate": pipeline.generate, "modify": pipeline.modify}
+
+
 async def _start_job(session: DbSession, project_id: str, kind: str, request_text: str = "") -> Job:
     await crud.get_project(session, project_id)
     if await crud.active_job(session, project_id):
         raise ConflictError("a job is already running for this project")
     job = await crud.create_job(session, project_id, kind, request_text)
-    if kind == "modify":
+    if request_text:
+        # the request is the user's turn of the conversation (a modification, or the answers
+        # to the intake's questions that start a build)
         await crud.add_chat_message(session, project_id, "user", request_text, job.id)
     await session.commit()
-    job_manager.submit(
-        job.id, project_id, pipeline.generate if kind == "generate" else pipeline.modify
-    )
+    job_manager.submit(job.id, project_id, _PIPELINES[kind])
     logger.info("jobs.started", extra={"job_id": job.id, "kind": kind})
     return job
 
 
+@router.post("/{project_id}/intake", status_code=202)
+async def intake(session: DbSession, project_id: str) -> JobOut:
+    """Read the plan set before building (projects without photos): what the house is as
+    drawn, which sheet is what, and the questions the drawings cannot answer."""
+    project = await crud.get_project(session, project_id)
+    if project.plan_pages == 0:
+        raise InvalidInputError("the plan set has no sheets to read")
+    return JobOut.model_validate(await _start_job(session, project_id, "intake"))
+
+
 @router.post("/{project_id}/generate", status_code=202)
-async def generate(session: DbSession, project_id: str) -> JobOut:
-    return JobOut.model_validate(await _start_job(session, project_id, "generate"))
+async def generate(
+    session: DbSession, project_id: str, body: GenerateRequest | None = None
+) -> JobOut:
+    """Build from scratch. The optional body carries the owner's answers to the intake's
+    questions (and any notes): they are added to the project's brief for this and every
+    later pass, and shown as the request that started the build."""
+    text = body.as_text() if body else ""
+    if text:
+        project = await crud.get_project(session, project_id)
+        await crud.set_brief(
+            session, project_id, "\n\n".join(x for x in (project.brief or "", text) if x.strip())
+        )
+    return JobOut.model_validate(await _start_job(session, project_id, "generate", text))
 
 
 @router.post("/{project_id}/modify", status_code=202)

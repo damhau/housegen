@@ -26,8 +26,8 @@ async def list_projects(session: AsyncSession) -> list[Project]:
     return list(res.scalars().all())
 
 
-async def create_project(session: AsyncSession, name: str) -> Project:
-    project = Project(name=name)
+async def create_project(session: AsyncSession, name: str, brief: str | None = None) -> Project:
+    project = Project(name=name, brief=brief or None)
     session.add(project)
     await session.flush()
     logger.info("projects.created", extra={"project_id": project.id})
@@ -53,6 +53,22 @@ async def set_status(session: AsyncSession, project_id: str, status: str) -> Non
     project = await get_project(session, project_id)
     project.status = status
     await session.flush()
+
+
+async def set_brief(session: AsyncSession, project_id: str, brief: str | None) -> Project:
+    project = await get_project(session, project_id)
+    project.brief = brief.strip() if brief and brief.strip() else None
+    await session.flush()
+    return project
+
+
+async def set_intake(
+    session: AsyncSession, project_id: str, intake: dict[str, Any] | None
+) -> Project:
+    project = await get_project(session, project_id)
+    project.intake_json = json.dumps(intake, ensure_ascii=False) if intake else None
+    await session.flush()
+    return project
 
 
 async def add_version(

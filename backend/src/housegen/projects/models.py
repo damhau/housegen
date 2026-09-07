@@ -27,6 +27,11 @@ class Project(Base):
     plan_filename: Mapped[str | None] = mapped_column(String(300), nullable=True)
     plan_pages: Mapped[int] = mapped_column(Integer, default=0)
     current_version: Mapped[int] = mapped_column(Integer, default=0)
+    # what the files cannot say, from the owner: notes at upload + answers to the intake's
+    # questions; given to the builder on every pass
+    brief: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # the intake's reading of the plan set (agent.schemas.Intake + job_id) when there are no photos
+    intake_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     photos: Mapped[list[Photo]] = relationship(
         back_populates="project", cascade="all, delete-orphan", lazy="selectin"
@@ -81,7 +86,7 @@ class Job(Base):
     project_id: Mapped[str] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
-    kind: Mapped[str] = mapped_column(String(20))  # generate|modify
+    kind: Mapped[str] = mapped_column(String(20))  # intake|generate|modify
     status: Mapped[str] = mapped_column(String(20), default="queued")  # queued|running|done|failed
     request_text: Mapped[str] = mapped_column(Text, default="")
     error: Mapped[str | None] = mapped_column(Text, nullable=True)

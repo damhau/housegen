@@ -1,7 +1,12 @@
 name: Build and publish image
 
+# Every push to main builds ghcr.io/damhau/housegen:sha-<short> (+ latest) and
+# rolls it out to the dev environment; a v* tag builds the semver image and
+# rolls it out to prod. Rollouts are commits to the GitOps repo (damhau/k8s-argocd),
+# from which Argo CD syncs: base/applications/housegen-dev for dev, .../housegen for prod.
 on:
   push:
+    branches: ["main"]
     tags: ["v*"]
   workflow_dispatch:
 
@@ -34,6 +39,8 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
+          # v1.2.3 → 1.2.3 (prod); every build also gets sha-<7 chars> (what dev deploys);
+          # latest only follows main
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest,enable={{is_default_branch}}
@@ -53,12 +60,31 @@ jobs:
           cache-to: type=gha,mode=max
 
   # Bump the image tag in the GitOps repo; Argo CD rolls it out from there.
-  # Only on v* tags: a workflow_dispatch from a branch publishes no semver tag.
+  #   main  → base/applications/housegen-dev, tag sha-<short> (immutable, one per commit)
+  #   v*    → base/applications/housegen,     tag <semver>
+  # A workflow_dispatch from any other branch only publishes an image.
   deploy:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # one GitOps commit at a time: two quick pushes to main must not race on the push
+    concurrency:
+      group: gitops-housegen
+      cancel-in-progress: false
     steps:
+      - name: Choose target
+        id: target
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "app=housegen" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "env=prod" >> "$GITHUB_OUTPUT"
+          else
+            echo "app=housegen-dev" >> "$GITHUB_OUTPUT"
+            echo "tag=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "env=dev" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout gitops repo
         uses: actions/checkout@v4
         with:
@@ -70,16 +96,18 @@ jobs:
 
       - name: Update image tag
         run: |
-          TAG=${GITHUB_REF_NAME#v}
-          cd base/applications/housegen
-          kustomize edit set image ${IMAGE}=${IMAGE}:${TAG}
+          cd base/applications/${{ steps.target.outputs.app }}
+          kustomize edit set image ${IMAGE}=${IMAGE}:${{ steps.target.outputs.tag }}
 
       - name: Commit and push
         run: |
-          TAG=${GITHUB_REF_NAME#v}
+          APP=${{ steps.target.outputs.app }}
+          TAG=${{ steps.target.outputs.tag }}
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add base/applications/housegen/kustomization.yaml
+          git add base/applications/${APP}/kustomization.yaml
           git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: deploy housegen ${TAG}"
+          git commit -m "chore: deploy ${APP} ${TAG} (${{ steps.target.outputs.env }})"
+          # another workflow may have pushed meanwhile: replay on top of it
+          git pull --rebase origin main
           git push origin main

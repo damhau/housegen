@@ -1,7 +1,8 @@
 # housegen
 
-Upload a house's plan set (PDF) and one photo per façade; an agentic workflow turns them into an
-interactive three.js exterior model that you can then modify by chat.
+Upload a house's plan set (PDF) and, if you have them, photos of the façades; an agentic workflow
+turns them into an interactive three.js exterior model that you can then modify by chat. Without
+photos the agent reads the plans first and asks you the few questions the drawings cannot answer.
 
 The key design decision: **the LLM writes and edits scene code, and looks at renders of its own
 work.** A deterministic spec-to-mesh generator would give a correct but dead box; letting the model
@@ -21,8 +22,9 @@ turns a one-shot lottery into a converging process.
                   version n          └────────────┘
 ```
 
-* **builder** — gets the plan sheets and photos directly and a goal, not a recipe. Tool-use loop: `read/write/edit_file`, `render_views`, `check_scene`, `finish`. Every render is its own quality check against the photos.
-* **critic** — independent model call that only sees photo/render pairs and returns a score + concrete geometric fixes. One round by default (`CRITIC_MAX_ITERATIONS`, 0 disables); further rounds send the findings back to the builder.
+* **intake** (no photos only) — one structured call over the plan sheets before the build: what the house is as drawn, which sheet is what (the elevation sheets become the critic's ground truth), and up to six questions for the owner, each with a suggested default. The answers join the project's **brief**, which every builder pass receives.
+* **builder** — gets the plan sheets and photos directly and a goal, not a recipe. Tool-use loop: `read/write/edit_file`, `apply_patch`, `render_views`, `inspect_image`, `check_scene`, `finish`. Every render is its own quality check against the photos, or against the elevation drawings through the straight-on `<side>-elevation` views.
+* **critic** — independent model call that only sees reference/render pairs (photo and photo-like render, or elevation sheet and elevation render) and returns a score + concrete geometric fixes. One round by default (`CRITIC_MAX_ITERATIONS`, 0 disables); further rounds send the findings back to the builder. Skipped when there is neither a photo nor an elevation sheet.
 * **modify** — same builder, request as ground truth, before/after renders verified by the critic.
 * Both providers stream: the UI shows the model's phase, its reasoning summary, a token counter and, for the builder, the code as it is written.
 
@@ -76,8 +78,10 @@ docker run -p 8000:8000 -v housegen-data:/data --env-file backend/.env --shm-siz
 ```
 
 `.github/workflows/docker-publish.yml` pushes `ghcr.io/damhau/housegen` on every push to `main`
-(`latest` + `sha-…`) and on `v*` tags (semver). `deploy/k8s.yaml` is a single-replica manifest
-with the `/dev/shm` volume Chromium needs.
+(`latest` + `sha-…`) and on `v*` tags (semver), then bumps the image tag in the GitOps repo
+(`damhau/k8s-argocd`) for Argo CD to roll out: `main` → the **dev** environment
+(`base/applications/housegen-dev`, `sha-<short>` tags), `v*` → **prod** (`base/applications/housegen`).
+`deploy/k8s.yaml` is a standalone single-replica manifest with the `/dev/shm` volume Chromium needs.
 
 ## Configuration (backend/.env)
 
@@ -121,7 +125,8 @@ cd frontend && npm run typecheck && npm run build
 * A wall's exterior is on your **right** when walking `from → to`. With north up that means
   going **counter-clockwise** around the footprint. `perimeterWalls` handles it for you.
 * Opening `offset` is measured from the **left end of the façade as seen from outside**.
-* Camera views are named after the façade they **look at** (`north` = camera north of the house).
+* Camera views are named after the façade they **look at** (`north` = camera north of the house). `north-photo` stands
+  where the photographer stood; `north-elevation` is straight-on and near-orthographic, like the elevation drawing.
 
 ## Adding a component to the kit
 

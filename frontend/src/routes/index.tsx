@@ -14,8 +14,9 @@ function HomePage() {
       <section>
         <h1 className="mb-1 text-xl font-semibold tracking-tight">New house</h1>
         <p className="mb-4 text-sm text-muted-foreground">
-          Upload the plan set as a PDF and one photo per façade. The agent reads the plan, builds a three.js scene,
-          renders it, compares it with your photos and fixes what differs.
+          Upload the plan set as a PDF and, if you have them, photos of the façades. The agent reads the plans, builds a
+          three.js scene, renders it, compares it with your photos (or with the elevation drawings) and fixes what differs.
+          Without photos it first asks you a few questions the drawings cannot answer.
         </p>
         <NewProjectForm />
       </section>

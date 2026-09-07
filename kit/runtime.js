@@ -3,7 +3,7 @@
 // headless renderer (window.__house).
 //
 // Query parameters:
-//   ?view=north|south|east|west|aerial|<custom>   initial camera
+//   ?view=north|south|east|west|aerial|<custom>   initial camera (also <side>-photo, <side>-elevation)
 //   ?headless=1                                    no controls animation, deterministic
 //   ?quality=low|medium|high                       low: no shadows/effects · medium: shadows, env light
 //                                                  high: + ambient occlusion + anti-aliasing (final look)
@@ -32,6 +32,10 @@ const QUALITY = params.get("quality") ?? (HEADLESS ? "high" : "medium");
 const EFFECTS = QUALITY === "high";
 const DEFAULT_FOV = 42; // the elevated auto-framed views
 const PHOTO_FOV = 50; // the "-photo" views: a person with a phone
+// the "-elevation" views: a straight-on camera far away with a narrow field of view, so the
+// façade reads like an architect's elevation drawing (perspective under a few percent) without
+// swapping the perspective camera the controls and the post-processing passes hold
+const ELEVATION_FOV = 4;
 // camera azimuth of the side views, degrees clockwise from north (camera north of the house, looking south)
 const AZIMUTH = { north: 0, northeast: 45, east: 90, southeast: 135, south: 180, southwest: 225, west: 270, northwest: 315 };
 const CAMERA_OVERRIDES = readCameraOverrides(params);
@@ -69,6 +73,13 @@ window.__house = {
   get errors() { return state.errors; },
   listViews: () => Object.keys(state.views),
   setView: (name) => setView(name),
+  // debugging: what the fixed views frame (building = tagged walls/openings, or the site when none)
+  get frame() {
+    const f = state.frame;
+    if (!f) return null;
+    const b = (box) => ({ min: box.min.toArray(), max: box.max.toArray() });
+    return { building: b(f.building), site: b(f.bounds), aspect: state.camera?.aspect };
+  },
   renderOnce: () => renderFrame(),
 };
 
@@ -124,6 +135,7 @@ export async function boot(buildScene) {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(PALETTE.sky);
   scene.fog = new THREE.Fog(PALETTE.sky, 55, 150);
+  state.fog = scene.fog;
 
   const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, W / H, 0.1, 500);
   camera.position.set(18, 10, 18);
@@ -225,8 +237,14 @@ export async function boot(buildScene) {
     top: { pos: [c.x + 0.01, c.y + r * 1.8, c.z], target: c },
   };
   // photo-like views: a person standing at 1.6 m in front of the façade, looking at its mid
-  // height, the façade filling ~85 % of the frame width, 50° fov — the viewpoint of the photos
-  for (const side of ["north", "south", "east", "west"]) state.views[`${side}-photo`] = photoView(side);
+  // height, the façade filling ~85 % of the frame width, 50° fov — the viewpoint of the photos.
+  // Elevation views: straight on, near-orthographic, the counterpart of the elevation sheets.
+  // Both depend on the frame's aspect, so they are computed when selected (a resized
+  // interactive window still frames the façade).
+  for (const side of ["north", "south", "east", "west"]) {
+    state.views[`${side}-photo`] = () => photoView(side);
+    state.views[`${side}-elevation`] = () => elevationView(side);
+  }
   if (result?.views) {
     for (const [name, v] of Object.entries(result.views)) {
       state.views[name] = { pos: v.position, target: new THREE.Vector3(...(v.target ?? [c.x, c.y, c.z])) };
@@ -327,7 +345,8 @@ function buildingBounds(root) {
 }
 
 function photoView(side) {
-  const { building, aspect } = state.frame;
+  const { building } = state.frame;
+  const aspect = state.camera.aspect;
   const c = building.getCenter(new THREE.Vector3());
   const size = building.getSize(new THREE.Vector3());
   const az = THREE.MathUtils.degToRad(AZIMUTH[side]);
@@ -344,13 +363,40 @@ function photoView(side) {
 }
 
 /**
+ * Straight-on view of one façade with a very narrow field of view from far away: the building
+ * fills ~90 % of the frame and the perspective is nearly orthographic, like an elevation
+ * drawing. Fog is switched off for it (the camera sits beyond the fog's far distance).
+ */
+function elevationView(side) {
+  const { building } = state.frame;
+  const aspect = state.camera.aspect;
+  const c = building.getCenter(new THREE.Vector3());
+  const size = building.getSize(new THREE.Vector3());
+  const az = THREE.MathUtils.degToRad(AZIMUTH[side]);
+  const dir = new THREE.Vector3(Math.sin(az), 0, -Math.cos(az));
+  const alongX = side === "north" || side === "south";
+  const facadeWidth = alongX ? size.x : size.z;
+  const depth = alongX ? size.z : size.x; // the whole building must fit, not only the front plane
+  const vfov = THREE.MathUtils.degToRad(ELEVATION_FOV);
+  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect);
+  const fill = 0.9;
+  const dist = Math.max((facadeWidth / fill / 2) / Math.tan(hfov / 2), (size.y / fill / 2) / Math.tan(vfov / 2)) + depth / 2;
+  const midY = building.min.y + size.y / 2;
+  const target = new THREE.Vector3(c.x, midY, c.z);
+  const pos = target.clone().addScaledVector(dir, dist);
+  // the camera is far away: move the near plane up so the depth buffer (and the ambient
+  // occlusion that reads it) keeps its precision around the building
+  return { pos: pos.toArray(), target, fov: ELEVATION_FOV, fog: false, fixed: true, near: dist * 0.5, far: dist + 200 };
+}
+
+/**
  * Apply the page's camera overrides (query string) to a side view: azimuth/distance move the
  * eye around the house centre, eye_height/target_height are metres above the house base, fov
- * in degrees. Aerial, top and custom views are left alone.
+ * in degrees. Aerial, top, elevation and custom views are left alone.
  */
 function withOverrides(name, v) {
   const o = CAMERA_OVERRIDES;
-  if (!o || !state.frame) return v;
+  if (!o || !state.frame || v.fixed) return v;
   const baseName = name.replace(/-photo$/, "");
   const azDeg = o.azimuth ?? AZIMUTH[baseName];
   if (azDeg === undefined) return v;
@@ -370,12 +416,18 @@ function withOverrides(name, v) {
 }
 
 async function setView(name) {
-  const preset = state.views[name];
+  let preset = state.views[name];
+  if (typeof preset === "function") preset = preset();
   if (!preset) {
     recordError(`unknown view: ${name}. Known: ${Object.keys(state.views).join(", ")}`);
     return false;
   }
   const v = withOverrides(name, preset);
+  if (state.scene) state.scene.fog = v.fog === false ? null : state.fog ?? null;
+  // headless only: an interactive page keeps the default planes so orbiting away from an
+  // elevation view never clips the scene
+  state.camera.near = HEADLESS ? v.near ?? 0.1 : 0.1;
+  state.camera.far = Math.max(500, v.far ?? 0);
   state.camera.fov = v.fov ?? DEFAULT_FOV;
   state.camera.updateProjectionMatrix();
   state.camera.position.set(...v.pos);

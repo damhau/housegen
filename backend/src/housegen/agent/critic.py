@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from housegen.agent.prompts import CRITIC_MODIFY_SYSTEM, CRITIC_SYSTEM
+from housegen.agent.prompts import CRITIC_MODIFY_SYSTEM, CRITIC_PLAN_SYSTEM, CRITIC_SYSTEM
 from housegen.agent.schemas import Critique
 from housegen.core.exceptions import LLMError
 from housegen.llm import ImagePart, Message, ProgressCallback, Provider, Usage
@@ -79,6 +79,77 @@ async def critique_against_photos(
     completion = await provider.complete(
         model=model,
         system=CRITIC_SYSTEM,
+        messages=[Message.user(*parts)],
+        response_schema=Critique.model_json_schema(),
+        max_tokens=max_tokens,
+        on_progress=on_progress,
+        effort=effort,
+    )
+    return _parse(completion.message.text), completion.usage
+
+
+async def critique_against_plans(
+    provider: Provider,
+    model: str,
+    elevation_pages: dict[str, int],
+    pages: list[Path],
+    renders: dict[str, Path],
+    threshold: int,
+    max_tokens: int,
+    on_progress: ProgressCallback | None = None,
+    effort: str | None = None,
+) -> tuple[Critique, Usage]:
+    """No photographs: judge the model against the elevation drawings of the plan set.
+
+    `elevation_pages` maps a façade side to the 1-based sheet that draws its elevation (from
+    the intake); each sheet is sent once, then the straight-on `<side>-elevation` render of
+    every façade it draws (the elevated wide view is the fallback for older versions).
+    """
+    parts: list[ImagePart | str] = [f"Score threshold for done: {threshold}."]
+    by_page: dict[int, list[str]] = {}
+    for side, page in elevation_pages.items():
+        if 1 <= page <= len(pages):
+            by_page.setdefault(page, []).append(side)
+    for page, sides in sorted(by_page.items()):
+        parts.append(
+            ImagePart.from_file(
+                pages[page - 1],
+                label=f"PLAN SHEET {page}: elevation drawing of the {', '.join(sides)} façade(s) (ground truth)",
+            )
+        )
+    pairs = 0
+    for page, sides in sorted(by_page.items()):
+        for side in sides:
+            render = renders.get(f"{side}-elevation")
+            elevated = render is None
+            if elevated:
+                render = renders.get(side)
+            if render is None:
+                continue
+            pairs += 1
+            parts.append(f"--- Façade: {side} (its elevation is drawn on sheet {page}) ---")
+            parts.append(
+                ImagePart.from_file(
+                    render,
+                    label=(
+                        f"RENDER of the model, elevated wide camera on the {side} side (perspective: heights read differently than in the drawing)"
+                        if elevated
+                        else f"RENDER of the model, straight-on elevation view of the {side} façade"
+                    ),
+                )
+            )
+    if "aerial" in renders:
+        parts.append(
+            ImagePart.from_file(
+                renders["aerial"], label="RENDER aerial view (for massing and site)"
+            )
+        )
+    if pairs == 0:
+        raise LLMError("no elevation drawing / render pair available for the critic")
+    parts.append("Return the critique as JSON matching the schema.")
+    completion = await provider.complete(
+        model=model,
+        system=CRITIC_PLAN_SYSTEM,
         messages=[Message.user(*parts)],
         response_schema=Critique.model_json_schema(),
         max_tokens=max_tokens,

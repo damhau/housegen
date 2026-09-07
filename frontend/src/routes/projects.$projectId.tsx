@@ -11,11 +11,13 @@ import {
   useDeleteProject,
   useGenerate,
   useGetProject,
+  useIntake,
   useListJobs,
   useModify,
   useRestoreVersion,
   useFixVersion,
 } from "@/api/endpoints/projects/projects"
+import type { IntakeAnswer } from "@/api/model"
 import { BuildingPlaceholder } from "@/components/BuildingPlaceholder"
 import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
@@ -52,6 +54,7 @@ function ProjectPage() {
   const jobs = useListJobs(projectId)
   const chat = useChatHistory(projectId)
   const generate = useGenerate()
+  const intake = useIntake()
   const modify = useModify()
   const restore = useRestoreVersion()
   const fix = useFixVersion()
@@ -112,7 +115,11 @@ function ProjectPage() {
   if (project.error || !project.data)
     return <div className="p-6 text-sm text-destructive">{project.error ? errorMessage(project.error) : "not found"}</div>
   const p = project.data
-  const busy = Boolean(activeJob) || generate.isPending || modify.isPending
+  const busy = Boolean(activeJob) || generate.isPending || intake.isPending || modify.isPending
+  const hasPhotos = p.photos.length > 0
+  // no photos: the plans are read first (intake job); the build starts from the answers
+  const needsIntake = !hasPhotos && p.intake === null
+  const awaitingAnswers = !hasPhotos && p.intake !== null && p.current_version === 0 && latestJob?.kind === "intake" && latestJob.status === "done"
   const version = selectedVersion === null ? p.versions.find((v) => v.number === p.current_version) : p.versions.find((v) => v.number === selectedVersion)
   const sceneUrl = selectedVersion === null || !version ? p.scene_url : version.scene_url
   // no version yet: the working copy is only the kit's template box, don't show it as "the house" —
@@ -127,9 +134,17 @@ function ProjectPage() {
     void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
   }
   async function onGenerate() {
-    await generate.mutateAsync({ projectId })
+    if (needsIntake) await intake.mutateAsync({ projectId })
+    else await generate.mutateAsync({ projectId, data: null })
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
+  }
+  async function onAnswer(answers: IntakeAnswer[], notes: string) {
+    await generate.mutateAsync({ projectId, data: { answers, notes } })
+    setSelectedVersion(null)
+    void qc.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) })
+    void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
+    void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
   }
   async function onFix(n: number) {
     await fix.mutateAsync({ projectId, number: n })
@@ -152,7 +167,7 @@ function ProjectPage() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "conversation", label: "Conversation" },
-    { id: "compare", label: "Photo vs render" },
+    { id: "compare", label: hasPhotos ? "Photo vs render" : "Plan vs render" },
     { id: "versions", label: `Versions (${p.versions.length})` },
     { id: "code", label: "Code" },
   ]
@@ -170,9 +185,9 @@ function ProjectPage() {
           {selectedVersion === null ? `current v${p.current_version}` : `viewing v${selectedVersion}`}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          {p.current_version === 0 && !busy && (
+          {p.current_version === 0 && !busy && !awaitingAnswers && (
             <Button size="sm" onClick={() => void onGenerate()}>
-              <Play /> Generate
+              <Play /> {needsIntake ? "Read the plans" : "Generate"}
             </Button>
           )}
           {p.current_version > 0 && !busy && (
@@ -210,10 +225,13 @@ function ProjectPage() {
           placeholder={
             <BuildingPlaceholder
               running={Boolean(activeJob)}
+              kind={activeJob?.kind ?? null}
               events={events}
               progress={progress}
               elapsed={elapsed}
               failedMessage={failedMessage}
+              awaitingAnswers={awaitingAnswers}
+              hasPhotos={hasPhotos}
               canGenerate={!busy}
               onGenerate={() => void onGenerate()}
             />
@@ -242,14 +260,17 @@ function ProjectPage() {
                 messages={chat.data ?? []}
                 versions={p.versions}
                 currentVersion={p.current_version}
+                hasPhotos={hasPhotos}
+                intake={p.intake}
                 liveJob={{ jobId: followed?.id ?? null, events, live, progress, liveText, liveThought, elapsed }}
                 busy={busy}
                 disabled={p.current_version === 0}
                 onSend={onSend}
                 onFix={(n) => void onFix(n)}
+                onAnswer={onAnswer}
               />
             )}
-            {tab === "compare" && <ComparePanel photos={p.photos} version={version} />}
+            {tab === "compare" && <ComparePanel photos={p.photos} version={version} planPageUrls={p.plan_page_urls} intake={p.intake} />}
             {tab === "versions" && (
               <VersionList
                 versions={p.versions}

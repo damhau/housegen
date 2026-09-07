@@ -2,10 +2,11 @@ import { useMemo, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
 import { FileText, ImagePlus, Images, Loader2, X } from "lucide-react"
-import { getListProjectsQueryKey, useCreateProject, useGenerate } from "@/api/endpoints/projects/projects"
+import { getListProjectsQueryKey, useCreateProject, useGenerate, useIntake } from "@/api/endpoints/projects/projects"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { cn, errorMessage } from "@/lib/utils"
 
 const SIDES = ["north", "east", "south", "west"] as const
@@ -16,16 +17,18 @@ export function NewProjectForm() {
   const qc = useQueryClient()
   const create = useCreateProject()
   const generate = useGenerate()
+  const intake = useIntake()
   const [name, setName] = useState("")
   const [plan, setPlan] = useState<File | null>(null)
   const [facades, setFacades] = useState<Partial<Record<Side, File>>>({})
   const [extras, setExtras] = useState<File[]>([])
+  const [notes, setNotes] = useState("")
   const [error, setError] = useState<string | null>(null)
 
   const labelled = SIDES.filter((s) => facades[s])
   const total = labelled.length + extras.length
-  const busy = create.isPending || generate.isPending
-  const canSubmit = name.trim().length > 0 && plan !== null && total > 0 && !busy
+  const busy = create.isPending || generate.isPending || intake.isPending
+  const canSubmit = name.trim().length > 0 && plan !== null && !busy
 
   const extraUrls = useMemo(() => extras.map((f) => URL.createObjectURL(f)), [extras])
 
@@ -50,9 +53,13 @@ export function NewProjectForm() {
           plan: plan as unknown as string,
           photos: photos as unknown as string[],
           sides,
+          notes: notes.trim(),
         },
       })
-      await generate.mutateAsync({ projectId: project.id })
+      // without photos the agent reads the plans first and asks its questions; the build
+      // starts from the conversation once they are answered
+      if (photos.length === 0) await intake.mutateAsync({ projectId: project.id })
+      else await generate.mutateAsync({ projectId: project.id, data: null })
       await qc.invalidateQueries({ queryKey: getListProjectsQueryKey() })
       await navigate({ to: "/projects/$projectId", params: { projectId: project.id } })
     } catch (err) {
@@ -85,10 +92,13 @@ export function NewProjectForm() {
           </label>
 
           <div className="grid gap-1.5 text-sm">
-            <span className="font-medium">Photos</span>
+            <span className="font-medium">
+              Photos <span className="font-normal text-muted-foreground">· optional</span>
+            </span>
             <p className="text-xs text-muted-foreground">
               Add every photo you have of the house: each side, close-ups of details, the garden and the surroundings.
               The more the model sees, the more faithful it gets. Labelling the four sides helps the review compare like with like.
+              No photo? The agent reads the plans first and asks you a few questions before building.
             </p>
             <div className="grid grid-cols-4 gap-2">
               {SIDES.map((side) => {
@@ -153,14 +163,29 @@ export function NewProjectForm() {
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              {total === 0 ? "No photo yet." : `${total} photo${total > 1 ? "s" : ""}: ${labelled.length} labelled façade${labelled.length === 1 ? "" : "s"}, ${extras.length} other.`}
+              {total === 0
+                ? "No photo: the plans will be read first."
+                : `${total} photo${total > 1 ? "s" : ""}: ${labelled.length} labelled façade${labelled.length === 1 ? "" : "s"}, ${extras.length} other.`}
             </p>
           </div>
+
+          <label className="grid gap-1.5 text-sm">
+            <span className="font-medium">
+              Notes <span className="font-normal text-muted-foreground">· optional</span>
+            </span>
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={3}
+              maxLength={4000}
+              placeholder="What the files cannot say: the photos are from 2015 and the east extension came later; the roof is now dark grey; the garage on the plan was never built…"
+            />
+          </label>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={!canSubmit}>
             {busy && <Loader2 className="animate-spin" />}
-            Upload and generate
+            {total === 0 ? "Upload and read the plans" : "Upload and generate"}
           </Button>
         </form>
       </CardContent>

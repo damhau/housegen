@@ -63,3 +63,48 @@ async def test_duplicate_facade_label_is_rejected(client: AsyncClient) -> None:
     r = await client.post("/api/v1/projects", data={"name": "t", "sides": sides}, files=files)
     assert r.status_code == 422
     assert "façade side" in r.json()["error"]["message"]
+
+
+async def test_project_without_photos_is_accepted_with_notes(client: AsyncClient) -> None:
+    files = [("plan", ("plan.pdf", _pdf(), "application/pdf"))]
+    r = await client.post(
+        "/api/v1/projects", data={"name": "t", "notes": "the roof is dark grey"}, files=files
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["photos"] == []
+    assert body["brief"] == "the roof is dark grey"
+    assert body["intake"] is None
+
+
+async def test_generate_with_answers_extends_the_brief(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from housegen.jobs.manager import job_manager
+
+    monkeypatch.setattr(job_manager, "submit", lambda *a, **k: None)  # no real run
+    files = [("plan", ("plan.pdf", _pdf(), "application/pdf"))]
+    r = await client.post(
+        "/api/v1/projects", data={"name": "t", "notes": "built 1972"}, files=files
+    )
+    pid = r.json()["id"]
+    r = await client.post(
+        f"/api/v1/projects/{pid}/generate",
+        json={"answers": [{"question": "Wall colour?", "answer": "white"}], "notes": ""},
+    )
+    assert r.status_code == 202, r.text
+    assert r.json()["kind"] == "generate"
+    job_id = r.json()["id"]
+    brief = (await client.get(f"/api/v1/projects/{pid}")).json()["brief"]
+    assert brief == "built 1972\n\nQ: Wall colour?\nA: white"
+    chat = (await client.get(f"/api/v1/projects/{pid}/chat")).json()
+    assert [m["role"] for m in chat] == ["user"]
+    # a plain regenerate adds nothing (the first job never ran: mark it done to start another)
+    from housegen.core.db import session_factory
+    from housegen.projects import crud
+
+    async with session_factory()() as s, s.begin():
+        await crud.update_job(s, job_id, status="done")
+    r = await client.post(f"/api/v1/projects/{pid}/generate")
+    assert r.status_code == 202, r.text
+    assert (await client.get(f"/api/v1/projects/{pid}")).json()["brief"] == brief

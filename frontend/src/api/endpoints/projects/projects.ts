@@ -26,6 +26,7 @@ import type {
 import type {
   BodyCreateProject,
   ChatMessageOut,
+  GenerateBody,
   HTTPValidationError,
   JobEventOut,
   JobEventsParams,
@@ -158,8 +159,15 @@ export const createProject = async (bodyCreateProject: BodyCreateProject, option
     const formData = new FormData();
 formData.append(`name`, bodyCreateProject.name)
 formData.append(`plan`, bodyCreateProject.plan)
-bodyCreateProject.photos.forEach(value => formData.append(`photos`, value));
-bodyCreateProject.sides.forEach(value => formData.append(`sides`, value));
+if(bodyCreateProject.photos !== undefined) {
+ bodyCreateProject.photos.forEach(value => formData.append(`photos`, value));
+ }
+if(bodyCreateProject.sides !== undefined) {
+ bodyCreateProject.sides.forEach(value => formData.append(`sides`, value));
+ }
+if(bodyCreateProject.notes !== undefined) {
+ formData.append(`notes`, bodyCreateProject.notes)
+ }
 
   return httpClient<ProjectOut>(getCreateProjectUrl(),
   {      
@@ -389,19 +397,21 @@ export const useDeleteProject = <TError = HTTPValidationError,
       return useMutation(mutationOptions, queryClient);
     }
     /**
- * @summary Generate
+ * Read the plan set before building (projects without photos): what the house is as
+drawn, which sheet is what, and the questions the drawings cannot answer.
+ * @summary Intake
  */
-export const getGenerateUrl = (projectId: string,) => {
+export const getIntakeUrl = (projectId: string,) => {
 
 
   
 
-  return `/api/v1/projects/${projectId}/generate`
+  return `/api/v1/projects/${projectId}/intake`
 }
 
-export const generate = async (projectId: string, options?: RequestInit): Promise<JobOut> => {
+export const intake = async (projectId: string, options?: RequestInit): Promise<JobOut> => {
   
-  return httpClient<JobOut>(getGenerateUrl(projectId),
+  return httpClient<JobOut>(getIntakeUrl(projectId),
   {      
     ...options,
     method: 'POST'
@@ -413,9 +423,84 @@ export const generate = async (projectId: string, options?: RequestInit): Promis
 
 
 
+export const getIntakeMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof intake>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof intake>>, TError,{projectId: string}, TContext> => {
+
+const mutationKey = ['intake'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof intake>>, {projectId: string}> = (props) => {
+          const {projectId} = props ?? {};
+
+          return  intake(projectId,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type IntakeMutationResult = NonNullable<Awaited<ReturnType<typeof intake>>>
+    
+    export type IntakeMutationError = HTTPValidationError
+
+    /**
+ * @summary Intake
+ */
+export const useIntake = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof intake>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof intake>>,
+        TError,
+        {projectId: string},
+        TContext
+      > => {
+
+      const mutationOptions = getIntakeMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Build from scratch. The optional body carries the owner's answers to the intake's
+questions (and any notes): they are added to the project's brief for this and every
+later pass, and shown as the request that started the build.
+ * @summary Generate
+ */
+export const getGenerateUrl = (projectId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/generate`
+}
+
+export const generate = async (projectId: string,
+    generateBody: GenerateBody, options?: RequestInit): Promise<JobOut> => {
+  
+  return httpClient<JobOut>(getGenerateUrl(projectId),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      generateBody,)
+  }
+);}
+
+
+
+
 export const getGenerateMutationOptions = <TError = HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generate>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
-): UseMutationOptions<Awaited<ReturnType<typeof generate>>, TError,{projectId: string}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generate>>, TError,{projectId: string;data: GenerateBody}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof generate>>, TError,{projectId: string;data: GenerateBody}, TContext> => {
 
 const mutationKey = ['generate'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -427,10 +512,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
       
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generate>>, {projectId: string}> = (props) => {
-          const {projectId} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generate>>, {projectId: string;data: GenerateBody}> = (props) => {
+          const {projectId,data} = props ?? {};
 
-          return  generate(projectId,requestOptions)
+          return  generate(projectId,data,requestOptions)
         }
 
         
@@ -439,18 +524,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type GenerateMutationResult = NonNullable<Awaited<ReturnType<typeof generate>>>
-    
+    export type GenerateMutationBody = GenerateBody
     export type GenerateMutationError = HTTPValidationError
 
     /**
  * @summary Generate
  */
 export const useGenerate = <TError = HTTPValidationError,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generate>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generate>>, TError,{projectId: string;data: GenerateBody}, TContext>, request?: SecondParameter<typeof httpClient>}
  , queryClient?: QueryClient): UseMutationResult<
         Awaited<ReturnType<typeof generate>>,
         TError,
-        {projectId: string},
+        {projectId: string;data: GenerateBody},
         TContext
       > => {
 

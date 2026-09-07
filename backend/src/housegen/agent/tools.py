@@ -33,6 +33,10 @@ VALID_VIEWS = [
     "south-photo",
     "east-photo",
     "west-photo",
+    "north-elevation",
+    "south-elevation",
+    "east-elevation",
+    "west-elevation",
 ]
 CAMERA_OVERRIDES = ("eye_height", "distance", "azimuth", "fov", "target_height")
 
@@ -123,9 +127,11 @@ TOOL_SPECS: list[ToolSpec] = [
             + " or a custom view returned by buildScene. north/south/east/west are elevated wide shots "
             "(eye about 4 m, whole building in frame): use them for massing and roof shape. The '-photo' "
             "views stand at 1.6 m in front of the façade like the photographer: use them to compare "
-            "heights, sill/lintel levels, roof visibility and overhangs with a photo. The optional camera "
-            "parameters apply to every side view of this call and replace the preset (aerial/top/custom "
-            "views ignore them): use them to reproduce a photo's viewpoint."
+            "heights, sill/lintel levels, roof visibility and overhangs with a photo. The '-elevation' "
+            "views are straight-on and near-orthographic, like an architect's elevation drawing: use them "
+            "to compare a façade with its elevation sheet. The optional camera parameters apply to every "
+            "side view of this call and replace the preset (aerial/top/elevation/custom views ignore "
+            "them): use them to reproduce a photo's viewpoint."
         ),
         input_schema={
             "type": "object",

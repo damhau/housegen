@@ -1,4 +1,4 @@
-import { AlertTriangle, Brain, Eye, Hammer, Loader2, PenLine, Play, Wrench } from "lucide-react"
+import { AlertTriangle, Brain, Eye, Hammer, Loader2, PenLine, Play, ScanSearch, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import type { JobEvent, LlmProgress } from "@/hooks/useJobStream"
 
@@ -23,7 +23,7 @@ function latestPhase(events: JobEvent[]): string | null {
 }
 
 function progressLine(p: LlmProgress): { Icon: typeof Brain; text: string } {
-  const who = p.role === "critic" ? "Critic" : "Builder"
+  const who = p.role === "critic" ? "Critic" : p.role === "intake" ? "Intake" : "Builder"
   const step = p.role === "builder" && p.step ? ` (step ${p.step})` : ""
   if (p.phase === "writing") return { Icon: PenLine, text: `${who}${step} is writing…` }
   if (p.phase === "tool_call") return { Icon: Wrench, text: `${who}${step} is calling ${p.tool_name ?? "a tool"}…` }
@@ -36,24 +36,33 @@ function progressLine(p: LlmProgress): { Icon: typeof Brain; text: string } {
  */
 export function BuildingPlaceholder({
   running,
+  kind,
   events,
   progress,
   elapsed,
   failedMessage,
+  awaitingAnswers,
+  hasPhotos,
   canGenerate,
   onGenerate,
 }: {
   running: boolean
+  /** kind of the running job (intake reads the plans, generate builds) */
+  kind: string | null
   events: JobEvent[]
   progress: LlmProgress | null
   elapsed: string | null
   failedMessage: string | null
+  /** the plans were read; the build starts from the answers in the conversation */
+  awaitingAnswers: boolean
+  hasPhotos: boolean
   canGenerate: boolean
   onGenerate: () => void
 }) {
   const thumb = latestRender(events)
   const phase = latestPhase(events)
   const live = progress && running ? progressLine(progress) : null
+  const reading = kind === "intake"
 
   return (
     <div className="absolute inset-0 grid place-items-center p-6">
@@ -61,11 +70,11 @@ export function BuildingPlaceholder({
         {running ? (
           <>
             <span className="relative grid size-12 place-items-center rounded-full bg-primary/15 text-primary">
-              <Hammer className="size-5" />
+              {reading ? <ScanSearch className="size-5" /> : <Hammer className="size-5" />}
               <span className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
             </span>
             <div>
-              <h2 className="text-base font-semibold tracking-tight">Building your house</h2>
+              <h2 className="text-base font-semibold tracking-tight">{reading ? "Reading your plans" : "Building your house"}</h2>
               <p className="mt-1 text-sm text-muted-foreground">{phase ?? "Starting the agent…"}</p>
             </div>
             {live && (
@@ -103,12 +112,16 @@ export function BuildingPlaceholder({
             <div>
               <h2 className="text-base font-semibold tracking-tight">No scene yet</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                The agent reads the plan and the photos, then builds the house here.
+                {awaitingAnswers
+                  ? "The plans are read. Answer the questions in the conversation to start the build."
+                  : hasPhotos
+                    ? "The agent reads the plans and the photos, then builds the house here."
+                    : "The agent reads the plans and asks you a few questions, then builds the house here."}
               </p>
             </div>
-            {canGenerate && (
+            {canGenerate && !awaitingAnswers && (
               <Button size="sm" onClick={onGenerate}>
-                <Play /> Generate
+                <Play /> {hasPhotos ? "Generate" : "Read the plans"}
               </Button>
             )}
           </>

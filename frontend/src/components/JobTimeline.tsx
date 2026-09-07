@@ -59,6 +59,30 @@ function Row({ ev }: { ev: JobEvent }) {
           {str(p.message)}
         </li>
       )
+    case "intake": {
+      const sheets = (p.sheets as { page: number; kind: string; label: string; elevations?: string[] }[] | undefined) ?? []
+      const questions = (p.questions as { question: string }[] | undefined) ?? []
+      return (
+        <li className="ml-6 rounded-md border bg-muted/40 p-2">
+          <div className="whitespace-pre-wrap">{str(p.summary)}</div>
+          {sheets.length > 0 && (
+            <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+              {sheets.map((s) => (
+                <li key={s.page}>
+                  sheet {s.page}: {s.kind.replace("_", " ")}
+                  {s.elevations && s.elevations.length > 0 ? ` (${s.elevations.join(", ")})` : ""} · {s.label}
+                </li>
+              ))}
+            </ul>
+          )}
+          {questions.length > 0 && (
+            <div className="mt-1 text-xs text-muted-foreground">
+              {questions.length} question{questions.length > 1 ? "s" : ""} for you, answered below
+            </div>
+          )}
+        </li>
+      )
+    }
     case "builder_text":
       return <li className="ml-6 whitespace-pre-wrap text-muted-foreground">{str(p.text)}</li>
     case "builder_step": {
@@ -154,7 +178,7 @@ function Row({ ev }: { ev: JobEvent }) {
 
 function PhaseIcon({ name }: { name: string }) {
   const cls = "size-4 text-primary"
-  if (name === "analyst") return <ScanSearch className={cls} />
+  if (name === "analyst" || name === "intake") return <ScanSearch className={cls} />
   if (name === "builder") return <Hammer className={cls} />
   if (name === "critic") return <Eye className={cls} />
   return <Camera className={cls} />

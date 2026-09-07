@@ -16,7 +16,7 @@ export interface LlmProgress {
 }
 
 const PERSISTED = [
-  "phase", "builder_text", "builder_step", "builder_done", "render", "version", "critic", "usage", "done", "error",
+  "phase", "intake", "builder_text", "builder_step", "builder_done", "render", "version", "critic", "usage", "done", "error",
 ]
 
 /**
