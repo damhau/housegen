@@ -10,7 +10,7 @@ from typing import Any
 
 from housegen.agent.workspace import Workspace, WorkspaceError
 from housegen.core.exceptions import RenderError
-from housegen.llm.types import ImagePart, TextPart, ToolSpec, thumbnail_size
+from housegen.llm.types import ImagePart, TextPart, ToolSpec
 from housegen.projects.storage import PlanSheet
 from housegen.render.renderer import Renderer
 
@@ -182,11 +182,9 @@ TOOL_SPECS: list[ToolSpec] = [
             "(plan sheets are re-rendered from the PDF at 300 dpi). name = a photo label "
             "('north', 'south', 'east', 'west', 'extra-3', 'attached-1' for a photo attached to the "
             "request), a plan sheet ('plan-2') or a render view "
-            "('render-north'). x, y, w, h are pixel coordinates in the image as you received it "
-            "(for the additional photographs that is the small thumbnail: give the whole thumbnail "
-            "to see the photo in full); the result says the crop's scale. Use it to read dimension "
-            "strings on the plans and small façade details (window divisions, shutters, cladding "
-            "lines) instead of guessing."
+            "('render-north'). x, y, w, h are pixel coordinates in the image as you received it; "
+            "the result says the crop's scale. Use it to read dimension strings on the plans and "
+            "small façade details (window divisions, shutters, cladding lines) instead of guessing."
         ),
         input_schema={
             "type": "object",
@@ -245,11 +243,7 @@ TOOL_SPECS: list[ToolSpec] = [
 
 
 class ImageSources:
-    """Where inspect_image finds the images the model has seen (photos by label, plan sheets).
-
-    `thumb_px`: the additional photographs went into the conversation as thumbnails of that
-    size (#5), so the model's coordinates for them are thumbnail coordinates.
-    """
+    """Where inspect_image finds the images the model has seen (photos by label, plan sheets)."""
 
     def __init__(
         self,
@@ -258,17 +252,13 @@ class ImageSources:
         plan_pages: list[Path] | None = None,
         plan_pdf: Path | None = None,
         attached: list[Path] | None = None,
-        thumb_px: int | None = None,
         plan_sheets: list[PlanSheet] | None = None,
     ) -> None:
         """`plan_sheets` (#10) maps each 'plan-N' onto its document's PDF and page; the older
         `plan_pages` + `plan_pdf` pair describes a single document."""
         self.photos = dict(photos or {})
-        self.thumbs: set[str] = set()
         for i, p in enumerate(extras or [], 1):
             self.photos[f"extra-{i}"] = p
-            if thumb_px:
-                self.thumbs.add(f"extra-{i}")
         for i, p in enumerate(attached or [], 1):
             self.photos[f"attached-{i}"] = p
         if plan_sheets is not None:
@@ -278,22 +268,12 @@ class ImageSources:
                 PlanSheet(index=i, document=1, page=i, png=png, pdf=plan_pdf or Path())
                 for i, png in enumerate(plan_pages or [], 1)
             ]
-        self.thumb_px = thumb_px
 
     def photo_names(self) -> list[str]:
         return list(self.photos)
 
     def photo(self, name: str) -> Path | None:
         return self.photos.get(name)
-
-    def shown_size(self, name: str, path: Path) -> tuple[int, int]:
-        """The pixel size the model saw this photo at (thumbnail or working copy)."""
-        if name in self.thumbs and self.thumb_px:
-            return thumbnail_size(path, self.thumb_px)
-        from PIL import Image
-
-        with Image.open(path) as im:
-            return im.size
 
     def plan_page(self, page: int) -> Path | None:
         if 1 <= page <= len(self.sheets):
@@ -332,17 +312,13 @@ class ImageSources:
 
 
 def crop_image(
-    shown: Path | tuple[int, int], source: Path, x: int, y: int, w: int, h: int, label: str
+    shown: Path, source: Path, x: int, y: int, w: int, h: int, label: str
 ) -> list[TextPart | ImagePart]:
-    """Crop `source` (the original, possibly larger than what was shown) using coordinates in
-    the image as shown: `shown` is that image's path, or its pixel size."""
+    """Crop `source` (the original, possibly larger than `shown`) using coordinates in `shown`."""
     from PIL import Image, ImageOps
 
-    if isinstance(shown, tuple):
-        sw, sh = shown
-    else:
-        with Image.open(shown) as im:
-            sw, sh = im.size
+    with Image.open(shown) as im:
+        sw, sh = im.size
     with Image.open(source) as raw:
         src: Image.Image = ImageOps.exif_transpose(raw) or raw
         fx, fy = src.width / sw, src.height / sh
@@ -507,8 +483,7 @@ class BuilderTools:
                 )
             ], True
         orig = shown.parent / "orig" / shown.name
-        size = self.images.shown_size(name, shown)
-        return [*crop_image(size, orig if orig.exists() else shown, x, y, w, h, label=name)], False
+        return [*crop_image(shown, orig if orig.exists() else shown, x, y, w, h, label=name)], False
 
     async def check_scene(self, _: dict[str, Any]) -> ToolOutput:
         res = await self.renderer.render(self.scene_url, [], self.renders_dir, quality="low")

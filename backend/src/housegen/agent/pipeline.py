@@ -48,9 +48,6 @@ from housegen.render.renderer import renderer
 logger = logging.getLogger(__name__)
 
 BRIEF_HEADING = "## About this house, from the owner"
-# the additional photographs go into the builder's messages as thumbnails this big (#5): an
-# index the model recognises them by; inspect_image('extra-n', …) fetches the full photo
-EXTRA_THUMB_PX = 256
 # a job interrupted this many times is given up on: a crash loop must not burn money forever
 RESUME_MAX_ATTEMPTS = 3
 # the renders shown to a resumed builder (the whole standard set would be nine images)
@@ -135,11 +132,7 @@ class _Run:
         self, photos: dict[str, Path], extras: list[Path], attached: list[Path] | None = None
     ) -> None:
         self.tools.images = ImageSources(
-            photos,
-            extras,
-            attached=attached,
-            thumb_px=EXTRA_THUMB_PX,
-            plan_sheets=self.storage.plan_sheets(),
+            photos, extras, attached=attached, plan_sheets=self.storage.plan_sheets()
         )
 
     async def _on_render(self, images: dict[str, Path], errors: list[str]) -> None:
@@ -559,10 +552,7 @@ def _first_message(
     if inp.has_photos:
         parts.append(
             "Build this house. Below are the plan sheets and the photographs. Photographs labelled "
-            "with a side show that façade in full; the additional photographs show details, other "
-            "angles or the surroundings and are given as small thumbnails: an index. When one looks "
-            "useful, inspect_image('extra-n', 0, 0, w, h) with the thumbnail's size returns it in "
-            "full, and a smaller region zooms in."
+            "with a side show that façade; the others show details, other angles or the surroundings."
         )
     else:
         parts.append(PLAN_ONLY_ADDENDUM)
@@ -575,13 +565,7 @@ def _first_message(
     for side, p in photos.items():
         parts.append(ImagePart.from_file(p, label=f"Photograph of the {side} façade"))
     for i, p in enumerate(extras, 1):
-        parts.append(
-            ImagePart.thumbnail(
-                p,
-                EXTRA_THUMB_PX,
-                label=f"Additional photograph {i} of {len(extras)} ('extra-{i}', thumbnail)",
-            )
-        )
+        parts.append(ImagePart.from_file(p, label=f"Additional photograph {i} of {len(extras)}"))
     if inp.intake is not None:
         parts.append(inp.intake.as_builder_text())
     if inp.brief:
@@ -707,14 +691,8 @@ def _modify_message(
         parts.append(f"{BRIEF_HEADING}\n{inp.brief}")
     for side, p in inp.photos.items():
         parts.append(ImagePart.from_file(p, label=f"Photograph of the {side} façade (reference)"))
-    for i, p in enumerate(inp.extras, 1):
-        parts.append(
-            ImagePart.thumbnail(
-                p,
-                EXTRA_THUMB_PX,
-                label=f"Additional photograph {i} ('extra-{i}', thumbnail; reference)",
-            )
-        )
+    for i, p in enumerate(inp.extras[:8], 1):
+        parts.append(ImagePart.from_file(p, label=f"Additional photograph {i} (reference)"))
     if not inp.has_photos:
         parts.extend(_elevation_sheets(inp.intake, inp.pages))
     for view, p in renders.items():

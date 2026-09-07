@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import io
 from pathlib import Path
 
 import pytest
@@ -177,4 +179,5 @@ def test_inspect_image_resolves_plan_n_to_its_document_page(tmp_path: Path) -> N
     clip = src.plan_clip(3, 0, 0, 200, 100, pngs[2])
     assert clip is not None
     assert "page-3 region" in (clip.label or "")
-    assert clip.size[0] > 200  # re-rendered at 300 dpi, larger than the 72 dpi sheet region
+    with Image.open(io.BytesIO(base64.b64decode(clip.data))) as im:
+        assert im.size[0] > 200  # re-rendered at 300 dpi, larger than the 72 dpi sheet region
