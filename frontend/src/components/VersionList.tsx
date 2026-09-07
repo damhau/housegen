@@ -28,6 +28,7 @@ export function VersionList({
         const isCurrent = v.number === current
         const isSelected = selected === v.number || (selected === null && isCurrent)
         const issues = v.critique?.issues.length ?? 0
+        const suggestions = v.suggestions?.length ?? 0
         return (
           <li
             key={v.id}
@@ -51,6 +52,7 @@ export function VersionList({
                 <div className="text-xs text-muted-foreground">
                   {v.kind} · {relTime(v.created_at)}
                   {issues > 0 && ` · ${issues} finding${issues > 1 ? "s" : ""}`}
+                  {suggestions > 0 && ` · ${suggestions} suggestion${suggestions > 1 ? "s" : ""}`}
                 </div>
               </div>
               {v.critic_score != null && <ScoreBadge score={v.critic_score} />}

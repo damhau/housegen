@@ -63,6 +63,8 @@ async def add_version(
     label: str,
     summary: str = "",
     critic_score: int | None = None,
+    suggestions: list[str] | None = None,
+    questions: list[str] | None = None,
 ) -> SceneVersion:
     project = await get_project(session, project_id)
     v = SceneVersion(
@@ -72,6 +74,8 @@ async def add_version(
         label=label,
         summary=summary,
         critic_score=critic_score,
+        suggestions_json=json.dumps(suggestions, ensure_ascii=False) if suggestions else None,
+        questions_json=json.dumps(questions, ensure_ascii=False) if questions else None,
     )
     session.add(v)
     project.current_version = number

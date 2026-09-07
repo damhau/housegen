@@ -66,6 +66,9 @@ class SceneVersion(Base):
     summary: Mapped[str] = mapped_column(Text, default="")
     critic_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     critique_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # from the builder's `finish`: optional additions it left out, questions for the owner
+    suggestions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    questions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
     project: Mapped[Project] = relationship(back_populates="versions")

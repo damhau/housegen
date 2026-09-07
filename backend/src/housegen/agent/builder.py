@@ -79,6 +79,27 @@ class BuilderRun:
     usage: Usage = field(default_factory=Usage)
     finished: bool = False
     messages: list[Message] = field(default_factory=list)
+    # from `finish`: optional additions left out on purpose, and questions for the owner
+    suggestions: list[str] = field(default_factory=list)
+    questions: list[str] = field(default_factory=list)
+
+
+def _str_list(value: Any, limit: int) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    out = [str(v).strip() for v in value if str(v).strip()]
+    return out[:limit]
+
+
+def budget_note(step: int, max_steps: int) -> str | None:
+    """A short pacing note for the model at half, three quarters and near the end of the budget."""
+    if step == max_steps // 2:
+        return f"(step {step} of {max_steps}: half of your step budget is spent)"
+    if step == max_steps * 3 // 4:
+        return f"(step {step} of {max_steps}: three quarters of your step budget are spent)"
+    if max_steps - 6 < step < max_steps:
+        return f"(step {step} of {max_steps}: {max_steps - step} steps left, finish soon)"
+    return None
 
 
 def _arg_preview(name: str, args: dict[str, Any]) -> str:
@@ -232,6 +253,8 @@ async def run_builder(
                         )
                     continue
                 run.summary = str(call.input.get("summary", "")).strip() or text
+                run.suggestions = _str_list(call.input.get("suggestions"), 8)
+                run.questions = _str_list(call.input.get("questions"), 4)
                 run.finished = True
                 results.append(ToolResultPart(tool_call_id=call.id, content=[TextPart(text="ok")]))
                 if on_step:
@@ -260,6 +283,9 @@ async def run_builder(
                         "step": run.steps,
                     }
                 )
+        note = budget_note(run.steps, max_steps)
+        if note and results and not run.finished:
+            results[-1].content.append(TextPart(text=note))
         messages.append(Message(role="user", content=list(results)))
         if run.finished:
             break

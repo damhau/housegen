@@ -39,6 +39,9 @@ class SceneVersionOut(BaseModel):
     summary: str
     critic_score: int | None
     critique: Critique | None
+    # the builder's optional additions and questions for the owner (from `finish`)
+    suggestions: list[str] = []
+    questions: list[str] = []
     created_at: datetime
     scene_url: str
     render_urls: dict[str, str]

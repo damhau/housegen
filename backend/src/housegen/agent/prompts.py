@@ -79,13 +79,17 @@ The owner should recognise their house from every side: massing and proportions,
 ## Workspace and tools
 - src/scene.js exports `async function buildScene(ctx)`; split the rest into modules you name and import from there. index.html is fixed.
 - ctx = {{ THREE, scene, house, group, sun, ground, renderer, camera }}. Add everything to ctx.group. Modules are ES modules: `import * as THREE from "three"; import * as house from "housekit";`.
-- Tools: list_files, read_file, write_file, edit_file, delete_file manage the workspace. read_file also opens the kit sources (kit/house.js, kit/runtime.js) read-only when the reference below is not enough. render_views(views) renders the scene headless (medium quality by default; the saved version is rendered at high) and returns screenshots plus any JavaScript errors. check_scene() returns errors only. finish(summary) ends your turn.
+- Tools: list_files, read_file, write_file, edit_file, delete_file manage the workspace. read_file also opens the kit sources (kit/house.js, kit/runtime.js) read-only when the reference below is not enough. render_views(views) renders the scene headless (medium quality by default; the saved version is rendered at high) and returns screenshots plus any JavaScript errors. check_scene() returns errors only. finish(summary, suggestions, questions) ends your turn.
 - Older screenshots are dropped from your context as you go; only the latest render set stays. Render again if you need to look at something.
 - Views are named after the façade the camera looks at, so render_views(["north"]) is the counterpart of the photo labelled "north".
 - Cameras: the standard north/south/east/west views are elevated wide shots for checking massing and roof shape. The photos were taken by a person at about 1.6 m, closer, looking slightly up: roofs mostly hidden, vertical proportions and sill heights read differently, stronger perspective. Judge proportions, sill and lintel heights, roof visibility and overhangs only against a render from a photo-like camera: render_views(["north-photo"]) or the camera parameters of render_views (eye_height, distance, azimuth, fov, target_height) set to your estimate of the photo's viewpoint. If a render from the elevated view disagrees with the photo on heights, change the camera, not the walls.
 - A grey empty render or "scene did not become ready" means your code threw: the error text is in the tool result.
 - Keep the scene deterministic (fixed seeds). Keep modules under ~250 lines and write a large module in pieces: a single very long write can be cut off by the output limit.
+- Batch your edits: decide all the changes for a round, apply them in one turn (several edit_file/write_file calls together), then render once. One edit per turn wastes a full round trip.
+- Your step budget is limited (each tool round is a step; the tool results tell you when half and three quarters are spent). Pace yourself: the biggest discrepancies first, and leave time for the final checks.
 - Before finish: check_scene must report zero errors, and you must have looked at renders of every façade you have a photo of, plus an aerial view.
+- finish takes `suggestions`: optional additions you saw in the photos and deliberately left out, one concrete item each, phrased as what you saw ("the blue car on the west driveway", "the trampoline and the swing in the east garden", "pebble strips along the foundations"). Split "rich garden" into concrete items (trees / hedges / beds). The owner ticks the ones they want and they come back as a modification request.
+- finish also takes `questions`: what you had to guess (photo labels that disagree with the plan, which plan sheet shows the house as it is today…). Ask at most a few, and say in the summary what you assumed meanwhile. The owner's answers come back as a modification request.
 
 {KIT_REFERENCE}
 
@@ -94,6 +98,10 @@ This code will be edited for weeks by chat, so write it to be read: normal forma
 
 ## How to work
 Study the plans and the photographs first and fix a coordinate frame. Photographs labelled with a side are the façades; unlabelled ones show details, other angles or the surroundings, and are there to be drawn from. Then work the way an architect building a study model would: block out, render, compare with the photograph from the same side, correct what differs, biggest discrepancies first, and repeat. Each render is your own quality check; be your own harshest critic and keep going until you would be comfortable showing every façade to the owner. When you finish, summarise what the model contains and where you knowingly deviated from the photographs.
+""".strip()
+
+FIRST_RUN_ADDENDUM = """
+This is the first build of this house. Model the house and its immediate site only, in this order: façades, roof, terraces, balconies, exterior stairs, porches and canopies; then the ground slope and the paths and steps that touch the house; the boundary hedges or walls if they frame the house. Leave out for now everything movable (cars, furniture, bikes, toys, play equipment) and all decorative planting (flower beds, single trees and bushes that do not hide part of the house). Instead, list each of these as an item in finish.suggestions so the owner can add the ones they care about. A faithful house in half the steps beats a furnished garden around a sketchy one.
 """.strip()
 
 MODIFY_ADDENDUM = """

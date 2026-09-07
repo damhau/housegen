@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from housegen.agent import critic
-from housegen.agent.builder import run_builder
+from housegen.agent.builder import BuilderRun, run_builder
 from housegen.agent.progress import LiveProgress
-from housegen.agent.prompts import BUILDER_SYSTEM, MODIFY_ADDENDUM
+from housegen.agent.prompts import BUILDER_SYSTEM, FIRST_RUN_ADDENDUM, MODIFY_ADDENDUM
 from housegen.agent.schemas import Critique
 from housegen.agent.tools import BuilderTools
 from housegen.agent.workspace import Workspace
@@ -43,6 +43,9 @@ class _Run:
         self.workspace = Workspace(self.storage.scene_dir, readonly={"kit": self.settings.KIT_DIR})
         self.scene_url = self.settings.render_base_url + self.storage.scene_url()
         self.renders_dir = self.storage.scene_dir / "renders"
+        self.last_run: BuilderRun | None = (
+            None  # the most recent builder pass (suggestions, questions)
+        )
         self.usage = Usage()  # everything, builder + critic
         self.critic_usage = Usage()  # the critic's share, reported separately in the usage event
         self.tools = BuilderTools(
@@ -90,8 +93,19 @@ class _Run:
         dst = self.storage.snapshot(n)
         for view, p in renders.items():
             shutil.copy2(p, dst / "renders" / f"{view}.jpg")
+        last = self.last_run
         async with session_factory()() as session, session.begin():
-            await crud.add_version(session, self.ctx.project_id, n, kind, label, summary, score)
+            await crud.add_version(
+                session,
+                self.ctx.project_id,
+                n,
+                kind,
+                label,
+                summary,
+                score,
+                suggestions=last.suggestions if last else None,
+                questions=last.questions if last else None,
+            )
             await crud.update_job(session, self.ctx.job_id, result_version=n)
         await self.ctx.emit(
             "version",
@@ -119,8 +133,14 @@ class _Run:
             progress=lambda step: LiveProgress(self.ctx, "builder", step=step, show_text=True),
         )
         self.usage = self.usage + run.usage
+        self.last_run = run
         await self.ctx.emit(
-            "builder_done", summary=run.summary, steps=run.steps, finished=run.finished
+            "builder_done",
+            summary=run.summary,
+            steps=run.steps,
+            finished=run.finished,
+            suggestions=run.suggestions,
+            questions=run.questions,
         )
         return run.summary
 
@@ -129,6 +149,13 @@ class _Run:
             await crud.set_version_critique(
                 session, self.ctx.project_id, version, verdict.overall_score, verdict.model_dump()
             )
+
+    def finish_extras(self) -> dict[str, Any]:
+        last = self.last_run
+        return {
+            "suggestions": last.suggestions if last else [],
+            "questions": last.questions if last else [],
+        }
 
     def add_critic_usage(self, usage: Usage) -> None:
         self.usage = self.usage + usage
@@ -165,7 +192,7 @@ async def generate(ctx: JobContext) -> None:
     await ctx.emit(
         "phase", name="builder", message="Reading the plans and photos, building the scene"
     )
-    messages = [Message.user(*_initial_parts(photos, extras, pages))]
+    messages = [Message.user(FIRST_RUN_ADDENDUM, *_initial_parts(photos, extras, pages))]
     summary = await run.build(messages)
     renders = await run.render_standard()
     version = await run.snapshot("generation", "Initial build", summary, None, renders)
@@ -213,7 +240,7 @@ async def generate(ctx: JobContext) -> None:
         await crud.set_status(session, pid, "ready")
         await crud.add_chat_message(session, pid, "assistant", summary, ctx.job_id, version)
     await run.emit_usage()
-    await ctx.emit("done", version=version, score=score, summary=summary)
+    await ctx.emit("done", version=version, score=score, summary=summary, **run.finish_extras())
 
 
 def _initial_parts(
@@ -330,4 +357,4 @@ async def modify(ctx: JobContext) -> None:
     async with session_factory()() as session, session.begin():
         await crud.add_chat_message(session, pid, "assistant", summary, ctx.job_id, version)
     await run.emit_usage()
-    await ctx.emit("done", version=version, score=score, summary=summary)
+    await ctx.emit("done", version=version, score=score, summary=summary, **run.finish_extras())

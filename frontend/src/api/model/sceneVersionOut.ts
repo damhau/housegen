@@ -16,6 +16,8 @@ export interface SceneVersionOut {
   summary: string;
   critic_score: SceneVersionOutCriticScore;
   critique: SceneVersionOutCritique;
+  suggestions?: string[];
+  questions?: string[];
   created_at: string;
   scene_url: string;
   render_urls: SceneVersionOutRenderUrls;

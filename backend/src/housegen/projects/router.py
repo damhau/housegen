@@ -76,6 +76,8 @@ def _project_out(project: Project) -> ProjectOut:
                 summary=v.summary,
                 critic_score=v.critic_score,
                 critique=Critique.model_validate_json(v.critique_json) if v.critique_json else None,
+                suggestions=json.loads(v.suggestions_json) if v.suggestions_json else [],
+                questions=json.loads(v.questions_json) if v.questions_json else [],
                 created_at=v.created_at,
                 scene_url=st.scene_url(v.number),
                 render_urls=st.render_urls(v.number),

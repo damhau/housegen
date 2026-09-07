@@ -157,7 +157,27 @@ TOOL_SPECS: list[ToolSpec] = [
                 "summary": {
                     "type": "string",
                     "description": "What the scene contains and known deviations.",
-                }
+                },
+                "suggestions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": 8,
+                    "description": (
+                        "Optional additions you saw in the photos and deliberately left out, one "
+                        "concrete item each, phrased as what you saw ('the blue car on the west "
+                        "driveway', 'the hedge on the street side'). The user picks the ones they want."
+                    ),
+                },
+                "questions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "maxItems": 4,
+                    "description": (
+                        "Questions for the owner where the plans and photos left you guessing "
+                        "('the north and south photo labels disagree with the plan; which is right?'). "
+                        "Say what you assumed meanwhile."
+                    ),
+                },
             },
             "required": ["summary"],
             "additionalProperties": False,

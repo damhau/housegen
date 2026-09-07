@@ -238,10 +238,17 @@ function ProjectPage() {
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {tab === "activity" && (
-              <JobTimeline events={events} live={live} progress={progress} liveText={liveText} liveThought={liveThought} />
+              <JobTimeline
+                events={events}
+                live={live}
+                progress={progress}
+                liveText={liveText}
+                liveThought={liveThought}
+                onOpenChat={() => setTab("chat")}
+              />
             )}
             {tab === "chat" && (
-              <ChatPanel messages={chat.data ?? []} busy={busy} disabled={p.current_version === 0} onSend={onSend} />
+              <ChatPanel messages={chat.data ?? []} versions={p.versions} busy={busy} disabled={p.current_version === 0} onSend={onSend} />
             )}
             {tab === "compare" && <ComparePanel photos={p.photos} version={version} />}
             {tab === "versions" && (
