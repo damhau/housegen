@@ -16,31 +16,20 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { Sky } from "three/addons/objects/Sky.js";
-import { CSM } from "three/addons/csm/CSM.js";
-import { SSRPass } from "three/addons/postprocessing/SSRPass.js";
-// vendored by kit/scripts/vendor.mjs (npm postinstall); relative paths, so a scene's
-// index.html needs no importmap entry for them (projects keep the template of their day)
-import { EffectComposer, RenderPass, EffectPass, SMAAEffect, SMAAPreset, VignetteEffect, ToneMappingEffect, ToneMappingMode, Pass } from "./vendor/postprocessing/index.js";
-import { N8AOPostPass } from "./vendor/n8ao/N8AO.js";
+import { EffectComposer } from "three/addons/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
+import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
+import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
+import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import * as house from "housekit";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
 const QUALITY = params.get("quality") ?? (HEADLESS ? "high" : "medium");
-// ambient occlusion (N8AO) + SMAA + a light vignette through the pmndrs postprocessing
-// composer: the final look. Interactive pages fall back to plain rendering automatically when
-// the machine cannot sustain it (see the frame-time guard).
+// ambient occlusion + anti-aliasing: the final look. Interactive pages fall back to plain
+// rendering automatically when the machine cannot sustain it (see the frame-time guard).
 const EFFECTS = QUALITY === "high";
-// cascaded shadow maps (#17): interactive (GPU) pages only. The headless renderer keeps its
-// single 4096 map computed once per page and reused across views: CSM re-renders three
-// cascades for every camera, far more than the +20 % the software renderer can afford.
-const USE_CSM = !HEADLESS && QUALITY !== "low";
-// interactive-only extras (#20): instanced grass around the house and screen-space reflections
-// on glass. GPU pages at quality=high only, dropped with the effects by the frame-time guard;
-// the headless renderer (the critic's eyes) never sees them. ?extras=0 switches them off.
-const EXTRAS = !HEADLESS && EFFECTS && params.get("extras") !== "0";
-const TONE_MAPPING_EXPOSURE = 1.05;
 const DEFAULT_FOV = 42; // the elevated auto-framed views
 const PHOTO_FOV = 50; // the "-photo" views: a person with a phone
 // the "-elevation" views: a straight-on camera far away with a narrow field of view, so the
@@ -61,20 +50,10 @@ function readCameraOverrides(p) {
 }
 
 const PALETTE = {
-  sky: "#d9e0e4", // fallback clear colour (quality=low, no sky dome)
+  sky: "#d9e0e4",
   grass: "#8a9a68",
+  sun: "#fff3e0",
 };
-
-// Sun presets (#16): elevation / azimuth in degrees, azimuth clockwise from north = where the
-// sun IS (180 = due south, 225 = south-west: a pleasant late afternoon, the default).
-// buildScene may return { sun: { elevation, azimuth } } or { time: "morning"|"noon"|"evening" }.
-const SUN_PRESETS = {
-  morning: { elevation: 28, azimuth: 120 },
-  noon: { elevation: 58, azimuth: 180 },
-  afternoon: { elevation: 36, azimuth: 225 },
-  evening: { elevation: 16, azimuth: 262 },
-};
-const SKY_RADIUS = 300; // inside every camera's far plane (default 500; elevation views raise it)
 
 const state = {
   ready: false,
@@ -114,6 +93,26 @@ function recordError(msg) {
 window.addEventListener("error", (e) => recordError(e.message || e.error));
 window.addEventListener("unhandledrejection", (e) => recordError(e.reason?.message ?? e.reason));
 
+/** Subtle tileable noise so large flat surfaces (lawn) do not read as plastic. */
+function noiseTexture(size = 256, base = 200, spread = 26, seed = 1, repeat = 40) {
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
+  const img = ctx.createImageData(size, size);
+  let s = seed >>> 0 || 1;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = base + (rnd() - 0.5) * spread;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(repeat, repeat);
+  return tex;
+}
+
 export async function boot(buildScene) {
   const canvas = document.getElementById("view") ?? Object.assign(document.createElement("canvas"), { id: "view" });
   if (!canvas.isConnected) document.body.appendChild(canvas);
@@ -132,10 +131,8 @@ export async function boot(buildScene) {
     renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.needsUpdate = true;
   }
-  // AgX: soft highlights, no plastic whites on plaster. The composer's OutputPass applies the
-  // renderer's tone mapping too, so both paths (effects on / off) look the same.
-  renderer.toneMapping = THREE.AgXToneMapping;
-  renderer.toneMappingExposure = TONE_MAPPING_EXPOSURE;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.95;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
@@ -146,11 +143,11 @@ export async function boot(buildScene) {
   const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, W / H, 0.1, 500);
   camera.position.set(18, 10, 18);
 
-  // lights: the sun (set from the sky below, once buildScene has said where it wants it) and
-  // a sky/ground hemisphere; the environment map comes from the physical sky
-  const hemi = new THREE.HemisphereLight("#e8eef5", "#6f7a5a", 0.35);
+  // lights: sun + sky/ground hemisphere + a soft environment for the PBR materials
+  const hemi = new THREE.HemisphereLight("#e8eef5", "#6f7a5a", 0.55);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight("#fff3e0", 2.0);
+  const sun = new THREE.DirectionalLight(PALETTE.sun, 2.0);
+  sun.position.set(-18, 28, 12);
   sun.castShadow = renderer.shadowMap.enabled;
   const shadowRes = QUALITY === "high" ? 4096 : 2048;
   sun.shadow.mapSize.set(shadowRes, shadowRes);
@@ -160,11 +157,20 @@ export async function boot(buildScene) {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.02;
   scene.add(sun);
-  if (QUALITY === "low") scene.add(new THREE.AmbientLight("#ffffff", 0.25));
+  if (QUALITY !== "low") {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.35;
+    pmrem.dispose();
+  } else {
+    scene.add(new THREE.AmbientLight("#ffffff", 0.2));
+  }
 
-  // base ground: a tiled lawn (kit texture) that the terrain component replaces when used
-  const grass = house.mat.grass({ texture: "lawn", scale: 3 });
-  const ground = new THREE.Mesh(house.uvsInMetres(new THREE.PlaneGeometry(400, 400), 400, 400), grass);
+  // base ground: lawn with a little grain
+  const grass = house.mat.grass(PALETTE.grass);
+  grass.map = noiseTexture(256, 205, 30, 3, 60);
+  grass.map.colorSpace = THREE.SRGBColorSpace;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), grass);
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   ground.position.y = -0.01;
@@ -182,53 +188,28 @@ export async function boot(buildScene) {
   controls.target.set(0, 2, 0);
   state.controls = controls;
 
-  // post-processing (final look): N8AO ambient occlusion, SMAA, a light vignette, AgX. The
-  // composer owns tone mapping (its ToneMappingEffect, same exposure), so the renderer's is
-  // switched off while it runs and restored if the frame-time guard drops the effects.
+  // post-processing (final look): ambient occlusion + anti-aliasing
   if (EFFECTS) {
-    renderer.toneMapping = THREE.NoToneMapping;
-    const composer = new EffectComposer(renderer, { frameBufferType: THREE.HalfFloatType });
+    const composer = new EffectComposer(renderer);
     composer.addPass(new RenderPass(scene, camera));
-    // screen-space reflections on glass, half resolution, before the AO so it shades them too
-    // (the pass re-renders the scene for its beauty/normal buffers: GPU pages only)
-    if (EXTRAS) state.ssrSlot = composer.passes.length; // filled in after buildScene (needs the glass)
-    const ao = new N8AOPostPass(scene, camera, W, H);
-    ao.configuration.aoRadius = 1.2;
-    ao.configuration.distanceFalloff = 0.6;
-    ao.configuration.intensity = 2.5;
-    ao.configuration.aoSamples = HEADLESS ? 8 : 16;
-    ao.configuration.denoiseSamples = HEADLESS ? 4 : 8;
-    ao.configuration.denoiseRadius = 6;
-    ao.configuration.halfRes = HEADLESS; // software GL: a quarter of the AO fragments
-    ao.configuration.screenSpaceRadius = false;
-    composer.addPass(ao);
-    composer.addPass(
-      new EffectPass(
-        camera,
-        new SMAAEffect({ preset: SMAAPreset.HIGH }),
-        new VignetteEffect({ offset: 0.35, darkness: 0.22 }),
-        new ToneMappingEffect({ mode: ToneMappingMode.AGX }),
-      ),
-    );
+    const gtao = new GTAOPass(scene, camera, W, H);
+    gtao.output = GTAOPass.OUTPUT.Default;
+    gtao.blendIntensity = 0.9;
+    gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1, thickness: 1, scale: 1, samples: QUALITY === "high" ? 16 : 8, distanceFallOff: 1, screenSpaceRadius: false });
+    composer.addPass(gtao);
+    composer.addPass(new OutputPass());
+    composer.addPass(new SMAAPass(W, H));
     state.composer = composer;
-    state.ao = ao;
+    state.gtao = gtao;
   }
 
   // ---- user scene ----
-  // trees: full detail for the saved version (quality=high), lighter for in-loop renders (#15)
-  house.setVegetationDetail(QUALITY === "high" ? "high" : "low");
   let result = null;
   try {
     result = await buildScene({ THREE, scene, house, group: houseGroup, sun, ground, renderer, camera });
   } catch (err) {
     recordError(`buildScene failed: ${err?.stack ?? err}`);
   }
-  // sky, sun and environment: deterministic, from the scene's choice (or the default afternoon)
-  setupSky(scene, renderer, sun, sunOptions(result));
-  if (USE_CSM) setupCSM(scene, camera, sun);
-  if (EXTRAS) setupExtras(scene, renderer, camera, houseGroup, W, H);
-  // textures load asynchronously: the first (headless) frame must not race them
-  try { await house.texturesReady(); } catch { /* a missing map is only a look problem */ }
 
   // ---- views ----
   houseGroup.updateMatrixWorld(true);
@@ -288,7 +269,6 @@ export async function boot(buildScene) {
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
     state.composer?.setSize(w, h);
-    state.csm?.updateFrustums();
     state.needsRender = true;
   });
   window.addEventListener("message", (e) => {
@@ -317,75 +297,12 @@ export async function boot(buildScene) {
       // one frame over 250 ms (< 4 fps) or 8 frames averaging over 90 ms: not sustainable
       if (dt > 250 || (frames === 8 && slowMs / frames > 90)) {
         state.composer = null;
-        renderer.toneMapping = THREE.AgXToneMapping; // the composer applied it until now
-        if (state.grass) state.grass.visible = false; // no GPU: the extras go with the effects
         state.needsRender = true; // redraw once without effects
         console.warn(`housekit: effects disabled, ${Math.round(dt)} ms frame on this machine`);
         try { parent.postMessage({ type: "house:effects", enabled: false }, "*"); } catch { /* noop */ }
       }
     }
   });
-}
-
-/** The sun the scene asked for: { sun: { elevation, azimuth } } wins over { time: "…" }. */
-function sunOptions(result) {
-  const preset = SUN_PRESETS[result?.time] ?? SUN_PRESETS.afternoon;
-  const elevation = Number(result?.sun?.elevation);
-  const azimuth = Number(result?.sun?.azimuth);
-  return {
-    elevation: Number.isFinite(elevation) ? Math.min(89, Math.max(2, elevation)) : preset.elevation,
-    azimuth: Number.isFinite(azimuth) ? azimuth : preset.azimuth,
-  };
-}
-
-/**
- * Physical sky (three's Sky addon) driven by the sun's elevation and azimuth; the environment
- * map is generated from it so surfaces get the warm sun and the blue sky bounce; the
- * directional light is aligned with the sky's sun and coloured by its height; the fog and
- * the clear colour follow the horizon. Skipped at quality=low (flat colour, no env map).
- */
-function setupSky(scene, renderer, sun, { elevation, azimuth }) {
-  const el = THREE.MathUtils.degToRad(elevation);
-  const az = THREE.MathUtils.degToRad(azimuth);
-  // +x east, +z south: azimuth 0 = north (-z), 90 = east (+x), clockwise
-  const dir = new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
-  sun.position.copy(dir).multiplyScalar(60);
-  sun.target.position.set(0, 0, 0);
-  scene.add(sun.target);
-  const t = Math.sin(el); // 0 at the horizon, 1 overhead
-  sun.color.set("#ffd2a3").lerp(new THREE.Color("#fff7ec"), Math.min(1, t * 1.6));
-  sun.intensity = 0.6 + 2.2 * Math.pow(t, 0.6);
-  // horizon: warm haze when the sun is low, pale blue when it is high
-  const horizon = new THREE.Color("#e9d9c4").lerp(new THREE.Color("#d5e1ea"), Math.min(1, t * 1.4));
-  renderer.setClearColor(horizon, 1);
-  if (state.fog) state.fog.color.copy(horizon);
-  state.horizon = horizon;
-  if (QUALITY === "low") {
-    scene.background = horizon;
-    return;
-  }
-  const sky = new Sky();
-  sky.scale.setScalar(SKY_RADIUS);
-  const u = sky.material.uniforms;
-  u.turbidity.value = 4;
-  u.rayleigh.value = 1.8;
-  u.mieCoefficient.value = 0.006;
-  u.mieDirectionalG.value = 0.8;
-  u.sunPosition.value.copy(dir);
-  sky.userData = { kind: "sky", excludeFromBounds: true };
-  // the sky is the background: no fog on it, always behind everything
-  sky.material.depthWrite = false;
-  sky.renderOrder = -1;
-  // the environment map is the sky itself (rendered alone, then the dome joins the scene)
-  const pmrem = new THREE.PMREMGenerator(renderer);
-  const skyScene = new THREE.Scene();
-  skyScene.add(sky);
-  scene.environment = pmrem.fromScene(skyScene, 0.04).texture;
-  scene.environmentIntensity = 0.45;
-  pmrem.dispose();
-  scene.add(sky);
-  scene.background = null;
-  state.sky = sky;
 }
 
 /**
@@ -410,104 +327,8 @@ function framingBounds(root) {
 function renderFrame() {
   const { renderer, scene, camera, composer } = state;
   if (!renderer) return;
-  state.csm?.update();
   if (composer) composer.render();
   else renderer.render(scene, camera);
-}
-
-/** three's SSRPass inside the pmndrs composer: same render(renderer, write, read) shape. */
-class ThreePassAdapter extends Pass {
-  constructor(pass, scale = 0.5) {
-    super("ThreePassAdapter");
-    this.pass = pass;
-    this.scale = scale;
-    this.needsSwap = true;
-  }
-  render(renderer, inputBuffer, outputBuffer, deltaTime, stencilTest) {
-    this.pass.render(renderer, outputBuffer, inputBuffer, deltaTime, stencilTest);
-  }
-  setSize(width, height) {
-    this.pass.setSize(Math.max(2, Math.floor(width * this.scale)), Math.max(2, Math.floor(height * this.scale)));
-  }
-}
-
-/**
- * The interactive-only extras (#20): grass blades in a ring around the building, and
- * screen-space reflections restricted to the glass (panes, conservatory, glass railings).
- * Either one failing to set up only logs a warning: the scene must never depend on them.
- */
-function setupExtras(scene, renderer, camera, houseGroup, W, H) {
-  try {
-    const building = buildingBounds(houseGroup);
-    const around = building.isEmpty() ? framingBounds(houseGroup) : building;
-    if (!around.isEmpty()) {
-      const grass = house.grassField({ around, inner: 0.4, outer: 6, count: 30000, seed: 1 });
-      scene.add(grass);
-      state.grass = grass;
-    }
-  } catch (err) {
-    console.warn(`housekit: grass skipped (${err?.message ?? err})`);
-  }
-  if (!state.composer || state.ssrSlot === undefined) return;
-  try {
-    const glass = [];
-    scene.traverse((o) => {
-      const m = o.material;
-      if (o.isMesh && m && (m.userData?.interior || (m.isMeshPhysicalMaterial && m.transparent))) glass.push(o);
-    });
-    if (glass.length === 0) return;
-    const ssr = new SSRPass({ renderer, scene, camera, width: Math.floor(W / 2), height: Math.floor(H / 2), selects: glass });
-    ssr.opacity = 0.35;
-    ssr.maxDistance = 14;
-    ssr.thickness = 0.06;
-    ssr.blur = true;
-    ssr.fresnel = true;
-    ssr.distanceAttenuation = true;
-    const adapter = new ThreePassAdapter(ssr, 0.5);
-    adapter.initialize?.(renderer, false, THREE.HalfFloatType);
-    state.composer.addPass(adapter, state.ssrSlot);
-    state.ssr = adapter;
-  } catch (err) {
-    console.warn(`housekit: screen-space reflections skipped (${err?.message ?? err})`);
-  }
-}
-
-/**
- * Cascaded shadow maps for the sun (#17): three cascades over the plot, crisp next to the
- * house and soft far away. The CSM's own lights replace the single sun light (which keeps
- * its position for the sky); every lit material is set up once, including the builder's raw
- * ones (traversed after buildScene).
- */
-function setupCSM(scene, camera, sun) {
-  const dir = sun.position.clone().normalize().negate();
-  const csm = new CSM({
-    camera,
-    parent: scene,
-    cascades: 3,
-    mode: "practical",
-    maxFar: 140,
-    shadowMapSize: QUALITY === "high" ? 2048 : 1024,
-    lightDirection: dir,
-    lightIntensity: sun.intensity,
-    lightNear: 1,
-    lightFar: 400,
-    lightMargin: 80,
-    shadowBias: -0.0002,
-  });
-  csm.fade = true;
-  for (const l of csm.lights) l.color.copy(sun.color);
-  sun.castShadow = false;
-  sun.intensity = 0;
-  const done = new Set();
-  scene.traverse((o) => {
-    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
-    for (const m of mats) {
-      if (done.has(m) || !(m.isMeshStandardMaterial || m.isMeshPhysicalMaterial || m.isMeshPhongMaterial || m.isMeshLambertMaterial)) continue;
-      csm.setupMaterial(m);
-      done.add(m);
-    }
-  });
-  state.csm = csm;
 }
 
 /**
@@ -568,7 +389,7 @@ function elevationView(side) {
   const pos = target.clone().addScaledVector(dir, dist);
   // the camera is far away: move the near plane up so the depth buffer (and the ambient
   // occlusion that reads it) keeps its precision around the building
-  return { pos: pos.toArray(), target, fov: ELEVATION_FOV, fog: false, fixed: true, near: dist * 0.5, far: dist + SKY_RADIUS * 2 };
+  return { pos: pos.toArray(), target, fov: ELEVATION_FOV, fog: false, fixed: true, near: dist * 0.5, far: dist + 200 };
 }
 
 /**
@@ -612,7 +433,6 @@ async function setView(name) {
   state.camera.far = Math.max(500, v.far ?? 0);
   state.camera.fov = v.fov ?? DEFAULT_FOV;
   state.camera.updateProjectionMatrix();
-  state.csm?.updateFrustums();
   state.camera.position.set(...v.pos);
   state.controls.target.copy(v.target);
   state.controls.update();

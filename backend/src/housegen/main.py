@@ -19,10 +19,6 @@ from housegen.render.renderer import renderer
 
 logger = logging.getLogger(__name__)
 
-# kit/vendor/<name>/… (copied from node_modules by `npm install` in kit/, see
-# kit/scripts/vendor.mjs), served by the /kit static mount and imported by relative path
-VENDORED = ("postprocessing/index.js", "n8ao/N8AO.js", "ez-tree/ez-tree.es.js")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -74,9 +70,6 @@ def create_app() -> FastAPI:
         StaticFiles(directory=settings.KIT_DIR / "node_modules" / "three"),
         name="three",
     )
-    for rel in VENDORED:  # (#15 ez-tree, #17 pmndrs postprocessing + n8ao)
-        if not (settings.KIT_DIR / "vendor" / rel).is_file():
-            logger.warning("kit.vendor.missing", extra={"file": rel, "hint": "npm install in kit/"})
     app.mount("/kit", StaticFiles(directory=settings.KIT_DIR), name="kit")
     # per-project files: scene working copy, versions, renders, photos, plan pages
     app.mount("/scenes", StaticFiles(directory=settings.projects_dir), name="scenes")

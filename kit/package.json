@@ -4,8 +4,6 @@
   "main": "house.js",
   "type": "module",
   "scripts": {
-    "postinstall": "node scripts/vendor.mjs",
-    "vendor": "node scripts/vendor.mjs",
     "test": "node --test \"test/**/*.test.mjs\""
   },
   "keywords": [],
@@ -13,9 +11,6 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@dgreenheck/ez-tree": "^1.1.0",
-    "n8ao": "^2.0.1",
-    "postprocessing": "^6.39.4",
     "three": "^0.181.2"
   }
 }

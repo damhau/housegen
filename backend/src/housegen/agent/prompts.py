@@ -9,12 +9,6 @@ All builders return a THREE.Object3D; add it with ctx.group.add(...).
 ### Materials — house.mat.*  (all return cached THREE.MeshStandard/PhysicalMaterial)
 plaster(color="#e9e6dd", roughness) · concrete(color) · wood(color) · metal(color) · roof(color="#4a4a4a") · tile(color="#a0523d")
 glass(tint, opacity) · grass(color) · gravel(color) · asphalt(color) · foliage(color) · paint(color)
-Textured (PREFER these for walls, roofs and the ground; photographic PBR sets, tiled by world size):
-tex(name, { color:"#ffffff" (a tint: match the photo's colour), scale (metres per tile, sensible default per texture), roughness })
-names: plaster (smooth) · roughcast (crépi/stucco) · concrete · membrane (dark flat roof) · tiles (clay roof tiles) · cladding (horizontal wood boards)
-       decking (timber deck) · gravel · asphalt · lawn · pebbles · metal (painted)
-Object form of the plain ones picks the natural texture: mat.plaster({ color:"#e2d9c8", texture:"roughcast", scale:1.5 }), mat.roof({ texture:"tiles" }),
-mat.grass({ texture:"lawn" }); { texture: null } keeps a flat colour. Walls, slabs, roofs, boxes, terrain and patches have UVs in metres.
 
 ### Massing
 box({ size:[w,h,d], position:[x,y,z] (centre), material, rotationY })
@@ -31,11 +25,9 @@ wallWithUnits(sameOptionsAsWall, (opening) => unit)                        → w
 placeOnWall(wallGroup, unit, offsetOfUnitCentre, sill)                     → manual placement of a unit into a wall
 
 ### Openings (local origin bottom-centre, face +z; sized to fill the hole)
-windowUnit({ width, height, frameColor="#4b4f52", mullions=1, transoms=0, glassTint, shutter:"none"|"roller"|"louvered", shutterOpen=0.35 (roller, 0=closed..1=open), shutterColor, sillDepth, glassOnly=false, interior })
-door({ width=1, height=2.1, color, glass=false, frameColor, glassOnly })
-slidingDoor({ width=2.4, height=2.2, panels=2, frameColor, glassOnly, interior })
-Panes show a room with depth behind the glass by default (interior mapping, deterministic per pane); interior:{ lightOn:0..1, palette:0..3,
-roomDepth } tunes it, glassOnly:true keeps plain physical glass (conservatories, glass blocks; mat.glass for raw panes).
+windowUnit({ width, height, frameColor="#4b4f52", mullions=1, transoms=0, glassTint, shutter:"none"|"roller"|"louvered", shutterOpen=0.35 (roller, 0=closed..1=open), shutterColor, sillDepth })
+door({ width=1, height=2.1, color, glass=false, frameColor })
+slidingDoor({ width=2.4, height=2.2, panels=2, frameColor })
 
 ### Roofs
 flatRoof({ polygon, y (top of slab), thickness=0.3, parapet=0.35, parapetThickness, material, edgeMaterial })
@@ -61,10 +53,8 @@ pathway({ points, width, material })  (flat)   groundPatch({ polygon, y, materia
 gardenWall({ from, to, height=0.6 })   fence({ from, to, height })
 
 ### Vegetation and props (all sit on the ground at position=[x,z]; give [x,y,z] to override)
-leafTree({ position, height=7, spread=3.2, kind:"broadleaf"|"pine"|"columnar"|<preset>, seed, foliageColor })   RECOMMENDED
-    ez-tree trees (textured bark, leaf cards, tapered branches); presets: "Oak Small|Medium|Large", "Ash …", "Aspen …", "Pine …".
-    Same seed → same tree. Sized to height x spread metres.
-leafBush({ position, radius=0.8, seed, color })                                                          RECOMMENDED (ez-tree bush presets)
+leafTree({ position, height=7, spread=3.2, kind:"broadleaf"|"pine"|"columnar", seed, foliageColor })   RECOMMENDED: instanced leaves
+leafBush({ position, radius=0.8, seed, color })                                                          RECOMMENDED
 hedge({ from, to, height=1.2, thickness=0.6, color })
 swingSet({ position, rotationY })   bench({ position, rotationY })   bicycle({ position, rotationY })   car({ position, rotationY, color })
 boundsOf(object) → THREE.Box3
@@ -73,19 +63,15 @@ group.userData.kind = "prop" and group.name = "trampoline" so the plausibility a
 check_scene) checks them for intersections, floating and scale like the kit's own.
 
 ### Runtime
-The runtime adds a physical sky, a sun with shadows (cascaded in the interactive viewer), environment lighting from the sky, AgX tone mapping, ambient occlusion (N8AO), anti-aliasing and a light vignette at final quality, a textured lawn at y=0,
+The runtime adds sky, sun with shadows, environment lighting, ambient occlusion and anti-aliasing at final quality, a lawn at y=0,
 orbit controls and named camera views: north/south/east/west (elevated wide shot from that side, eye ≈ 4 m, whole
 building in frame: for massing and roofs), northeast/…/southwest, aerial, top, north-photo/south-photo/east-photo/
 west-photo (a person at 1.6 m in front of that façade, 50° fov, façade filling the frame: the viewpoint of the photos),
 and north-elevation/south-elevation/east-elevation/west-elevation (straight-on, near-orthographic, no fog: the
-façade as an architect's elevation drawing, to compare with the elevation sheets). The owner's interactive viewer also
-adds grass blades around the house and reflections on the glass; your renders (and the critic's) do not show them.
+façade as an architect's elevation drawing, to compare with the elevation sheets).
 The -photo and -elevation views frame the walls (userData.kind "wall"/"perimeter"/"window"/"door"); tag other building
 masses with userData.kind = "building" so they are framed too.
-buildScene(ctx) may return { views: { name: { position:[x,y,z], target:[x,y,z] } } } to add custom views (e.g. "entrance"), and
-{ sun: { elevation, azimuth } } (degrees; azimuth clockwise from north = where the sun is, 180 = south) or { time: "morning"|"noon"|
-"afternoon"|"evening" } to set the light: a physical sky is built from it (environment light, sun colour, fog); default a late afternoon
-with the sun in the south-west. Match the photos' light (shadows on the north façade → sun in the south) so the critic compares like with like.
+buildScene(ctx) may return { views: { name: { position:[x,y,z], target:[x,y,z] } } } to add custom views (e.g. "entrance").
 You can also use raw three.js (ctx.THREE) for anything the kit lacks: ExtrudeGeometry from THREE.Shape is the workhorse.
 """.strip()
 

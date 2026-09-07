@@ -18,6 +18,3 @@ frontend/src/routeTree.gen.ts
 *.jpeg
 *.png
 maison_exterieur.html
-
-# the kit assets (textures) are needed in the image, whatever the image patterns above say
-!kit/assets/**

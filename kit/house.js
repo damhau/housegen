@@ -28,226 +28,7 @@ function cached(key, make) {
   return _cache.get(key);
 }
 
-// --------------------------------------------------------------------------
-// Vegetation engine (#15): ez-tree (MIT, vendored at /kit/vendor/ez-tree) when it can load
-// (a browser, or Node with a document stub); otherwise the kit's own procedural trees.
-// --------------------------------------------------------------------------
-
-let eztree = null;
-if (typeof document !== "undefined") {
-  // the vendored copy next to this file (kit/scripts/vendor.mjs) in the browser and in Node
-  // after npm install; the package name as a last resort
-  for (const specifier of ["./vendor/ez-tree/ez-tree.es.js", "@dgreenheck/ez-tree"]) {
-    try {
-      eztree = await import(specifier);
-      break;
-    } catch (err) {
-      if (specifier === "@dgreenheck/ez-tree") console.warn(`housekit: ez-tree unavailable, using procedural trees (${err?.message ?? err})`);
-    }
-  }
-}
-// "high" for the saved version, "low" for the builder's in-loop renders (software GL); the
-// runtime sets it from ?quality before buildScene
-let _vegetationDetail = "high";
-export function setVegetationDetail(level) {
-  _vegetationDetail = level === "low" ? "low" : "high";
-}
-export function vegetationEngine() {
-  return eztree ? "ez-tree" : "procedural";
-}
-
-// --------------------------------------------------------------------------
-// Textures (#16): CC0 sets under kit/assets/textures/<name>/ (colour, normal, roughness[, ao]),
-// tiled by world size. Loaded through one LoadingManager so the runtime can wait for them
-// before the first headless frame. Outside a browser (Node tests) the untextured material
-// is returned instead.
-// --------------------------------------------------------------------------
-
-/** name → metres per tile by default (how big the texture's photo is in reality). */
-export const TEXTURES = {
-  plaster: 2, roughcast: 1.5, concrete: 2, membrane: 2, tiles: 1.5, cladding: 2,
-  decking: 2, gravel: 1.5, asphalt: 3, lawn: 3, pebbles: 1, metal: 1,
-};
-const TEXTURE_BASE = typeof import.meta !== "undefined" && import.meta.url ? new URL("./assets/textures/", import.meta.url) : null;
-const CAN_LOAD_TEXTURES = typeof document !== "undefined" && TEXTURE_BASE !== null;
-const _manager = new THREE.LoadingManager();
-const _loader = new THREE.TextureLoader(_manager);
-let _pending = 0;
-let _texturesDone = Promise.resolve();
-let _resolveDone = null;
-_manager.onStart = () => {
-  if (_pending++ === 0) _texturesDone = new Promise((r) => { _resolveDone = r; });
-};
-_manager.onLoad = () => { _pending = 0; _resolveDone?.(); _resolveDone = null; };
-_manager.onError = (url) => { console.warn(`housekit: texture failed ${url}`); };
-
-/** Resolves once every texture requested so far has loaded (immediately when none). */
-export function texturesReady() {
-  return _pending > 0 ? _texturesDone : Promise.resolve();
-}
-
-function loadMap(name, kind, scale, srgb = false) {
-  const tex = _loader.load(new URL(`${name}/${kind}.jpg`, TEXTURE_BASE).href);
-  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(1 / scale, 1 / scale);
-  tex.anisotropy = 4;
-  if (srgb) tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-/**
- * A PBR material with one of the vendored texture sets. `color` tints the photo (white = as
- * photographed), `scale` is metres per tile (geometry UVs are in metres: walls, slabs, roofs,
- * boxes, terrain, patches). Same name + options → the same cached material.
- */
-function tex(name, { color = "#ffffff", scale, roughness = 1, metalness } = {}) {
-  if (!(name in TEXTURES)) throw new Error(`unknown texture "${name}"; known: ${Object.keys(TEXTURES).join(", ")}`);
-  const s = scale ?? TEXTURES[name];
-  const key = `tex:${name}:${color}:${s}:${roughness}:${metalness ?? ""}`;
-  return cached(key, () => {
-    const m = new THREE.MeshStandardMaterial({ color, roughness, metalness: metalness ?? (name === "metal" ? 0.6 : 0) });
-    m.userData = { texture: name, scale: s };
-    if (!CAN_LOAD_TEXTURES) return m;
-    m.map = loadMap(name, "color", s, true);
-    m.normalMap = loadMap(name, "normal", s);
-    m.normalScale.set(0.8, 0.8);
-    m.roughnessMap = loadMap(name, "roughness", s);
-    if (TEXTURES_WITH_AO.has(name)) {
-      m.aoMap = loadMap(name, "ao", s);
-      m.aoMap.channel = 0;
-      m.aoMapIntensity = 0.7;
-    }
-    return m;
-  });
-}
-const TEXTURES_WITH_AO = new Set(["membrane", "tiles", "cladding", "decking", "gravel", "asphalt", "lawn", "pebbles"]);
-
-// --------------------------------------------------------------------------
-// Interior mapping (#17): a window pane that shows a lit room with depth behind it, computed
-// per fragment from the view direction (parallax-corrected box), no extra geometry.
-// --------------------------------------------------------------------------
-
-const INTERIOR_VERT = /* glsl */ `
-  varying vec3 vLocal;      // fragment on the pane, local metres (z = 0)
-  varying vec3 vCamLocal;   // camera in the pane's local space
-  #include <fog_pars_vertex>
-  void main() {
-    vLocal = position;
-    vCamLocal = (inverse(modelMatrix) * vec4(cameraPosition, 1.0)).xyz;
-    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
-    gl_Position = projectionMatrix * mvPosition;
-    #include <fog_vertex>
-  }
-`;
-
-const INTERIOR_FRAG = /* glsl */ `
-  uniform vec3 uRoom;        // width, height, depth of a room cell (metres)
-  uniform vec3 uWall;        // colours, linear
-  uniform vec3 uFloor;
-  uniform vec3 uCeiling;
-  uniform vec3 uGlass;       // reflection tint
-  uniform float uLight;      // 0 = dark room, 1 = lit room
-  uniform float uSeed;
-  varying vec3 vLocal;
-  varying vec3 vCamLocal;
-  #include <fog_pars_fragment>
-
-  float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7)) + uSeed * 0.731) * 43758.5453); }
-
-  void main() {
-    vec3 ro = vLocal;
-    vec3 rd = normalize(vLocal - vCamLocal);
-    // the room is behind the pane (local -z); a grazing ray still has to go inwards
-    rd.z = min(rd.z, -0.05);
-    rd = normalize(rd);
-    // cell of the room grid the fragment belongs to (a wide window spans several rooms)
-    vec2 cell = floor(ro.xy / uRoom.xy);
-    // distance to the next wall in x and y, and to the back wall in z
-    float bx = (cell.x + (rd.x > 0.0 ? 1.0 : 0.0)) * uRoom.x;
-    float by = (cell.y + (rd.y > 0.0 ? 1.0 : 0.0)) * uRoom.y;
-    float tx = abs(rd.x) < 1e-4 ? 1e9 : (bx - ro.x) / rd.x;
-    float ty = abs(rd.y) < 1e-4 ? 1e9 : (by - ro.y) / rd.y;
-    float tz = -uRoom.z / rd.z;
-    float t = min(min(tx, ty), tz);
-    vec3 hit = ro + rd * t;
-    float depth = clamp(-hit.z / uRoom.z, 0.0, 1.0);
-    vec3 col;
-    float variant = hash(cell);
-    if (t == tz) {
-      // back wall: a painted wall with a lighter panel (a picture, a doorway) in some rooms
-      col = uWall * (0.55 + 0.45 * (1.0 - depth * 0.35));
-      vec2 rel = fract(hit.xy / uRoom.xy);
-      float panel = step(0.55, variant) * step(0.3, rel.x) * step(0.7 + 0.0, 1.0 - rel.x + 0.7) * step(0.25, rel.y) * step(rel.y, 0.8);
-      col = mix(col, uWall * 1.25 + vec3(0.05), panel * 0.6);
-    } else if (t == ty) {
-      col = rd.y > 0.0 ? uCeiling * (0.9 - 0.4 * depth) : uFloor * (0.7 - 0.35 * depth);
-    } else {
-      col = uWall * (0.6 - 0.3 * depth) * (rd.x > 0.0 ? 0.92 : 1.0);
-    }
-    // a dark room shows little; a lit one glows warm
-    vec3 lit = col * mix(0.22, 1.35, uLight) * mix(vec3(0.85, 0.9, 1.0), vec3(1.0, 0.93, 0.8), uLight);
-    // glass: fresnel reflection of the sky/surroundings over the interior
-    float fresnel = pow(1.0 - clamp(dot(-rd, vec3(0.0, 0.0, 1.0)), 0.0, 1.0), 3.0);
-    vec3 color = mix(lit, uGlass, 0.18 + 0.6 * fresnel);
-    gl_FragColor = vec4(color, 1.0);
-    #include <tonemapping_fragment>
-    #include <colorspace_fragment>
-    #include <fog_fragment>
-  }
-`;
-
-// warm and cool room palettes; the seed picks one per pane so a façade is not uniform
-const INTERIOR_PALETTES = [
-  { wall: "#d9d2c3", floor: "#8a6a4a", ceiling: "#efece4" },
-  { wall: "#cfd6d8", floor: "#6f6a62", ceiling: "#f0f0ee" },
-  { wall: "#e2d8c0", floor: "#a08a6a", ceiling: "#f2efe6" },
-  { wall: "#c9c4b6", floor: "#5c5650", ceiling: "#e9e6df" },
-];
-let _interiorSeed = 0;
-
-/**
- * Window pane material showing a room behind the glass (interior mapping). Options:
- * roomDepth/roomWidth/roomHeight (metres), palette (index or { wall, floor, ceiling }),
- * lightOn (0..1, or true/false), tint (the glass reflection colour), seed (variant; each
- * pane gets its own by default, in build order, so renders are deterministic).
- */
-function interior({ roomDepth = 3.5, roomWidth = 3.2, roomHeight = 2.6, palette, lightOn = 0.35, tint = "#9fb8c8", seed } = {}) {
-  const sd = seed ?? _interiorSeed++;
-  const pal = typeof palette === "object" && palette ? palette : INTERIOR_PALETTES[(typeof palette === "number" ? palette : sd) % INTERIOR_PALETTES.length];
-  const m = new THREE.ShaderMaterial({
-    uniforms: THREE.UniformsUtils.merge([
-      THREE.UniformsLib.fog,
-      {
-        uRoom: { value: new THREE.Vector3(roomWidth, roomHeight, roomDepth) },
-        uWall: { value: new THREE.Color(pal.wall) },
-        uFloor: { value: new THREE.Color(pal.floor) },
-        uCeiling: { value: new THREE.Color(pal.ceiling) },
-        uGlass: { value: new THREE.Color(tint) },
-        uLight: { value: lightOn === true ? 1 : lightOn === false ? 0 : Number(lightOn) },
-        uSeed: { value: sd },
-      },
-    ]),
-    vertexShader: INTERIOR_VERT,
-    fragmentShader: INTERIOR_FRAG,
-    fog: true,
-  });
-  m.userData = { interior: true, seed: sd };
-  return m;
-}
-
-/** `mat.plaster({ color, texture, scale })` next to the positional `mat.plaster(color)` form. */
-function withTexture(plain, defaultTexture) {
-  return (arg, ...rest) => {
-    if (arg && typeof arg === "object") {
-      const { texture = defaultTexture, color, scale, roughness } = arg;
-      if (texture) return tex(texture, { color: color ?? "#ffffff", scale, roughness: roughness ?? 1 });
-      return plain(color, ...rest);
-    }
-    return plain(arg, ...rest);
-  };
-}
-
-const plainMat = {
+export const mat = {
   plaster: (color = "#e9e6dd", roughness = 0.9) =>
     cached(`plaster:${color}:${roughness}`, () => new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 })),
   concrete: (color = "#b9b7b0") =>
@@ -283,44 +64,6 @@ const plainMat = {
     cached(`paint:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.6 })),
 };
 
-export const mat = {
-  ...plainMat,
-  tex,
-  interior,
-  // object form: mat.plaster({ color, texture: "roughcast", scale }); the texture defaults
-  // to the natural one for the material, and { texture: null } keeps it flat
-  plaster: withTexture(plainMat.plaster, "plaster"),
-  concrete: withTexture(plainMat.concrete, "concrete"),
-  wood: withTexture(plainMat.wood, "cladding"),
-  metal: withTexture(plainMat.metal, "metal"),
-  roof: withTexture(plainMat.roof, "membrane"),
-  tile: withTexture(plainMat.tile, "tiles"),
-  grass: withTexture(plainMat.grass, "lawn"),
-  gravel: withTexture(plainMat.gravel, "gravel"),
-  asphalt: withTexture(plainMat.asphalt, "asphalt"),
-};
-
-/**
- * Scale a geometry's 0..1 UVs to metres so tiled textures repeat by world size: for a
- * BoxGeometry the six faces get their own width/height; a plane gets (w, h).
- */
-export function uvsInMetres(geo, w, h, d) {
-  const uv = geo.attributes.uv;
-  if (!uv) return geo;
-  if (d === undefined) {
-    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * w, uv.getY(i) * h);
-  } else {
-    // BoxGeometry order: +x, -x (d × h), +y, -y (w × d), +z, -z (w × h); 4 vertices per face
-    const faces = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
-    for (let i = 0; i < uv.count; i++) {
-      const [fw, fh] = faces[Math.min(5, Math.floor(i / 4))];
-      uv.setXY(i, uv.getX(i) * fw, uv.getY(i) * fh);
-    }
-  }
-  uv.needsUpdate = true;
-  return geo;
-}
-
 function shadow(mesh, cast = true, receive = true) {
   mesh.castShadow = cast;
   mesh.receiveShadow = receive;
@@ -341,7 +84,7 @@ function shapeFromPolygon(points) {
 /** Axis-aligned box. size=[w,h,d], position = centre of the box. */
 export function box({ size, position = [0, 0, 0], material = mat.plaster(), rotationY = 0 }) {
   const [w, h, d] = size;
-  const m = shadow(new THREE.Mesh(uvsInMetres(new THREE.BoxGeometry(w, h, d), w, h, d), material));
+  const m = shadow(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material));
   m.position.set(...position);
   m.rotation.y = rotationY;
   return m;
@@ -500,8 +243,6 @@ export function windowUnit({
   shutterOpen = 0.35, // 0 = fully closed, 1 = fully open (roller only)
   shutterColor = "#d9d9d9",
   sillDepth = 0.12,
-  glassOnly = false, // true: plain physical glass (a conservatory, glass blocks) instead of a room behind the pane
-  interior: interiorOptions,
 }) {
   const g = new THREE.Group();
   const frame = mat.paint(frameColor);
@@ -524,8 +265,7 @@ export function windowUnit({
   for (const [w, h, d, x, y, z] of parts) {
     g.add(box({ size: [w, h, d], position: [x, y, z], material: frame }));
   }
-  const pane = glassOnly ? mat.glass(glassTint) : mat.interior({ tint: glassTint, ...(interiorOptions ?? {}) });
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(width - 2 * t, height - 2 * t), pane);
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(width - 2 * t, height - 2 * t), mat.glass(glassTint));
   glass.position.set(0, height / 2, -0.01);
   g.add(glass);
   // The unit is recessed UNIT_INSET into the wall by placeOnWall, so anything that must
@@ -560,12 +300,12 @@ export function windowUnit({
 }
 
 /** Door unit (solid or glazed). Local origin bottom-centre, faces +z. */
-export function door({ width = 1.0, height = 2.1, color = "#3b3f42", glass = false, frameColor = "#4b4f52", glassOnly = false }) {
+export function door({ width = 1.0, height = 2.1, color = "#3b3f42", glass = false, frameColor = "#4b4f52" }) {
   const g = new THREE.Group();
   const t = 0.07;
   g.add(box({ size: [width, height, 0.1], position: [0, height / 2, 0], material: mat.paint(frameColor) }));
   const leaf = glass
-    ? new THREE.Mesh(new THREE.PlaneGeometry(width - 2 * t, height - 2 * t), glassOnly ? mat.glass("#8fa9bb", 0.7) : mat.interior({ tint: "#8fa9bb", lightOn: 0.5 }))
+    ? new THREE.Mesh(new THREE.PlaneGeometry(width - 2 * t, height - 2 * t), mat.glass("#8fa9bb", 0.7))
     : box({ size: [width - 2 * t, height - 2 * t, 0.05], position: [0, 0, 0], material: mat.paint(color) });
   leaf.position.set(0, height / 2, 0.03);
   g.add(leaf);
@@ -576,8 +316,8 @@ export function door({ width = 1.0, height = 2.1, color = "#3b3f42", glass = fal
 }
 
 /** Large sliding glass door / glazed bay. */
-export function slidingDoor({ width = 2.4, height = 2.2, panels = 2, frameColor = "#4b4f52", glassOnly = false, interior }) {
-  return windowUnit({ width, height, frameColor, mullions: panels - 1, transoms: 0, glassTint: "#8fa9bb", sillDepth: 0.04, glassOnly, interior });
+export function slidingDoor({ width = 2.4, height = 2.2, panels = 2, frameColor = "#4b4f52" }) {
+  return windowUnit({ width, height, frameColor, mullions: panels - 1, transoms: 0, glassTint: "#8fa9bb", sillDepth: 0.04 });
 }
 
 // --------------------------------------------------------------------------
@@ -585,7 +325,7 @@ export function slidingDoor({ width = 2.4, height = 2.2, panels = 2, frameColor 
 // --------------------------------------------------------------------------
 
 /** Flat roof with parapet + gravel/membrane. `y` = top of the slab. */
-export function flatRoof({ polygon, y, thickness = 0.3, parapet = 0.35, parapetThickness = 0.25, material = mat.roof({ texture: "membrane" }), edgeMaterial = mat.plaster() }) {
+export function flatRoof({ polygon, y, thickness = 0.3, parapet = 0.35, parapetThickness = 0.25, material = mat.roof("#3f4144"), edgeMaterial = mat.plaster() }) {
   const g = new THREE.Group();
   g.add(slab({ polygon, y, thickness, material }));
   if (parapet > 0) {
@@ -602,7 +342,7 @@ export function flatRoof({ polygon, y, thickness = 0.3, parapet = 0.35, parapetT
  * Gable roof over a rectangle: ridge runs along local x.
  *   width = along ridge, depth = across, ridgeHeight above eave line (y).
  */
-export function gableRoof({ width, depth, ridgeHeight = 2, y = 0, overhang = 0.4, position = [0, 0, 0], rotationY = 0, material = mat.tile({ texture: "tiles" }), underside = mat.wood("#d8cdb5") }) {
+export function gableRoof({ width, depth, ridgeHeight = 2, y = 0, overhang = 0.4, position = [0, 0, 0], rotationY = 0, material = mat.tile(), underside = mat.wood("#d8cdb5") }) {
   const g = new THREE.Group();
   const w = width + 2 * overhang, d = depth + 2 * overhang;
   const shape = new THREE.Shape();
@@ -624,7 +364,7 @@ export function gableRoof({ width, depth, ridgeHeight = 2, y = 0, overhang = 0.4
 }
 
 /** Mono-pitch (shed) roof: high edge at local -z, low edge at +z. */
-export function shedRoof({ width, depth, rise = 1, y = 0, overhang = 0.3, position = [0, 0, 0], rotationY = 0, material = mat.roof({ texture: "membrane" }) }) {
+export function shedRoof({ width, depth, rise = 1, y = 0, overhang = 0.3, position = [0, 0, 0], rotationY = 0, material = mat.roof("#3f4144") }) {
   const g = new THREE.Group();
   const w = width + 2 * overhang, d = depth + 2 * overhang;
   const shape = new THREE.Shape();
@@ -800,7 +540,7 @@ export function hedge({ from, to, height = 1.2, thickness = 0.6, y = 0, color = 
 }
 
 /** Flat pathway / driveway along a polyline of [x,z] points. */
-export function pathway({ points, width = 1.2, y = 0.02, material = mat.gravel({ texture: "gravel" }) }) {
+export function pathway({ points, width = 1.2, y = 0.02, material = mat.gravel() }) {
   const g = new THREE.Group();
   for (let i = 0; i < points.length - 1; i++) {
     const a = points[i], b = points[i + 1];
@@ -816,7 +556,7 @@ export function pathway({ points, width = 1.2, y = 0.02, material = mat.gravel({
 }
 
 /** Ground patch (lawn, gravel area, terrace) from a polygon; sits slightly above the base ground. */
-export function groundPatch({ polygon, y = 0.01, material = mat.grass({ texture: "lawn" }) }) {
+export function groundPatch({ polygon, y = 0.01, material = mat.grass() }) {
   const geo = new THREE.ShapeGeometry(shapeFromPolygon(polygon));
   const m = new THREE.Mesh(geo, material);
   m.rotation.x = Math.PI / 2;
@@ -877,7 +617,7 @@ export function groundY(x, z) {
  * so groundY(), ribbon(), pebbleStrip(), leafTree()… follow it. Hide ctx.ground when you
  * use it: `ctx.ground.visible = false`.
  */
-export function terrain({ size = [90, 90], center = [0, 0], resolution = 0.5, heightAt, points, edgeHeight = 0, material = mat.grass({ texture: "lawn" }) }) {
+export function terrain({ size = [90, 90], center = [0, 0], resolution = 0.5, heightAt, points, edgeHeight = 0, material = mat.grass("#8a9a68") }) {
   let fn = heightAt;
   if (!fn && points) {
     fn = (x, z) => {
@@ -897,7 +637,7 @@ export function terrain({ size = [90, 90], center = [0, 0], resolution = 0.5, he
   _heightAt = fn;
   const [w, d] = size;
   const nx = Math.max(2, Math.round(w / resolution)), nz = Math.max(2, Math.round(d / resolution));
-  const geo = uvsInMetres(new THREE.PlaneGeometry(w, d, nx, nz), w, d);
+  const geo = new THREE.PlaneGeometry(w, d, nx, nz);
   geo.rotateX(-Math.PI / 2);
   const pos = geo.attributes.position;
   for (let i = 0; i < pos.count; i++) {
@@ -924,7 +664,7 @@ export function rod(from, to, radius = 0.03, material = mat.metal()) {
 }
 
 /** Path / drive draped on the ground along a polyline of [x, z] points. */
-export function ribbon({ points, width = 1.2, lift = 0.03, material = mat.gravel({ texture: "gravel" }) }) {
+export function ribbon({ points, width = 1.2, lift = 0.03, material = mat.gravel() }) {
   const left = [], right = [];
   for (let i = 0; i < points.length; i++) {
     const p = points[i], q = points[Math.min(i + 1, points.length - 1)], o = points[Math.max(i - 1, 0)];
@@ -934,18 +674,14 @@ export function ribbon({ points, width = 1.2, lift = 0.03, material = mat.gravel
     left.push([p[0] + nx * width / 2, p[1] + nz * width / 2]);
     right.push([p[0] - nx * width / 2, p[1] - nz * width / 2]);
   }
-  const verts = [], idx = [], uvs = [];
-  let along = 0;
+  const verts = [], idx = [];
   for (let i = 0; i < points.length; i++) {
     const [lx, lz] = left[i], [rx, rz] = right[i];
-    if (i > 0) along += Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]);
     verts.push(lx, groundY(lx, lz) + lift, lz, rx, groundY(rx, rz) + lift, rz);
-    uvs.push(0, along, width, along); // metres across, metres along: tiled textures repeat by size
     if (i > 0) { const a = 2 * (i - 1); idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3); }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.Float32BufferAttribute(verts, 3));
-  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
   geo.setIndex(idx);
   geo.computeVertexNormals();
   const m = new THREE.Mesh(geo, material);
@@ -1005,79 +741,11 @@ function leafMesh(leaves, color, rnd, scale = 1) {
   return inst;
 }
 
-// the kit's kinds → ez-tree presets; any preset name ("Oak Large", "Ash Small", "Bush 2"…) works too
-const KIND_PRESET = {
-  broadleaf: "Oak Medium", oak: "Oak Medium", ash: "Ash Medium", aspen: "Aspen Medium",
-  columnar: "Aspen Medium", pine: "Pine Medium", conifer: "Pine Medium",
-};
-
-function ezOptions(preset, seed, detail) {
-  const { TreePreset } = eztree;
-  const source = TreePreset[preset] ?? TreePreset["Oak Medium"];
-  const tree = new eztree.Tree();
-  tree.options.copy(source);
-  tree.options.seed = seed >>> 0;
-  if (detail === "low") {
-    // fewer branch levels, coarser tubes, fewer leaves: about a quarter of the triangles
-    tree.options.branch.levels = Math.min(tree.options.branch.levels, 2);
-    for (const k of Object.keys(tree.options.branch.segments)) tree.options.branch.segments[k] = Math.max(3, Math.floor(tree.options.branch.segments[k] * 0.6));
-    for (const k of Object.keys(tree.options.branch.sections)) tree.options.branch.sections[k] = Math.max(3, Math.floor(tree.options.branch.sections[k] * 0.7));
-    tree.options.leaves.count = Math.max(4, Math.ceil(tree.options.leaves.count * 0.6));
-  }
-  return tree;
-}
-
-/** Fit an ez-tree (arbitrary units) into height × spread metres, base on y = 0. */
-function fitTree(tree, height, spread) {
-  tree.generate();
-  tree.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
-  tree.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(tree);
-  const size = box.getSize(new THREE.Vector3());
-  const sy = height / Math.max(size.y, 1e-3);
-  const sxz = spread ? spread / Math.max(size.x, size.z, 1e-3) : sy;
-  tree.scale.set(sxz, sy, sxz);
-  tree.position.y = -box.min.y * sy;
-  return tree;
-}
-
 /**
- * A tree. position=[x, z] (sits on the ground) or [x, y, z]. kind: "broadleaf" | "pine" |
- * "columnar" (or an ez-tree preset name: "Oak Large", "Ash Small", "Aspen Medium"…). Same
- * seed → same tree. detail: "low" | "high" (default: what the runtime set from the quality).
- * ez-tree (textured bark, leaf cards, tapered branches) when it is loaded, else procedural.
+ * A tree that reads as foliage (instanced leaves), not as blobs. position=[x, z] (sits on the
+ * ground) or [x, y, z]. kind: "broadleaf" | "pine" | "columnar". RECOMMENDED over tree().
  */
-export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf", seed = 3, foliageColor, trunkColor = "#655d48", detail }) {
-  if (!eztree) return proceduralTree({ position, height, spread, kind, seed, foliageColor, trunkColor });
-  const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
-  const y = position.length === 3 ? position[1] : groundY(x, z);
-  const preset = eztree.TreePreset[kind] ? kind : KIND_PRESET[kind] ?? "Oak Medium";
-  const tree = ezOptions(preset, seed, detail ?? _vegetationDetail);
-  if (foliageColor) tree.options.leaves.tint = new THREE.Color(foliageColor).getHex();
-  const g = new THREE.Group();
-  g.position.set(x, y, z);
-  g.add(fitTree(tree, height, spread));
-  g.userData = { kind: "tree", height, spread, preset };
-  return g;
-}
-
-/** Bush; position=[x, z] or [x, y, z]. ez-tree's bush presets (by seed) scaled to `radius`. */
-export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", stems = true, detail }) {
-  if (!eztree) return proceduralBush({ position, radius, seed, color, stems });
-  const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
-  const y = position.length === 3 ? position[1] : groundY(x, z);
-  const preset = `Bush ${1 + ((seed >>> 0) % 3)}`;
-  const tree = ezOptions(preset, seed, detail ?? _vegetationDetail);
-  if (color) tree.options.leaves.tint = new THREE.Color(color).getHex();
-  const g = new THREE.Group();
-  g.position.set(x, y, z);
-  g.add(fitTree(tree, radius * 1.6, radius * 2));
-  g.userData = { kind: "bush", radius };
-  return g;
-}
-
-/** The kit's own tree (instanced leaves on stacked cylinders): the fallback without ez-tree. */
-export function proceduralTree({ position, height = 7, spread = 3.2, kind = "broadleaf", seed = 3, foliageColor, trunkColor = "#655d48" }) {
+export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf", seed = 3, foliageColor, trunkColor = "#655d48" }) {
   const rnd = seeded(seed);
   const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
   const y = position.length === 3 ? position[1] : groundY(x, z);
@@ -1123,8 +791,8 @@ export function proceduralTree({ position, height = 7, spread = 3.2, kind = "bro
   return g;
 }
 
-/** The kit's own bush (instanced leaves): the fallback without ez-tree. */
-export function proceduralBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", stems = true }) {
+/** Bush with instanced leaves; position=[x, z] or [x, y, z]. RECOMMENDED over bush(). */
+export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", stems = true }) {
   const rnd = seeded(seed);
   const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
   const y = position.length === 3 ? position[1] : groundY(x, z);
@@ -1143,58 +811,6 @@ export function proceduralBush({ position, radius = 0.8, seed = 2, color = "#6a8
   }
   g.userData = { kind: "bush", radius };
   return g;
-}
-
-/**
- * Instanced grass blades around the house (#20, interactive viewer only: the runtime adds it
- * at quality=high on a GPU; the headless renders never contain it). `around` is a Box3 (the
- * building); blades fill a ring from `inner` to `outer` metres outside it, thinning towards
- * the outside so they fade into the textured lawn, and sit on groundY. Seeded, deterministic.
- */
-export function grassField({ around, inner = 0.4, outer = 6, count = 30000, seed = 1, height = 0.16, color = "#6f8f45" }) {
-  const rnd = seeded(seed);
-  const min = around.min, max = around.max;
-  const width = max.x - min.x + 2 * outer, depth = max.z - min.z + 2 * outer;
-  // a blade: a narrow card bent at mid height, base at the origin
-  const geo = new THREE.BufferGeometry();
-  const w = 0.03;
-  geo.setAttribute("position", new THREE.Float32BufferAttribute([
-    -w, 0, 0, w, 0, 0, -w * 0.7, 0.55, 0.02, w * 0.7, 0.55, 0.02, 0, 1, 0.06,
-  ], 3));
-  geo.setAttribute("uv", new THREE.Float32BufferAttribute([0, 0, 1, 0, 0, 0.55, 1, 0.55, 0.5, 1], 2));
-  geo.setIndex([0, 1, 2, 2, 1, 3, 2, 3, 4]);
-  geo.computeVertexNormals();
-  const material = new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.9, side: THREE.DoubleSide });
-  const placed = [];
-  const d = new THREE.Object3D();
-  const base = new THREE.Color(color);
-  const hsl = { h: 0, s: 0, l: 0 };
-  base.getHSL(hsl);
-  let tries = 0;
-  while (placed.length < count && tries < count * 4) {
-    tries++;
-    const x = min.x - outer + rnd() * width, z = min.z - outer + rnd() * depth;
-    // distance outside the building box (0 inside)
-    const dx = Math.max(min.x - x, 0, x - max.x), dz = Math.max(min.z - z, 0, z - max.z);
-    const dist = Math.hypot(dx, dz);
-    if (dist < inner || dist > outer) continue;
-    if (rnd() < (dist - inner) / (outer - inner)) continue; // thin out towards the lawn
-    placed.push([x, z, dist]);
-  }
-  const inst = new THREE.InstancedMesh(geo, material, placed.length);
-  placed.forEach(([x, z], i) => {
-    const h = height * (0.6 + rnd() * 0.8);
-    d.position.set(x, groundY(x, z), z);
-    d.rotation.set((rnd() - 0.5) * 0.25, rnd() * Math.PI * 2, (rnd() - 0.5) * 0.25);
-    d.scale.set(0.8 + rnd() * 0.6, h, 1);
-    d.updateMatrix();
-    inst.setMatrixAt(i, d.matrix);
-    inst.setColorAt(i, new THREE.Color().setHSL(hsl.h + (rnd() - 0.5) * 0.04, hsl.s * (0.8 + rnd() * 0.4), hsl.l * (0.75 + rnd() * 0.5)));
-  });
-  inst.castShadow = false; // tens of thousands of cards: not worth a shadow pass
-  inst.receiveShadow = true;
-  inst.userData = { kind: "grass", excludeFromBounds: true, count: placed.length };
-  return inst;
 }
 
 // --------------------------------------------------------------------------
@@ -1413,5 +1029,4 @@ export default {
   flatRoof, gableRoof, shedRoof, chimney, railing, stairs, balcony, canopy, planter,
   hedge, pathway, groundPatch, gardenWall, fence, car, boundsOf, audit,
   terrain, groundY, rod, ribbon, pebbleStrip, leafTree, leafBush, swingSet, bench, bicycle,
-  TEXTURES, texturesReady, uvsInMetres, setVegetationDetail, vegetationEngine, proceduralTree, proceduralBush, grassField,
 };

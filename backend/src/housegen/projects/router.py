@@ -613,13 +613,6 @@ async def export_zip(
             z.write(p, f"src/{p.relative_to(base / 'src')}")
         z.write(kit / "house.js", "kit/house.js")
         z.write(kit / "runtime.js", "kit/runtime.js")
-        # the vendored texture sets house.js loads relative to itself (#16)
-        for p in (kit / "assets").rglob("*"):
-            if p.is_file():
-                z.write(p, f"kit/assets/{p.relative_to(kit / 'assets')}")
-        # the vendored kit dependencies (#15 ez-tree, #17 postprocessing, n8ao; kit/scripts/vendor.mjs)
-        for p in (kit / "vendor").rglob("*.js"):
-            z.write(p, f"kit/vendor/{p.relative_to(kit / 'vendor')}")
         three = kit / "node_modules" / "three"
         z.write(three / "build" / "three.module.js", "kit/vendor/three/build/three.module.js")
         z.write(three / "build" / "three.core.js", "kit/vendor/three/build/three.core.js")
