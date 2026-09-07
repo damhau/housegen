@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import secrets
 import shutil
 import zipfile
 from collections.abc import AsyncIterator
@@ -38,6 +39,8 @@ from housegen.projects.schemas import (
     SceneFileOut,
     SceneFilesOut,
     SceneVersionOut,
+    ShareOut,
+    ShareRequest,
 )
 from housegen.projects.storage import ProjectStorage
 
@@ -118,6 +121,17 @@ def _project_out(project: Project) -> ProjectOut:
         plan_page_urls=[
             st.plan_page_url(d.number, i + 1) for d in project.plans for i in range(d.pages)
         ],
+        share=_share_out(project),
+    )
+
+
+def _share_out(project: Project) -> ShareOut | None:
+    if not project.share_token:
+        return None
+    return ShareOut(
+        token=project.share_token,
+        url=f"/s/{project.share_token}",
+        version=project.share_version,
     )
 
 
@@ -325,6 +339,32 @@ async def _start_job(
         "jobs.started", extra={"job_id": job.id, "kind": kind, "attachments": len(attachments)}
     )
     return job
+
+
+@router.post("/{project_id}/share")
+async def share_project(
+    session: DbSession, project_id: str, body: ShareRequest | None = None
+) -> ShareOut:
+    """Create (or return) the read-only public link of the project (#24). Optionally pin a
+    version; sharing again with another version keeps the same token and re-pins it."""
+    project = await crud.get_project(session, project_id)
+    version = body.version if body else None
+    if version is not None:
+        await crud.get_version(session, project_id, version)
+    token = project.share_token or secrets.token_urlsafe(24)
+    await crud.set_share(session, project_id, token, version)
+    await session.commit()
+    logger.info("projects.shared", extra={"project_id": project_id, "version": version})
+    return ShareOut(token=token, url=f"/s/{token}", version=version)
+
+
+@router.delete("/{project_id}/share", status_code=204)
+async def revoke_share(session: DbSession, project_id: str) -> None:
+    """Revoke the public link: the URL stops working immediately."""
+    await crud.get_project(session, project_id)
+    await crud.set_share(session, project_id, None)
+    await session.commit()
+    logger.info("projects.share_revoked", extra={"project_id": project_id})
 
 
 @router.patch("/{project_id}/settings")

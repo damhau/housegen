@@ -40,7 +40,9 @@ import type {
   RunEstimateParams,
   RunSettings,
   SceneFilesOut,
-  SceneFilesParams
+  SceneFilesParams,
+  ShareOut,
+  ShareProjectBody
 } from '../../model';
 
 import { httpClient } from '../../http-client';
@@ -480,6 +482,151 @@ export const useAddPlanDocument = <TError = HTTPValidationError,
       > => {
 
       const mutationOptions = getAddPlanDocumentMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Create (or return) the read-only public link of the project (#24). Optionally pin a
+version; sharing again with another version keeps the same token and re-pins it.
+ * @summary Share Project
+ */
+export const getShareProjectUrl = (projectId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/share`
+}
+
+export const shareProject = async (projectId: string,
+    shareProjectBody: ShareProjectBody, options?: RequestInit): Promise<ShareOut> => {
+  
+  return httpClient<ShareOut>(getShareProjectUrl(projectId),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      shareProjectBody,)
+  }
+);}
+
+
+
+
+export const getShareProjectMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof shareProject>>, TError,{projectId: string;data: ShareProjectBody}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof shareProject>>, TError,{projectId: string;data: ShareProjectBody}, TContext> => {
+
+const mutationKey = ['shareProject'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof shareProject>>, {projectId: string;data: ShareProjectBody}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  shareProject(projectId,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ShareProjectMutationResult = NonNullable<Awaited<ReturnType<typeof shareProject>>>
+    export type ShareProjectMutationBody = ShareProjectBody
+    export type ShareProjectMutationError = HTTPValidationError
+
+    /**
+ * @summary Share Project
+ */
+export const useShareProject = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof shareProject>>, TError,{projectId: string;data: ShareProjectBody}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof shareProject>>,
+        TError,
+        {projectId: string;data: ShareProjectBody},
+        TContext
+      > => {
+
+      const mutationOptions = getShareProjectMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Revoke the public link: the URL stops working immediately.
+ * @summary Revoke Share
+ */
+export const getRevokeShareUrl = (projectId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/share`
+}
+
+export const revokeShare = async (projectId: string, options?: RequestInit): Promise<void> => {
+  
+  return httpClient<void>(getRevokeShareUrl(projectId),
+  {      
+    ...options,
+    method: 'DELETE'
+    
+    
+  }
+);}
+
+
+
+
+export const getRevokeShareMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeShare>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof revokeShare>>, TError,{projectId: string}, TContext> => {
+
+const mutationKey = ['revokeShare'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof revokeShare>>, {projectId: string}> = (props) => {
+          const {projectId} = props ?? {};
+
+          return  revokeShare(projectId,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RevokeShareMutationResult = NonNullable<Awaited<ReturnType<typeof revokeShare>>>
+    
+    export type RevokeShareMutationError = HTTPValidationError
+
+    /**
+ * @summary Revoke Share
+ */
+export const useRevokeShare = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof revokeShare>>, TError,{projectId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof revokeShare>>,
+        TError,
+        {projectId: string},
+        TContext
+      > => {
+
+      const mutationOptions = getRevokeShareMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

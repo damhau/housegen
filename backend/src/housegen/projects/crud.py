@@ -114,6 +114,24 @@ async def set_brief(session: AsyncSession, project_id: str, brief: str | None) -
     return project
 
 
+async def set_share(
+    session: AsyncSession, project_id: str, token: str | None, version: int | None = None
+) -> Project:
+    project = await get_project(session, project_id)
+    project.share_token = token
+    project.share_version = version if token else None
+    await session.flush()
+    return project
+
+
+async def project_by_share_token(session: AsyncSession, token: str) -> Project:
+    res = await session.execute(select(Project).where(Project.share_token == token))
+    project = res.scalar_one_or_none()
+    if project is None:
+        raise NotFoundError("this link is not valid (revoked or mistyped)")
+    return project
+
+
 async def set_project_settings(
     session: AsyncSession, project_id: str, settings: dict[str, Any] | None
 ) -> Project:

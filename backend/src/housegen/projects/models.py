@@ -36,6 +36,10 @@ class Project(Base):
     intake_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # agent.run_settings.RunSettings chosen by the owner (#18); unset fields = .env defaults
     settings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # read-only public link (#24): a long random token, null when not shared; the pinned
+    # version (null = the current one)
+    share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    share_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     @property
     def settings(self) -> dict[str, Any] | None:

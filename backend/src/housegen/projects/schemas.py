@@ -108,6 +108,32 @@ class ProjectOut(BaseModel):
     versions: list[SceneVersionOut]
     scene_url: str
     plan_page_urls: list[str]
+    # the read-only public link (#24), when the owner shared the project
+    share: ShareOut | None = None
+
+
+class ShareOut(BaseModel):
+    token: str
+    url: str  # path of the public page: /s/<token>
+    version: int | None  # pinned version, or None for the current one
+
+
+class ShareRequest(BaseModel):
+    # pin a version so later modifications do not change what was sent; None = current
+    version: int | None = Field(default=None, ge=1)
+
+
+class SharedProjectOut(BaseModel):
+    """What a recipient of a share link gets: the scene and its pictures, nothing else
+    (no jobs, chat, brief, intake, code, settings)."""
+
+    name: str
+    version: int
+    pinned: bool
+    scene_url: str
+    render_urls: dict[str, str]
+    photo_urls: list[str]
+    created_at: datetime
 
 
 class ProjectSummaryOut(BaseModel):

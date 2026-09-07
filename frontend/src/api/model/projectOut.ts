@@ -11,6 +11,7 @@ import type { RunSettings } from './runSettings';
 import type { ResolvedRunSettings } from './resolvedRunSettings';
 import type { PhotoOut } from './photoOut';
 import type { SceneVersionOut } from './sceneVersionOut';
+import type { ProjectOutShare } from './projectOutShare';
 
 export interface ProjectOut {
   id: string;
@@ -28,4 +29,5 @@ export interface ProjectOut {
   versions: SceneVersionOut[];
   scene_url: string;
   plan_page_urls: string[];
+  share?: ProjectOutShare;
 }

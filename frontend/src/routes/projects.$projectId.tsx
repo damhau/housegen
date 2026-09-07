@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { Download, Loader2, Play, RefreshCw, Settings2, Trash2 } from "lucide-react"
+import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Trash2 } from "lucide-react"
 import {
   getChatHistoryQueryKey,
   getGetProjectQueryKey,
@@ -17,6 +17,8 @@ import {
   useRestoreVersion,
   useFixVersion,
   useRunEstimate,
+  useShareProject,
+  useRevokeShare,
 } from "@/api/endpoints/projects/projects"
 import type { IntakeAnswer } from "@/api/model"
 import { BuildingPlaceholder } from "@/components/BuildingPlaceholder"
@@ -79,6 +81,9 @@ function ProjectPage() {
   const restore = useRestoreVersion()
   const fix = useFixVersion()
   const del = useDeleteProject()
+  const share = useShareProject()
+  const revoke = useRevokeShare()
+  const [copied, setCopied] = useState(false)
 
   const [tab, setTab] = useState<Tab>("conversation")
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
@@ -194,6 +199,25 @@ function ProjectPage() {
     setSelectedVersion(null)
     refreshAll()
   }
+  // share (#24): create or reuse the read-only link, pinned to the version being viewed
+  // (or none = the current one), copy it, or revoke it
+  async function onShare() {
+    const res = await share.mutateAsync({ projectId, data: { version: selectedVersion } })
+    const url = `${window.location.origin}${res.url}`
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      window.prompt("Copy the read-only link", url)
+    }
+    void qc.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) })
+  }
+  async function onRevoke() {
+    if (!confirm("Revoke the shared link? Anyone who has it loses access.")) return
+    await revoke.mutateAsync({ projectId })
+    void qc.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) })
+  }
   async function onDelete() {
     if (!confirm(`Delete “${p.name}” and all its versions?`)) return
     await del.mutateAsync({ projectId })
@@ -255,6 +279,26 @@ function ProjectPage() {
                 <Download /> Export
               </Button>
             </a>
+          )}
+          {p.current_version > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void onShare()}
+              disabled={share.isPending}
+              title={
+                p.share
+                  ? `Shared read-only at ${p.share.url}${p.share.version != null ? ` (pinned to v${p.share.version})` : " (current version)"}: click to copy the link again${selectedVersion !== null ? ` and pin v${selectedVersion}` : ""}`
+                  : `Create a read-only link${selectedVersion !== null ? ` pinned to v${selectedVersion}` : " to the current scene"} and copy it`
+              }
+            >
+              {copied ? <Check /> : <Link2 />} {copied ? "Link copied" : p.share ? "Shared" : "Share"}
+            </Button>
+          )}
+          {p.share && (
+            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => void onRevoke()} disabled={revoke.isPending} title="Revoke the shared link">
+              Revoke
+            </Button>
           )}
           <Button size="icon" variant="ghost" className="text-muted-foreground" onClick={() => void onDelete()} disabled={busy} title="Delete project">
             <Trash2 />
