@@ -25,11 +25,13 @@ RUN npm install --omit=dev                  # node_modules/three
 
 
 # ---------------------------------------------------------------------------
-# Stage 2 — Python backend + Chromium; also serves the SPA
+# Stage 2 — Python backend + Chromium headless shell; also serves the SPA
 # ---------------------------------------------------------------------------
-# The Playwright image ships Chromium and every system library it needs, so the
-# renderer uses the bundled browser (BROWSER_CHANNEL empty).
-FROM mcr.microsoft.com/playwright/python:v1.62.0-noble AS app
+# A slim Debian Python image plus only what the renderer runs: Playwright's Chromium
+# headless shell (what launch(headless=True) uses) and its system libraries. The
+# official Playwright image would add Firefox, WebKit, the full Chromium and their
+# libraries: about 1 GB compressed that nothing here uses.
+FROM python:3.12-slim-bookworm AS app
 WORKDIR /app
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
@@ -41,9 +43,15 @@ ENV PYTHONUNBUFFERED=1 \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Install dependencies first (cached layer), then the project itself.
+# Install dependencies first (cached layer), then the browser the pinned Playwright
+# wants (cached with it), then the project itself.
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
+# --with-deps = the apt packages for this browser only. World-readable so the
+# unprivileged user below can run it (BROWSER_CHANNEL empty = this bundled browser).
+RUN /app/.venv/bin/playwright install --with-deps chromium-headless-shell \
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod -R a+rX /ms-playwright
 COPY backend/src ./src
 RUN uv sync --frozen --no-dev
 
@@ -66,7 +74,12 @@ ENV PATH="/app/.venv/bin:$PATH" \
     BROWSER_CHANNEL="" \
     RENDER_BASE_URL=http://127.0.0.1:8000
 
-RUN mkdir -p /data && chown -R pwuser:pwuser /data /app
+# Same user name and uid as the Playwright image had, so files on an existing /data
+# volume keep their owner. /app stays root-owned and read-only for it: a recursive
+# chown would rewrite the whole .venv into one more layer.
+RUN groupadd --gid 1001 pwuser \
+    && useradd --uid 1001 --gid pwuser --create-home --shell /usr/sbin/nologin pwuser \
+    && mkdir -p /data && chown pwuser:pwuser /data
 USER pwuser
 VOLUME ["/data"]
 EXPOSE 8000
