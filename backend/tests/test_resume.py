@@ -191,7 +191,7 @@ async def test_interrupted_build_resumes_from_its_files(
             "hang",
         ]
     )
-    monkeypatch.setattr(pipeline, "get_provider", lambda: first)
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: first)
     manager = JobManager()
     manager.submit(job_id, pid, pipeline.generate)
     await _wait_for_job(job_id, "running")
@@ -212,7 +212,7 @@ async def test_interrupted_build_resumes_from_its_files(
             [ToolCallPart(id="b", name="finish", input={"summary": "resumed and finished"})],
         ]
     )
-    monkeypatch.setattr(pipeline, "get_provider", lambda: second)
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: second)
     manager2 = JobManager()
     assert await resume_interrupted_jobs(manager2) == 1
     await _wait_for_job(job_id, "done")

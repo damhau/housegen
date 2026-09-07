@@ -6,6 +6,8 @@
  */
 import type { ProjectOutBrief } from './projectOutBrief';
 import type { ProjectOutIntake } from './projectOutIntake';
+import type { RunSettings } from './runSettings';
+import type { ResolvedRunSettings } from './resolvedRunSettings';
 import type { PhotoOut } from './photoOut';
 import type { SceneVersionOut } from './sceneVersionOut';
 
@@ -18,6 +20,8 @@ export interface ProjectOut {
   current_version: number;
   brief: ProjectOutBrief;
   intake: ProjectOutIntake;
+  settings: RunSettings;
+  effective_settings: ResolvedRunSettings;
   photos: PhotoOut[];
   versions: SceneVersionOut[];
   scene_url: string;

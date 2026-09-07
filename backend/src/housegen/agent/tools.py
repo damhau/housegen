@@ -353,6 +353,7 @@ class BuilderTools:
         self.rendered_views: set[str] = set()
         self.last_check_ok = False
         self.render_ms_total = 0  # every render this instance ran (per-turn deltas, #13)
+        self.default_quality = "medium"  # in-loop renders when the model gives no quality (#18)
         self.handlers: dict[str, Handler] = {
             "list_files": self.list_files,
             "read_file": self.read_file,
@@ -416,7 +417,7 @@ class BuilderTools:
         views = [str(v) for v in a.get("views", [])][:6] or ["southeast"]
         # medium is plenty to judge massing and openings and renders 2-3x faster than high;
         # the version snapshot the user and the critic see is rendered at high by the pipeline
-        quality = str(a.get("quality") or "medium")
+        quality = str(a.get("quality") or self.default_quality)
         camera = {k: float(a[k]) for k in CAMERA_OVERRIDES if a.get(k) is not None}
         res = await self.renderer.render(
             self.scene_url, views, self.renders_dir, quality=quality, camera=camera or None

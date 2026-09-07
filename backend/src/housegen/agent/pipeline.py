@@ -31,6 +31,7 @@ from housegen.agent.prompts import (
     PLAN_ONLY_ADDENDUM,
     RESUME_ADDENDUM,
 )
+from housegen.agent.run_settings import ResolvedRunSettings, resolve
 from housegen.agent.schemas import Critique, Intake
 from housegen.agent.tools import BuilderTools, ImageSources
 from housegen.agent.workspace import Workspace
@@ -89,10 +90,13 @@ class _Inputs:
 class _Run:
     """Shared plumbing for one job."""
 
-    def __init__(self, ctx: JobContext) -> None:
+    def __init__(self, ctx: JobContext, rs: ResolvedRunSettings | None = None) -> None:
         self.ctx = ctx
         self.settings = get_settings()
-        self.provider = get_provider()
+        # what this job runs with (#18): the snapshot taken when it was started, so a settings
+        # change never affects a running job; .env defaults when there is none
+        self.rs = rs or resolve(self.settings)
+        self.provider = get_provider(self.rs.provider)
         self.storage = ProjectStorage(ctx.project_id)
         self.storage.ensure()
         self.storage.init_scene_from_template()
@@ -110,6 +114,16 @@ class _Run:
         self.tools = BuilderTools(
             self.workspace, renderer, self.scene_url, self.renders_dir, on_render=self._on_render
         )
+
+    @classmethod
+    async def create(cls, ctx: JobContext) -> _Run:
+        async with session_factory()() as session:
+            job = await crud.get_job(session, ctx.job_id)
+            stored = job.settings
+        rs = ResolvedRunSettings.model_validate(stored) if stored else None
+        run = cls(ctx, rs)
+        run.tools.default_quality = run.rs.render_quality
+        return run
 
     def set_image_sources(
         self, photos: dict[str, Path], extras: list[Path], attached: list[Path] | None = None
@@ -145,7 +159,7 @@ class _Run:
             TurnMetric(
                 step=step,
                 role=role,
-                model=completion.model or self.settings.resolve_model("critic"),
+                model=completion.model or self.rs.critic_model,
                 duration_ms=completion.duration_ms,
                 thinking_ms=completion.thinking_ms,
                 input_tokens=completion.usage.input_tokens,
@@ -255,13 +269,13 @@ class _Run:
     async def build(self, messages: list[Message], system: str = BUILDER_SYSTEM) -> str:
         run = await run_builder(
             self.provider,
-            self.settings.resolve_model("builder"),
+            self.rs.model,
             system,
             messages,
             self.tools,
-            max_steps=self.settings.BUILDER_MAX_STEPS,
-            max_tokens=self.settings.LLM_MAX_TOKENS,
-            effort=self.settings.BUILDER_EFFORT,
+            max_steps=self.rs.max_steps,
+            max_tokens=self.rs.max_tokens,
+            effort=self.rs.builder_effort,
             on_step=self.on_step,
             progress=lambda step: LiveProgress(self.ctx, "builder", step=step, show_text=True),
         )
@@ -336,8 +350,7 @@ class _Run:
 
 async def intake(ctx: JobContext) -> None:
     """Read the plan set before the first build of a project without photographs."""
-    run = _Run(ctx)
-    s = run.settings
+    run = await _Run.create(ctx)
     pid = ctx.project_id
     pages = run.storage.plan_page_paths()
     brief, _ = await run.context()
@@ -346,12 +359,12 @@ async def intake(ctx: JobContext) -> None:
     async with LiveProgress(ctx, "intake", show_text=False) as live:
         result, completion = await intake_agent.read_plans(
             run.provider,
-            s.resolve_model("critic"),
+            run.rs.critic_model,
             pages,
             brief,
-            s.LLM_MAX_TOKENS,
+            run.rs.max_tokens,
             on_progress=live.on_event,
-            effort=s.CRITIC_EFFORT,
+            effort=run.rs.critic_effort,
         )
     await run.add_call("intake", completion)
     await ctx.emit(
@@ -387,7 +400,7 @@ async def intake(ctx: JobContext) -> None:
 
 
 async def generate(ctx: JobContext) -> None:
-    run = _Run(ctx)
+    run = await _Run.create(ctx)
     pid = ctx.project_id
     async with session_factory()() as session, session.begin():
         await crud.set_status(session, pid, "generating")
@@ -429,17 +442,17 @@ async def _critic_rounds(
     `judged` (resume): round `start` was already judged by the interrupted process and its
     verdict persisted; the builder's fix pass is what was lost.
     """
-    ctx, s, pid = run.ctx, run.settings, run.ctx.project_id
+    ctx, s, rs, pid = run.ctx, run.settings, run.rs, run.ctx.project_id
     score: int | None = judged.overall_score if judged else None
     reference = inp.reference
-    if reference is None and s.CRITIC_MAX_ITERATIONS > 0 and start == 1:
+    if reference is None and rs.critic_rounds > 0 and start == 1:
         logger.info("critic.skipped", extra={"project_id": pid, "reason": "no reference"})
         await ctx.emit(
             "phase",
             name="critic",
             message="Independent review skipped: no photographs and no elevation sheet to compare with",
         )
-    rounds = s.CRITIC_MAX_ITERATIONS if reference else 0
+    rounds = rs.critic_rounds if reference else 0
     for i in range(start, rounds + 1):
         if judged is not None and i == start:
             verdict = judged
@@ -453,34 +466,34 @@ async def _critic_rounds(
                 if inp.has_photos:
                     verdict, completion = await critic.critique_against_photos(
                         run.provider,
-                        s.resolve_model("critic"),
+                        rs.critic_model,
                         inp.photos,
                         renders,
                         s.CRITIC_SCORE_THRESHOLD,
-                        s.LLM_MAX_TOKENS,
+                        rs.max_tokens,
                         extras=inp.extras,
                         on_progress=live.on_event,
-                        effort=s.CRITIC_EFFORT,
+                        effort=rs.critic_effort,
                         audit=run.last_audit,
                     )
                 else:
                     verdict, completion = await critic.critique_against_plans(
                         run.provider,
-                        s.resolve_model("critic"),
+                        rs.critic_model,
                         inp.elevations,
                         inp.pages,
                         renders,
                         s.CRITIC_SCORE_THRESHOLD,
-                        s.LLM_MAX_TOKENS,
+                        rs.max_tokens,
                         on_progress=live.on_event,
-                        effort=s.CRITIC_EFFORT,
+                        effort=rs.critic_effort,
                         audit=run.last_audit,
                     )
             await run.add_call("critic", completion, step=i)
             score = verdict.overall_score
             await _emit_critic(ctx, i, verdict)
             await run.set_version_critique(version, verdict)
-        if _verdict_ends_rounds(verdict, i, s):
+        if _verdict_ends_rounds(verdict, i, s, rs.critic_rounds):
             break
         await ctx.emit("phase", name="builder", message=f"Fixing the critic's findings (round {i})")
         messages.append(Message.user(_critic_feedback_text(reference or "photos", verdict)))
@@ -495,11 +508,11 @@ async def _critic_rounds(
     await ctx.emit("done", version=version, score=score, summary=summary, **run.finish_extras())
 
 
-def _verdict_ends_rounds(verdict: Critique, iteration: int, s: Settings) -> bool:
+def _verdict_ends_rounds(verdict: Critique, iteration: int, s: Settings, rounds: int) -> bool:
     no_major = not any(x.severity == "major" for x in verdict.issues)
     if verdict.done or (verdict.overall_score >= s.CRITIC_SCORE_THRESHOLD and no_major):
         return True
-    return iteration >= s.CRITIC_MAX_ITERATIONS
+    return iteration >= rounds
 
 
 def _critic_feedback_text(reference: str, verdict: Critique) -> str:
@@ -586,7 +599,7 @@ async def _emit_critic(ctx: JobContext, iteration: int, verdict: Critique) -> No
 
 
 async def modify(ctx: JobContext) -> None:
-    run = _Run(ctx)
+    run = await _Run.create(ctx)
     async with session_factory()() as session:
         job = await crud.get_job(session, ctx.job_id)
         request = job.request_text
@@ -669,19 +682,19 @@ async def _modify_verify(
     version: int,
     summary: str,
 ) -> None:
-    ctx, s = run.ctx, run.settings
-    if s.CRITIC_MAX_ITERATIONS > 0:
+    ctx, rs = run.ctx, run.rs
+    if rs.critic_rounds > 0:
         await ctx.emit("phase", name="critic", message="Verifying the modification")
         async with LiveProgress(ctx, "critic", show_text=False) as live:
             verdict, completion = await critic.verify_modification(
                 run.provider,
-                s.resolve_model("critic"),
+                rs.critic_model,
                 request,
                 before,
                 after,
-                s.LLM_MAX_TOKENS,
+                rs.max_tokens,
                 on_progress=live.on_event,
-                effort=s.CRITIC_EFFORT,
+                effort=rs.critic_effort,
                 attachments=inp.attachments,
                 audit=run.last_audit,
             )
@@ -851,7 +864,7 @@ async def resume(ctx: JobContext) -> None:
 
 
 async def _resume_generate(ctx: JobContext, progress: _Progress) -> None:
-    run = _Run(ctx)
+    run = await _Run.create(ctx)
     async with session_factory()() as session, session.begin():
         await crud.set_status(session, ctx.project_id, "generating")
     inp = await run.inputs()
@@ -893,7 +906,7 @@ async def _resume_generate(ctx: JobContext, progress: _Progress) -> None:
 
 
 async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None:
-    run = _Run(ctx)
+    run = await _Run.create(ctx)
     request = job.request_text
     async with session_factory()() as session:
         history = await crud.list_chat(session, ctx.project_id)

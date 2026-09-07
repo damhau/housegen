@@ -75,6 +75,15 @@ async def set_brief(session: AsyncSession, project_id: str, brief: str | None) -
     return project
 
 
+async def set_project_settings(
+    session: AsyncSession, project_id: str, settings: dict[str, Any] | None
+) -> Project:
+    project = await get_project(session, project_id)
+    project.settings_json = json.dumps(settings) if settings else None
+    await session.flush()
+    return project
+
+
 async def set_intake(
     session: AsyncSession, project_id: str, intake: dict[str, Any] | None
 ) -> Project:
@@ -141,9 +150,18 @@ async def set_version_critique(
 
 
 async def create_job(
-    session: AsyncSession, project_id: str, kind: str, request_text: str = ""
+    session: AsyncSession,
+    project_id: str,
+    kind: str,
+    request_text: str = "",
+    settings: dict[str, Any] | None = None,
 ) -> Job:
-    job = Job(project_id=project_id, kind=kind, request_text=request_text)
+    job = Job(
+        project_id=project_id,
+        kind=kind,
+        request_text=request_text,
+        settings_json=json.dumps(settings) if settings else None,
+    )
     session.add(job)
     await session.flush()
     logger.info("jobs.created", extra={"project_id": project_id, "job_id": job.id, "kind": kind})

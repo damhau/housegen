@@ -89,6 +89,10 @@ the UI header shows it; a local build or `uvicorn` says `dev`.
 
 ## Configuration (backend/.env)
 
+The model, effort, critic rounds, step budget and in-loop render quality below are the defaults; each project can
+override them from the run settings sheet (the gear button on the project page, `PATCH /projects/{id}/settings`), and
+every job snapshots the settings it started with.
+
 | var | default | meaning |
 |---|---|---|
 | `LLM_PROVIDER` | `anthropic` | `anthropic` or `openai` |

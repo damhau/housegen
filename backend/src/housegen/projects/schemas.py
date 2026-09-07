@@ -6,6 +6,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from housegen.agent.metrics import RunSummary
+from housegen.agent.run_settings import ResolvedRunSettings, RunSettings
 from housegen.agent.schemas import Critique, Intake
 
 Side = Literal["north", "south", "east", "west", "other"]
@@ -86,6 +87,9 @@ class ProjectOut(BaseModel):
     brief: str | None
     # present when the plans were read before building (projects without photos)
     intake: IntakeOut | None
+    # the owner's run settings (unset fields = .env defaults) and what a run would use now (#18)
+    settings: RunSettings
+    effective_settings: ResolvedRunSettings
     photos: list[PhotoOut]
     versions: list[SceneVersionOut]
     scene_url: str
@@ -112,6 +116,8 @@ class JobOut(BaseModel):
     result_version: int | None
     # time and tokens by phase and activity, cost estimate; set when the job ends (#13)
     metrics: RunSummary | None = None
+    # the settings snapshot the job runs with (#18)
+    settings: ResolvedRunSettings | None = None
     created_at: datetime
     finished_at: datetime | None
 

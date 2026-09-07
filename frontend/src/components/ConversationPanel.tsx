@@ -45,6 +45,7 @@ export function ConversationPanel({
   liveJob,
   busy,
   disabled,
+  estimate = null,
   onSend,
   onFix,
   onAnswer,
@@ -61,6 +62,8 @@ export function ConversationPanel({
   busy: boolean
   /** no version yet: nothing to modify */
   disabled: boolean
+  /** "~8 min · ~$2": what the next modification would roughly cost (#18) */
+  estimate?: string | null
   /** a modification request, with optional photos of the detail to change (#8) */
   onSend: (text: string, photos?: File[], keep?: boolean) => Promise<void>
   onFix: (version: number) => void
@@ -227,6 +230,7 @@ export function ConversationPanel({
             </label>
           </div>
         </div>
+        {estimate && !disabled && !busy && <div className="mt-1 text-[11px] text-muted-foreground">A modification takes {estimate}</div>}
       </div>
     </div>
   )

@@ -34,6 +34,12 @@ class Project(Base):
     brief: Mapped[str | None] = mapped_column(Text, nullable=True)
     # the intake's reading of the plan set (agent.schemas.Intake + job_id) when there are no photos
     intake_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # agent.run_settings.RunSettings chosen by the owner (#18); unset fields = .env defaults
+    settings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    @property
+    def settings(self) -> dict[str, Any] | None:
+        return dict(json.loads(self.settings_json)) if self.settings_json else None
 
     photos: Mapped[list[Photo]] = relationship(
         back_populates="project", cascade="all, delete-orphan", lazy="selectin"
@@ -98,6 +104,8 @@ class Job(Base):
     result_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # agent.metrics.RunSummary: time and tokens by phase and activity, cost (#13)
     metrics_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # agent.run_settings.ResolvedRunSettings snapshot taken at start (#18)
+    settings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
@@ -108,6 +116,10 @@ class Job(Base):
     @property
     def metrics(self) -> dict[str, Any] | None:
         return dict(json.loads(self.metrics_json)) if self.metrics_json else None
+
+    @property
+    def settings(self) -> dict[str, Any] | None:
+        return dict(json.loads(self.settings_json)) if self.settings_json else None
 
 
 class JobEvent(Base):

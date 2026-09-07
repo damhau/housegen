@@ -62,7 +62,7 @@ export function VersionList({
 }) {
   const [details, setDetails] = useState<number | null>(null)
   if (versions.length === 0) return <p className="p-3 text-sm text-muted-foreground">No version yet.</p>
-  const jobOf = (v: SceneVersionOut) => jobs.find((j) => j.result_version === v.number && j.metrics)
+  const jobOf = (v: SceneVersionOut) => jobs.find((j) => j.result_version === v.number && (j.metrics || j.settings))
   return (
     <div>
     <ul className="divide-y">
@@ -97,6 +97,11 @@ export function VersionList({
                   {issues > 0 && ` · ${issues} finding${issues > 1 ? "s" : ""}`}
                   {suggestions > 0 && ` · ${suggestions} suggestion${suggestions > 1 ? "s" : ""}`}
                 </div>
+                {job?.settings && (
+                  <div className="text-[11px] text-muted-foreground" title="the settings this version was made with">
+                    {job.settings.model} · {job.settings.builder_effort} · {job.settings.critic_rounds} round{job.settings.critic_rounds === 1 ? "" : "s"} · {job.settings.max_steps} steps
+                  </div>
+                )}
                 {job?.metrics && (
                   <button
                     type="button"

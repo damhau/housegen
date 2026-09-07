@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { Download, Loader2, Play, RefreshCw, Trash2 } from "lucide-react"
+import { Download, Loader2, Play, RefreshCw, Settings2, Trash2 } from "lucide-react"
 import {
   getChatHistoryQueryKey,
   getGetProjectQueryKey,
@@ -16,13 +16,16 @@ import {
   useModify,
   useRestoreVersion,
   useFixVersion,
+  useRunEstimate,
 } from "@/api/endpoints/projects/projects"
 import type { IntakeAnswer } from "@/api/model"
 import { BuildingPlaceholder } from "@/components/BuildingPlaceholder"
 import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
 import { ConversationPanel } from "@/components/ConversationPanel"
+import { fmtUsd } from "@/components/RunSummaryCard"
 import { SceneViewer } from "@/components/SceneViewer"
+import { SettingsSheet } from "@/components/SettingsSheet"
 import { VersionList } from "@/components/VersionList"
 import { Button } from "@/components/ui/button"
 import { useJobStream } from "@/hooks/useJobStream"
@@ -79,6 +82,7 @@ function ProjectPage() {
   const [tab, setTab] = useState<Tab>("conversation")
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   // the job to follow: the most recent one that is still running (or interrupted by a server
   // restart: it resumes with the same id), else the most recent one at all
@@ -96,6 +100,9 @@ function ProjectPage() {
     void qc.invalidateQueries({ queryKey: getListProjectsQueryKey() })
     setReloadKey((k) => k + 1)
   }
+  const idle = activeJob === null
+  const genEstimate = useRunEstimate(projectId, { kind: "generate" }, { query: { enabled: idle, staleTime: 60_000 } })
+  const modEstimate = useRunEstimate(projectId, { kind: "modify" }, { query: { enabled: idle, staleTime: 60_000 } })
   const { events, live, progress, liveText, liveThought, disconnectedSince } = useJobStream(projectId, followed?.id, refreshAll)
   const elapsed = useElapsed(activeJob?.created_at ?? null)
   const reconnecting = useReconnecting(disconnectedSince, project.failureCount + jobs.failureCount)
@@ -147,6 +154,11 @@ function ProjectPage() {
   // until the running job has produced an error-free render of it (then the viewer follows the build)
   const hasScene = p.current_version > 0 || p.versions.length > 0 || (Boolean(activeJob) && lastGoodRender > 0)
   const failedMessage = !activeJob && latestJob?.status === "failed" ? (latestJob.error ?? "the run failed") : null
+  // "~35 min · ~$12": rough, from this project's own runs (or a typical profile before the first)
+  const estimateText = (e: { minutes: number; cost_usd?: number | null; basis: string } | undefined) =>
+    e ? `~${e.minutes} min${e.cost_usd != null ? ` · ~${fmtUsd(e.cost_usd)}` : ""}` : null
+  const genHint = needsIntake ? null : estimateText(genEstimate.data)
+  const genTitle = genEstimate.data ? `${genEstimate.data.basis === "history" ? `from ${genEstimate.data.samples} previous run(s)` : "typical run"} · ${genEstimate.data.model}` : undefined
 
   async function onSend(text: string, photos: File[] = [], keep = true) {
     // OpenAPI describes file fields as `string` (format: binary); the generated call builds
@@ -215,15 +227,20 @@ function ProjectPage() {
         </span>
         <div className="ml-auto flex items-center gap-2">
           {p.current_version === 0 && !busy && !awaitingAnswers && (
-            <Button size="sm" onClick={() => void onGenerate()}>
+            <Button size="sm" onClick={() => void onGenerate()} title={genTitle}>
               <Play /> {needsIntake ? "Read the plans" : "Generate"}
+              {genHint && <span className="font-normal opacity-80">{genHint}</span>}
             </Button>
           )}
           {p.current_version > 0 && !busy && (
-            <Button size="sm" variant="outline" onClick={() => void onGenerate()} title="Rebuild from scratch">
+            <Button size="sm" variant="outline" onClick={() => void onGenerate()} title={`Rebuild from scratch${genTitle ? ` · ${genTitle}` : ""}`}>
               <Play /> Regenerate
+              {genHint && <span className="font-normal text-muted-foreground">{genHint}</span>}
             </Button>
           )}
+          <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)} title={`Run settings · ${p.effective_settings.model} · ${p.effective_settings.builder_effort} · ${p.effective_settings.critic_rounds} round(s) · ${p.effective_settings.max_steps} steps`}>
+            <Settings2 /> {p.effective_settings.preset === "quick" ? "Quick draft" : p.effective_settings.preset === "full" ? "Full quality" : "Custom"}
+          </Button>
           {busy && (
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="size-3 animate-spin" /> agent running
@@ -293,6 +310,7 @@ function ProjectPage() {
                 liveJob={{ jobId: followed?.id ?? null, events, live, progress, liveText, liveThought, elapsed }}
                 busy={busy}
                 disabled={p.current_version === 0}
+                estimate={p.current_version > 0 && idle ? estimateText(modEstimate.data) : null}
                 onSend={onSend}
                 onFix={(n) => void onFix(n)}
                 onAnswer={onAnswer}
@@ -315,6 +333,7 @@ function ProjectPage() {
           </div>
         </aside>
       </div>
+      {settingsOpen && <SettingsSheet project={p} onClose={() => setSettingsOpen(false)} />}
     </div>
   )
 }

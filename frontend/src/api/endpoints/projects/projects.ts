@@ -27,6 +27,7 @@ import type {
   BodyCreateProject,
   BodyModify,
   ChatMessageOut,
+  Estimate,
   GenerateBody,
   HTTPValidationError,
   JobEventOut,
@@ -34,6 +35,9 @@ import type {
   JobOut,
   ProjectOut,
   ProjectSummaryOut,
+  ResolvedRunSettings,
+  RunEstimateParams,
+  RunSettings,
   SceneFilesOut,
   SceneFilesParams
 } from '../../model';
@@ -397,6 +401,298 @@ export const useDeleteProject = <TError = HTTPValidationError,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * Set the project's run settings (model, effort, critic rounds, step budget, in-loop
+render quality). Unset fields keep the .env defaults. A running job is not affected: it
+took its snapshot at start.
+ * @summary Update Settings
+ */
+export const getUpdateSettingsUrl = (projectId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/settings`
+}
+
+export const updateSettings = async (projectId: string,
+    runSettings: RunSettings, options?: RequestInit): Promise<ProjectOut> => {
+  
+  return httpClient<ProjectOut>(getUpdateSettingsUrl(projectId),
+  {      
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      runSettings,)
+  }
+);}
+
+
+
+
+export const getUpdateSettingsMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSettings>>, TError,{projectId: string;data: RunSettings}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSettings>>, TError,{projectId: string;data: RunSettings}, TContext> => {
+
+const mutationKey = ['updateSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSettings>>, {projectId: string;data: RunSettings}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  updateSettings(projectId,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateSettings>>>
+    export type UpdateSettingsMutationBody = RunSettings
+    export type UpdateSettingsMutationError = HTTPValidationError
+
+    /**
+ * @summary Update Settings
+ */
+export const useUpdateSettings = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSettings>>, TError,{projectId: string;data: RunSettings}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof updateSettings>>,
+        TError,
+        {projectId: string;data: RunSettings},
+        TContext
+      > => {
+
+      const mutationOptions = getUpdateSettingsMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * What a run started now would use (the stored settings over the .env defaults, effort
+values mapped onto the provider).
+ * @summary Effective Settings
+ */
+export const getEffectiveSettingsUrl = (projectId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/settings/effective`
+}
+
+export const effectiveSettings = async (projectId: string, options?: RequestInit): Promise<ResolvedRunSettings> => {
+  
+  return httpClient<ResolvedRunSettings>(getEffectiveSettingsUrl(projectId),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getEffectiveSettingsQueryKey = (projectId?: string,) => {
+    return [
+    `/api/v1/projects/${projectId}/settings/effective`
+    ] as const;
+    }
+
+    
+export const getEffectiveSettingsQueryOptions = <TData = Awaited<ReturnType<typeof effectiveSettings>>, TError = HTTPValidationError>(projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof effectiveSettings>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getEffectiveSettingsQueryKey(projectId);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof effectiveSettings>>> = ({ signal }) => effectiveSettings(projectId, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(projectId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof effectiveSettings>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type EffectiveSettingsQueryResult = NonNullable<Awaited<ReturnType<typeof effectiveSettings>>>
+export type EffectiveSettingsQueryError = HTTPValidationError
+
+
+export function useEffectiveSettings<TData = Awaited<ReturnType<typeof effectiveSettings>>, TError = HTTPValidationError>(
+ projectId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof effectiveSettings>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof effectiveSettings>>,
+          TError,
+          Awaited<ReturnType<typeof effectiveSettings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useEffectiveSettings<TData = Awaited<ReturnType<typeof effectiveSettings>>, TError = HTTPValidationError>(
+ projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof effectiveSettings>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof effectiveSettings>>,
+          TError,
+          Awaited<ReturnType<typeof effectiveSettings>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useEffectiveSettings<TData = Awaited<ReturnType<typeof effectiveSettings>>, TError = HTTPValidationError>(
+ projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof effectiveSettings>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Effective Settings
+ */
+
+export function useEffectiveSettings<TData = Awaited<ReturnType<typeof effectiveSettings>>, TError = HTTPValidationError>(
+ projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof effectiveSettings>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getEffectiveSettingsQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+/**
+ * Rough duration and cost of the next run of `kind`, from this project's finished runs
+of that kind (or a typical profile before the first) and the price table.
+ * @summary Run Estimate
+ */
+export const getRunEstimateUrl = (projectId: string,
+    params?: RunEstimateParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/projects/${projectId}/estimate?${stringifiedParams}` : `/api/v1/projects/${projectId}/estimate`
+}
+
+export const runEstimate = async (projectId: string,
+    params?: RunEstimateParams, options?: RequestInit): Promise<Estimate> => {
+  
+  return httpClient<Estimate>(getRunEstimateUrl(projectId,params),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getRunEstimateQueryKey = (projectId?: string,
+    params?: RunEstimateParams,) => {
+    return [
+    `/api/v1/projects/${projectId}/estimate`, ...(params ? [params]: [])
+    ] as const;
+    }
+
+    
+export const getRunEstimateQueryOptions = <TData = Awaited<ReturnType<typeof runEstimate>>, TError = HTTPValidationError>(projectId: string,
+    params?: RunEstimateParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof runEstimate>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getRunEstimateQueryKey(projectId,params);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof runEstimate>>> = ({ signal }) => runEstimate(projectId,params, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(projectId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof runEstimate>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type RunEstimateQueryResult = NonNullable<Awaited<ReturnType<typeof runEstimate>>>
+export type RunEstimateQueryError = HTTPValidationError
+
+
+export function useRunEstimate<TData = Awaited<ReturnType<typeof runEstimate>>, TError = HTTPValidationError>(
+ projectId: string,
+    params: undefined |  RunEstimateParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof runEstimate>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof runEstimate>>,
+          TError,
+          Awaited<ReturnType<typeof runEstimate>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRunEstimate<TData = Awaited<ReturnType<typeof runEstimate>>, TError = HTTPValidationError>(
+ projectId: string,
+    params?: RunEstimateParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof runEstimate>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof runEstimate>>,
+          TError,
+          Awaited<ReturnType<typeof runEstimate>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRunEstimate<TData = Awaited<ReturnType<typeof runEstimate>>, TError = HTTPValidationError>(
+ projectId: string,
+    params?: RunEstimateParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof runEstimate>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Run Estimate
+ */
+
+export function useRunEstimate<TData = Awaited<ReturnType<typeof runEstimate>>, TError = HTTPValidationError>(
+ projectId: string,
+    params?: RunEstimateParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof runEstimate>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getRunEstimateQueryOptions(projectId,params,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+/**
  * Read the plan set before building (projects without photos): what the house is as
 drawn, which sheet is what, and the questions the drawings cannot answer.
  * @summary Intake

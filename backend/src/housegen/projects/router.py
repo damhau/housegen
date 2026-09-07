@@ -16,7 +16,10 @@ from PIL import Image, ImageOps
 from sse_starlette.sse import EventSourceResponse
 
 from housegen.agent import pipeline
+from housegen.agent.estimate import Estimate, Kind, estimate
+from housegen.agent.run_settings import ResolvedRunSettings, RunSettings, resolve
 from housegen.agent.schemas import Critique
+from housegen.core.config import get_settings
 from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
 from housegen.jobs.manager import job_manager
@@ -57,8 +60,13 @@ def _store_photo(raw: bytes, path: Path) -> None:
     img.save(path, "JPEG", quality=88, optimize=True)
 
 
+def _run_settings(project: Project) -> RunSettings:
+    return RunSettings.model_validate(project.settings) if project.settings else RunSettings()
+
+
 def _project_out(project: Project) -> ProjectOut:
     st = ProjectStorage(project.id)
+    stored = _run_settings(project)
     return ProjectOut(
         id=project.id,
         name=project.name,
@@ -68,6 +76,8 @@ def _project_out(project: Project) -> ProjectOut:
         current_version=project.current_version,
         brief=project.brief,
         intake=IntakeOut.model_validate_json(project.intake_json) if project.intake_json else None,
+        settings=stored,
+        effective_settings=resolve(get_settings(), stored),
         photos=[
             PhotoOut(
                 id=p.id, side=p.side, original_name=p.original_name, url=st.photo_url(p.filename)
@@ -215,7 +225,11 @@ async def _start_job(
     project = await crud.get_project(session, project_id)
     if await crud.active_job(session, project_id):
         raise ConflictError("a job is already running for this project")
-    job = await crud.create_job(session, project_id, kind, request_text)
+    # the job runs with a snapshot of the project's settings taken now (#18)
+    resolved = resolve(get_settings(), _run_settings(project))
+    job = await crud.create_job(
+        session, project_id, kind, request_text, settings=resolved.model_dump()
+    )
     # photos attached to a modification request (#8): stored like uploads, named after the
     # job, given to the builder and the verifier as ground truth for this request and,
     # unless the user opted out, kept as project extras for every later pass
@@ -248,6 +262,37 @@ async def _start_job(
         "jobs.started", extra={"job_id": job.id, "kind": kind, "attachments": len(attachments)}
     )
     return job
+
+
+@router.patch("/{project_id}/settings")
+async def update_settings(session: DbSession, project_id: str, body: RunSettings) -> ProjectOut:
+    """Set the project's run settings (model, effort, critic rounds, step budget, in-loop
+    render quality). Unset fields keep the .env defaults. A running job is not affected: it
+    took its snapshot at start."""
+    project = await crud.get_project(session, project_id)
+    stored = body.model_dump(exclude_none=True)
+    await crud.set_project_settings(session, project_id, stored or None)
+    await session.commit()
+    await session.refresh(project)
+    logger.info("projects.settings", extra={"project_id": project_id, "settings": stored})
+    return _project_out(project)
+
+
+@router.get("/{project_id}/settings/effective")
+async def effective_settings(session: DbSession, project_id: str) -> ResolvedRunSettings:
+    """What a run started now would use (the stored settings over the .env defaults, effort
+    values mapped onto the provider)."""
+    project = await crud.get_project(session, project_id)
+    return resolve(get_settings(), _run_settings(project))
+
+
+@router.get("/{project_id}/estimate")
+async def run_estimate(session: DbSession, project_id: str, kind: Kind = "generate") -> Estimate:
+    """Rough duration and cost of the next run of `kind`, from this project's finished runs
+    of that kind (or a typical profile before the first) and the price table."""
+    project = await crud.get_project(session, project_id)
+    jobs = await crud.list_jobs(session, project_id)
+    return estimate(get_settings(), resolve(get_settings(), _run_settings(project)), kind, jobs)
 
 
 @router.post("/{project_id}/intake", status_code=202)
