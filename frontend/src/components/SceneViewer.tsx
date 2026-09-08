@@ -5,6 +5,24 @@ import { cn } from "@/lib/utils"
 
 const VIEWS = ["north", "east", "south", "west", "aerial"] as const
 
+/**
+ * How the scene is drawn. "fast" is the plain medium-quality path; "final" is the
+ * presentation look (sky, sun, environment, horizon: the owner's picture, never what the
+ * builder or the critic see); "ultra" adds progressive accumulation for soft shadows and
+ * supersampled edges, converging while the camera rests.
+ */
+type Look = "fast" | "final" | "ultra"
+
+const LOOKS: { id: Look; label: string; title: string }[] = [
+  { id: "fast", label: "Fast", title: "Plain rendering: quickest to orbit" },
+  { id: "final", label: "Final look", title: "Sky, sun and environment light, ambient occlusion" },
+  { id: "ultra", label: "Ultra", title: "Final look plus soft shadows and supersampling, refined while the camera rests" },
+]
+
+function lookQuery(look: Look): string {
+  return look === "fast" ? "quality=medium" : `look=${look === "final" ? "presentation" : "ultra"}`
+}
+
 const CHROME = "relative overflow-hidden rounded-xl border bg-[#d9e0e4]"
 
 /**
@@ -33,21 +51,26 @@ export function SceneViewer({
   const ref = useRef<HTMLIFrameElement>(null)
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [finalLook, setFinalLook] = useState(true)
+  const [look, setLook] = useState<Look>("final")
   const [effectsDropped, setEffectsDropped] = useState(false)
-  const src = sceneUrl === null ? null : `${sceneUrl}?quality=${finalLook ? "high" : "medium"}&view=southeast&r=${reloadKey ?? ""}`
+  const [progress, setProgress] = useState<{ count: number; total: number } | null>(null)
+  const src = sceneUrl === null ? null : `${sceneUrl}?${lookQuery(look)}&view=southeast&r=${reloadKey ?? ""}`
 
   useEffect(() => {
     setReady(false)
     setError(null)
     setEffectsDropped(false)
+    setProgress(null)
     if (src === null) return
     const onMsg = (e: MessageEvent) => {
       if (e.source !== ref.current?.contentWindow) return
-      const d = e.data as { type?: string; message?: string; enabled?: boolean }
+      const d = e.data as { type?: string; message?: string; enabled?: boolean; count?: number; total?: number }
       if (d?.type === "house:ready") setReady(true)
       if (d?.type === "house:error") setError(d.message ?? "error")
       if (d?.type === "house:effects" && d.enabled === false) setEffectsDropped(true)
+      if (d?.type === "house:accumulate" && typeof d.count === "number" && typeof d.total === "number") {
+        setProgress(d.count >= d.total ? null : { count: d.count, total: d.total })
+      }
     }
     window.addEventListener("message", onMsg)
     return () => window.removeEventListener("message", onMsg)
@@ -58,6 +81,16 @@ export function SceneViewer({
   }
 
   if (src === null) return <div className={cn(CHROME, className)}>{placeholder}</div>
+
+  const status = error ? (
+    <span className="text-destructive">scene error: {error}</span>
+  ) : !ready ? (
+    "loading…"
+  ) : progress ? (
+    `refining ${progress.count}/${progress.total}`
+  ) : (
+    "drag to orbit · scroll to zoom"
+  )
 
   return (
     <div className={cn(CHROME, className)}>
@@ -89,19 +122,26 @@ export function SceneViewer({
               {v}
             </Button>
           ))}
-          <Button
-            size="sm"
-            variant={finalLook ? "secondary" : "ghost"}
-            className="h-7 px-2"
-            title={effectsDropped ? "Effects were disabled: this machine renders them too slowly" : "Ambient occlusion and anti-aliasing"}
-            onClick={() => setFinalLook((v) => !v)}
-          >
-            <Sparkles className="size-3.5" /> {finalLook && !effectsDropped ? "Final look" : "Fast"}
-          </Button>
+          <span className="mx-1 w-px self-stretch bg-border" />
+          {LOOKS.map((l) => (
+            <Button
+              key={l.id}
+              size="sm"
+              variant={look === l.id ? "secondary" : "ghost"}
+              className="h-7 px-2"
+              title={
+                l.id !== "fast" && effectsDropped && look === l.id
+                  ? "Effects were disabled: this machine renders them too slowly"
+                  : l.title
+              }
+              onClick={() => setLook(l.id)}
+            >
+              {l.id === "final" && <Sparkles className="size-3.5" />}
+              {l.label}
+            </Button>
+          ))}
         </div>
-        <span className="rounded-md bg-background/85 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">
-          {error ? <span className="text-destructive">scene error: {error}</span> : ready ? "drag to orbit · scroll to zoom" : "loading…"}
-        </span>
+        <span className="rounded-md bg-background/85 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">{status}</span>
       </div>
     </div>
   )

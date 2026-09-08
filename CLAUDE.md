@@ -58,6 +58,13 @@ deploy/    serve.py (SPA from the API process), k8s.yaml. Root Dockerfile = sing
   `agent/prompts.py`, then render the template headless to prove it.
 - Headless: shadow map computed once per page; interactive: render only on camera change; effects (GTAO+SMAA) only at
   `quality=high`, auto-disabled if a frame exceeds 250 ms.
+- **Two render paths.** `quality=…` is the diagnostic path (builder, critic, version pictures: frozen with the build
+  path). `look=presentation` / `look=ultra` is the owner's look (viewer, share page): physical sky, runtime-placed sun,
+  environment from that sky, horizon, MSAA, vignette; ultra adds progressive accumulation (soft shadows, supersampling).
+  The backend never requests `look`, so it is outside the freeze. On a presentation page the runtime owns background,
+  fog, environment, hemisphere and sun and applies them AFTER `buildScene` (scene code sets them from inside).
+  Calibration, knobs (`p_env`…) and the findings: `docs/presentation-look.md`. Any look change: run
+  `backend/scripts/look_sheet.py` on a real project and LOOK at the sheet before it lands.
 
 ## Gates (run before saying "done")
 
@@ -69,7 +76,8 @@ cd kit      && npm test            # Node tests over house.js (plausibility audi
 cd backend  && uv run python -c "import json; from housegen.main import app; print(json.dumps(app.openapi()))" > ../frontend/openapi.json
 cd frontend && npm run api:gen
 # after any kit/ change: render the template headless (see scripts / the Renderer) and LOOK at the image
-# (a visual check; see "Visual checks" below when it cannot run here)
+# (a visual check; see "Visual checks" below when it cannot run here). For look changes, side by side on a real project:
+cd backend  && uv run python scripts/look_sheet.py --scene data/projects/<id>/versions/<n> --look quality=high --look look=presentation --out /tmp/sheet.png
 ```
 
 `frontend/openapi.json` is committed on purpose (CI builds without a backend). `src/routeTree.gen.ts` is generated

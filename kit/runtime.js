@@ -13,6 +13,21 @@
 //                                                  (render_views tool): eye/target in metres above the house
 //                                                  base, distance as a factor of the auto-frame radius,
 //                                                  azimuth in degrees (0 = looking at the north façade, clockwise)
+//   ?look=presentation                             the owner's look: physical sky, a sun placed and coloured by
+//                                                  the runtime, environment light from that sky, ground to the
+//                                                  horizon, multisampling, a light vignette. The builder and the
+//                                                  critic never request it (their renders use `quality` alone),
+//                                                  so it changes nothing they see.
+//   ?look=ultra                                    presentation + progressive accumulation over `samples` frames:
+//                                                  the sun jittered within a disc (soft shadows) and the camera
+//                                                  jittered by a fraction of a pixel (supersampled anti-aliasing).
+//                                                  Interactive pages converge while the camera rests; headless
+//                                                  pages finish every sample before `ready`.
+//   ?samples=48                                    accumulation frames for look=ultra (headless default 16)
+//   ?sun_el=42&sun_az=200                          presentation sun: elevation and azimuth in degrees, azimuth
+//                                                  clockwise from north = the direction the light comes FROM
+//   ?p_env=0.4&p_bg=0.34&p_sun=2.2&p_hemi=0.1&p_expo=1&p_fog=0.0012&p_rayleigh=1.8&p_turbidity=2.5
+//                                                  calibration overrides of the presentation look (tuning only)
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -21,15 +36,26 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { GTAOPass } from "three/addons/postprocessing/GTAOPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { SMAAPass } from "three/addons/postprocessing/SMAAPass.js";
+import { ShaderPass } from "three/addons/postprocessing/ShaderPass.js";
+import { Pass, FullScreenQuad } from "three/addons/postprocessing/Pass.js";
+import { CopyShader } from "three/addons/shaders/CopyShader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { Sky } from "three/addons/objects/Sky.js";
 import * as house from "housekit";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
-const QUALITY = params.get("quality") ?? (HEADLESS ? "high" : "medium");
+// presentation looks (see the header): never on the builder's or the critic's pages
+const LOOK = params.get("look");
+const PRESENTATION = LOOK === "presentation" || LOOK === "ultra";
+const ULTRA = LOOK === "ultra";
+// a presentation page is a "high" page with more on top
+const QUALITY = PRESENTATION ? "high" : (params.get("quality") ?? (HEADLESS ? "high" : "medium"));
 // ambient occlusion + anti-aliasing: the final look. Interactive pages fall back to plain
 // rendering automatically when the machine cannot sustain it (see the frame-time guard).
 const EFFECTS = QUALITY === "high";
+const SAMPLES = Math.max(1, Math.min(256, Number(params.get("samples")) || (HEADLESS ? 16 : 48)));
+const CAMERA_FAR = PRESENTATION ? 2000 : 500; // presentation: the sky dome and the ground reach the horizon
 const DEFAULT_FOV = 42; // the elevated auto-framed views
 const PHOTO_FOV = 50; // the "-photo" views: a person with a phone
 // the "-elevation" views: a straight-on camera far away with a narrow field of view, so the
@@ -55,6 +81,53 @@ const PALETTE = {
   sun: "#fff3e0",
 };
 
+// The presentation look. Calibrated against the quality=high renders of real projects: same
+// brightness on the sunlit plaster, a little deeper in the shade, a sky instead of a card.
+const PRESENTATION_LOOK = {
+  sun: { elevation: 42, azimuth: 200 }, // early afternoon, from a little west of south
+  sunColor: "#ffe9c8",
+  sunIntensity: 2.2,
+  sunAngularRadius: 1.5, // degrees; the disc the ultra samples spread the sun over (soft daylight)
+  hemi: { sky: "#b9cde6", ground: "#75785c", intensity: 0.1 },
+  // the sky map is bright (see setupPresentationSky): these scale it as light and as background.
+  // 0.4 puts a shaded white wall a little under its quality=high brightness and a sunlit one
+  // level with it (measured on real projects, see docs/presentation-look.md)
+  environmentIntensity: 0.4,
+  backgroundIntensity: 0.34,
+  exposure: 1.0,
+  meadow: "#6e7a54", // the land beyond the plot (the lawn's colour under its grain), fading into the haze
+  fogDensity: 0.0012,
+  vignette: 0.28,
+  sky: { turbidity: 2.5, rayleigh: 1.8, mieCoefficient: 0.005, mieDirectionalG: 0.85 },
+};
+
+// calibration overrides (see the header): numbers only, anything else keeps the default
+for (const [key, path] of [
+  ["p_env", ["environmentIntensity"]], ["p_bg", ["backgroundIntensity"]], ["p_sun", ["sunIntensity"]], ["p_hemi", ["hemi", "intensity"]],
+  ["p_expo", ["exposure"]], ["p_fog", ["fogDensity"]], ["p_rayleigh", ["sky", "rayleigh"]], ["p_turbidity", ["sky", "turbidity"]],
+]) {
+  const v = Number(params.get(key));
+  if (params.get(key) !== null && Number.isFinite(v)) {
+    let o = PRESENTATION_LOOK;
+    for (const k of path.slice(0, -1)) o = o[k];
+    o[path[path.length - 1]] = v;
+  }
+}
+
+function readSun(p) {
+  const el = Number(p.get("sun_el")), az = Number(p.get("sun_az"));
+  return {
+    elevation: Number.isFinite(el) && p.get("sun_el") !== null ? Math.min(89, Math.max(3, el)) : PRESENTATION_LOOK.sun.elevation,
+    azimuth: Number.isFinite(az) && p.get("sun_az") !== null ? az : PRESENTATION_LOOK.sun.azimuth,
+  };
+}
+
+/** Unit vector pointing AT the sun. +x east, +z south: azimuth 0 = north (-z), 90 = east (+x). */
+function sunDirection({ elevation, azimuth }) {
+  const el = THREE.MathUtils.degToRad(elevation), az = THREE.MathUtils.degToRad(azimuth);
+  return new THREE.Vector3(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el));
+}
+
 const state = {
   ready: false,
   errors: [],
@@ -63,6 +136,7 @@ const state = {
   controls: null,
   renderer: null,
   composer: null,
+  accumulate: null,
   scene: null,
   houseGroup: null,
   bounds: null,
@@ -81,6 +155,13 @@ window.__house = {
     return { building: b(f.building), site: b(f.bounds), aspect: state.camera?.aspect };
   },
   renderOnce: () => renderFrame(),
+  // debugging: the presentation look in force on this page (after the calibration overrides)
+  get look() { return PRESENTATION ? JSON.parse(JSON.stringify(PRESENTATION_LOOK)) : null; },
+  // debugging: progress of the ultra accumulation, null on other pages
+  get accumulate() {
+    const a = state.accumulate;
+    return a ? { count: a.count, total: a.samples, effects: state.composer !== null } : null;
+  },
   // deterministic plausibility audit of the built scene (see house.audit): the renderer
   // appends it to the builder's tool results and gives it to the critic
   audit: () => (state.houseGroup ? house.audit(state.houseGroup) : []),
@@ -120,7 +201,9 @@ export async function boot(buildScene) {
   const W = Number(params.get("w")) || window.innerWidth;
   const H = Number(params.get("h")) || window.innerHeight;
 
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: !EFFECTS, preserveDrawingBuffer: HEADLESS });
+  // presentation keeps the canvas multisampled too: it is what a page falls back to when the
+  // frame-time guard drops the composer
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: PRESENTATION || !EFFECTS, preserveDrawingBuffer: HEADLESS });
   renderer.setPixelRatio(QUALITY === "low" ? 1 : Math.min(window.devicePixelRatio, 2));
   renderer.setSize(W, H, false);
   renderer.shadowMap.enabled = QUALITY !== "low";
@@ -132,7 +215,7 @@ export async function boot(buildScene) {
     renderer.shadowMap.needsUpdate = true;
   }
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.95;
+  renderer.toneMappingExposure = PRESENTATION ? PRESENTATION_LOOK.exposure : 0.95;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene = new THREE.Scene();
@@ -140,7 +223,7 @@ export async function boot(buildScene) {
   scene.fog = new THREE.Fog(PALETTE.sky, 55, 150);
   state.fog = scene.fog;
 
-  const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, W / H, 0.1, 500);
+  const camera = new THREE.PerspectiveCamera(DEFAULT_FOV, W / H, 0.1, CAMERA_FAR);
   camera.position.set(18, 10, 18);
 
   // lights: sun + sky/ground hemisphere + a soft environment for the PBR materials
@@ -149,7 +232,9 @@ export async function boot(buildScene) {
   const sun = new THREE.DirectionalLight(PALETTE.sun, 2.0);
   sun.position.set(-18, 28, 12);
   sun.castShadow = renderer.shadowMap.enabled;
-  const shadowRes = QUALITY === "high" ? 4096 : 2048;
+  // ultra spreads the sun over many frames: the penumbra hides the map's resolution, and the
+  // map is re-rendered for every sample, so a smaller one keeps the page converging quickly
+  const shadowRes = ULTRA ? 2048 : QUALITY === "high" ? 4096 : 2048;
   sun.shadow.mapSize.set(shadowRes, shadowRes);
   sun.shadow.camera.left = -40; sun.shadow.camera.right = 40;
   sun.shadow.camera.top = 40; sun.shadow.camera.bottom = -40;
@@ -157,7 +242,10 @@ export async function boot(buildScene) {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.02;
   scene.add(sun);
-  if (QUALITY !== "low") {
+  const sunSpec = readSun(params);
+  if (PRESENTATION) {
+    setupPresentationSky(scene, renderer, sun, sunSpec);
+  } else if (QUALITY !== "low") {
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environmentIntensity = 0.35;
@@ -190,15 +278,35 @@ export async function boot(buildScene) {
 
   // post-processing (final look): ambient occlusion + anti-aliasing
   if (EFFECTS) {
-    const composer = new EffectComposer(renderer);
-    composer.addPass(new RenderPass(scene, camera));
+    const drawing = renderer.getDrawingBufferSize(new THREE.Vector2());
+    // presentation renders into a multisampled target (MSAA with the occlusion pass, which the
+    // canvas cannot give); ultra accumulates its own samples instead
+    const target = PRESENTATION
+      ? new THREE.WebGLRenderTarget(drawing.x, drawing.y, { type: THREE.HalfFloatType, samples: ULTRA ? 0 : 4 })
+      : undefined;
+    const composer = new EffectComposer(renderer, target);
+    if (ULTRA) {
+      const accumulate = new AccumulatePass(scene, camera, sun, {
+        samples: SAMPLES, radiusDeg: PRESENTATION_LOOK.sunAngularRadius, width: drawing.x, height: drawing.y,
+      });
+      composer.addPass(accumulate);
+      state.accumulate = accumulate;
+    } else {
+      composer.addPass(new RenderPass(scene, camera));
+    }
     const gtao = new GTAOPass(scene, camera, W, H);
     gtao.output = GTAOPass.OUTPUT.Default;
-    gtao.blendIntensity = 0.9;
+    gtao.blendIntensity = PRESENTATION ? 0.8 : 0.9;
     gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1, thickness: 1, scale: 1, samples: QUALITY === "high" ? 16 : 8, distanceFallOff: 1, screenSpaceRadius: false });
     composer.addPass(gtao);
     composer.addPass(new OutputPass());
-    composer.addPass(new SMAAPass(W, H));
+    if (PRESENTATION) {
+      const vignette = new ShaderPass(VignetteShader);
+      vignette.uniforms.strength.value = PRESENTATION_LOOK.vignette;
+      composer.addPass(vignette);
+    } else {
+      composer.addPass(new SMAAPass(W, H));
+    }
     state.composer = composer;
     state.gtao = gtao;
   }
@@ -209,6 +317,11 @@ export async function boot(buildScene) {
     result = await buildScene({ THREE, scene, house, group: houseGroup, sun, ground, renderer, camera });
   } catch (err) {
     recordError(`buildScene failed: ${err?.stack ?? err}`);
+  }
+
+  if (PRESENTATION) {
+    applyPresentationLook(scene, sun, sunSpec);
+    state.accumulate?.rememberSun();
   }
 
   // ---- views ----
@@ -280,17 +393,24 @@ export async function boot(buildScene) {
   // Render on demand: only when the camera moves (or something asks for a frame). An idle page
   // costs nothing, and machines without a GPU stay responsive.
   state.needsRender = true;
-  controls.addEventListener("change", () => { state.needsRender = true; });
+  controls.addEventListener("change", () => { state.needsRender = true; state.accumulate?.reset(); });
   // frame-time guard: if the first frames with effects are slow (no GPU, weak laptop),
-  // drop the post-processing rather than freeze the page.
+  // drop the post-processing rather than freeze the page. Ultra is an explicit choice and
+  // keeps going: it only converges more slowly.
   let frames = 0, slowMs = 0;
   renderer.setAnimationLoop(() => {
     const moved = controls.update();
-    if (!moved && !state.needsRender) return;
+    if (moved) state.accumulate?.reset();
+    const converging = state.composer && state.accumulate && !state.accumulate.done;
+    if (!moved && !state.needsRender && !converging) return;
     state.needsRender = false;
     const t0 = performance.now();
     renderFrame();
-    if (state.composer && frames < 8) {
+    if (converging) {
+      const a = state.accumulate;
+      try { parent.postMessage({ type: "house:accumulate", count: a.count, total: a.samples }, "*"); } catch { /* noop */ }
+    }
+    if (state.composer && !ULTRA && frames < 8) {
       const dt = performance.now() - t0;
       slowMs += dt;
       frames += 1;
@@ -303,6 +423,259 @@ export async function boot(buildScene) {
       }
     }
   });
+}
+
+// --------------------------------------------------------------------------
+// Presentation look: sky, sun, environment, horizon, vignette, accumulation
+// --------------------------------------------------------------------------
+
+function applyPresentationSun(sun, spec) {
+  sun.color.set(PRESENTATION_LOOK.sunColor);
+  sun.intensity = PRESENTATION_LOOK.sunIntensity;
+  sun.position.copy(sunDirection(spec)).multiplyScalar(60);
+  sun.target.position.set(0, 0, 0);
+  sun.target.updateMatrixWorld();
+}
+
+/**
+ * Physical sky (three's Sky addon) for the given sun, the environment map generated from that
+ * sky (with the sun's glare damped: the directional light already carries the sun), the fog
+ * and clear colour read from the sky at the horizon so the ground fades seamlessly into it.
+ */
+function setupPresentationSky(scene, renderer, sun, spec) {
+  const dir = sunDirection(spec);
+  const look = PRESENTATION_LOOK;
+  const sky = new Sky();
+  sky.scale.setScalar(1500);
+  const u = sky.material.uniforms;
+  u.turbidity.value = look.sky.turbidity;
+  u.rayleigh.value = look.sky.rayleigh;
+  u.mieDirectionalG.value = look.sky.mieDirectionalG;
+  u.sunPosition.value.copy(dir);
+
+  // The Sky shader's radiance is written for an exposure of about one half: several times
+  // brighter than this scene's lights. It is rendered once into an environment map, with almost
+  // no forward scattering so the sun's disc does not light the scene twice (once from the map,
+  // once from the directional light), and that one map, scaled down, is both the light from the
+  // sky and the sky the camera sees: the two cannot drift apart.
+  const staging = new THREE.Scene();
+  staging.add(sky);
+  u.mieCoefficient.value = 0.0004;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const skyMap = pmrem.fromScene(staging, 0.02, 1, 4000).texture;
+  pmrem.dispose();
+  // fog: the sky just above the horizon, away from the sun, at the background's scale
+  const horizon = sampleHorizon(renderer, staging, dir).multiplyScalar(look.backgroundIntensity);
+  staging.remove(sky);
+  sky.material.dispose();
+  sky.geometry.dispose();
+  // the map lights the scene from now on; the background and the fog are applied after
+  // buildScene (see applyPresentationLook): scene code may set the colour of the plain
+  // background it was written against, and a texture has no colour to set
+  scene.environment = skyMap;
+  scene.environmentIntensity = look.environmentIntensity;
+  state.presentation = { skyMap, horizon };
+}
+
+/**
+ * The look the runtime owns on a presentation page, applied after buildScene so that whatever
+ * the scene did with ctx.scene's background, fog or environment, or with ctx.sun, the page
+ * still shows the sky it was lit by.
+ */
+function applyPresentationLook(scene, sun, spec) {
+  const look = PRESENTATION_LOOK;
+  const { skyMap, horizon } = state.presentation;
+  scene.environment = skyMap;
+  scene.environmentIntensity = look.environmentIntensity;
+  scene.background = skyMap;
+  scene.backgroundIntensity = look.backgroundIntensity;
+  scene.backgroundBlurriness = 0;
+  scene.fog = new THREE.FogExp2(horizon, look.fogDensity);
+  state.fog = scene.fog;
+  const hemi = scene.children.find((o) => o.isHemisphereLight);
+  if (hemi) {
+    hemi.color.set(look.hemi.sky);
+    hemi.groundColor.set(look.hemi.ground);
+    hemi.intensity = look.hemi.intensity;
+  }
+  applyPresentationSun(sun, spec);
+  scene.add(horizonGround());
+}
+
+/** Average linear radiance of the sky just above the horizon, opposite the sun. */
+function sampleHorizon(renderer, skyScene, sunDir) {
+  const n = 8;
+  const rt = new THREE.WebGLRenderTarget(n, n, { type: THREE.FloatType, depthBuffer: false });
+  const cam = new THREE.PerspectiveCamera(3, 1, 1, 4000);
+  const away = new THREE.Vector3(-sunDir.x, 0, -sunDir.z).normalize();
+  cam.lookAt(away.multiplyScalar(100).setY(1.2));
+  const prev = renderer.getRenderTarget();
+  renderer.setRenderTarget(rt);
+  renderer.render(skyScene, cam);
+  const px = new Float32Array(n * n * 4);
+  renderer.readRenderTargetPixels(rt, 0, 0, n, n, px);
+  renderer.setRenderTarget(prev);
+  rt.dispose();
+  let r = 0, g = 0, b = 0;
+  for (let i = 0; i < px.length; i += 4) { r += px[i]; g += px[i + 1]; b += px[i + 2]; }
+  const k = n * n;
+  // linear values: say so, or the setter would apply the sRGB transfer curve
+  return new THREE.Color().setRGB(r / k, g / k, b / k, THREE.LinearSRGBColorSpace);
+}
+
+/** The land beyond the plot: a wide disc at the terrain's far height, fading into the haze. */
+function horizonGround() {
+  const far = house.groundY(900, 900);
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(1400, 96),
+    new THREE.MeshStandardMaterial({ color: PRESENTATION_LOOK.meadow, roughness: 1 }),
+  );
+  disc.rotation.x = -Math.PI / 2;
+  disc.position.y = far - 0.06;
+  disc.userData = { kind: "terrain", excludeFromBounds: true };
+  return disc;
+}
+
+const VignetteShader = {
+  uniforms: { tDiffuse: { value: null }, strength: { value: 0.28 } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float strength;
+    varying vec2 vUv;
+    void main() {
+      vec4 c = texture2D(tDiffuse, vUv);
+      float r = length((vUv - 0.5) * vec2(1.0, 0.8));
+      gl_FragColor = vec4(c.rgb * (1.0 - strength * smoothstep(0.35, 0.85, r)), c.a);
+    }`,
+};
+
+/** Van der Corput radical inverse: the i-th point of a low-discrepancy sequence in base b. */
+function halton(i, b) {
+  let f = 1, r = 0;
+  while (i > 0) { f /= b; r += f * (i % b); i = Math.floor(i / b); }
+  return r;
+}
+
+/**
+ * Progressive accumulation (look=ultra): each render adds one frame with the sun moved to a
+ * point of a small disc around its position (an area light: soft, distance-dependent penumbrae)
+ * and the camera shifted by a fraction of a pixel (supersampled anti-aliasing), and blends it
+ * into the running average, which the following passes (occlusion, output, vignette) then read.
+ * Deterministic: the sample points come from Halton sequences.
+ */
+class AccumulatePass extends Pass {
+  constructor(scene, camera, sun, { samples, radiusDeg, width, height }) {
+    super();
+    this.scene = scene;
+    this.camera = camera;
+    this.sun = sun;
+    this.samples = samples;
+    this.count = 0;
+    this.radius = THREE.MathUtils.degToRad(radiusDeg);
+    this.rememberSun();
+    const opts = { type: THREE.HalfFloatType };
+    this.sample = new THREE.WebGLRenderTarget(width, height, { ...opts, depthBuffer: true });
+    this.average = [
+      new THREE.WebGLRenderTarget(width, height, { ...opts, depthBuffer: false }),
+      new THREE.WebGLRenderTarget(width, height, { ...opts, depthBuffer: false }),
+    ];
+    this.result = null;
+    this.syncPixel = new Uint16Array(4); // one half-float pixel, read back headless as a GPU sync
+    this.blend = new THREE.ShaderMaterial({
+      uniforms: { tAverage: { value: null }, tSample: { value: null }, weight: { value: 1 } },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+      fragmentShader: /* glsl */ `
+        uniform sampler2D tAverage;
+        uniform sampler2D tSample;
+        uniform float weight;
+        varying vec2 vUv;
+        void main() { gl_FragColor = mix(texture2D(tAverage, vUv), texture2D(tSample, vUv), weight); }`,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.blendQuad = new FullScreenQuad(this.blend);
+    this.copy = new THREE.ShaderMaterial({
+      uniforms: THREE.UniformsUtils.clone(CopyShader.uniforms),
+      vertexShader: CopyShader.vertexShader,
+      fragmentShader: CopyShader.fragmentShader,
+      depthTest: false,
+      depthWrite: false,
+    });
+    this.copyQuad = new FullScreenQuad(this.copy);
+    this.needsSwap = true;
+  }
+
+  /** The sun the samples jitter around: call again if the sun moved. */
+  rememberSun() {
+    this.sunBase = this.sun.position.clone();
+  }
+
+  get done() { return this.count >= this.samples; }
+
+  reset() { this.count = 0; }
+
+  setSize(width, height) {
+    this.sample.setSize(width, height);
+    for (const t of this.average) t.setSize(width, height);
+    this.reset();
+  }
+
+  addSample(renderer) {
+    const i = this.count;
+    const { width, height } = this.sample;
+    if (i === 0) {
+      this.sun.position.copy(this.sunBase);
+    } else {
+      // camera: sub-pixel offset of the whole frustum
+      this.camera.setViewOffset(width, height, halton(i, 2) - 0.5, halton(i, 3) - 0.5, width, height);
+      // sun: a point of the disc, area-weighted
+      const r = Math.tan(this.radius * Math.sqrt(halton(i, 5)));
+      const phi = 2 * Math.PI * halton(i, 7);
+      const dir = this.sunBase.clone().normalize();
+      const helper = Math.abs(dir.y) < 0.99 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+      const t1 = new THREE.Vector3().crossVectors(dir, helper).normalize();
+      const t2 = new THREE.Vector3().crossVectors(dir, t1);
+      dir.addScaledVector(t1, r * Math.cos(phi)).addScaledVector(t2, r * Math.sin(phi)).normalize();
+      this.sun.position.copy(dir.multiplyScalar(this.sunBase.length()));
+    }
+    renderer.shadowMap.needsUpdate = true;
+    renderer.setRenderTarget(this.sample);
+    renderer.render(this.scene, this.camera);
+    this.camera.clearViewOffset();
+    // headless: keep the script in step with the GPU (a readback cannot return before every
+    // queued command has run), or the screenshot waits behind samples not yet drawn
+    const from = this.average[i % 2], to = this.average[(i + 1) % 2];
+    this.blend.uniforms.tAverage.value = from.texture;
+    this.blend.uniforms.tSample.value = this.sample.texture;
+    this.blend.uniforms.weight.value = 1 / (i + 1);
+    renderer.setRenderTarget(to);
+    this.blendQuad.render(renderer);
+    if (HEADLESS) renderer.readRenderTargetPixels(to, 0, 0, 1, 1, this.syncPixel);
+    this.result = to.texture;
+    this.count = i + 1;
+  }
+
+  render(renderer, writeBuffer) {
+    if (!this.done) this.addSample(renderer);
+    if (!this.result) return;
+    this.copy.uniforms.tDiffuse.value = this.result;
+    renderer.setRenderTarget(this.renderToScreen ? null : writeBuffer);
+    this.copyQuad.render(renderer);
+  }
+
+  dispose() {
+    this.sample.dispose();
+    for (const t of this.average) t.dispose();
+    this.blend.dispose();
+    this.copy.dispose();
+    this.blendQuad.dispose();
+    this.copyQuad.dispose();
+  }
 }
 
 /**
@@ -430,14 +803,20 @@ async function setView(name) {
   // headless only: an interactive page keeps the default planes so orbiting away from an
   // elevation view never clips the scene
   state.camera.near = HEADLESS ? v.near ?? 0.1 : 0.1;
-  state.camera.far = Math.max(500, v.far ?? 0);
+  state.camera.far = Math.max(CAMERA_FAR, v.far ?? 0);
   state.camera.fov = v.fov ?? DEFAULT_FOV;
   state.camera.updateProjectionMatrix();
   state.camera.position.set(...v.pos);
   state.controls.target.copy(v.target);
   state.controls.update();
   state.camera.lookAt(v.target);
-  renderFrame();
+  state.accumulate?.reset();
+  if (HEADLESS && state.composer && state.accumulate) {
+    // every sample before the screenshot
+    while (!state.accumulate.done) renderFrame();
+  } else {
+    renderFrame();
+  }
   state.needsRender = true; // the interactive loop draws the settled frame
   return true;
 }
