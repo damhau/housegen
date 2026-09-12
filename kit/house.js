@@ -816,9 +816,9 @@ function leafTexture(kind) {
       ctx.fill();
       ctx.restore();
     };
-    for (let i = 0; i < 7; i++) {
-      const a = Math.PI + (i - 3) * 0.42 + (rnd() - 0.5) * 0.2;
-      leaf(32 + (rnd() - 0.5) * 8, 52 + (rnd() - 0.5) * 6, a, 24 + rnd() * 12, 6 + rnd() * 3);
+    for (let i = 0; i < 10; i++) {
+      const a = Math.PI + (i - 4.5) * 0.32 + (rnd() - 0.5) * 0.25;
+      leaf(32 + (rnd() - 0.5) * 12, 52 + (rnd() - 0.5) * 10, a, 22 + rnd() * 14, 6 + rnd() * 3);
     }
   } else {
     ctx.beginPath();
@@ -954,17 +954,17 @@ function broadleafWood(height, spread, kind, rnd, wood, leaves) {
     const r1 = level >= levels ? 0.005 : Math.max(0.008, r0 * 0.4);
     const tube = taperedTube(pts, r0, r1, { sides: sides[level] ?? 5, segments: Math.max(4, Math.round(len / 0.3)) });
     wood.push(tube.geo);
-    if (level === levels - 1) leavesAlong(leaves, tube.curve, 0.45, 1, 8, 0.3, rnd);
+    if (level === levels - 1) leavesAlong(leaves, tube.curve, 0.35, 1, 18, 0.32, rnd);
     if (level >= levels) {
-      leavesAlong(leaves, tube.curve, 0.1, 1, 22, 0.28, rnd);
+      leavesAlong(leaves, tube.curve, 0.05, 1, 45, 0.3, rnd);
       const tip = tube.curve.getPointAt(1);
-      for (let q = 0; q < 5; q++) {
-        const u = rnd() * Math.PI * 2, v = Math.acos(2 * rnd() - 1), r = 0.35 * Math.cbrt(rnd());
+      for (let q = 0; q < 10; q++) {
+        const u = rnd() * Math.PI * 2, v = Math.acos(2 * rnd() - 1), r = 0.4 * Math.cbrt(rnd());
         leaves.push([tip.x + Math.cos(u) * Math.sin(v) * r, tip.y + Math.cos(v) * r * 0.8, tip.z + Math.sin(u) * Math.sin(v) * r]);
       }
       return;
     }
-    const children = (level === 1 ? 3 : 2) + Math.floor(rnd() * 2);
+    const children = (level === 1 ? 3 : 3) + Math.floor(rnd() * 2);
     for (let k = 0; k < children; k++) {
       const t = Math.min(0.97, 0.3 + (k / children) * 0.65 + rnd() * 0.08);
       const at = tube.curve.getPointAt(t);
