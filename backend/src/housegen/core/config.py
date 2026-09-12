@@ -76,7 +76,11 @@ class Settings(BaseSettings):
     )
     RENDER_WIDTH: int = 1280
     RENDER_HEIGHT: int = 800
-    RENDER_TIMEOUT_MS: int = 30000
+    RENDER_TIMEOUT_MS: int = 30000  # page load
+    # the scene's first frame: buildScene plus the shadow map, drawn in software on the server.
+    # A planted scene at quality=high takes well over 30 s; a version render that runs out of
+    # this budget is the "scene did not become ready" failure
+    RENDER_READY_TIMEOUT_MS: int = 180000
 
     @property
     def database_url(self) -> str:

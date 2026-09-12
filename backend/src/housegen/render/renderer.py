@@ -113,7 +113,8 @@ class Renderer:
                 await page.goto(url, wait_until="load", timeout=s.RENDER_TIMEOUT_MS)
                 try:
                     await page.wait_for_function(
-                        "() => window.__house && window.__house.ready", timeout=s.RENDER_TIMEOUT_MS
+                        "() => window.__house && window.__house.ready",
+                        timeout=s.RENDER_READY_TIMEOUT_MS,
                     )
                 except Exception:
                     js_errors = await page.evaluate(

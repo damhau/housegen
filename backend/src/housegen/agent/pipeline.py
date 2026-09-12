@@ -109,6 +109,7 @@ class _Run:
         self.last_run: BuilderRun | None = (
             None  # the most recent builder pass (suggestions, questions)
         )
+        self.last_render_errors: list[str] = []  # from the most recent version render
         self.usage = Usage()  # everything, builder + critic
         self.critic_usage = Usage()  # the critic's share, reported separately in the usage event
         self.metrics = RunMetrics(self.settings)  # time and tokens per turn (#13)
@@ -235,9 +236,41 @@ class _Run:
         return inp
 
     async def render_standard(self) -> dict[str, Path]:
+        """The views every saved version is rendered from, at quality=high; when that produces
+        nothing (the scene did not become ready in time, a crash), once more at medium so the
+        version still has pictures. The errors stay in `last_render_errors` for the builder."""
         res = await renderer.render(self.scene_url, self.views, self.renders_dir, quality="high")
+        if not res.images:
+            logger.warning(
+                "render.version_failed",
+                extra={"project_id": self.ctx.project_id, "errors": res.errors[:3]},
+            )
+            await self.ctx.emit(
+                "phase", name="render", message="The full-quality render failed, retrying at medium"
+            )
+            res = await renderer.render(
+                self.scene_url, self.views, self.renders_dir, quality="medium"
+            )
+        self.last_render_errors = res.errors
         await self._on_render(res.images, res.errors)
         return res.images
+
+    async def build_and_render(
+        self, messages: list[Message], system: str = BUILDER_SYSTEM
+    ) -> tuple[str, dict[str, Path]]:
+        """A builder pass followed by the version render. When the render produces no image at
+        any quality, the builder hears why and gets one more pass before the version is saved
+        (an empty version would otherwise go to the critic as a 0/100 placeholder)."""
+        summary = await self.build(messages, system)
+        renders = await self.render_standard()
+        if not renders:
+            await self.ctx.emit(
+                "phase", name="builder", message="The final render failed: asking the builder to fix it"
+            )
+            messages.append(Message.user(_render_failure_text(self.last_render_errors)))
+            summary = await self.build(messages, system)
+            renders = await self.render_standard()
+        return summary, renders
 
     async def snapshot(
         self, kind: str, label: str, summary: str, score: int | None, renders: dict[str, Path]
@@ -430,8 +463,7 @@ async def generate(ctx: JobContext) -> None:
         ),
     )
     messages = [Message.user(*_first_message(inp))]
-    summary = await run.build(messages)
-    renders = await run.render_standard()
+    summary, renders = await run.build_and_render(messages)
     version = await run.snapshot("generation", "Initial build", summary, None, renders)
 
     # 2. independent critic (optional, CRITIC_MAX_ITERATIONS=0 disables)
@@ -466,6 +498,15 @@ async def _critic_rounds(
         )
     rounds = rs.critic_rounds if reference else 0
     for i in range(start, rounds + 1):
+        if not renders:
+            # nothing to compare: a review of photos alone is a placeholder score, not a judgment
+            logger.warning("critic.skipped", extra={"project_id": pid, "reason": "no renders"})
+            await ctx.emit(
+                "phase",
+                name="critic",
+                message="Independent review skipped: the scene produced no render",
+            )
+            break
         if judged is not None and i == start:
             verdict = judged
         else:
@@ -507,8 +548,7 @@ async def _critic_rounds(
             break
         await ctx.emit("phase", name="builder", message=f"Fixing the critic's findings (round {i})")
         messages.append(Message.user(_critic_feedback_text(reference or "photos", verdict)))
-        summary = await run.build(messages)
-        renders = await run.render_standard()
+        summary, renders = await run.build_and_render(messages)
         version = await run.snapshot("critique", f"After critic round {i}", summary, None, renders)
 
     async with session_factory()() as session, session.begin():
@@ -523,6 +563,19 @@ def _verdict_ends_rounds(verdict: Critique, iteration: int, s: Settings, rounds:
     if verdict.done or (verdict.overall_score >= s.CRITIC_SCORE_THRESHOLD and no_major):
         return True
     return iteration >= rounds
+
+
+def _render_failure_text(errors: list[str]) -> str:
+    detail = "\n".join(errors[:5]) or "no image was produced"
+    return (
+        "The final render of your scene failed, so no version could be saved:\n"
+        f"{detail}\n"
+        "Every saved version is rendered headless at quality=high, with shadows and effects, "
+        "and must be ready within a few minutes on a machine without a GPU. Reproduce it with "
+        "render_views at quality 'high', fix the cause (an error in buildScene, or a scene too "
+        "heavy to draw: fewer or smaller trees and bushes, less instanced geometry), check with "
+        "render_views again, then call finish."
+    )
 
 
 def _critic_feedback_text(reference: str, verdict: Critique) -> str:
@@ -701,8 +754,7 @@ async def _modify_apply(
     run: _Run, inp: _Inputs, request: str, messages: list[Message], before: dict[str, Path]
 ) -> None:
     await run.ctx.emit("phase", name="builder", message="Applying the modification")
-    summary = await run.build(messages)
-    after = await run.render_standard()
+    summary, after = await run.build_and_render(messages)
     version = await run.snapshot("modification", request[:80], summary, None, after)
     await _modify_verify(run, inp, request, messages, before, after, version, summary)
 
@@ -767,8 +819,7 @@ async def _modify_fix(
     run: _Run, request: str, messages: list[Message], verdict: Critique
 ) -> tuple[int, str]:
     await run.ctx.emit("phase", name="builder", message="Fixing what the verifier flagged")
-    summary = await run.build(messages)
-    after = await run.render_standard()
+    summary, after = await run.build_and_render(messages)
     version = await run.snapshot(
         "modification", request[:80], summary, verdict.overall_score, after
     )
@@ -926,8 +977,7 @@ async def _resume_generate(ctx: JobContext, progress: _Progress) -> None:
         parts.append(_critic_feedback_text(inp.reference or "photos", verdict))
     messages = [Message.user(*parts)]
     await ctx.emit("phase", name="builder", message="Continuing the build after the restart")
-    summary = await run.build(messages)
-    renders = await run.render_standard()
+    summary, renders = await run.build_and_render(messages)
     if verdict is not None:
         fixed = progress.round_number() or rounds_done
         version = await run.snapshot(

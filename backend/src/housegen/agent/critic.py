@@ -25,6 +25,8 @@ async def critique_against_photos(
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
 ) -> tuple[Critique, Completion]:
+    if not renders:
+        raise LLMError("no renders available for the critic")
     parts: list[ImagePart | str] = [f"Score threshold for done: {threshold}."]
     pairs = 0
     extras = extras or []
