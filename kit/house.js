@@ -521,20 +521,29 @@ function seeded(seed) {
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
-/** Hedge along a line. */
+/** Hedge along a line: a dark core with leaf-cluster cards on its sides and top. */
 export function hedge({ from, to, height = 1.2, thickness = 0.6, y = 0, color = "#4f7a3a", seed = 1 }) {
   const rnd = seeded(seed);
   const dx = to[0] - from[0], dz = to[1] - from[1];
   const length = Math.hypot(dx, dz);
   const g = new THREE.Group();
-  const m = mat.foliage(color);
-  const segs = Math.max(1, Math.round(length / 0.8));
-  for (let i = 0; i < segs; i++) {
-    const b = shadow(new THREE.Mesh(new THREE.BoxGeometry(length / segs + 0.05, height, thickness), m));
-    b.position.set((i + 0.5) * (length / segs), height / 2, 0);
-    b.rotation.z = (rnd() - 0.5) * 0.04;
-    g.add(b);
+  const core = shadow(new THREE.Mesh(new THREE.BoxGeometry(length, height * 0.96, thickness * 0.9), foliageCore(color)));
+  core.position.set(length / 2, height * 0.48, 0);
+  core.userData = { kind: "core" };
+  g.add(core);
+  const leaves = [];
+  const perM2 = 16;
+  const put = (px, py, pz, nx, ny, nz) => leaves.push([px, py, pz, nx, ny, nz]);
+  // the two long sides, the top, the two ends
+  for (const side of [-1, 1]) {
+    const n = Math.round(length * height * perM2);
+    for (let i = 0; i < n; i++) put(rnd() * length, 0.08 + rnd() * (height - 0.1), side * thickness * (0.45 + rnd() * 0.12), 0, 0.15, side);
   }
+  for (let i = 0; i < Math.round(length * thickness * perM2); i++) put(rnd() * length, height * (0.95 + rnd() * 0.12), (rnd() - 0.5) * thickness, 0, 1, 0);
+  for (const end of [0, 1]) {
+    for (let i = 0; i < Math.round(thickness * height * perM2); i++) put(end * length + (end ? 1 : -1) * thickness * (0.05 + rnd() * 0.1), 0.08 + rnd() * (height - 0.1), (rnd() - 0.5) * thickness, end ? 1 : -1, 0.15, 0);
+  }
+  g.add(leafMesh(leaves, color, rnd, { kind: "cluster", width: 0.34, height: 0.27 }));
   g.position.set(from[0], y, from[1]);
   g.rotation.y = -Math.atan2(dz, dx);
   g.userData = { kind: "hedge" };
@@ -897,7 +906,11 @@ function leavesAlong(list, curve, from, to, perMetre, radius, rnd) {
   }
 }
 
-/** One instanced mesh of leaf cards: random orientation, size and hue per leaf. */
+/**
+ * One instanced mesh of leaf cards: random size and hue per leaf; random orientation, or,
+ * when a leaf carries a normal (a 6-tuple [x, y, z, nx, ny, nz]), facing that way with a
+ * random roll: the surface of a dome or a hedge, seen from outside.
+ */
 function leafMesh(leaves, color, rnd, { kind = "leaf", width = 0.11, height = 0.075 } = {}) {
   const inst = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), leafMaterial(kind), leaves.length);
   const d = new THREE.Object3D();
@@ -905,11 +918,19 @@ function leafMesh(leaves, color, rnd, { kind = "leaf", width = 0.11, height = 0.
   const hsl = { h: 0, s: 0, l: 0 };
   base.getHSL(hsl);
   const tint = new THREE.Color();
+  const target = new THREE.Vector3();
   leaves.forEach((p, i) => {
-    d.position.set(...p);
+    d.position.set(p[0], p[1], p[2]);
     const s = 0.75 + rnd() * 0.6;
     d.scale.set(width * s, height * s, 1);
-    d.rotation.set((rnd() - 0.5) * 2.2, rnd() * Math.PI * 2, (rnd() - 0.5) * 1.2);
+    if (p.length === 6) {
+      target.set(p[0] + p[3], p[1] + p[4], p[2] + p[5]);
+      d.lookAt(target); // the card's +z (its face) along the surface normal
+      d.rotateZ(rnd() * Math.PI * 2);
+      d.rotateX((rnd() - 0.5) * 0.6);
+    } else {
+      d.rotation.set((rnd() - 0.5) * 2.2, rnd() * Math.PI * 2, (rnd() - 0.5) * 1.2);
+    }
     d.updateMatrix();
     inst.setMatrixAt(i, d.matrix);
     tint.setHSL(hsl.h + (rnd() - 0.5) * 0.04, hsl.s * (0.85 + rnd() * 0.3), hsl.l * (0.7 + rnd() * 0.55));
@@ -1062,31 +1083,56 @@ export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf
   return g;
 }
 
-/** Bush: a dome of leaf cards over a few twigs; position=[x, z] or [x, y, z]. */
+/** The dark inside of a bush or hedge: what shows between the cards is shade, not the lawn. */
+function foliageCore(color) {
+  return cached(`core:${color}`, () => {
+    const c = new THREE.Color(color);
+    const hsl = { h: 0, s: 0, l: 0 };
+    c.getHSL(hsl);
+    c.setHSL(hsl.h, hsl.s * 0.8, hsl.l * 0.45);
+    return new THREE.MeshStandardMaterial({ color: c, roughness: 1, metalness: 0 });
+  });
+}
+
+/**
+ * Bush: a dome of leaf-cluster cards on the surface of an ellipsoid over a dark core, with a
+ * few twigs showing at the base. position=[x, z] (on the ground) or [x, y, z].
+ */
 export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", stems = true }) {
   const rnd = seeded(seed);
   const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
   const y = position.length === 3 ? position[1] : groundY(x, z);
   const g = new THREE.Group();
   g.position.set(x, y, z);
+  const rx = radius * (0.9 + rnd() * 0.2), rz = radius * (0.9 + rnd() * 0.2), ry = radius * 0.8;
+  const cy = ry * 0.85; // the dome's centre: most of it above the ground, the rest hidden
+  const core = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 7), foliageCore(color));
+  core.scale.set(rx * 0.88, ry * 0.88, rz * 0.88);
+  core.position.y = cy;
+  core.castShadow = true;
+  core.userData = { kind: "core" };
+  g.add(core);
   const leaves = [];
-  const n = Math.max(120, Math.round(420 * radius * radius));
+  const n = Math.round(90 + 240 * radius * radius);
   for (let i = 0; i < n; i++) {
-    const a = rnd() * Math.PI * 2, cy = 2 * rnd() - 1, rr = radius * (0.5 + 0.5 * Math.cbrt(rnd())), ss = Math.sqrt(1 - cy * cy);
-    // a dome that stays above the ground: the cards are up to a quarter of a metre tall
-    leaves.push([Math.cos(a) * ss * rr, Math.max(0.12, radius * 0.6 + cy * rr * 0.65), Math.sin(a) * ss * rr]);
+    // a point on the upper two thirds of the ellipsoid, and its outward normal
+    const u = rnd() * Math.PI * 2, v = Math.acos(1 - 1.7 * rnd());
+    const sx = Math.cos(u) * Math.sin(v), sy = Math.cos(v), sz = Math.sin(u) * Math.sin(v);
+    const k = 0.9 + rnd() * 0.2; // in and out of the surface, for depth
+    leaves.push([sx * rx * k, cy + sy * ry * k, sz * rz * k, sx / rx, sy / ry, sz / rz]);
   }
   if (stems) {
     const twigs = [];
-    for (let i = 0; i < 5; i++) {
-      const a = i * 2.4 + rnd() * 0.5;
-      twigs.push(taperedTube([[0, 0, 0], [Math.cos(a) * radius * 0.25, radius * 0.45, Math.sin(a) * radius * 0.25], [Math.cos(a) * radius * 0.55, radius * 0.85, Math.sin(a) * radius * 0.55]], 0.014, 0.006, { sides: 5, segments: 4 }).geo);
+    for (let i = 0; i < 4; i++) {
+      const a = i * 1.6 + rnd() * 0.6;
+      twigs.push(taperedTube([[0, 0, 0], [Math.cos(a) * rx * 0.3, cy * 0.5, Math.sin(a) * rz * 0.3], [Math.cos(a) * rx * 0.6, cy, Math.sin(a) * rz * 0.6]], 0.014, 0.006, { sides: 5, segments: 4 }).geo);
     }
     const stem = shadow(new THREE.Mesh(mergeGeometries(twigs), barkMaterial("#6a6455")), true, false);
     stem.userData = { kind: "wood" };
     g.add(stem);
   }
-  g.add(leafMesh(leaves, color, rnd, { kind: "cluster", width: 0.22 * (0.6 + radius * 0.5), height: 0.17 * (0.6 + radius * 0.5) }));
+  const size = 0.6 + radius * 0.5;
+  g.add(leafMesh(leaves, color, rnd, { kind: "cluster", width: 0.3 * size, height: 0.24 * size }));
   g.userData = { kind: "bush", radius };
   return g;
 }

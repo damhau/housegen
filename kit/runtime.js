@@ -155,6 +155,15 @@ window.__house = {
     return { building: b(f.building), site: b(f.bounds), aspect: state.camera?.aspect };
   },
   renderOnce: () => renderFrame(),
+  // debugging: what the last frame cost: draw calls and triangles (renderer.info) and how many
+  // leaf cards the scene holds. A sensible ceiling is ~100k cards; a furnished garden is ~20k.
+  get stats() {
+    const r = state.renderer;
+    if (!r) return null;
+    let cards = 0;
+    state.scene?.traverse((o) => { if (o.isInstancedMesh && o.userData?.kind === "leaves") cards += o.count; });
+    return { calls: r.info.render.calls, triangles: r.info.render.triangles, cards };
+  },
   // debugging: which GPU draws this page (WEBGL_debug_renderer_info), e.g. from the console of
   // the app: document.querySelector("iframe").contentWindow.__house.gl
   get gl() {
