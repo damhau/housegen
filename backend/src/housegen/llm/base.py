@@ -19,9 +19,12 @@ class Provider(Protocol):
         max_tokens: int = 16000,
         on_progress: ProgressCallback | None = None,
         effort: str | None = None,
+        cache_key: str | None = None,
     ) -> Completion:
         """One model turn, streamed under the hood.
 
+        `cache_key` groups the requests of one conversation for the provider's prompt cache
+        (OpenAI routes same-key requests to the same cache; Anthropic ignores it).
         `effort` is the reasoning effort (none…xhigh on OpenAI, low…max on Anthropic);
         each provider maps values it does not have onto its nearest level.
 

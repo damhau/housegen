@@ -159,6 +159,7 @@ class OpenAIProvider:
         max_tokens: int = 16000,
         on_progress: ProgressCallback | None = None,
         effort: str | None = None,
+        cache_key: str | None = None,
     ) -> Completion:
         # Anthropic's "max" has no OpenAI equivalent; xhigh is the top there.
         reasoning_effort = "xhigh" if effort == "max" else (effort or "high")
@@ -172,6 +173,11 @@ class OpenAIProvider:
             "store": False,
             "include": ["reasoning.encrypted_content"],
         }
+        if cache_key:
+            # one key per job: consecutive turns land on the same cache shard, so the prefix
+            # written by a turn is what the next turn reads (without it, turns after a miss
+            # kept missing on the same boundary)
+            kwargs["prompt_cache_key"] = cache_key
         if tools:
             kwargs["tools"] = [
                 {

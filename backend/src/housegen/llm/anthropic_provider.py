@@ -81,6 +81,7 @@ class AnthropicProvider:
         max_tokens: int = 16000,
         on_progress: ProgressCallback | None = None,
         effort: str | None = None,
+        cache_key: str | None = None,  # content-addressed cache: nothing to key
     ) -> Completion:
         output_config: dict[str, Any] = {}
         if effort:

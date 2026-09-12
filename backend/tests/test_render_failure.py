@@ -41,6 +41,7 @@ class FakeProvider:
         max_tokens: int = 16000,
         on_progress: Any = None,
         effort: str | None = None,
+        cache_key: str | None = None,
     ) -> Completion:
         if response_schema is not None:
             self.critic_calls += 1

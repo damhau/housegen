@@ -151,6 +151,7 @@ async def run_builder(
     progress: ProgressFactory | None = None,
     require_checks: bool = True,
     effort: str | None = None,
+    cache_key: str | None = None,
 ) -> BuilderRun:
     """Drive the tool loop until `finish` is called or the step budget is spent.
 
@@ -170,6 +171,7 @@ async def run_builder(
                 tools=TOOL_SPECS,
                 max_tokens=max_tokens,
                 effort=effort,
+                cache_key=cache_key,
             )
         async with progress(step) as live:
             return await provider.complete(
@@ -180,6 +182,7 @@ async def run_builder(
                 max_tokens=max_tokens,
                 on_progress=live.on_event,
                 effort=effort,
+                cache_key=cache_key,
             )
 
     async def emit_turn(turn: TurnMetric) -> None:

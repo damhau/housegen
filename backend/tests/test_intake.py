@@ -56,6 +56,7 @@ class FakeProvider:
         max_tokens: int = 16000,
         on_progress: Any = None,
         effort: str | None = None,
+        cache_key: str | None = None,
     ) -> Completion:
         self.calls.append({"system": system, "messages": messages, "schema": response_schema})
         return Completion(message=Message.assistant(self.reply), stop_reason="end_turn")

@@ -31,6 +31,7 @@ class FakeProvider:
         max_tokens: int = 16000,
         on_progress: Any = None,
         effort: str | None = None,
+        cache_key: str | None = None,
     ) -> Completion:
         self.calls.append(list(messages))
         turn = self.turns.pop(0)
