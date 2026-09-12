@@ -1070,7 +1070,8 @@ export const useGenerate = <TError = HTTPValidationError,
       return useMutation(mutationOptions, queryClient);
     }
     /**
- * Ask for a change, optionally with photographs of the detail to change.
+ * Ask for a change, optionally with photographs of the detail to change, and optionally
+together with the review findings of the current version: one request, one job.
  * @summary Modify
  */
 export const getModifyUrl = (projectId: string,) => {
@@ -1084,12 +1085,17 @@ export const getModifyUrl = (projectId: string,) => {
 export const modify = async (projectId: string,
     bodyModify: BodyModify, options?: RequestInit): Promise<JobOut> => {
     const formData = new FormData();
-formData.append(`message`, bodyModify.message)
+if(bodyModify.message !== undefined) {
+ formData.append(`message`, bodyModify.message)
+ }
 if(bodyModify.photos !== undefined) {
  bodyModify.photos.forEach(value => formData.append(`photos`, value));
  }
 if(bodyModify.keep !== undefined) {
  formData.append(`keep`, bodyModify.keep.toString())
+ }
+if(bodyModify.apply_review_of !== undefined && bodyModify.apply_review_of !== null) {
+ formData.append(`apply_review_of`, bodyModify.apply_review_of.toString())
  }
 
   return httpClient<JobOut>(getModifyUrl(projectId),

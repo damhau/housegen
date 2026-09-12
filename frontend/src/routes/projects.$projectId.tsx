@@ -168,10 +168,13 @@ function ProjectPage() {
   const genHint = needsIntake ? null : estimateText(genEstimate.data)
   const genTitle = genEstimate.data ? `${genEstimate.data.basis === "history" ? `from ${genEstimate.data.samples} previous run(s)` : "typical run"} · ${genEstimate.data.model}` : undefined
 
-  async function onSend(text: string, photos: File[] = [], keep = true) {
+  async function onSend(text: string, photos: File[] = [], keep = true, applyReviewOf?: number) {
     // OpenAPI describes file fields as `string` (format: binary); the generated call builds
     // a FormData, so File objects are what actually goes over the wire
-    await modify.mutateAsync({ projectId, data: { message: text, photos: photos as unknown as string[], keep } })
+    await modify.mutateAsync({
+      projectId,
+      data: { message: text, photos: photos as unknown as string[], keep, apply_review_of: applyReviewOf ?? null },
+    })
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
@@ -376,7 +379,6 @@ function ProjectPage() {
                 disabled={p.current_version === 0}
                 estimate={p.current_version > 0 && idle ? estimateText(modEstimate.data) : null}
                 onSend={onSend}
-                onFix={(n) => void onFix(n)}
                 onAnswer={onAnswer}
               />
             )}

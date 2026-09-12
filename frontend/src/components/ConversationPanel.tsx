@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, ChevronDown, ChevronRight, Hammer, ImagePlus, Loader2, MessageCircleQuestion, Play, Plus, ScanSearch, Send, Square, Wrench, X } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronRight, Hammer, ImagePlus, Loader2, MessageCircleQuestion, Play, ScanSearch, Send, Square, Wrench, X } from "lucide-react"
 import { useJobEvents } from "@/api/endpoints/projects/projects"
 import type { ChatMessageOut, IntakeAnswer, IntakeOut, JobOut, SceneVersionOut } from "@/api/model"
 import { JobTimeline, ScoreBadge } from "@/components/JobTimeline"
@@ -47,7 +47,6 @@ export function ConversationPanel({
   disabled,
   estimate = null,
   onSend,
-  onFix,
   onAnswer,
 }: {
   projectId: string
@@ -64,9 +63,9 @@ export function ConversationPanel({
   disabled: boolean
   /** "~8 min · ~$2": what the next modification would roughly cost (#18) */
   estimate?: string | null
-  /** a modification request, with optional photos of the detail to change (#8) */
-  onSend: (text: string, photos?: File[], keep?: boolean) => Promise<void>
-  onFix: (version: number) => void
+  /** a modification request, with optional photos of the detail to change (#8) and, with
+   *  `applyReviewOf`, the stored review findings of that version in the same request */
+  onSend: (text: string, photos?: File[], keep?: boolean, applyReviewOf?: number) => Promise<void>
   /** answers to the intake's questions: starts the build */
   onAnswer: (answers: IntakeAnswer[], notes: string) => Promise<void>
 }) {
@@ -105,13 +104,13 @@ export function ConversationPanel({
     if (picked.length > 0) setFiles((prev) => [...prev, ...picked].slice(0, 12))
   }
 
-  async function send(t = text) {
+  async function send(t = text, applyReviewOf?: number) {
     t = t.trim()
-    if (!t || busy || disabled) return
+    if ((!t && applyReviewOf === undefined) || busy || disabled) return
     const photos = t === text.trim() ? files : []
     setText("")
     if (photos.length > 0) setFiles([])
-    await onSend(t, photos, keep)
+    await onSend(t, photos, keep, applyReviewOf)
   }
 
   const placeholder = disabled
@@ -151,9 +150,7 @@ export function ConversationPanel({
               // chips need a version to modify (busy || disabled); the intake form only needs no job running
               anyJobRunning={busy}
               busy={busy || disabled}
-              onSend={(txt) => void send(txt)}
-              onPrefill={setText}
-              onFix={onFix}
+              onSend={(txt, applyReviewOf) => void send(txt, applyReviewOf)}
               onAnswer={onAnswer}
             />
           ))}
@@ -271,8 +268,6 @@ function JobBlock({
   anyJobRunning,
   busy,
   onSend,
-  onPrefill,
-  onFix,
   onAnswer,
 }: {
   projectId: string
@@ -286,9 +281,7 @@ function JobBlock({
   anyJobRunning: boolean
   /** no interaction possible: a job is running, or there is no version to modify yet */
   busy: boolean
-  onSend: (text: string) => void
-  onPrefill: (text: string) => void
-  onFix: (version: number) => void
+  onSend: (text: string, applyReviewOf?: number) => void
   onAnswer: (answers: IntakeAnswer[], notes: string) => Promise<void>
 }) {
   const { job, userMsg, assistantMsg, version } = turn
@@ -309,7 +302,8 @@ function JobBlock({
   const answer = assistantMsg?.content ?? version?.summary
   const answerVersion = assistantMsg?.version_number ?? version?.number
   const issues = version?.critique?.issues.length ?? 0
-  const canFix = version !== undefined && issues > 0 && version.number === currentVersion && !busy && isLastAnswer
+  // the review's findings can be applied while this version is the current scene
+  const review = version !== undefined && issues > 0 && version.number === currentVersion ? { version: version.number, issues } : null
 
   return (
     <div className="space-y-2">
@@ -392,19 +386,13 @@ function JobBlock({
           </Bubble>
           {intakeToAnswer && !anyJobRunning && <IntakeForm intake={intakeToAnswer} onSubmit={onAnswer} />}
           {isLastAnswer && !busy && (
-            <FinishChips
+            <ContinueForm
+              key={version?.number ?? job.id}
               suggestions={version?.suggestions ?? []}
               questions={version?.questions ?? []}
+              review={review}
               onSend={onSend}
-              onPrefill={onPrefill}
             />
-          )}
-          {canFix && (
-            <div className="mt-1.5">
-              <Button size="sm" variant="outline" onClick={() => onFix(version.number)}>
-                <Wrench /> Apply the review's {issues} finding{issues > 1 ? "s" : ""}
-              </Button>
-            </div>
           )}
         </div>
       )}
@@ -469,23 +457,28 @@ export function composeAdditions(items: string[], extra = ""): string {
 }
 
 /**
- * The builder's optional additions as tick-able chips (selection → one modify request) and its
- * questions as chips that prefill the composer with "Q: … A: " for the owner to answer.
+ * What the owner sends back after a version, as ONE request and one job: the review's findings
+ * (ticked by default), the builder's optional additions (tick to add), answers to its questions,
+ * and a free line. These used to be three competing buttons, each starting its own job, so only
+ * one of them could ever be taken.
  */
-function FinishChips({
+function ContinueForm({
   suggestions,
   questions,
+  review,
   onSend,
-  onPrefill,
 }: {
   suggestions: string[]
   questions: string[]
-  onSend: (text: string) => void
-  onPrefill: (text: string) => void
+  /** the current version's review with findings, or null */
+  review: { version: number; issues: number } | null
+  onSend: (text: string, applyReviewOf?: number) => void
 }) {
   const [picked, setPicked] = useState<Set<string>>(() => new Set())
+  const [answers, setAnswers] = useState<string[]>(() => questions.map(() => ""))
+  const [applyReview, setApplyReview] = useState(review !== null)
   const [extra, setExtra] = useState("")
-  if (suggestions.length === 0 && questions.length === 0) return null
+  if (suggestions.length === 0 && questions.length === 0 && review === null) return null
   const toggle = (s: string) =>
     setPicked((prev) => {
       const next = new Set(prev)
@@ -493,26 +486,45 @@ function FinishChips({
       else next.add(s)
       return next
     })
+  const answered = questions.map((q, i) => [q, (answers[i] ?? "").trim()] as const).filter(([, a]) => a)
+  const withReview = applyReview && review !== null
+  const parts = [
+    withReview && `the review's ${review.issues} finding${review.issues > 1 ? "s" : ""}`,
+    picked.size > 0 && `${picked.size} addition${picked.size > 1 ? "s" : ""}`,
+    answered.length > 0 && `${answered.length} answer${answered.length > 1 ? "s" : ""}`,
+    extra.trim() && "your note",
+  ].filter((x): x is string => Boolean(x))
+  const submit = () => {
+    const blocks: string[] = []
+    if (answered.length > 0) blocks.push("Answers to your questions:\n" + answered.map(([q, a]) => `Q: ${q}\nA: ${a}`).join("\n"))
+    if (picked.size > 0) blocks.push(composeAdditions(suggestions.filter((s) => picked.has(s))))
+    if (extra.trim()) blocks.push(extra.trim())
+    onSend(blocks.join("\n\n"), withReview ? review.version : undefined)
+  }
   return (
     <div className="mt-1.5 max-w-[85%] space-y-2 text-xs">
+      {review !== null && (
+        <label className="flex cursor-pointer items-center gap-1.5">
+          <input type="checkbox" checked={applyReview} onChange={(e) => setApplyReview(e.target.checked)} />
+          <Wrench className="size-3.5" /> Apply the review's {review.issues} finding{review.issues > 1 ? "s" : ""}
+        </label>
+      )}
       {questions.length > 0 && (
         <div className="space-y-1">
           <div className="flex items-center gap-1 text-muted-foreground">
             <MessageCircleQuestion className="size-3.5" /> The builder asks
           </div>
-          <div className="flex flex-wrap gap-1">
-            {questions.map((q) => (
-              <button
-                key={q}
-                type="button"
-                className="rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-left text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100"
-                title="Answer this question"
-                onClick={() => onPrefill(`Q: ${q}\nA: `)}
-              >
-                {q}
-              </button>
-            ))}
-          </div>
+          {questions.map((q, i) => (
+            <div key={q} className="space-y-0.5">
+              <div className="text-amber-900 dark:text-amber-100">{q}</div>
+              <input
+                value={answers[i] ?? ""}
+                onChange={(e) => setAnswers((prev) => prev.map((a, j) => (j === i ? e.target.value : a)))}
+                placeholder="your answer (optional)"
+                className="h-7 w-full rounded-md border bg-background px-2 text-xs"
+              />
+            </div>
+          ))}
         </div>
       )}
       {suggestions.length > 0 && (
@@ -535,21 +547,20 @@ function FinishChips({
               )
             })}
           </div>
-          {picked.size > 0 && (
-            <div className="flex items-center gap-1.5">
-              <input
-                value={extra}
-                onChange={(e) => setExtra(e.target.value)}
-                placeholder="anything else? (optional)"
-                className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
-              />
-              <Button size="sm" className="h-7" onClick={() => onSend(composeAdditions(suggestions.filter((s) => picked.has(s)), extra))}>
-                <Plus /> Add {picked.size}
-              </Button>
-            </div>
-          )}
         </div>
       )}
+      <div className="flex items-center gap-1.5">
+        <input
+          value={extra}
+          onChange={(e) => setExtra(e.target.value)}
+          placeholder="anything else? (optional)"
+          className="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs"
+        />
+        <Button size="sm" className="h-7" disabled={parts.length === 0} title={parts.length ? `One request: ${parts.join(", ")}` : "Nothing selected"} onClick={submit}>
+          <Send /> Send{parts.length > 0 && ` (${parts.length})`}
+        </Button>
+      </div>
+      {parts.length > 0 && <div className="text-[11px] text-muted-foreground">One request, one job: {parts.join(", ")}.</div>}
     </div>
   )
 }

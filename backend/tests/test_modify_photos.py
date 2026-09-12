@@ -124,3 +124,59 @@ async def test_modify_without_photos_is_still_accepted(client: AsyncClient) -> N
     assert r.status_code == 202, r.text
     chat = (await client.get(f"/api/v1/projects/{pid}/chat")).json()
     assert chat[-1]["attachments"] == []
+
+
+async def _reviewed_project(client: AsyncClient) -> str:
+    pid = await _ready_project(client)
+    async with session_factory()() as s, s.begin():
+        await crud.set_version_critique(
+            s,
+            pid,
+            1,
+            78,
+            {
+                "overall_score": 78,
+                "summary": "close",
+                "done": False,
+                "issues": [
+                    {
+                        "severity": "major",
+                        "view": "east",
+                        "description": "the stair base is solid",
+                        "fix": "open the recess under the stair",
+                    }
+                ],
+            },
+        )
+    return pid
+
+
+async def test_modify_can_apply_the_review_with_a_message(client: AsyncClient) -> None:
+    pid = await _reviewed_project(client)
+    r = await client.post(
+        f"/api/v1/projects/{pid}/modify",
+        data={"message": "Add these to the scene:\n- the trampoline", "apply_review_of": "1"},
+    )
+    assert r.status_code == 202, r.text
+    text = r.json()["request_text"]
+    assert text.startswith(
+        "Apply the findings of the independent review of version 1 (score 78/100)"
+    )
+    assert "open the recess under the stair" in text
+    assert text.endswith("Also:\nAdd these to the scene:\n- the trampoline")
+
+
+async def test_modify_can_apply_the_review_alone(client: AsyncClient) -> None:
+    pid = await _reviewed_project(client)
+    r = await client.post(f"/api/v1/projects/{pid}/modify", data={"apply_review_of": "1"})
+    assert r.status_code == 202, r.text
+    assert "1. [major] view=east" in r.json()["request_text"]
+
+
+async def test_modify_refuses_an_empty_request_and_a_stale_review(client: AsyncClient) -> None:
+    pid = await _reviewed_project(client)
+    assert (
+        await client.post(f"/api/v1/projects/{pid}/modify", data={"message": "  "})
+    ).status_code == 422
+    r = await client.post(f"/api/v1/projects/{pid}/modify", data={"apply_review_of": "2"})
+    assert r.status_code in (404, 409)

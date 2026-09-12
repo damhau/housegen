@@ -58,6 +58,12 @@ by a person.
   gated on prompt size since `79e2b35`); the shed roof's high edge documented as it is built (+z). Baseline: Montelly49-Dev3
   `db527c7a84f2` v1 on `sha-9838d76`, full preset, 4 façades + 5 extras: score 82 done in one pass, 16 steps, 10
   renders, 14.4 min, $6.45. The comparison run: the same inputs on the new build, same preset.
+- **2026-09-12, later**: a first build always gets one fix pass on the critic's findings (`CRITIC_FIRST_FIX`,
+  2+ rounds). Measured why: the same medium critic on the same version gave 82/done and 78/not done twenty minutes
+  apart, high gave 81/done, xhigh 76/not done, all four with the same seven findings; the gate at 80 is a coin toss,
+  the fix pass is where the findings get fixed (81 → 96 on Montelly-Astra). Also: one modification request can
+  carry the review findings, the ticked suggestions and the answers together (`apply_review_of`), instead of three
+  competing buttons that each start a job.
 
 ## Observed on the day's runs, not yet acted on
 

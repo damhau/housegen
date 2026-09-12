@@ -14,6 +14,7 @@ import anyio
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from PIL import Image, ImageOps
+from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
 from housegen.agent import pipeline
@@ -429,7 +430,7 @@ async def generate(
 async def modify(
     session: DbSession,
     project_id: str,
-    message: Annotated[str, Form(min_length=1, max_length=4000)],
+    message: Annotated[str, Form(max_length=4000)] = "",
     photos: Annotated[
         list[UploadFile],
         File(
@@ -440,15 +441,48 @@ async def modify(
         bool,
         Form(description="also keep the attached photos as reference photos of the project"),
     ] = True,
+    apply_review_of: Annotated[
+        int | None,
+        Form(
+            description="also apply the stored review findings of this version (the current one) "
+            "in the same request, before the message"
+        ),
+    ] = None,
 ) -> JobOut:
-    """Ask for a change, optionally with photographs of the detail to change."""
+    """Ask for a change, optionally with photographs of the detail to change, and optionally
+    together with the review findings of the current version: one request, one job."""
     project = await crud.get_project(session, project_id)
     if project.current_version == 0:
         raise ConflictError("generate the scene before modifying it")
     if len(photos) > 12:
         raise InvalidInputError("at most 12 photos per request")
+    text = message.strip()
+    if apply_review_of is not None:
+        review = await _review_request(session, project, apply_review_of)
+        text = f"{review}\n\nAlso:\n{text}" if text else review
+    if not text:
+        raise InvalidInputError("say what to change, or apply a review")
     return JobOut.model_validate(
-        await _start_job(session, project_id, "modify", message, photos, keep)
+        await _start_job(session, project_id, "modify", text, photos, keep)
+    )
+
+
+async def _review_request(session: AsyncSession, project: Project, number: int) -> str:
+    """The modification text that applies the stored review findings of `number` (the current
+    version: findings apply to the current scene)."""
+    if number != project.current_version:
+        raise ConflictError("restore this version first: findings apply to the current scene")
+    v = await crud.get_version(session, project.id, number)
+    if not v.critique_json:
+        raise InvalidInputError("this version has no review findings")
+    critique = Critique.model_validate_json(v.critique_json)
+    if not critique.issues:
+        raise InvalidInputError("the review found nothing to fix")
+    return (
+        f"Apply the findings of the independent review of version {number} "
+        f"(score {critique.overall_score}/100). Fix every point below, most impactful first, "
+        "verify with renders from the same sides, and keep everything else as it is.\n\n"
+        + critique.as_builder_feedback()
     )
 
 
@@ -456,20 +490,7 @@ async def modify(
 async def fix_version(session: DbSession, project_id: str, number: int) -> JobOut:
     """Send the stored review findings of a version to the builder as a modification."""
     project = await crud.get_project(session, project_id)
-    if number != project.current_version:
-        raise ConflictError("restore this version first: findings apply to the current scene")
-    v = await crud.get_version(session, project_id, number)
-    if not v.critique_json:
-        raise InvalidInputError("this version has no review findings")
-    critique = Critique.model_validate_json(v.critique_json)
-    if not critique.issues:
-        raise InvalidInputError("the review found nothing to fix")
-    text = (
-        f"Apply the findings of the independent review of version {number} "
-        f"(score {critique.overall_score}/100). Fix every point below, most impactful first, "
-        "verify with renders from the same sides, and keep everything else as it is.\n\n"
-        + critique.as_builder_feedback()
-    )
+    text = await _review_request(session, project, number)
     return JobOut.model_validate(await _start_job(session, project_id, "modify", text))
 
 

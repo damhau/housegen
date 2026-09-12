@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     # independent critic rounds after the builder is done (0 disables the critic)
     CRITIC_MAX_ITERATIONS: int = 2
     CRITIC_SCORE_THRESHOLD: int = 80
+    # A first build always gets one fix pass on the critic's findings (when it listed any and
+    # the run has 2+ rounds), whatever the score: the same critic scored the same version 82 and
+    # 78 twenty minutes apart (2026-09-12), so the threshold alone is a coin toss near 80, while
+    # the findings were identical and get fixed in that pass (81 → 96 on Montelly-Astra).
+    CRITIC_FIRST_FIX: bool = True
     # In-loop render quality (render_views without a quality, the run settings' default). High
     # since the GPU render service (2026-09-12): the builder sees the picture the saved version
     # gets, at a few seconds per call; medium was the software-rendering compromise.

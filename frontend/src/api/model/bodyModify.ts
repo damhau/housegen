@@ -4,15 +4,15 @@
  * housegen
  * OpenAPI spec version: 0.1.0
  */
+import type { BodyModifyApplyReviewOf } from './bodyModifyApplyReviewOf';
 
 export interface BodyModify {
-  /**
-   * @minLength 1
-   * @maxLength 4000
-   */
-  message: string;
+  /** @maxLength 4000 */
+  message?: string;
   /** photos of the detail to change (optional): ground truth for this request */
   photos?: string[];
   /** also keep the attached photos as reference photos of the project */
   keep?: boolean;
+  /** also apply the stored review findings of this version (the current one) in the same request, before the message */
+  apply_review_of?: BodyModifyApplyReviewOf;
 }

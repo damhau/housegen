@@ -126,6 +126,7 @@ every job snapshots the settings it started with.
 | `BUILDER_PRUNE_ABOVE_TOKENS` | 200000 | drop old render screenshots from the builder's history once a prompt exceeds this (0 = never); a prune costs a prompt-cache miss, so only for the context window |
 | `CRITIC_MAX_ITERATIONS` | 1 | independent critic rounds (0 disables) |
 | `CRITIC_SCORE_THRESHOLD` | 80 | stop when reached with no major issue |
+| `CRITIC_FIRST_FIX` | `true` | a first build always gets one fix pass on the critic's findings (2+ rounds); the score near the threshold is noise, the findings are not |
 | `RENDER_QUALITY` | `high` | in-loop render quality (`render_views` without a quality); `medium` was the software-rendering compromise |
 | `BROWSER_CHANNEL` | `chrome` | `chrome`, `msedge`, or empty for Playwright's Chromium |
 | `RENDER_ANGLE` | `swiftshader` | WebGL backend: `swiftshader` (software), `gl-egl` or `vulkan` (an NVIDIA GPU) |

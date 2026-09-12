@@ -554,7 +554,9 @@ async def _critic_rounds(
             score = verdict.overall_score
             await _emit_critic(ctx, i, verdict)
             await run.set_version_critique(version, verdict)
-        if _verdict_ends_rounds(verdict, i, s, rs.critic_rounds):
+        if not _first_fix(i, verdict, s, rs.critic_rounds) and _verdict_ends_rounds(
+            verdict, i, s, rs.critic_rounds
+        ):
             break
         await ctx.emit("phase", name="builder", message=f"Fixing the critic's findings (round {i})")
         messages.append(Message.user(_critic_feedback_text(reference or "photos", verdict)))
@@ -566,6 +568,13 @@ async def _critic_rounds(
         await crud.add_chat_message(session, pid, "assistant", summary, ctx.job_id, version)
     await run.emit_usage()
     await ctx.emit("done", version=version, score=score, summary=summary, **run.finish_extras())
+
+
+def _first_fix(iteration: int, verdict: Critique, s: Settings, rounds: int) -> bool:
+    """The first review of a build is always followed by a fix pass when it listed findings and
+    the run has a round left for it (CRITIC_FIRST_FIX): the score near the threshold is noise,
+    the findings are not."""
+    return s.CRITIC_FIRST_FIX and iteration == 1 and rounds >= 2 and bool(verdict.issues)
 
 
 def _verdict_ends_rounds(verdict: Critique, iteration: int, s: Settings, rounds: int) -> bool:

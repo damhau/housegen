@@ -8,6 +8,7 @@
 export * from './bodyAddPlanDocument';
 export * from './bodyCreateProject';
 export * from './bodyModify';
+export * from './bodyModifyApplyReviewOf';
 export * from './chatMessageOut';
 export * from './chatMessageOutJobId';
 export * from './chatMessageOutVersionNumber';
