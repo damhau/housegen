@@ -44,6 +44,7 @@ from housegen.projects.models import Job
 from housegen.projects.schemas import standard_views
 from housegen.projects.storage import PlanSheet, ProjectStorage
 from housegen.render import renderer
+from housegen.render.kits import kit_dir, pinned_kit
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +104,13 @@ class _Run:
         self.storage = ProjectStorage(ctx.project_id)
         self.storage.ensure()
         self.storage.init_scene_from_template()
-        self.workspace = Workspace(self.storage.scene_dir, readonly={"kit": self.settings.KIT_DIR})
-        self.scene_url = self.settings.render_base_url + self.storage.scene_url()
+        # the renderer snapshot of the build path (frozen): what the builder reads as kit/*.js
+        # and what every render of this job is drawn with
+        self.kit = pinned_kit(self.settings)
+        self.workspace = Workspace(
+            self.storage.scene_dir, readonly={"kit": kit_dir(self.kit, self.settings)}
+        )
+        self.scene_url = f"{self.settings.render_base_url}{self.storage.scene_url()}?kit={self.kit}"
         self.renders_dir = self.storage.scene_dir / "renders"
         self.last_run: BuilderRun | None = (
             None  # the most recent builder pass (suggestions, questions)
@@ -278,7 +284,7 @@ class _Run:
         self, kind: str, label: str, summary: str, score: int | None, renders: dict[str, Path]
     ) -> int:
         n = self.storage.next_version_number()
-        dst = self.storage.snapshot(n)
+        dst = self.storage.snapshot(n, kit=self.kit)
         for view, p in renders.items():
             shutil.copy2(p, dst / "renders" / f"{view}.jpg")
         last = self.last_run

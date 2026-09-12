@@ -16,6 +16,7 @@ from housegen.core.logging import RequestLoggingMiddleware, configure_logging
 from housegen.jobs.manager import job_manager
 from housegen.projects.migrations import migrate_plans
 from housegen.render import renderer
+from housegen.render.kits import pages_router
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
     register_exception_handlers(app)
     app.include_router(api_router)
+    # scene pages served with a chosen renderer snapshot (?kit=): before the /scenes mount
+    app.include_router(pages_router)
 
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
     # scene runtime + component kit + vendored three.js

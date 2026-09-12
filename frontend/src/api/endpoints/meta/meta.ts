@@ -22,6 +22,7 @@ import type {
 import type {
   HTTPValidationError,
   HealthOut,
+  KitsOut,
   ModelsOut,
   ModelsParams
 } from '../../model';
@@ -122,6 +123,107 @@ export function useHealth<TData = Awaited<ReturnType<typeof health>>, TError = u
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getHealthQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+/**
+ * The renderer snapshots a scene can be drawn with (newest first, the working copy last),
+which one the build path is pinned to and which one the viewer shows by default.
+ * @summary Kits
+ */
+export const getKitsUrl = () => {
+
+
+  
+
+  return `/api/v1/kits`
+}
+
+export const kits = async ( options?: RequestInit): Promise<KitsOut> => {
+  
+  return httpClient<KitsOut>(getKitsUrl(),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getKitsQueryKey = () => {
+    return [
+    `/api/v1/kits`
+    ] as const;
+    }
+
+    
+export const getKitsQueryOptions = <TData = Awaited<ReturnType<typeof kits>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof kits>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getKitsQueryKey();
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof kits>>> = ({ signal }) => kits({ signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof kits>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type KitsQueryResult = NonNullable<Awaited<ReturnType<typeof kits>>>
+export type KitsQueryError = unknown
+
+
+export function useKits<TData = Awaited<ReturnType<typeof kits>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof kits>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof kits>>,
+          TError,
+          Awaited<ReturnType<typeof kits>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useKits<TData = Awaited<ReturnType<typeof kits>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof kits>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof kits>>,
+          TError,
+          Awaited<ReturnType<typeof kits>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useKits<TData = Awaited<ReturnType<typeof kits>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof kits>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Kits
+ */
+
+export function useKits<TData = Awaited<ReturnType<typeof kits>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof kits>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getKitsQueryOptions(options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

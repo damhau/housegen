@@ -39,6 +39,7 @@ sys.path.insert(0, str(BACKEND / "src"))
 os.environ.setdefault("RENDER_TIMEOUT_MS", "600000")
 
 from housegen.core.config import get_settings  # noqa: E402
+from housegen.render.kits import DEV, kit_dir  # noqa: E402
 from housegen.render.remote import RenderClient  # noqa: E402
 from housegen.render.renderer import Renderer, SceneRenderer  # noqa: E402
 
@@ -148,23 +149,35 @@ def main() -> None:
         required=True,
         help="query string of one look, e.g. quality=high or look=presentation&p_env=0.3",
     )
+    ap.add_argument(
+        "--kit",
+        default=None,
+        help="renderer snapshot (kit/versions/<name>) or 'dev' (the working copy); default: as the "
+        "page is served (--scene: the working copy)",
+    )
     ap.add_argument("--views", nargs="+", default=["southeast", "north", "aerial", "south-photo"])
     ap.add_argument("--out", type=Path, required=True, help="the contact sheet (PNG)")
     ap.add_argument("--cell-width", type=int, default=560)
     args = ap.parse_args()
 
     settings = get_settings()
+    if args.kit:
+        try:
+            kit_dir(args.kit, settings)
+        except KeyError:
+            sys.exit(f"unknown renderer '{args.kit}' (see kit/versions/index.json, or 'dev')")
     if args.scene_url:
         if args.scene:
             sys.exit("--scene and --scene-url are exclusive")
         where = "the render service" if settings.RENDER_SERVICE_URL else "the local browser"
-        print(f"rendering {args.scene_url} on {where}")
+        url = args.scene_url
+        if args.kit:
+            url += ("&" if "?" in url else "?") + f"kit={args.kit}"
+        print(f"rendering {url} on {where}")
         client = RenderClient()
         try:
             images = asyncio.run(
-                render_all(
-                    args.scene_url, args.look, args.views, args.out.parent / "renders", client
-                )
+                render_all(url, args.look, args.views, args.out.parent / "renders", client)
             )
         finally:
             asyncio.run(client.close())
@@ -181,8 +194,9 @@ def main() -> None:
     with tempfile.TemporaryDirectory(prefix="look-sheet-") as tmp:
         www = Path(tmp)
         (www / "kit" / "vendor").mkdir(parents=True)
+        kit = kit_dir(args.kit or DEV, settings)  # the kit files the temp site serves as /kit/*
         for name in ("house.js", "runtime.js"):
-            (www / "kit" / name).symlink_to(settings.KIT_DIR / name)
+            (www / "kit" / name).symlink_to(kit / name)
         (www / "kit" / "vendor" / "three").symlink_to(settings.KIT_DIR / "node_modules" / "three")
         (www / "scene").symlink_to(scene)
         server, port = serve(www)

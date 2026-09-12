@@ -1,0 +1,10 @@
+{
+  "pinned": "2026-09-12-baseline",
+  "versions": [
+    {
+      "name": "2026-09-12-baseline",
+      "date": "2026-09-12",
+      "note": "The kit as measured for the v0.1.0 build path, with the presentation look of docs/presentation-look.md. Pinned for the builder, the critic and the version pictures."
+    }
+  ]
+}

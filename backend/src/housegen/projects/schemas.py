@@ -76,6 +76,9 @@ class SceneVersionOut(BaseModel):
     created_at: datetime
     scene_url: str
     render_urls: dict[str, str]
+    # the renderer snapshot the pictures were drawn with (kit/versions/<name>); None for
+    # versions saved before renderers were versioned
+    kit: str | None = None
 
 
 class IntakeOut(Intake):

@@ -116,7 +116,13 @@ screenshot sentence in the builder prompt, and the shed roof line of the kit ref
 
 ### Step 2: instruments
 
-Before changing looks or the kit, make the two measurements repeatable:
+Done 2026-09-12: **renderer versions**. `kit/versions/<name>/` snapshots, the build path pinned to one
+(`2026-09-12-baseline`, byte-identical to the kit of that day), scene pages served with `?kit=`, a renderer
+selector and a side-by-side Compare in the viewer, `look_sheet.py --kit`, the renderer recorded on every
+version. Every looks change below is now judged as "dev next to the newest snapshot" on a saved version,
+and the freeze is a pin instead of a rule.
+
+Still to do, so the two measurements are repeatable:
 
 - `backend/scripts/look_sheet.py`: accept several projects and produce one sheet per project
   with the same views and looks, so a step's before and after are two files to open side by side.

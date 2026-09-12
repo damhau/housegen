@@ -114,6 +114,7 @@ def _project_out(project: Project) -> ProjectOut:
                 created_at=v.created_at,
                 scene_url=st.scene_url(v.number),
                 render_urls=st.render_urls(v.number),
+                kit=st.version_kit(v.number),
             )
             for v in project.versions
         ],
@@ -569,7 +570,7 @@ async def restore_version(session: DbSession, project_id: str, number: int) -> P
     st = ProjectStorage(project_id)
     st.restore(number)
     n = st.next_version_number()
-    dst = st.snapshot(n)
+    dst = st.snapshot(n, kit=st.version_kit(number))
     src_renders = st.versions_dir / str(number) / "renders"
     if src_renders.exists():
         shutil.copytree(src_renders, dst / "renders", dirs_exist_ok=True)

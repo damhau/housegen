@@ -11,6 +11,7 @@ from housegen.projects import crud
 from housegen.projects.router import router as projects_router
 from housegen.projects.schemas import SharedProjectOut
 from housegen.projects.storage import ProjectStorage
+from housegen.render.kits import KitsOut, list_kits
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(projects_router)
@@ -49,6 +50,13 @@ class HealthOut(BaseModel):
 def health() -> HealthOut:
     s = get_settings()
     return HealthOut(status="ok", version=s.APP_VERSION, commit=s.APP_COMMIT, env=s.ENV)
+
+
+@router.get("/kits", tags=["meta"])
+def kits() -> KitsOut:
+    """The renderer snapshots a scene can be drawn with (newest first, the working copy last),
+    which one the build path is pinned to and which one the viewer shows by default."""
+    return list_kits()
 
 
 @router.get("/models", tags=["meta"])

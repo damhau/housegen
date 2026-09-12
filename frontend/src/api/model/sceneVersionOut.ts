@@ -7,6 +7,7 @@
 import type { SceneVersionOutCriticScore } from './sceneVersionOutCriticScore';
 import type { SceneVersionOutCritique } from './sceneVersionOutCritique';
 import type { SceneVersionOutRenderUrls } from './sceneVersionOutRenderUrls';
+import type { SceneVersionOutKit } from './sceneVersionOutKit';
 
 export interface SceneVersionOut {
   id: string;
@@ -21,4 +22,5 @@ export interface SceneVersionOut {
   created_at: string;
   scene_url: string;
   render_urls: SceneVersionOutRenderUrls;
+  kit?: SceneVersionOutKit;
 }

@@ -58,6 +58,11 @@ class ProjectStorage:
             return f"/scenes/{self.project_id}/scene/index.html"
         return f"/scenes/{self.project_id}/versions/{version}/index.html"
 
+    def version_kit(self, version: int) -> str | None:
+        """The renderer snapshot a version's pictures were drawn with (None before 2026-09-12)."""
+        p = self.versions_dir / str(version) / "kit.txt"
+        return p.read_text(encoding="utf-8").strip() or None if p.exists() else None
+
     def render_urls(self, version: int) -> dict[str, str]:
         d = self.versions_dir / str(version) / "renders"
         if not d.exists():
@@ -150,12 +155,16 @@ class ProjectStorage:
             shutil.copytree(template, self.scene_dir, dirs_exist_ok=True)
             logger.info("scene.initialized", extra={"project_id": self.project_id})
 
-    def snapshot(self, number: int) -> Path:
+    def snapshot(self, number: int, kit: str | None = None) -> Path:
+        """Copy the working scene to versions/<number>; `kit` names the renderer snapshot its
+        pictures are drawn with (kept in kit.txt, shown as the version's renderer)."""
         dst = self.versions_dir / str(number)
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(self.scene_dir, dst, ignore=shutil.ignore_patterns("renders"))
         (dst / "renders").mkdir(exist_ok=True)
+        if kit:
+            (dst / "kit.txt").write_text(kit + "\n", encoding="utf-8")
         logger.info("scene.snapshot", extra={"project_id": self.project_id, "version": number})
         return dst
 

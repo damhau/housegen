@@ -77,6 +77,10 @@ class Settings(BaseSettings):
 
     # renderer
     RENDER_BASE_URL: str = ""  # defaults to http://HOST:PORT
+    # The renderer snapshot (kit/versions/<name>) the build path draws with: the builder's
+    # renders, the critic's pairs and the version pictures. Empty = the one pinned in
+    # kit/versions/index.json. The viewer picks its own (the newest snapshot by default).
+    RENDER_KIT: str = ""
     BROWSER_CHANNEL: str | None = Field(
         default="chrome", description="'chrome', 'msedge' or None for bundled chromium"
     )

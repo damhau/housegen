@@ -98,6 +98,16 @@ build); its docstring is the runbook. The service loads scenes from the app's `R
 must then be the app's public URL. `GET /health` on the service reports the WebGL renderer string:
 `ANGLE (NVIDIA, …` means the GPU draws, `SwiftShader` means it does not.
 
+### Renderer versions
+
+`kit/versions/<name>/` holds snapshots of `house.js` + `runtime.js`; `kit/versions/index.json` lists them and names
+the one the build path is **pinned** to. A scene page served with `?kit=<name>` loads that snapshot (its import map is
+rewritten, the scene sources are untouched), so every saved version can be drawn with every renderer: the viewer has a
+renderer selector and a Compare button (two renderers side by side), `look_sheet.py` has `--kit`, and each version
+records the renderer its pictures were drawn with. `kit/` itself is the working copy ("dev"). Workflow: change `kit/`,
+compare it with the newest snapshot on a real version, copy it to a new snapshot when it is right, move the pin only
+after a measured run.
+
 ## Configuration (backend/.env)
 
 The model, effort, critic rounds, step budget and in-loop render quality below are the defaults; each project can
@@ -120,6 +130,7 @@ every job snapshots the settings it started with.
 | `RENDER_ANGLE` | `swiftshader` | WebGL backend: `swiftshader` (software), `gl-egl` or `vulkan` (an NVIDIA GPU) |
 | `RENDER_SERVICE_URL`, `RENDER_SERVICE_TOKEN` | | render on the GPU service instead of in-process (see above); `RENDER_SERVICE_FALLBACK=false` fails the render instead of drawing locally when it is unreachable |
 | `RENDER_BASE_URL` | `http://HOST:PORT` | where the renderer loads scenes from; the app's public URL when a render service is used |
+| `RENDER_KIT` | pinned in `kit/versions/index.json` | the renderer snapshot the build path draws with (builder, critic, version pictures); the viewer picks its own |
 | `MODEL_PRICES` | list prices for `claude-opus-5`, `gpt-6-astra` | JSON `{model: {input, cached, output[, cache_write]}}` in USD per million tokens, for the cost in each run's summary |
 
 ## Quality gates
