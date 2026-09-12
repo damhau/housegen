@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
+from datetime import UTC, datetime
 from typing import Any, cast
 
 import openai
@@ -20,6 +22,7 @@ from housegen.llm.types import (
     Completion,
     ImagePart,
     Message,
+    ModelInfo,
     Part,
     ProgressCallback,
     ProgressEvent,
@@ -112,6 +115,20 @@ def _to_input_items(messages: list[Message]) -> list[dict[str, Any]]:
     return items
 
 
+# OpenAI's /models lists everything the account can call; the settings sheet wants the language
+# models the Responses API can drive with tools and images
+_NOT_LANGUAGE = re.compile(
+    r"embedding|tts|whisper|audio|realtime|transcri|moderation|image|dall-e|sora|"
+    r"search|instruct|computer-use|babbage|davinci"
+)
+
+
+def is_language_model(model_id: str) -> bool:
+    if _NOT_LANGUAGE.search(model_id):
+        return False
+    return model_id.startswith("gpt-") or re.match(r"^o\d", model_id) is not None
+
+
 class OpenAIProvider:
     name = PROVIDER
 
@@ -119,6 +136,17 @@ class OpenAIProvider:
         self._client = openai.AsyncOpenAI(
             api_key=api_key, base_url=base_url, timeout=timeout, max_retries=3
         )
+        # a compatible endpoint (Ollama, vLLM…) lists only what it serves: no filtering there
+        self._filter_models = base_url is None
+
+    async def list_models(self) -> list[ModelInfo]:
+        models = [
+            ModelInfo(id=m.id, created_at=datetime.fromtimestamp(m.created, tz=UTC))
+            async for m in self._client.models.list()
+            if not self._filter_models or is_language_model(m.id)
+        ]
+        models.sort(key=lambda m: m.created_at.timestamp() if m.created_at else 0, reverse=True)
+        return models
 
     async def complete(
         self,

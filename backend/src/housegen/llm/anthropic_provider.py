@@ -11,6 +11,7 @@ from housegen.llm.types import (
     Completion,
     ImagePart,
     Message,
+    ModelInfo,
     Part,
     ProgressCallback,
     ProgressEvent,
@@ -59,6 +60,15 @@ class AnthropicProvider:
 
     def __init__(self, api_key: str | None, timeout: float) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key, timeout=timeout, max_retries=3)
+
+    async def list_models(self) -> list[ModelInfo]:
+        # every model the endpoint lists is a chat model; the API returns them newest first
+        models = [
+            ModelInfo(id=m.id, display_name=m.display_name, created_at=m.created_at)
+            async for m in self._client.models.list(limit=100)
+        ]
+        models.sort(key=lambda m: m.created_at.timestamp() if m.created_at else 0, reverse=True)
+        return models
 
     async def complete(
         self,

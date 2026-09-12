@@ -20,7 +20,10 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
-  HealthOut
+  HTTPValidationError,
+  HealthOut,
+  ModelsOut,
+  ModelsParams
 } from '../../model';
 
 import { httpClient } from '../../http-client';
@@ -119,6 +122,115 @@ export function useHealth<TData = Awaited<ReturnType<typeof health>>, TError = u
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getHealthQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+/**
+ * The models the provider's API offers now, newest first (the .env provider when none is
+given). Cached for ten minutes; when the provider cannot be asked the list is empty and
+`error` says why.
+ * @summary Models
+ */
+export const getModelsUrl = (params?: ModelsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/models?${stringifiedParams}` : `/api/v1/models`
+}
+
+export const models = async (params?: ModelsParams, options?: RequestInit): Promise<ModelsOut> => {
+  
+  return httpClient<ModelsOut>(getModelsUrl(params),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getModelsQueryKey = (params?: ModelsParams,) => {
+    return [
+    `/api/v1/models`, ...(params ? [params]: [])
+    ] as const;
+    }
+
+    
+export const getModelsQueryOptions = <TData = Awaited<ReturnType<typeof models>>, TError = HTTPValidationError>(params?: ModelsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof models>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getModelsQueryKey(params);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof models>>> = ({ signal }) => models(params, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof models>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ModelsQueryResult = NonNullable<Awaited<ReturnType<typeof models>>>
+export type ModelsQueryError = HTTPValidationError
+
+
+export function useModels<TData = Awaited<ReturnType<typeof models>>, TError = HTTPValidationError>(
+ params: undefined |  ModelsParams, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof models>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof models>>,
+          TError,
+          Awaited<ReturnType<typeof models>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useModels<TData = Awaited<ReturnType<typeof models>>, TError = HTTPValidationError>(
+ params?: ModelsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof models>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof models>>,
+          TError,
+          Awaited<ReturnType<typeof models>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useModels<TData = Awaited<ReturnType<typeof models>>, TError = HTTPValidationError>(
+ params?: ModelsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof models>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Models
+ */
+
+export function useModels<TData = Awaited<ReturnType<typeof models>>, TError = HTTPValidationError>(
+ params?: ModelsParams, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof models>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getModelsQueryOptions(params,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

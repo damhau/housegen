@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Loader2, X } from "lucide-react"
+import { useModels } from "@/api/endpoints/meta/meta"
 import { getGetProjectQueryKey, getRunEstimateQueryKey, useUpdateSettings } from "@/api/endpoints/projects/projects"
 import type { ProjectOut, RunSettings, RunSettingsBuilderEffort, RunSettingsProvider, RunSettingsRenderQuality } from "@/api/model"
 import { Button } from "@/components/ui/button"
@@ -16,9 +17,15 @@ const PROVIDER_EFFORTS: Record<Provider, Effort[]> = {
   openai: ["none", "minimal", "low", "medium", "high", "xhigh"],
   anthropic: ["low", "medium", "high", "xhigh", "max"],
 }
+// shown while the provider's own list loads, or when it cannot be asked (no key, offline)
 const KNOWN_MODELS: Record<Provider, string[]> = {
   anthropic: ["claude-opus-5", "claude-sonnet-5"],
   openai: ["gpt-6-astra"],
+}
+const OTHER = "__other__"
+
+function monthOf(iso: string | null | undefined): string {
+  return iso ? iso.slice(0, 7) : ""
 }
 // the two presets (mirrors agent/run_settings.PRESETS); "custom" keeps whatever is set
 const PRESETS: Record<"quick" | "full", Pick<RunSettings, "builder_effort" | "critic_rounds" | "max_steps">> = {
@@ -49,6 +56,13 @@ export function SettingsSheet({ project, onClose }: { project: ProjectOut; onClo
   const eff = project.effective_settings
   const provider: Provider = s.provider ?? eff.provider
   const preset = presetOf(s, eff)
+  // the provider's models, newest first (cached server-side; a failure leaves the list empty)
+  const modelsQuery = useModels({ provider }, { query: { staleTime: 10 * 60 * 1000 } })
+  const models = modelsQuery.data?.models ?? []
+  const modelIds = models.length > 0 ? models.map((m) => m.id) : KNOWN_MODELS[provider]
+  // "other…" switches to a free-text field; a stored model the list does not have stays selectable
+  const [otherModel, setOtherModel] = useState(false)
+  const modelListed = !s.model || modelIds.includes(s.model)
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -132,12 +146,53 @@ export function SettingsSheet({ project, onClose }: { project: ProjectOut; onClo
         </label>
         <label className={field}>
           <span className="font-medium">Model</span>
-          <Input list="known-models" value={s.model ?? ""} placeholder={eff.model} onChange={(e) => set("model", e.target.value || null)} className="h-8 text-xs" />
-          <datalist id="known-models">
-            {KNOWN_MODELS[provider].map((m) => (
-              <option key={m} value={m} />
-            ))}
-          </datalist>
+          <select
+            className={select}
+            value={otherModel ? OTHER : (s.model ?? "")}
+            onChange={(e) => {
+              if (e.target.value === OTHER) {
+                setOtherModel(true)
+                set("model", null)
+              } else {
+                setOtherModel(false)
+                set("model", e.target.value || null)
+              }
+            }}
+          >
+            <option value="">default ({eff.model})</option>
+            {models.length > 0
+              ? models.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.id}
+                    {m.created_at ? ` · ${monthOf(m.created_at)}` : ""}
+                  </option>
+                ))
+              : KNOWN_MODELS[provider].map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+            {s.model && !modelListed && !otherModel && <option value={s.model}>{s.model}</option>}
+            <option value={OTHER}>other…</option>
+          </select>
+          {otherModel && (
+            <Input
+              autoFocus
+              value={s.model ?? ""}
+              placeholder="model id"
+              onChange={(e) => set("model", e.target.value || null)}
+              className="h-8 text-xs"
+            />
+          )}
+          <span className="text-muted-foreground">
+            {modelsQuery.isPending
+              ? `Asking ${provider} for its models…`
+              : modelsQuery.data?.error
+                ? `Could not list ${provider}'s models: ${modelsQuery.data.error}`
+                : models.length > 0
+                  ? `${models.length} models from ${provider}, newest first.`
+                  : `No model list from ${provider}.`}
+          </span>
         </label>
         {(["builder_effort", "critic_effort"] as const).map((k) => (
           <label key={k} className={field}>

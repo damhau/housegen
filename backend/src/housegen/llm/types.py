@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -80,6 +81,14 @@ class Message(BaseModel):
     @property
     def tool_calls(self) -> list[ToolCallPart]:
         return [p for p in self.content if isinstance(p, ToolCallPart)]
+
+
+class ModelInfo(BaseModel):
+    """One model a provider offers (for the settings sheet's model list)."""
+
+    id: str
+    display_name: str | None = None
+    created_at: datetime | None = None
 
 
 class ToolSpec(BaseModel):

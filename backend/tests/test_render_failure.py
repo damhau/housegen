@@ -23,10 +23,11 @@ from housegen.render.renderer import RenderResult
 
 
 class FakeProvider:
-    """Every builder turn calls finish; the critic returns a good verdict."""
+    """Every builder pass checks the scene and finishes; the critic returns a good verdict."""
 
     def __init__(self) -> None:
-        self.builder_calls: list[list[Message]] = []
+        self.turns = 0
+        self.builder_calls: list[list[Message]] = []  # the messages at the start of each pass
         self.critic_calls = 0
 
     async def complete(
@@ -47,15 +48,15 @@ class FakeProvider:
             return Completion(
                 message=Message.assistant(json.dumps(verdict)), stop_reason="end_turn"
             )
-        self.builder_calls.append(list(messages))
-        n = len(self.builder_calls)
-        return Completion(
-            message=Message(
-                role="assistant",
-                content=[ToolCallPart(id=str(n), name="finish", input={"summary": f"pass {n}"})],
-            ),
-            stop_reason="tool_use",
-        )
+        # a pass is two turns: check_scene (finish is refused without it), then finish
+        self.turns += 1
+        if self.turns % 2:
+            self.builder_calls.append(list(messages))
+            call = ToolCallPart(id=f"c{self.turns}", name="check_scene", input={})
+        else:
+            n = len(self.builder_calls)
+            call = ToolCallPart(id=f"f{n}", name="finish", input={"summary": f"pass {n}"})
+        return Completion(message=Message(role="assistant", content=[call]), stop_reason="tool_use")
 
 
 class FakeRenderer:
@@ -109,6 +110,9 @@ async def _run_generate(
         st = ProjectStorage(project.id)
         st.ensure()
         st.init_scene_from_template()
+        # one photo, so the critic has a reference to compare the renders with
+        Image.new("RGB", (8, 8), (120, 120, 120)).save(st.photos_dir / "north.jpg", "JPEG")
+        await crud.add_photo(s, project, "north", "north.jpg", "north.jpg")
         job = await crud.create_job(s, project.id, "generate")
         pid, job_id = project.id, job.id
     provider = FakeProvider()
@@ -146,7 +150,7 @@ async def test_no_render_at_all_goes_back_to_the_builder(
     env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     renderer = FakeRenderer(failing=2)
-    pid, _, provider, events = await _run_generate(monkeypatch, renderer)
+    pid, _, provider, _events = await _run_generate(monkeypatch, renderer)
     # high + medium failed, the builder got the errors, its second pass rendered at high
     assert renderer.qualities == ["high", "medium", "high"]
     assert len(provider.builder_calls) == 2
@@ -170,7 +174,9 @@ async def test_still_nothing_saves_the_version_and_skips_the_critic(
     phases = [p["message"] for t, p in events if t == "phase"]
     assert any("review skipped" in m and "no render" in m for m in phases)
     done = [p for t, p in events if t == "done"]
-    assert done and done[0]["version"] == 1 and done[0].get("score") is None
+    assert done
+    assert done[0]["version"] == 1
+    assert done[0].get("score") is None
     st = ProjectStorage(pid)
     assert (st.versions_dir / "1").is_dir()
     assert not list((st.versions_dir / "1" / "renders").glob("*.jpg"))

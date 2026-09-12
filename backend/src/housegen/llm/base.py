@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from housegen.llm.types import Completion, Message, ProgressCallback, ToolSpec
+from housegen.llm.types import Completion, Message, ModelInfo, ProgressCallback, ToolSpec
 
 
 class Provider(Protocol):
@@ -29,4 +29,8 @@ class Provider(Protocol):
         `on_progress` receives phase changes, text deltas and token counts while the
         model is working; the returned Completion is always the full final message.
         """
+        ...
+
+    async def list_models(self) -> list[ModelInfo]:
+        """The models this provider's API offers, newest first; the language models only."""
         ...

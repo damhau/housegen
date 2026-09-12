@@ -1,8 +1,12 @@
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
+from housegen.agent.run_settings import Provider
 from housegen.core.config import get_settings
 from housegen.core.db import DbSession
+from housegen.llm.models import ModelsOut, list_models
 from housegen.projects import crud
 from housegen.projects.router import router as projects_router
 from housegen.projects.schemas import SharedProjectOut
@@ -45,3 +49,11 @@ class HealthOut(BaseModel):
 def health() -> HealthOut:
     s = get_settings()
     return HealthOut(status="ok", version=s.APP_VERSION, commit=s.APP_COMMIT, env=s.ENV)
+
+
+@router.get("/models", tags=["meta"])
+async def models(provider: Annotated[Provider | None, Query()] = None) -> ModelsOut:
+    """The models the provider's API offers now, newest first (the .env provider when none is
+    given). Cached for ten minutes; when the provider cannot be asked the list is empty and
+    `error` says why."""
+    return await list_models(provider or get_settings().LLM_PROVIDER)

@@ -265,7 +265,9 @@ class _Run:
         renders = await self.render_standard()
         if not renders:
             await self.ctx.emit(
-                "phase", name="builder", message="The final render failed: asking the builder to fix it"
+                "phase",
+                name="builder",
+                message="The final render failed: asking the builder to fix it",
             )
             messages.append(Message.user(_render_failure_text(self.last_render_errors)))
             summary = await self.build(messages, system)
