@@ -123,3 +123,34 @@ jobs:
           # another workflow may have pushed meanwhile: replay on top of it
           git pull --rebase origin main
           git push origin main
+
+      # Argo CD polls the GitOps repo every three minutes; asking it directly makes the rollout
+      # start now and turns a rollout that never becomes healthy into a failed workflow. The
+      # Argo CD API is only reachable on the tailnet: the runner joins it as tag:ci for the job.
+      - name: Connect to the tailnet
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Refresh, sync and wait in Argo CD
+        env:
+          ARGOCD_SERVER: argocd.tailb2871.ts.net
+          ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+          APP: ${{ steps.target.outputs.app }}
+        run: |
+          auth="Authorization: Bearer ${ARGOCD_TOKEN}"
+          base="https://${ARGOCD_SERVER}/api/v1/applications/${APP}"
+          curl -fsS -H "$auth" "${base}?refresh=normal" > /dev/null
+          curl -fsS -X POST -H "$auth" -H "Content-Type: application/json" \
+            "${base}/sync" -d '{"prune": true}' > /dev/null
+          for i in $(seq 1 60); do
+            state=$(curl -fsS -H "$auth" "$base" \
+              | jq -r '.status.sync.status + "/" + .status.health.status')
+            echo "${APP}: ${state}"
+            [[ "$state" == "Synced/Healthy" ]] && exit 0
+            sleep 5
+          done
+          echo "${APP} did not reach Synced/Healthy within 5 minutes"
+          exit 1
