@@ -27,7 +27,7 @@ test("a broadleaf tree is one wood mesh and one instanced leaf mesh, sized as as
   assert.equal(wood.length, 1);
   assert.equal(leaves.length, 1);
   assert.ok(leaves[0].isInstancedMesh);
-  assert.ok(leaves[0].count > 800, `only ${leaves[0].count} leaves`);
+  assert.ok(leaves[0].count > 300, `only ${leaves[0].count} leaves`);
   const b = box(t);
   assert.ok(b.max.y > 6.3 && b.max.y < 8.2, `height ${b.max.y}`);
   const w = Math.max(b.max.x - b.min.x, b.max.z - b.min.z);
