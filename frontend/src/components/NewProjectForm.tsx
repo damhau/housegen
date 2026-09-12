@@ -2,7 +2,7 @@ import { useMemo, useState } from "react"
 import { useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
 import { FileText, ImagePlus, Images, Loader2, X } from "lucide-react"
-import { getListProjectsQueryKey, useCreateProject } from "@/api/endpoints/projects/projects"
+import { getListProjectsQueryKey, useCreateProject, useGenerate, useIntake } from "@/api/endpoints/projects/projects"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -16,6 +16,8 @@ export function NewProjectForm() {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const create = useCreateProject()
+  const generate = useGenerate()
+  const intake = useIntake()
   const [name, setName] = useState("")
   // one or more plan documents (the 1935 original, the 2024 survey…), each with an optional label
   const [plans, setPlans] = useState<{ file: File; label: string }[]>([])
@@ -26,7 +28,7 @@ export function NewProjectForm() {
 
   const labelled = SIDES.filter((s) => facades[s])
   const total = labelled.length + extras.length
-  const busy = create.isPending
+  const busy = create.isPending || generate.isPending || intake.isPending
   const canSubmit = name.trim().length > 0 && plans.length > 0 && !busy
 
   function addPlans(files: FileList | null) {
@@ -62,8 +64,10 @@ export function NewProjectForm() {
           notes: notes.trim(),
         },
       })
-      // nothing starts here: the project page has the start button next to the run settings
-      // (preset, provider, model), so the first run can be chosen before it is paid for
+      // without photos the agent reads the plans first and asks its questions; the build
+      // starts from the conversation once they are answered
+      if (photos.length === 0) await intake.mutateAsync({ projectId: project.id })
+      else await generate.mutateAsync({ projectId: project.id, data: null })
       await qc.invalidateQueries({ queryKey: getListProjectsQueryKey() })
       await navigate({ to: "/projects/$projectId", params: { projectId: project.id } })
     } catch (err) {
@@ -193,7 +197,7 @@ export function NewProjectForm() {
             )}
             <p className="text-xs text-muted-foreground">
               {total === 0
-                ? "No photo: the agent will read the plans and ask a few questions before building."
+                ? "No photo: the plans will be read first."
                 : `${total} photo${total > 1 ? "s" : ""}: ${labelled.length} labelled façade${labelled.length === 1 ? "" : "s"}, ${extras.length} other.`}
             </p>
           </div>
@@ -214,11 +218,8 @@ export function NewProjectForm() {
           {error && <p className="text-sm text-destructive">{error}</p>}
           <Button type="submit" disabled={!canSubmit}>
             {busy && <Loader2 className="animate-spin" />}
-            Create project
+            {total === 0 ? "Upload and read the plans" : "Upload and generate"}
           </Button>
-          <p className="-mt-3 text-xs text-muted-foreground">
-            Nothing runs yet: on the project page, pick the run settings (quality, provider, model), then {total === 0 ? "read the plans" : "generate"}.
-          </p>
         </form>
       </CardContent>
     </Card>
