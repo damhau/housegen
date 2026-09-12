@@ -494,13 +494,14 @@ export function canopy({ width = 4, depth = 2.5, height = 2.6, position = [0, 0,
 }
 
 /** Planter box with bushy plants (for terraces/balconies). */
-export function planter({ length = 1.5, position = [0, 0, 0], rotationY = 0, color = "#5d6b62" }) {
+export function planter({ length = 1.5, position = [0, 0, 0], rotationY = 0, color = "#5d6b62", seed = 1 }) {
+  const rnd = seeded(seed);
   const g = new THREE.Group();
   g.add(box({ size: [length, 0.45, 0.4], position: [0, 0.225, 0], material: mat.paint(color) }));
   const n = Math.max(2, Math.round(length / 0.35));
   for (let i = 0; i < n; i++) {
-    const s = new THREE.Mesh(new THREE.SphereGeometry(0.22 + Math.random() * 0.08, 8, 6), mat.foliage("#6a9a48"));
-    s.position.set(-length / 2 + (i + 0.5) * (length / n), 0.6, (Math.random() - 0.5) * 0.15);
+    const s = new THREE.Mesh(new THREE.SphereGeometry(0.22 + rnd() * 0.08, 8, 6), mat.foliage("#6a9a48"));
+    s.position.set(-length / 2 + (i + 0.5) * (length / n), 0.6, (rnd() - 0.5) * 0.15);
     s.scale.y = 1.3;
     shadow(s, true, false);
     g.add(s);
@@ -521,7 +522,8 @@ function seeded(seed) {
 }
 
 /** Hedge along a line. */
-export function hedge({ from, to, height = 1.2, thickness = 0.6, y = 0, color = "#4f7a3a" }) {
+export function hedge({ from, to, height = 1.2, thickness = 0.6, y = 0, color = "#4f7a3a", seed = 1 }) {
+  const rnd = seeded(seed);
   const dx = to[0] - from[0], dz = to[1] - from[1];
   const length = Math.hypot(dx, dz);
   const g = new THREE.Group();
@@ -530,7 +532,7 @@ export function hedge({ from, to, height = 1.2, thickness = 0.6, y = 0, color = 
   for (let i = 0; i < segs; i++) {
     const b = shadow(new THREE.Mesh(new THREE.BoxGeometry(length / segs + 0.05, height, thickness), m));
     b.position.set((i + 0.5) * (length / segs), height / 2, 0);
-    b.rotation.z = (Math.random() - 0.5) * 0.04;
+    b.rotation.z = (rnd() - 0.5) * 0.04;
     g.add(b);
   }
   g.position.set(from[0], y, from[1]);
@@ -713,85 +715,295 @@ export function pebbleStrip({ from, to, width = 0.45, density = 12, seed = 5 }) 
   return inst;
 }
 
-function leafCluster(list, cx, cy, cz, rx, ry, rz, count, rnd) {
-  for (let q = 0; q < count; q++) {
-    const u = rnd() * Math.PI * 2, v = Math.acos(2 * rnd() - 1), r = Math.cbrt(rnd());
-    list.push([cx + Math.cos(u) * Math.sin(v) * r * rx, cy + Math.cos(v) * r * ry, cz + Math.sin(u) * Math.sin(v) * r * rz]);
+// --------------------------------------------------------------------------
+// Vegetation. Wood is a continuous, tapering, gently bending tube per trunk and branch (all
+// of a plant's wood merged into one mesh); foliage is one instanced mesh of leaf cards with a
+// leaf shape cut by an alpha texture drawn on a canvas at start (plain quads where there is
+// no document, e.g. the Node tests). Deterministic by seed.
+// --------------------------------------------------------------------------
+
+/** Ring-swept tube along a curve, radius shrinking from r0 at the start to r1 at the end. */
+function taperedTube(points, r0, r1, { sides = 7, segments } = {}) {
+  const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...p)), false, "centripetal");
+  const n = segments ?? Math.max(4, Math.round(curve.getLength() / 0.3));
+  const pts = curve.getSpacedPoints(n);
+  const frames = curve.computeFrenetFrames(n, false);
+  const rAt = (t) => r0 + (r1 - r0) * Math.pow(t, 0.85);
+  const pos = [], idx = [];
+  for (let i = 0; i <= n; i++) {
+    const r = rAt(i / n), N = frames.normals[i], B = frames.binormals[i], p = pts[i];
+    for (let j = 0; j < sides; j++) {
+      const a = (j / sides) * Math.PI * 2, c = Math.cos(a), s = Math.sin(a);
+      pos.push(p.x + (N.x * c + B.x * s) * r, p.y + (N.y * c + B.y * s) * r, p.z + (N.z * c + B.z * s) * r);
+      if (i < n) {
+        const k = i * sides + j, l = i * sides + ((j + 1) % sides);
+        idx.push(k, l, k + sides, l, l + sides, k + sides); // outward-facing
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  return { geo, curve, rAt };
+}
+
+/** One geometry from several (position + normal + index), for one draw call per plant. */
+function mergeGeometries(geos) {
+  const pos = [], nor = [], idx = [];
+  let offset = 0;
+  for (const g of geos) {
+    const p = g.attributes.position.array, n = g.attributes.normal.array, ix = g.index.array;
+    for (let i = 0; i < p.length; i++) pos.push(p[i]);
+    for (let i = 0; i < n.length; i++) nor.push(n[i]);
+    for (let i = 0; i < ix.length; i++) idx.push(ix[i] + offset);
+    offset += p.length / 3;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  geo.setIndex(idx);
+  return geo;
+}
+
+/** The control points of a branch: from `start` along `dir` for `len`, sagging a little in the middle and lifting at the tip, with some wobble. */
+function bendPoints(start, dir, len, rnd, { droop = 0.12, lift = 0.22, wobble = 0.1, steps = 3 } = {}) {
+  const pts = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps, s = len * t;
+    const dy = -droop * len * Math.sin(t * Math.PI) + lift * len * t * t;
+    const w = i === 0 ? 0 : (rnd() - 0.5) * wobble * len;
+    const w2 = i === 0 ? 0 : (rnd() - 0.5) * wobble * len;
+    pts.push([start[0] + dir[0] * s + w, start[1] + dir[1] * s + dy, start[2] + dir[2] * s + w2]);
+  }
+  return pts;
+}
+
+const _leafTextures = new Map();
+
+/** The alpha-cut leaf shape (a pointed leaf with a midrib, or a tuft of needles); null without a document. */
+function leafTexture(kind) {
+  if (typeof document === "undefined") return null;
+  if (_leafTextures.has(kind)) return _leafTextures.get(kind);
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, 64, 64);
+  ctx.fillStyle = "#ffffff";
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineCap = "round";
+  if (kind === "needle") {
+    ctx.lineWidth = 3.2;
+    for (let i = 0; i < 9; i++) {
+      const a = -Math.PI / 2 + (i - 4) * 0.26;
+      ctx.beginPath();
+      ctx.moveTo(32, 62);
+      ctx.lineTo(32 + Math.cos(a) * 34, 62 + Math.sin(a) * 34);
+      ctx.stroke();
+    }
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(32, 2);
+    ctx.quadraticCurveTo(64, 24, 32, 62);
+    ctx.quadraticCurveTo(0, 24, 32, 2);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.3)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(32, 6);
+    ctx.lineTo(32, 58);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  _leafTextures.set(kind, tex);
+  return tex;
+}
+
+function leafMaterial(kind) {
+  return cached(`leaf:${kind}`, () => {
+    const map = leafTexture(kind);
+    const m = new THREE.MeshStandardMaterial({
+      color: "#ffffff", // the hue is per instance
+      roughness: 0.85,
+      metalness: 0,
+      side: THREE.DoubleSide,
+      map: map ?? null,
+      alphaTest: map ? 0.5 : 0,
+    });
+    m.emissive = new THREE.Color("#1a2a10"); // a little light through the leaf
+    m.emissiveIntensity = 0.35;
+    return m;
+  });
+}
+
+/** Bark: rough, with a noise bump where a document exists (canvas), plain otherwise. */
+function barkMaterial(color) {
+  return cached(`bark:${color}`, () => {
+    const m = new THREE.MeshStandardMaterial({ color, roughness: 1, metalness: 0 });
+    if (typeof document !== "undefined") {
+      const c = document.createElement("canvas");
+      c.width = c.height = 128;
+      const ctx = c.getContext("2d");
+      const img = ctx.createImageData(128, 128);
+      const rnd = seeded(11);
+      for (let y = 0; y < 128; y++) {
+        for (let x = 0; x < 128; x++) {
+          const i = (y * 128 + x) * 4;
+          // vertical streaks with grain
+          const v = 128 + Math.sin(x * 0.9 + rnd() * 0.6) * 40 + (rnd() - 0.5) * 60;
+          img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.max(0, Math.min(255, v));
+          img.data[i + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(2, 2);
+      m.bumpMap = tex;
+      m.bumpScale = 0.015;
+    }
+    return m;
+  });
+}
+
+/** Leaf cards along a curve between `from` and `to` (0..1), `perMetre` of them, scattered within `radius`. */
+function leavesAlong(list, curve, from, to, perMetre, radius, rnd) {
+  const len = curve.getLength() * (to - from);
+  const n = Math.max(0, Math.round(len * perMetre));
+  for (let i = 0; i < n; i++) {
+    const p = curve.getPointAt(from + (to - from) * rnd());
+    const u = rnd() * Math.PI * 2, v = Math.acos(2 * rnd() - 1), r = radius * Math.cbrt(rnd());
+    list.push([p.x + Math.cos(u) * Math.sin(v) * r, p.y + Math.cos(v) * r * 0.7, p.z + Math.sin(u) * Math.sin(v) * r]);
   }
 }
 
-function leafMesh(leaves, color, rnd, scale = 1) {
-  const geo = new THREE.SphereGeometry(1, 5, 3);
-  const m = mat.foliage(color);
-  const inst = new THREE.InstancedMesh(geo, m, leaves.length);
+/** One instanced mesh of leaf cards: random orientation, size and hue per leaf. */
+function leafMesh(leaves, color, rnd, { kind = "leaf", width = 0.11, height = 0.075 } = {}) {
+  const inst = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), leafMaterial(kind), leaves.length);
   const d = new THREE.Object3D();
   const base = new THREE.Color(color);
   const hsl = { h: 0, s: 0, l: 0 };
   base.getHSL(hsl);
+  const tint = new THREE.Color();
   leaves.forEach((p, i) => {
     d.position.set(...p);
-    d.scale.set((0.07 + rnd() * 0.04) * scale, (0.16 + rnd() * 0.1) * scale, 0.025 * scale);
-    d.rotation.set(rnd() * 2, rnd() * 6, rnd() * 6);
+    const s = 0.75 + rnd() * 0.6;
+    d.scale.set(width * s, height * s, 1);
+    d.rotation.set((rnd() - 0.5) * 2.2, rnd() * Math.PI * 2, (rnd() - 0.5) * 1.2);
     d.updateMatrix();
     inst.setMatrixAt(i, d.matrix);
-    inst.setColorAt(i, new THREE.Color().setHSL(hsl.h + (rnd() - 0.5) * 0.05, hsl.s * (0.8 + rnd() * 0.4), hsl.l * (0.75 + rnd() * 0.5)));
+    tint.setHSL(hsl.h + (rnd() - 0.5) * 0.04, hsl.s * (0.85 + rnd() * 0.3), hsl.l * (0.7 + rnd() * 0.55));
+    inst.setColorAt(i, tint);
   });
   inst.castShadow = true;
   inst.receiveShadow = true;
+  inst.userData = { kind: "leaves" };
   return inst;
 }
 
+function broadleafWood(height, spread, kind, rnd, wood, leaves) {
+  const columnar = kind === "columnar";
+  const trunkH = height * (columnar ? 0.28 : 0.38);
+  const rBase = 0.022 * height + 0.02, rTrunkTop = rBase * 0.55;
+  const wob = 0.06 * height;
+  const trunkPts = [[0, 0, 0], [(rnd() - 0.5) * wob * 0.5, trunkH * 0.5, (rnd() - 0.5) * wob * 0.5], [(rnd() - 0.5) * wob, trunkH, (rnd() - 0.5) * wob]];
+  const trunk = taperedTube(trunkPts, rBase, rTrunkTop, { sides: 9 });
+  wood.push(trunk.geo);
+  // the leader: the trunk continuing into the crown
+  const top = trunkPts[2];
+  const leaderPts = [top, [top[0] + (rnd() - 0.5) * wob, (trunkH + height * 0.95) / 2, top[2] + (rnd() - 0.5) * wob], [top[0] + (rnd() - 0.5) * wob * 0.6, height * 0.95, top[2] + (rnd() - 0.5) * wob * 0.6]];
+  const leader = taperedTube(leaderPts, rTrunkTop, 0.025, { sides: 8 });
+  wood.push(leader.geo);
+  const primaries = (columnar ? 9 : 6) + Math.floor(rnd() * 3);
+  const reach = spread * 0.5;
+  for (let k = 0; k < primaries; k++) {
+    const t = 0.04 + (k / primaries) * 0.82 + rnd() * 0.05;
+    const at = leader.curve.getPointAt(t);
+    const az = k * 2.399 + (rnd() - 0.5) * 0.6;
+    const el = (columnar ? 58 : 24 + rnd() * 30) * (Math.PI / 180);
+    const dir = [Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)];
+    const len = Math.max(0.7, reach * (columnar ? 0.7 : 1) * (0.65 + rnd() * 0.5) * (1 - 0.35 * t));
+    const r0 = Math.max(0.02, leader.rAt(t) * 0.55);
+    const branch = taperedTube(bendPoints([at.x, at.y, at.z], dir, len, rnd), r0, 0.018, { sides: 6 });
+    wood.push(branch.geo);
+    leavesAlong(leaves, branch.curve, 0.45, 1, 40, 0.35, rnd);
+    const twigs = 2 + Math.floor(rnd() * 2);
+    for (let j = 0; j < twigs; j++) {
+      const tt = 0.35 + rnd() * 0.45;
+      const p = branch.curve.getPointAt(tt), tan = branch.curve.getTangentAt(tt);
+      const side = (rnd() < 0.5 ? -1 : 1) * (0.6 + rnd() * 0.5);
+      // rotate the tangent about y and tilt it up a little
+      const c = Math.cos(side), s = Math.sin(side);
+      const dx = tan.x * c - tan.z * s, dz = tan.x * s + tan.z * c;
+      const tdir = [dx, Math.max(0.15, tan.y) + 0.25, dz];
+      const tl = Math.hypot(...tdir);
+      const twigLen = Math.max(0.4, len * 0.5 * (0.7 + rnd() * 0.5));
+      const twig = taperedTube(bendPoints([p.x, p.y, p.z], [tdir[0] / tl, tdir[1] / tl, tdir[2] / tl], twigLen, rnd, { steps: 2 }), Math.max(0.012, branch.rAt(tt) * 0.6), 0.008, { sides: 5 });
+      wood.push(twig.geo);
+      leavesAlong(leaves, twig.curve, 0.15, 1, 85, 0.3, rnd);
+      const tip = twig.curve.getPointAt(1);
+      for (let q = 0; q < 26; q++) {
+        const u = rnd() * Math.PI * 2, v = Math.acos(2 * rnd() - 1), r = 0.45 * Math.cbrt(rnd());
+        leaves.push([tip.x + Math.cos(u) * Math.sin(v) * r, tip.y + Math.cos(v) * r * 0.8, tip.z + Math.sin(u) * Math.sin(v) * r]);
+      }
+    }
+  }
+  leavesAlong(leaves, leader.curve, 0.55, 1, 70, 0.55, rnd);
+}
+
+function pineWood(height, spread, rnd, wood, leaves) {
+  const rBase = 0.02 * height + 0.03;
+  const lean = 0.03 * height;
+  const trunkPts = [[0, 0, 0], [(rnd() - 0.5) * lean, height * 0.35, (rnd() - 0.5) * lean], [(rnd() - 0.5) * lean, height * 0.7, (rnd() - 0.5) * lean], [(rnd() - 0.5) * lean * 0.5, height, (rnd() - 0.5) * lean * 0.5]];
+  const trunk = taperedTube(trunkPts, rBase, 0.02, { sides: 9 });
+  wood.push(trunk.geo);
+  const y0 = height * 0.28, y1 = height * 0.92;
+  const spacing = Math.max(0.45, height / 14);
+  let whorl = 0;
+  for (let y = y0; y <= y1; y += spacing, whorl++) {
+    const t = y / height;
+    const at = trunk.curve.getPointAt(t);
+    const u = (y - y0) / (y1 - y0);
+    const count = 5 + Math.floor(rnd() * 2);
+    for (let k = 0; k < count; k++) {
+      const az = (k / count) * Math.PI * 2 + whorl * 0.7 + (rnd() - 0.5) * 0.3;
+      const el = (-8 + rnd() * 12) * (Math.PI / 180);
+      const dir = [Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)];
+      const len = spread * 0.55 * (1 - 0.85 * u) + 0.25;
+      const branch = taperedTube(bendPoints([at.x, at.y, at.z], dir, len, rnd, { droop: 0.08, lift: 0.1, wobble: 0.06, steps: 2 }), Math.max(0.015, trunk.rAt(t) * 0.45), 0.01, { sides: 5 });
+      wood.push(branch.geo);
+      leavesAlong(leaves, branch.curve, 0.15, 1, 75, 0.14, rnd);
+    }
+  }
+  const tip = trunk.curve.getPointAt(1);
+  for (let q = 0; q < 30; q++) leaves.push([tip.x + (rnd() - 0.5) * 0.3, tip.y - rnd() * 0.5, tip.z + (rnd() - 0.5) * 0.3]);
+}
+
 /**
- * A tree that reads as foliage (instanced leaves), not as blobs. position=[x, z] (sits on the
- * ground) or [x, y, z]. kind: "broadleaf" | "pine" | "columnar". RECOMMENDED over tree().
+ * A tree: a tapering, bending trunk and branches (one mesh) and instanced leaf cards (one
+ * mesh). position=[x, z] (sits on the ground) or [x, y, z]. kind: "broadleaf" | "pine" |
+ * "columnar". Deterministic by seed.
  */
-export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf", seed = 3, foliageColor, trunkColor = "#655d48" }) {
+export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf", seed = 3, foliageColor, trunkColor = "#5b5142" }) {
   const rnd = seeded(seed);
   const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
   const y = position.length === 3 ? position[1] : groundY(x, z);
   const g = new THREE.Group();
   g.position.set(x, y, z);
-  const bark = mat.wood(trunkColor);
-  const leaves = [];
-  if (kind === "pine") {
-    g.add(rod([0, 0, 0], [0.3, height, -0.15], 0.16, bark));
-    const tiers = 5;
-    for (let t = 0; t < tiers; t++) {
-      const yy = height * (0.45 + 0.11 * t), reach = spread * 0.55 * (1 - t / (tiers + 1));
-      for (let j = 0; j < 5; j++) {
-        const a = j * 1.256 + t * 0.55;
-        const e = [Math.cos(a) * reach, yy + 0.3, Math.sin(a) * reach];
-        g.add(rod([0.1, yy - 0.2, 0], e, 0.04, bark));
-        leafCluster(leaves, e[0], e[1], e[2], reach * 0.55, 0.35, reach * 0.55, 120, rnd);
-      }
-    }
-    g.add(leafMesh(leaves, foliageColor ?? "#4b6b3f", rnd, 0.8));
-  } else {
-    const trunkH = height * (kind === "columnar" ? 0.25 : 0.4);
-    const spine = [[0, 0, 0], [-0.08, trunkH * 0.5, 0.06], [0.1, trunkH, -0.04]];
-    for (let i = 0; i < spine.length - 1; i++) g.add(rod(spine[i], spine[i + 1], 0.18 - i * 0.05, bark));
-    const branches = kind === "columnar" ? 7 : 11;
-    for (let k = 0; k < branches; k++) {
-      const a = k * 2.399, up = trunkH + k * (height - trunkH) / branches * 0.9;
-      const len = (kind === "columnar" ? spread * 0.35 : spread * 0.5) * (0.7 + rnd() * 0.6);
-      const mid = [Math.cos(a) * len * 0.5, up + 0.4, Math.sin(a) * len * 0.5];
-      const end = [Math.cos(a) * len, up + 0.9 + rnd() * 0.6, Math.sin(a) * len];
-      g.add(rod(spine[2], mid, 0.07, bark));
-      g.add(rod(mid, end, 0.035, bark));
-      for (let j = 0; j < 4; j++) {
-        const e = [end[0] + (rnd() - 0.5) * 1.1, end[1] + (rnd() - 0.2) * 0.9, end[2] + (rnd() - 0.5) * 1.1];
-        leafCluster(leaves, e[0], e[1], e[2], 0.7, 0.5, 0.7, 50, rnd);
-      }
-    }
-    // a top crown
-    leafCluster(leaves, 0.1, height * 0.92, 0, spread * 0.3, height * 0.12, spread * 0.3, 160, rnd);
-    g.add(leafMesh(leaves, foliageColor ?? "#5a7a3e", rnd));
-  }
+  const wood = [], leaves = [];
+  if (kind === "pine") pineWood(height, spread, rnd, wood, leaves);
+  else broadleafWood(height, spread, kind, rnd, wood, leaves);
+  const bark = shadow(new THREE.Mesh(mergeGeometries(wood), barkMaterial(trunkColor)));
+  bark.userData = { kind: "wood" };
+  g.add(bark);
+  if (kind === "pine") g.add(leafMesh(leaves, foliageColor ?? "#3f6238", rnd, { kind: "needle", width: 0.24, height: 0.16 }));
+  else g.add(leafMesh(leaves, foliageColor ?? "#5a7d3c", rnd, { width: kind === "columnar" ? 0.09 : 0.11, height: kind === "columnar" ? 0.06 : 0.075 }));
   g.userData = { kind: "tree", height, spread };
   return g;
 }
 
-/** Bush with instanced leaves; position=[x, z] or [x, y, z]. RECOMMENDED over bush(). */
+/** Bush: a dome of leaf cards over a few twigs; position=[x, z] or [x, y, z]. */
 export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", stems = true }) {
   const rnd = seeded(seed);
   const [x, z] = position.length === 3 ? [position[0], position[2]] : position;
@@ -799,16 +1011,22 @@ export function leafBush({ position, radius = 0.8, seed = 2, color = "#6a8a4a", 
   const g = new THREE.Group();
   g.position.set(x, y, z);
   const leaves = [];
-  const n = Math.max(160, Math.round(900 * radius * radius));
+  const n = Math.max(220, Math.round(1100 * radius * radius));
   for (let i = 0; i < n; i++) {
-    const a = rnd() * Math.PI * 2, cy = 2 * rnd() - 1, rr = radius * (0.4 + 0.6 * Math.cbrt(rnd())), ss = Math.sqrt(1 - cy * cy);
+    const a = rnd() * Math.PI * 2, cy = 2 * rnd() - 1, rr = radius * (0.5 + 0.5 * Math.cbrt(rnd())), ss = Math.sqrt(1 - cy * cy);
     leaves.push([Math.cos(a) * ss * rr, radius * 0.6 + cy * rr * 0.65, Math.sin(a) * ss * rr]);
   }
-  g.add(leafMesh(leaves, color, rnd, 0.6 + radius * 0.4));
   if (stems) {
-    const twig = mat.wood("#6f6a58");
-    for (let i = 0; i < 5; i++) { const a = i * 2.4; g.add(rod([0, 0, 0], [Math.cos(a) * radius * 0.5, radius * 0.8, Math.sin(a) * radius * 0.5], 0.012, twig)); }
+    const twigs = [];
+    for (let i = 0; i < 5; i++) {
+      const a = i * 2.4 + rnd() * 0.5;
+      twigs.push(taperedTube([[0, 0, 0], [Math.cos(a) * radius * 0.25, radius * 0.45, Math.sin(a) * radius * 0.25], [Math.cos(a) * radius * 0.55, radius * 0.85, Math.sin(a) * radius * 0.55]], 0.014, 0.006, { sides: 5, segments: 4 }).geo);
+    }
+    const stem = shadow(new THREE.Mesh(mergeGeometries(twigs), barkMaterial("#6a6455")), true, false);
+    stem.userData = { kind: "wood" };
+    g.add(stem);
   }
+  g.add(leafMesh(leaves, color, rnd, { width: 0.075 * (0.7 + radius * 0.4), height: 0.05 * (0.7 + radius * 0.4) }));
   g.userData = { kind: "bush", radius };
   return g;
 }
