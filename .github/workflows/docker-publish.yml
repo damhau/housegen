@@ -142,12 +142,22 @@ jobs:
         run: |
           auth="Authorization: Bearer ${ARGOCD_TOKEN}"
           base="https://${ARGOCD_SERVER}/api/v1/applications/${APP}"
-          curl -fsS -H "$auth" "${base}?refresh=normal" > /dev/null
-          curl -fsS -X POST -H "$auth" -H "Content-Type: application/json" \
-            "${base}/sync" -d '{"prune": true}' > /dev/null
+          # curl -f would hide Argo CD's error message: keep the body and fail on the status
+          call() {
+            local out code
+            out=$(curl -sS -H "$auth" -w '\n%{http_code}' "$@")
+            code=${out##*$'\n'}
+            body=${out%$'\n'*}
+            if [[ "$code" != 2* ]]; then
+              echo "::error::Argo CD answered ${code}: ${body}"
+              exit 1
+            fi
+          }
+          call "${base}?refresh=normal"
+          call -X POST -H "Content-Type: application/json" "${base}/sync" -d '{"prune": true}'
           for i in $(seq 1 60); do
-            state=$(curl -fsS -H "$auth" "$base" \
-              | jq -r '.status.sync.status + "/" + .status.health.status')
+            call "$base"
+            state=$(jq -r '.status.sync.status + "/" + .status.health.status' <<< "$body")
             echo "${APP}: ${state}"
             [[ "$state" == "Synced/Healthy" ]] && exit 0
             sleep 5
