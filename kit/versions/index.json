@@ -5,6 +5,11 @@
       "name": "2026-09-12-baseline",
       "date": "2026-09-12",
       "note": "The kit as measured for the v0.1.0 build path, with the presentation look of docs/presentation-look.md. Pinned for the builder, the critic and the version pictures."
+    },
+    {
+      "name": "2026-09-12-v1",
+      "date": "2026-09-12",
+      "note": "Trees rebuilt without a library (a trunk forking into arching limbs, branches and twigs, leaf-cluster cards), bushes and hedges as a dark core with a shell of outward-facing cards, the high-performance GPU hint, __house.stats and __house.gl. Not pinned: the build path keeps the baseline until the kit v2 measured run."
     }
   ]
 }

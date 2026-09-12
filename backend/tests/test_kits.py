@@ -14,6 +14,7 @@ from housegen.core.config import get_settings
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
+LATEST = "2026-09-12-v1"
 
 
 @pytest.fixture
@@ -31,10 +32,11 @@ async def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterat
 def test_registry_lists_the_baseline_and_the_working_copy() -> None:
     out = kits.list_kits()
     names = [k.name for k in out.kits]
-    assert names[0] == BASELINE
+    assert names[0] == LATEST  # newest snapshot first: what the viewer shows by default
+    assert BASELINE in names
     assert names[-1] == "dev"
-    assert out.pinned == BASELINE
-    assert out.latest == BASELINE
+    assert out.pinned == BASELINE  # the build path stays on the baseline
+    assert out.latest == LATEST
     assert [k.name for k in out.kits if k.pinned] == [BASELINE]
     assert out.kits[-1].dev
 
