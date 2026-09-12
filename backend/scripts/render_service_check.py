@@ -55,13 +55,13 @@ def main() -> int:
         print(f"render failed {r.status_code}: {r.text[:500]}")
         return 1
     d = r.json()
-    a.out.mkdir(parents=True, exist_ok=True)
-    for view, b64 in d["images"].items():
-        (a.out / f"{view}.jpg").write_bytes(base64.b64decode(b64))
     print(
         f"render: {len(d['images'])} image(s) in {wall:.1f}s wall, {d['duration_ms']} ms on the service"
         f" ({d['gl']})"
     )
+    a.out.mkdir(parents=True, exist_ok=True)
+    for view, b64 in d["images"].items():
+        (a.out / f"{view}.jpg").write_bytes(base64.b64decode(b64))
     for label, items in (("errors", d["errors"]), ("console", d["console"]), ("audit", d["audit"])):
         for line in items:
             print(f"  {label}: {line}")
