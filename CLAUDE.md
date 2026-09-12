@@ -80,6 +80,8 @@ cd frontend && npm run api:gen
 # after any kit/ change: render the template headless (see scripts / the Renderer) and LOOK at the image
 # (a visual check; see "Visual checks" below when it cannot run here). For look changes, side by side on a real project:
 cd backend  && uv run python scripts/look_sheet.py --scene data/projects/<id>/versions/<n> --look quality=high --look look=presentation --out /tmp/sheet.png
+# no Chromium here? --scene-url https://housegen-dev…/scenes/<id>/versions/<n>/index.html with RENDER_SERVICE_URL + RENDER_SERVICE_TOKEN
+# in the environment renders it on the GPU render service (deploy/modal_render.py), ultra included, in seconds.
 ```
 
 `frontend/openapi.json` is committed on purpose (CI builds without a backend). `src/routeTree.gen.ts` is generated

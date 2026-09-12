@@ -5,11 +5,19 @@ for any change to how the kit draws a house.
         --look quality=high --look look=presentation --look "look=ultra&samples=16" \
         --views southeast north aerial --out /tmp/sheet.png
 
-Serves the kit and the scene directory itself (no backend needed, no database touched), renders
-through the app's own headless Renderer (same browser flags, same JPEG pipeline as the version
-pictures), and writes one contact sheet: a row per view, a column per look, each cell labelled
+    # on the GPU render service, from a scene page the service can reach (a version on dev):
+    RENDER_SERVICE_URL=https://…modal.run RENDER_SERVICE_TOKEN=… uv run python scripts/look_sheet.py \
+        --scene-url https://housegen-dev.apps.dhconsulting.ch/scenes/<id>/versions/<n>/index.html \
+        --look quality=high --look look=presentation --look "look=ultra&samples=16" --out /tmp/sheet.png
+
+With --scene it serves the kit and the scene directory itself (no backend needed, no database
+touched) and renders through the app's own headless Renderer in this process (same browser
+flags, same JPEG pipeline as the version pictures). With --scene-url it renders the page at that
+URL through the app's render client: the GPU service when RENDER_SERVICE_URL is set (a local
+directory cannot be used there, the service cannot reach this machine), else the local browser.
+Either way it writes one contact sheet: a row per view, a column per look, each cell labelled
 with its mean luminance and 10/50/90 percentiles (p10 = the shade, p50 = the walls, p90 = the sky).
-Run it from `backend/`. With --scene omitted it renders the kit's template.
+Run it from `backend/`. With neither --scene nor --scene-url it renders the kit's template.
 """
 
 from __future__ import annotations
@@ -31,7 +39,8 @@ sys.path.insert(0, str(BACKEND / "src"))
 os.environ.setdefault("RENDER_TIMEOUT_MS", "600000")
 
 from housegen.core.config import get_settings  # noqa: E402
-from housegen.render.renderer import Renderer  # noqa: E402
+from housegen.render.remote import RenderClient  # noqa: E402
+from housegen.render.renderer import Renderer, SceneRenderer  # noqa: E402
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
@@ -59,27 +68,24 @@ def stats(img: Image.Image) -> tuple[float, list[int]]:
 
 
 async def render_all(
-    scene_url: str, looks: list[str], views: list[str], out_dir: Path
+    scene_url: str, looks: list[str], views: list[str], out_dir: Path, renderer: SceneRenderer
 ) -> dict[str, dict[str, Path]]:
-    renderer = Renderer()
     images: dict[str, dict[str, Path]] = {}
-    try:
-        for look in looks:
-            # the Renderer adds headless, quality, view and size itself; `quality=` in a look
-            # overrides its default
-            quality = "high"
-            for part in look.split("&"):
-                if part.startswith("quality="):
-                    quality = part.split("=", 1)[1]
-            res = await renderer.render(
-                f"{scene_url}?{look}", views, out_dir / look.replace("&", "_"), quality=quality
-            )
-            for err in res.errors:
-                print(f"  [{look}] error: {err[:200]}", file=sys.stderr)
-            print(f"  {look}: {len(res.images)} views in {res.duration_ms / 1000:.0f} s")
-            images[look] = res.images
-    finally:
-        await renderer.close()
+    sep = "&" if "?" in scene_url else "?"
+    for look in looks:
+        # the Renderer adds headless, quality, view and size itself; `quality=` in a look
+        # overrides its default
+        quality = "high"
+        for part in look.split("&"):
+            if part.startswith("quality="):
+                quality = part.split("=", 1)[1]
+        res = await renderer.render(
+            f"{scene_url}{sep}{look}", views, out_dir / look.replace("&", "_"), quality=quality
+        )
+        for err in res.errors:
+            print(f"  [{look}] error: {err[:200]}", file=sys.stderr)
+        print(f"  {look}: {len(res.images)} views in {res.duration_ms / 1000:.0f} s")
+        images[look] = res.images
     return images
 
 
@@ -132,6 +138,11 @@ def main() -> None:
         help="directory holding index.html + src/ (a version snapshot); default: the kit template",
     )
     ap.add_argument(
+        "--scene-url",
+        help="absolute URL of a scene page instead of a local directory, e.g. a version on dev; "
+        "rendered on the GPU service when RENDER_SERVICE_URL is set",
+    )
+    ap.add_argument(
         "--look",
         action="append",
         required=True,
@@ -143,6 +154,27 @@ def main() -> None:
     args = ap.parse_args()
 
     settings = get_settings()
+    if args.scene_url:
+        if args.scene:
+            sys.exit("--scene and --scene-url are exclusive")
+        where = "the render service" if settings.RENDER_SERVICE_URL else "the local browser"
+        print(f"rendering {args.scene_url} on {where}")
+        client = RenderClient()
+        try:
+            images = asyncio.run(
+                render_all(
+                    args.scene_url, args.look, args.views, args.out.parent / "renders", client
+                )
+            )
+        finally:
+            asyncio.run(client.close())
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        sheet(images, args.look, args.views, args.out, args.cell_width)
+        return
+    if settings.RENDER_SERVICE_URL:
+        print(
+            "RENDER_SERVICE_URL is set but a local scene directory is rendered in this process (the service cannot reach it)"
+        )
     scene = (args.scene or settings.KIT_DIR / "template").resolve()
     if not (scene / "index.html").exists():
         sys.exit(f"no index.html in {scene}")
@@ -156,11 +188,19 @@ def main() -> None:
         server, port = serve(www)
         try:
             renders = Path(tmp) / "renders"
-            images = asyncio.run(
-                render_all(
-                    f"http://127.0.0.1:{port}/scene/index.html", args.look, args.views, renders
+            local = Renderer()
+            try:
+                images = asyncio.run(
+                    render_all(
+                        f"http://127.0.0.1:{port}/scene/index.html",
+                        args.look,
+                        args.views,
+                        renders,
+                        local,
+                    )
                 )
-            )
+            finally:
+                asyncio.run(local.close())
             args.out.parent.mkdir(parents=True, exist_ok=True)
             sheet(images, args.look, args.views, args.out, args.cell_width)
         finally:
