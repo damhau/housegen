@@ -70,6 +70,10 @@ class Settings(BaseSettings):
     # independent critic rounds after the builder is done (0 disables the critic)
     CRITIC_MAX_ITERATIONS: int = 2
     CRITIC_SCORE_THRESHOLD: int = 80
+    # In-loop render quality (render_views without a quality, the run settings' default). High
+    # since the GPU render service (2026-09-12): the builder sees the picture the saved version
+    # gets, at a few seconds per call; medium was the software-rendering compromise.
+    RENDER_QUALITY: Literal["low", "medium", "high"] = "high"
     RENDER_IMAGE_WIDTH: int = 1024
     RENDER_JPEG_QUALITY: int = 82
     PLAN_MAX_PAGES: int = 6

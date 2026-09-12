@@ -146,7 +146,7 @@ TOOL_SPECS: list[ToolSpec] = [
                 "quality": {
                     "type": "string",
                     "enum": ["low", "medium", "high"],
-                    "description": "default medium (fast); use high only for a final look",
+                    "description": "default: the run's in-loop quality (high on the GPU render service); low is the fastest check",
                 },
                 "eye_height": {
                     "type": "number",
@@ -423,7 +423,8 @@ class BuilderTools:
 
     async def render_views(self, a: dict[str, Any]) -> ToolOutput:
         views = [str(v) for v in a.get("views", [])][:6] or ["southeast"]
-        # medium is plenty to judge massing and openings and renders 2-3x faster than high;
+        # the run's in-loop quality (RENDER_QUALITY, high on the GPU render service: the builder
+        # then sees the picture the saved version gets);
         # the version snapshot the user and the critic see is rendered at high by the pipeline
         quality = str(a.get("quality") or self.default_quality)
         camera = {k: float(a[k]) for k in CAMERA_OVERRIDES if a.get(k) is not None}

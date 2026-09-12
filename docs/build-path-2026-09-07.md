@@ -50,6 +50,15 @@ by a person.
 - Run settings (#18): the defaults resolve to the same model, effort, rounds, step budget and in-loop render
   quality as the `.env` values; a job only differs when the owner changed the sheet.
 
+## Changes since, each with its measured run
+
+- **2026-09-12** (commit after `3f4e778`): the first build furnishes the fixed planting (trees, hedges, beds,
+  planters, pots; only movable things wait as suggestions); in-loop renders at high by default (`RENDER_QUALITY`,
+  the GPU service makes them cost seconds); the stale "older screenshots are dropped" sentence corrected (pruning is
+  gated on prompt size since `79e2b35`); the shed roof's high edge documented as it is built (+z). Baseline: Montelly49-Dev3
+  `db527c7a84f2` v1 on `sha-9838d76`, full preset, 4 façades + 5 extras: score 82 done in one pass, 16 steps, 10
+  renders, 14.4 min, $6.45. The comparison run: the same inputs on the new build, same preset.
+
 ## Observed on the day's runs, not yet acted on
 
 - OpenAI prompt-cache misses right after every new long prefix (routing); the remedy is `prompt_cache_key` per job.

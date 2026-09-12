@@ -111,8 +111,9 @@ Items 1-3 change what a scene renders like only where the component is used; no 
 uses `volume` or `shedRoof`, and the random tilt was noise. They ship without a measured run,
 with the unit tests. Items 4-7 are outside the build path.
 
-Two build-path corrections wait for the next measured run (step 4) and ride with it: the stale
-screenshot sentence in the builder prompt, and the shed roof line of the kit reference.
+The two prompt corrections (the stale screenshot sentence, the shed roof line of the reference) shipped on
+2026-09-12 with the first-build planting change and `RENDER_QUALITY=high`; see `build-path-2026-09-07.md`,
+"Changes since", for the baseline run they are measured against.
 
 ### Step 2: instruments
 

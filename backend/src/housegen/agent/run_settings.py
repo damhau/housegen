@@ -110,7 +110,7 @@ def resolve(env: Settings, overrides: RunSettings | None = None) -> ResolvedRunS
         critic_effort=efforts["critic"],
         critic_rounds=o.critic_rounds if o.critic_rounds is not None else env.CRITIC_MAX_ITERATIONS,
         max_steps=o.max_steps if o.max_steps is not None else env.BUILDER_MAX_STEPS,
-        render_quality=o.render_quality or "medium",
+        render_quality=o.render_quality or env.RENDER_QUALITY,
         max_tokens=env.LLM_MAX_TOKENS,
         notes=notes,
     )

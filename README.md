@@ -126,6 +126,7 @@ every job snapshots the settings it started with.
 | `BUILDER_PRUNE_ABOVE_TOKENS` | 200000 | drop old render screenshots from the builder's history once a prompt exceeds this (0 = never); a prune costs a prompt-cache miss, so only for the context window |
 | `CRITIC_MAX_ITERATIONS` | 1 | independent critic rounds (0 disables) |
 | `CRITIC_SCORE_THRESHOLD` | 80 | stop when reached with no major issue |
+| `RENDER_QUALITY` | `high` | in-loop render quality (`render_views` without a quality); `medium` was the software-rendering compromise |
 | `BROWSER_CHANNEL` | `chrome` | `chrome`, `msedge`, or empty for Playwright's Chromium |
 | `RENDER_ANGLE` | `swiftshader` | WebGL backend: `swiftshader` (software), `gl-egl` or `vulkan` (an NVIDIA GPU) |
 | `RENDER_SERVICE_URL`, `RENDER_SERVICE_TOKEN` | | render on the GPU service instead of in-process (see above); `RENDER_SERVICE_FALLBACK=false` fails the render instead of drawing locally when it is unreachable |
