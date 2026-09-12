@@ -235,29 +235,46 @@ def apply_patch(
     `read`/`exists`/`write`/`delete` are the workspace's sandboxed operations (they validate paths).
     """
     patches = parse_patch(text)
-    planned: list[tuple[str, str, str]] = []  # (op, path, content)
+    # a path may appear more than once (Delete then Add is the model's "rewrite from scratch"):
+    # each section is checked against the state the earlier sections leave, not the disk, and
+    # only the last planned operation per path is carried out
+    planned: dict[str, tuple[str, str]] = {}  # path -> (op, content), in first-seen order
+    virtual: dict[str, str | None] = {}  # path -> planned content (None = planned deletion)
     rejected: list[str] = []
+
+    def current(path: str) -> str | None:
+        if path in virtual:
+            return virtual[path]
+        return read(path) if exists(path) else None
+
     for p in patches:
         try:
             if p.op == "add":
-                if exists(p.path):
+                if current(p.path) is not None:
                     raise PatchError(f"Add File {p.path}: it already exists; use Update File")
-                planned.append(("write", p.path, p.content))
+                virtual[p.path] = p.content
+                planned[p.path] = ("write", p.content)
             elif p.op == "delete":
-                if not exists(p.path):
+                if current(p.path) is None:
                     raise PatchError(f"Delete File {p.path}: it does not exist")
-                planned.append(("delete", p.path, ""))
+                virtual[p.path] = None
+                planned[p.path] = ("delete", "")
             else:
-                if not exists(p.path):
+                before = current(p.path)
+                if before is None:
                     raise PatchError(f"Update File {p.path}: it does not exist; use Add File")
-                planned.append(("write", p.path, apply_hunks(read(p.path), p.hunks, p.path)))
+                after = apply_hunks(before, p.hunks, p.path)
+                virtual[p.path] = after
+                planned[p.path] = ("write", after)
         except PatchError as e:
             rejected.append(str(e))
     results = []
-    for op, path, content in planned:
+    for path, (op, content) in planned.items():
+        if op == "delete" and not exists(path):
+            continue  # added and deleted within the patch: nothing on disk to remove
         results.append(write(path, content) if op == "write" else delete(path))
     if rejected:
-        applied = ", ".join(path for _, path, _ in planned) or "none"
+        applied = ", ".join(planned) or "none"
         raise PatchError(
             f"{len(rejected)} file(s) rejected, the others were written (applied: {applied}). "
             + " | ".join(rejected)

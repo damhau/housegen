@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Trash2 } from "lucide-react"
+import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Square, Trash2 } from "lucide-react"
 import {
   getChatHistoryQueryKey,
   getGetProjectQueryKey,
   getListJobsQueryKey,
   getListProjectsQueryKey,
+  useCancelJob,
   useChatHistory,
   useDeleteProject,
   useGenerate,
@@ -77,6 +78,7 @@ function ProjectPage() {
   const chat = useChatHistory(projectId)
   const generate = useGenerate()
   const intake = useIntake()
+  const cancel = useCancelJob()
   const modify = useModify()
   const restore = useRestoreVersion()
   const fix = useFixVersion()
@@ -173,6 +175,11 @@ function ProjectPage() {
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
+  }
+  async function onStop() {
+    if (!activeJob) return
+    await cancel.mutateAsync({ projectId, jobId: activeJob.id })
+    void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
   }
   async function onGenerate() {
     if (needsIntake) await intake.mutateAsync({ projectId })
@@ -272,6 +279,17 @@ function ProjectPage() {
               <Loader2 className="size-3 animate-spin" /> agent running
               {elapsed && <span className="font-mono tabular-nums">· {elapsed}</span>}
             </span>
+          )}
+          {busy && activeJob && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void onStop()}
+              disabled={cancel.isPending || activeJob.status === "interrupted"}
+              title="Stop the run now. The scene keeps what the builder wrote so far; restore a version to discard it."
+            >
+              {cancel.isPending ? <Loader2 className="animate-spin" /> : <Square />} Stop
+            </Button>
           )}
           {p.current_version > 0 && (
             <a href={`/api/v1/projects/${projectId}/export${selectedVersion !== null ? `?version=${selectedVersion}` : ""}`}>

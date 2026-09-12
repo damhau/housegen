@@ -124,6 +124,7 @@ class Job(Base):
     )
     kind: Mapped[str] = mapped_column(String(20))  # intake|generate|modify
     # queued|running|done|failed|interrupted (a server restart: resumed at the next startup, #7)
+    # |cancelled (stopped by the owner: never resumed)
     status: Mapped[str] = mapped_column(String(20), default="queued")
     request_text: Mapped[str] = mapped_column(Text, default="")
     # photos attached to a modification request (#8): file names under photos/, JSON list

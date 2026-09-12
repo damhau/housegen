@@ -486,6 +486,19 @@ async def get_job(session: DbSession, project_id: str, job_id: str) -> JobOut:
     return JobOut.model_validate(job)
 
 
+@router.post("/{project_id}/jobs/{job_id}/cancel", status_code=202)
+async def cancel_job(session: DbSession, project_id: str, job_id: str) -> JobOut:
+    """Stop a running job. It ends `cancelled` (never resumed); the scene working copy keeps
+    what the builder had written so far, restore a version to discard it."""
+    job = await crud.get_job(session, job_id)
+    if job.project_id != project_id:
+        raise NotFoundError("job not found")
+    if not job_manager.cancel(job_id):
+        raise ConflictError("the job is not running")
+    logger.info("jobs.cancel", extra={"job_id": job_id, "project_id": project_id})
+    return JobOut.model_validate(job)
+
+
 @router.get("/{project_id}/jobs/{job_id}/events")
 async def job_events(
     session: DbSession, project_id: str, job_id: str, after: int = 0

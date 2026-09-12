@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, ChevronDown, ChevronRight, Hammer, ImagePlus, Loader2, MessageCircleQuestion, Play, Plus, ScanSearch, Send, Wrench, X } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronRight, Hammer, ImagePlus, Loader2, MessageCircleQuestion, Play, Plus, ScanSearch, Send, Square, Wrench, X } from "lucide-react"
 import { useJobEvents } from "@/api/endpoints/projects/projects"
 import type { ChatMessageOut, IntakeAnswer, IntakeOut, JobOut, SceneVersionOut } from "@/api/model"
 import { JobTimeline, ScoreBadge } from "@/components/JobTimeline"
@@ -346,6 +346,8 @@ function JobBlock({
             <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
           ) : job.status === "failed" ? (
             <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
+          ) : job.status === "cancelled" ? (
+            <Square className="size-3.5 shrink-0 text-muted-foreground" />
           ) : job.kind === "intake" ? (
             <ScanSearch className="size-3.5 shrink-0 text-muted-foreground" />
           ) : (
@@ -353,7 +355,7 @@ function JobBlock({
           )}
           <span className="font-medium">
             {KIND_LABEL[job.kind] ?? job.kind}
-            {job.status === "interrupted" ? " waiting for the server" : running ? " in progress" : job.status === "failed" ? " failed" : ""}
+            {job.status === "interrupted" ? " waiting for the server" : running ? " in progress" : job.status === "failed" ? " failed" : job.status === "cancelled" ? " stopped" : ""}
           </span>
           <span className="text-muted-foreground">
             {running && followed && liveJob.elapsed ? <span className="font-mono tabular-nums">{liveJob.elapsed}</span> : duration(job)}

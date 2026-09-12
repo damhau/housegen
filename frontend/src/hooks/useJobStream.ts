@@ -16,7 +16,7 @@ export interface LlmProgress {
 }
 
 const PERSISTED = [
-  "phase", "intake", "builder_text", "builder_step", "builder_done", "render", "version", "critic", "usage", "done", "error", "resumed", "turn",
+  "phase", "intake", "builder_text", "builder_step", "builder_done", "render", "version", "critic", "usage", "done", "error", "cancelled", "resumed", "turn",
 ]
 
 // while the backend is down (a deploy swaps the pod in 20–40 s) the browser's own EventSource
@@ -63,7 +63,7 @@ export function useJobStream(projectId: string, jobId: string | null | undefined
         if (ev.type === "builder_text" || ev.type === "builder_step" || ev.type === "builder_done" || ev.type === "phase") {
           setLiveText("")
         }
-        if (ev.type === "done" || ev.type === "error") {
+        if (ev.type === "done" || ev.type === "error" || ev.type === "cancelled") {
           setProgress(null)
           setLiveThought("")
         }

@@ -131,3 +131,54 @@ def test_path_escape_and_non_src_rejected(tmp_path: Path) -> None:
     for bad in ("kit/house.js", "src/../../etc/x.js", "src/a.txt"):
         with pytest.raises(WorkspaceError):
             ws.apply_patch(f"*** Begin Patch\n*** Add File: {bad}\n+x\n*** End Patch\n")
+
+
+def test_delete_then_add_rewrites_the_file(tmp_path: Path) -> None:
+    """The model's "rewrite from scratch": a Delete File followed by an Add File of the same
+    path in one patch must leave the new content, not a missing file (the Add used to be
+    rejected against the pre-patch disk while the Delete went through)."""
+    ws = make_ws(tmp_path)
+    out = ws.apply_patch(
+        "*** Begin Patch\n"
+        "*** Delete File: src/shell.js\n"
+        "*** Add File: src/shell.js\n"
+        "+export function a() {\n"
+        "+  return 2;\n"
+        "+}\n"
+        "*** End Patch\n"
+    )
+    assert ws.read("src/shell.js") == "export function a() {\n  return 2;\n}\n"
+    assert "src/shell.js" in out
+
+
+def test_add_then_update_and_add_then_delete_in_one_patch(tmp_path: Path) -> None:
+    ws = make_ws(tmp_path)
+    ws.apply_patch(
+        "*** Begin Patch\n"
+        "*** Add File: src/new.js\n"
+        "+export const n = 1;\n"
+        "*** Update File: src/new.js\n"
+        "-export const n = 1;\n"
+        "+export const n = 2;\n"
+        "*** Add File: src/tmp.js\n"
+        "+export const t = 1;\n"
+        "*** Delete File: src/tmp.js\n"
+        "*** End Patch\n"
+    )
+    assert ws.read("src/new.js") == "export const n = 2;\n"
+    assert not ws.exists("src/tmp.js")
+
+
+def test_second_add_of_the_same_path_is_still_rejected(tmp_path: Path) -> None:
+    ws = make_ws(tmp_path)
+    with pytest.raises(WorkspaceError) as e:
+        ws.apply_patch(
+            "*** Begin Patch\n"
+            "*** Add File: src/new.js\n"
+            "+export const n = 1;\n"
+            "*** Add File: src/new.js\n"
+            "+export const n = 2;\n"
+            "*** End Patch\n"
+        )
+    assert "already exists" in str(e.value)
+    assert ws.read("src/new.js") == "export const n = 1;\n"  # the first Add was written

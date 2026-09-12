@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, Camera, CheckCircle2, ChevronDown, ChevronRight, Eye, FileCode2, Hammer, Loader2, RefreshCw, ScanSearch, Sparkles } from "lucide-react"
+import { AlertTriangle, Camera, CheckCircle2, ChevronDown, ChevronRight, Eye, FileCode2, Hammer, Loader2, RefreshCw, ScanSearch, Sparkles, Square } from "lucide-react"
 import type { RunSummary } from "@/api/model"
 import type { JobEvent, LlmProgress } from "@/hooks/useJobStream"
 import { LiveStatus } from "@/components/LiveStatus"
@@ -295,6 +295,12 @@ function Row({ ev }: { ev: JobEvent }) {
       return (
         <li className="mt-2 flex items-start gap-2 text-destructive">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" /> {str(p.message)}
+        </li>
+      )
+    case "cancelled":
+      return (
+        <li className="mt-2 flex items-center gap-2 font-medium text-muted-foreground">
+          <Square className="size-4" /> {str(p.message) || "Stopped"}
         </li>
       )
     case "resumed":

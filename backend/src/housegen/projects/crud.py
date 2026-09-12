@@ -276,7 +276,7 @@ async def update_job(
         job.metrics_json = json.dumps(metrics)
     if status:
         job.status = status
-        if status in ("done", "failed"):
+        if status in ("done", "failed", "cancelled"):
             job.finished_at = datetime.now(UTC)
     if error is not None:
         job.error = error

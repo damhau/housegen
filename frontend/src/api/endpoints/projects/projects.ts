@@ -1430,6 +1430,80 @@ export function useGetJob<TData = Awaited<ReturnType<typeof getJob>>, TError = H
 
 
 /**
+ * Stop a running job. It ends `cancelled` (never resumed); the scene working copy keeps
+what the builder had written so far, restore a version to discard it.
+ * @summary Cancel Job
+ */
+export const getCancelJobUrl = (projectId: string,
+    jobId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/jobs/${jobId}/cancel`
+}
+
+export const cancelJob = async (projectId: string,
+    jobId: string, options?: RequestInit): Promise<JobOut> => {
+  
+  return httpClient<JobOut>(getCancelJobUrl(projectId,jobId),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+
+
+
+
+export const getCancelJobMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelJob>>, TError,{projectId: string;jobId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelJob>>, TError,{projectId: string;jobId: string}, TContext> => {
+
+const mutationKey = ['cancelJob'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelJob>>, {projectId: string;jobId: string}> = (props) => {
+          const {projectId,jobId} = props ?? {};
+
+          return  cancelJob(projectId,jobId,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelJobMutationResult = NonNullable<Awaited<ReturnType<typeof cancelJob>>>
+    
+    export type CancelJobMutationError = HTTPValidationError
+
+    /**
+ * @summary Cancel Job
+ */
+export const useCancelJob = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelJob>>, TError,{projectId: string;jobId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof cancelJob>>,
+        TError,
+        {projectId: string;jobId: string},
+        TContext
+      > => {
+
+      const mutationOptions = getCancelJobMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
  * @summary Job Events
  */
 export const getJobEventsUrl = (projectId: string,

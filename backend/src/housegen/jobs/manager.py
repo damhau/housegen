@@ -62,6 +62,7 @@ class JobManager:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._subscribers: dict[str, list[asyncio.Queue[Event | None]]] = {}
         self._shutting_down = False
+        self._stopped: set[str] = set()  # jobs the owner asked to stop (vs a deploy)
 
     def submit(self, job_id: str, project_id: str, body: JobBody) -> None:
         """Run `body` for the job. The same job id may be submitted again after a restart:
@@ -82,14 +83,21 @@ class JobManager:
             logger.info("job.done", extra={"job_id": job_id})
         except asyncio.CancelledError:
             # a graceful stop (deploy, reload) leaves the job `interrupted`: the next process
-            # resumes it with the same id. Any other cancellation is a failure.
+            # resumes it with the same id. The owner's stop leaves it `cancelled` for good.
+            # Any other cancellation is a failure.
             async with session_factory()() as session, session.begin():
                 if self._shutting_down:
                     await crud.update_job(session, job_id, status="interrupted")
                     logger.info("job.interrupted", extra={"job_id": job_id})
+                elif job_id in self._stopped:
+                    await crud.update_job(session, job_id, status="cancelled")
+                    await crud.settle_project_status(session, ctx.project_id)
+                    logger.info("job.cancelled", extra={"job_id": job_id})
                 else:
                     await crud.update_job(session, job_id, status="failed", error="cancelled")
                     await crud.settle_project_status(session, ctx.project_id)
+            if job_id in self._stopped:
+                await ctx.emit("cancelled", message="Stopped by you")
             raise
         except Exception as exc:
             logger.exception("job.failed", extra={"job_id": job_id})
@@ -100,6 +108,19 @@ class JobManager:
         finally:
             self._fanout(job_id, None)
             self._tasks.pop(job_id, None)
+            self._stopped.discard(job_id)
+
+    def cancel(self, job_id: str) -> bool:
+        """Stop a running job now at the owner's request: it ends `cancelled`, is never resumed,
+        and the scene working copy keeps whatever the builder had written (restore a version to
+        go back). False when the job is not running in this process."""
+        task = self._tasks.get(job_id)
+        if task is None or task.done():
+            return False
+        self._stopped.add(job_id)
+        task.cancel()
+        logger.info("job.cancel_requested", extra={"job_id": job_id})
+        return True
 
     def _fanout(self, job_id: str, ev: Event | None) -> None:
         for q in self._subscribers.get(job_id, []):

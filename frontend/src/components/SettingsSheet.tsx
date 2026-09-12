@@ -122,7 +122,15 @@ export function SettingsSheet({ project, onClose }: { project: ProjectOut; onClo
             <button
               key={name}
               type="button"
-              className={cn("rounded-md border px-2 py-1.5 text-xs hover:bg-accent", preset === name && "border-primary bg-primary/10 text-primary")}
+              // "custom" is not a choice: it lights up by itself when the fields below differ from both presets
+              disabled={name === "custom"}
+              className={cn(
+                "rounded-md border px-2 py-1.5 text-xs",
+                name !== "custom" && "hover:bg-accent",
+                name === "custom" && "cursor-default border-dashed",
+                preset === name && "border-solid border-primary bg-primary/10 text-primary",
+              )}
+              title={name === "custom" ? "Selected by itself when the effort, rounds or steps below differ from both presets" : undefined}
               onClick={() => {
                 if (name !== "custom") setS((prev) => ({ ...prev, ...PRESETS[name] }))
               }}
@@ -130,7 +138,7 @@ export function SettingsSheet({ project, onClose }: { project: ProjectOut; onClo
             >
               <div className="font-medium">{name === "quick" ? "Quick draft" : name === "full" ? "Full quality" : "Custom"}</div>
               <div className="text-[10px] text-muted-foreground">
-                {name === "quick" ? "medium · 1 round · 30 steps" : name === "full" ? "xhigh · 2 rounds · 60 steps" : "whatever is set"}
+                {name === "quick" ? "medium · 1 round · 30 steps" : name === "full" ? "xhigh · 2 rounds · 60 steps" : "edit the fields below"}
               </div>
             </button>
           ))}
