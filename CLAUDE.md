@@ -45,7 +45,8 @@ deploy/    k8s.yaml, modal_render.py (GPU render service). Root Dockerfile = sin
 
 - **The build path is frozen at v0.1.0** (what the builder, critic and intake see: prompts, tool descriptions, message
   contents, views, response schemas). Any change to it ships with a measured run against a v0.1.0 run of the same
-  project; see `docs/build-path-2026-09-07.md` for what was removed and why.
+  project; see `docs/build-path-2026-09-07.md` for what was removed and why. The order of quality work (bugs,
+  looks on the presentation path, kit v2, fidelity, stills) is `docs/quality-plan-2026-09-12.md`.
 
 ## Kit conventions
 
