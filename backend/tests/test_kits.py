@@ -58,7 +58,10 @@ def test_rewrite_points_the_import_map_at_the_snapshot() -> None:
     assert f'"housekit": "/kit/versions/{BASELINE}/house.js"' in out
     assert f'from "/kit/versions/{BASELINE}/runtime.js"' in out
     assert '"/kit/vendor/three/build/three.module.js"' in out  # three stays shared
-    assert kits.rewrite_page(html, "dev") == html
+    dev = kits.rewrite_page(html, "dev")
+    tag = kits.dev_kit_tag()
+    assert f'"housekit": "/kit/house.js?v={tag}"' in dev  # a changed working copy is a new URL
+    assert f'from "/kit/runtime.js?v={tag}"' in dev
 
 
 async def test_scene_pages_are_served_with_the_chosen_renderer(client: AsyncClient) -> None:
@@ -72,7 +75,8 @@ async def test_scene_pages_are_served_with_the_chosen_renderer(client: AsyncClie
     snap = await client.get(f"/scenes/p1/versions/3/index.html?kit={BASELINE}")
     assert snap.status_code == 200
     assert f"/kit/versions/{BASELINE}/runtime.js" in snap.text
-    assert (await client.get("/scenes/p1/versions/3/index.html?kit=dev")).text == plain.text
+    dev = await client.get("/scenes/p1/versions/3/index.html?kit=dev")
+    assert "/kit/house.js?v=" in dev.text
     assert (await client.get("/scenes/p1/versions/3/index.html?kit=nope")).status_code == 404
     assert (await client.get("/scenes/p1/versions/9/index.html")).status_code == 404
     assert (await client.get("/scenes/../x/versions/3/index.html")).status_code in (404, 422)

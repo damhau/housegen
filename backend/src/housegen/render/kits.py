@@ -98,10 +98,26 @@ def list_kits(settings: Settings | None = None) -> KitsOut:
     return KitsOut(kits=kits, pinned=pinned, latest=snaps[0]["name"] if snaps else DEV)
 
 
-def rewrite_page(html: str, name: str) -> str:
-    """The scene page with its import map pointing at the snapshot's kit files."""
+def dev_kit_tag(settings: Settings | None = None) -> str:
+    """A tag that changes whenever the working copy changes (its files' modification time), so
+    a page served with ?kit=dev names URLs a browser has never cached."""
+    settings = settings or get_settings()
+    stamps = [
+        int((settings.KIT_DIR / f).stat().st_mtime)
+        for f in ("house.js", "runtime.js")
+        if (settings.KIT_DIR / f).exists()
+    ]
+    return str(max(stamps)) if stamps else "0"
+
+
+def rewrite_page(html: str, name: str, settings: Settings | None = None) -> str:
+    """The scene page with its import map pointing at the renderer's kit files: a snapshot's
+    directory, or the working copy tagged with its modification time."""
     if name == DEV:
-        return html
+        tag = dev_kit_tag(settings)
+        return html.replace('"/kit/house.js"', f'"/kit/house.js?v={tag}"').replace(
+            '"/kit/runtime.js"', f'"/kit/runtime.js?v={tag}"'
+        )
     return html.replace('"/kit/house.js"', f'"/kit/versions/{name}/house.js"').replace(
         '"/kit/runtime.js"', f'"/kit/versions/{name}/runtime.js"'
     )

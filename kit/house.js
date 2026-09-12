@@ -921,57 +921,77 @@ function leafMesh(leaves, color, rnd, { kind = "leaf", width = 0.11, height = 0.
   return inst;
 }
 
+const DEG = Math.PI / 180;
+
+/** A unit vector `angle` away from `dir`, around a random perpendicular axis. */
+function deviate(dir, angle, rnd) {
+  const d = new THREE.Vector3(...dir).normalize();
+  const any = Math.abs(d.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const perp = new THREE.Vector3().crossVectors(d, any).normalize();
+  const perp2 = new THREE.Vector3().crossVectors(d, perp);
+  const phi = rnd() * Math.PI * 2;
+  const side = perp.multiplyScalar(Math.cos(phi)).addScaledVector(perp2, Math.sin(phi));
+  return d.multiplyScalar(Math.cos(angle)).addScaledVector(side, Math.sin(angle)).normalize();
+}
+
+/**
+ * Broadleaf / columnar: a trunk that forks into a few long, arching limbs, each splitting two
+ * or three more times into thinner, shorter branches and twigs; the leaves hang on the last two
+ * levels. Built at its own natural size, then scaled to `height` by leafTree.
+ */
 function broadleafWood(height, spread, kind, rnd, wood, leaves) {
   const columnar = kind === "columnar";
-  const trunkH = height * (columnar ? 0.28 : 0.38);
   const rBase = 0.022 * height + 0.02;
-  const wob = 0.06 * height;
-  // one curve from the base to the top of the crown: the trunk and its leader are one surface
-  const trunkPts = [
-    [0, 0, 0],
-    [(rnd() - 0.5) * wob * 0.5, trunkH * 0.5, (rnd() - 0.5) * wob * 0.5],
-    [(rnd() - 0.5) * wob, trunkH, (rnd() - 0.5) * wob],
-    [(rnd() - 0.5) * wob, (trunkH + height * 0.95) / 2, (rnd() - 0.5) * wob],
-    [(rnd() - 0.5) * wob * 0.6, height * 0.95, (rnd() - 0.5) * wob * 0.6],
-  ];
-  const leader = taperedTube(trunkPts, rBase, 0.025, { sides: 9, segments: 16 });
-  wood.push(leader.geo);
-  const crownFrom = trunkH / (height * 0.95); // where the branches start along the curve
-  const primaries = (columnar ? 9 : 6) + Math.floor(rnd() * 3);
-  const reach = spread * 0.5;
-  for (let k = 0; k < primaries; k++) {
-    const t = crownFrom + (k / primaries) * (0.9 - crownFrom) + rnd() * 0.04;
-    const at = leader.curve.getPointAt(t);
-    const az = k * 2.399 + (rnd() - 0.5) * 0.6;
-    const el = (columnar ? 58 : 24 + rnd() * 30) * (Math.PI / 180);
-    const dir = [Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)];
-    const len = Math.max(0.7, reach * (columnar ? 0.7 : 1) * (0.65 + rnd() * 0.5) * (1 - 0.35 * t));
-    const r0 = Math.max(0.02, leader.rAt(t) * 0.55);
-    const branch = taperedTube(bendPoints([at.x, at.y, at.z], dir, len, rnd), r0, 0.018, { sides: 6 });
-    wood.push(branch.geo);
-    leavesAlong(leaves, branch.curve, 0.45, 1, 14, 0.4, rnd);
-    const twigs = 2 + Math.floor(rnd() * 2);
-    for (let j = 0; j < twigs; j++) {
-      const tt = 0.35 + rnd() * 0.45;
-      const p = branch.curve.getPointAt(tt), tan = branch.curve.getTangentAt(tt);
-      const side = (rnd() < 0.5 ? -1 : 1) * (0.6 + rnd() * 0.5);
-      // rotate the tangent about y and tilt it up a little
-      const c = Math.cos(side), s = Math.sin(side);
-      const dx = tan.x * c - tan.z * s, dz = tan.x * s + tan.z * c;
-      const tdir = [dx, Math.max(0.15, tan.y) + 0.25, dz];
-      const tl = Math.hypot(...tdir);
-      const twigLen = Math.max(0.4, len * 0.5 * (0.7 + rnd() * 0.5));
-      const twig = taperedTube(bendPoints([p.x, p.y, p.z], [tdir[0] / tl, tdir[1] / tl, tdir[2] / tl], twigLen, rnd, { steps: 2 }), Math.max(0.012, branch.rAt(tt) * 0.6), 0.008, { sides: 5 });
-      wood.push(twig.geo);
-      leavesAlong(leaves, twig.curve, 0.15, 1, 30, 0.35, rnd);
-      const tip = twig.curve.getPointAt(1);
-      for (let q = 0; q < 14; q++) {
-        const u = rnd() * Math.PI * 2, v = Math.acos(2 * rnd() - 1), r = 0.55 * Math.cbrt(rnd());
+  const trunkH = height * (columnar ? 0.3 : 0.32);
+  const levels = 3; // limbs, branches, twigs
+  const sides = [10, 8, 6, 5];
+
+  function limb(level, start, dir, len, r0) {
+    // limbs arch up and out; branches and twigs sag a little under their own weight
+    const droop = level === 1 ? 0.05 : 0.1 + 0.06 * level;
+    const lift = level === 1 ? 0.3 : 0.15;
+    const pts = bendPoints(start, dir, len, rnd, { droop, lift, wobble: 0.08 + 0.04 * level, steps: 3 });
+    const r1 = level >= levels ? 0.005 : Math.max(0.008, r0 * 0.4);
+    const tube = taperedTube(pts, r0, r1, { sides: sides[level] ?? 5, segments: Math.max(4, Math.round(len / 0.3)) });
+    wood.push(tube.geo);
+    if (level === levels - 1) leavesAlong(leaves, tube.curve, 0.45, 1, 8, 0.3, rnd);
+    if (level >= levels) {
+      leavesAlong(leaves, tube.curve, 0.1, 1, 22, 0.28, rnd);
+      const tip = tube.curve.getPointAt(1);
+      for (let q = 0; q < 5; q++) {
+        const u = rnd() * Math.PI * 2, v = Math.acos(2 * rnd() - 1), r = 0.35 * Math.cbrt(rnd());
         leaves.push([tip.x + Math.cos(u) * Math.sin(v) * r, tip.y + Math.cos(v) * r * 0.8, tip.z + Math.sin(u) * Math.sin(v) * r]);
       }
+      return;
+    }
+    const children = (level === 1 ? 3 : 2) + Math.floor(rnd() * 2);
+    for (let k = 0; k < children; k++) {
+      const t = Math.min(0.97, 0.3 + (k / children) * 0.65 + rnd() * 0.08);
+      const at = tube.curve.getPointAt(t);
+      const tan = tube.curve.getTangentAt(t);
+      const away = deviate([tan.x, tan.y, tan.z], (25 + rnd() * 30) * DEG, rnd);
+      away.y += columnar ? 0.5 : 0.2; // reach for the light
+      away.normalize();
+      const clen = len * (0.5 + rnd() * 0.3);
+      limb(level + 1, [at.x, at.y, at.z], [away.x, away.y, away.z], clen, Math.max(0.006, tube.rAt(t) * 0.62));
     }
   }
-  leavesAlong(leaves, leader.curve, crownFrom + 0.15, 1, 30, 0.7, rnd);
+
+  // the trunk, slightly wobbly, forking near its top into the limbs
+  const wob = 0.05 * height;
+  const trunkPts = [[0, 0, 0], [(rnd() - 0.5) * wob * 0.5, trunkH * 0.5, (rnd() - 0.5) * wob * 0.5], [(rnd() - 0.5) * wob, trunkH, (rnd() - 0.5) * wob]];
+  const trunk = taperedTube(trunkPts, rBase, rBase * 0.7, { sides: 10, segments: 8 });
+  wood.push(trunk.geo);
+  const limbs = (columnar ? 5 : 3) + Math.floor(rnd() * 2);
+  const limbLen = columnar ? height * 0.45 : Math.max(spread * 0.45, height * 0.32);
+  const rLimb = rBase * 0.7 / Math.sqrt(limbs) * 1.1; // roughly, the limbs' sections add up to the trunk's
+  for (let k = 0; k < limbs; k++) {
+    const az = (k / limbs) * Math.PI * 2 + (rnd() - 0.5) * 0.8;
+    const el = (columnar ? 66 + rnd() * 10 : 40 + rnd() * 22) * DEG;
+    const dir = [Math.cos(az) * Math.cos(el), Math.sin(el), Math.sin(az) * Math.cos(el)];
+    const at = trunk.curve.getPointAt(0.84 + rnd() * 0.13); // they leave the trunk, not one point
+    limb(1, [at.x, at.y, at.z], dir, limbLen * (0.8 + rnd() * 0.4), rLimb);
+  }
 }
 
 function pineWood(height, spread, rnd, wood, leaves) {
@@ -1019,6 +1039,23 @@ export function leafTree({ position, height = 7, spread = 3.2, kind = "broadleaf
   const bark = shadow(new THREE.Mesh(mergeGeometries(wood), barkMaterial(trunkColor)));
   bark.userData = { kind: "wood" };
   g.add(bark);
+  if (kind !== "pine") {
+    // the recursion has its own natural size: fit it to the requested height and spread
+    // (the sideways fit stays within 40 % of the height fit, so trunks keep their section)
+    let top = 0, minX = 0, maxX = 0, minZ = 0, maxZ = 0;
+    for (const [lx, ly, lz] of leaves) {
+      if (ly > top) top = ly;
+      if (lx < minX) minX = lx; if (lx > maxX) maxX = lx;
+      if (lz < minZ) minZ = lz; if (lz > maxZ) maxZ = lz;
+    }
+    bark.geometry.computeBoundingBox();
+    const bb = bark.geometry.boundingBox;
+    top = Math.max(top, bb.max.y);
+    const width = Math.max(maxX - minX, maxZ - minZ, bb.max.x - bb.min.x, bb.max.z - bb.min.z, 0.5);
+    const sy = height / (top + 0.15);
+    const sxz = Math.min(1.4 * sy, Math.max(0.6 * sy, spread / (width + 0.2)));
+    g.scale.set(sxz, sy, sxz);
+  }
   if (kind === "pine") g.add(leafMesh(leaves, foliageColor ?? "#3f6238", rnd, { kind: "needle", width: 0.3, height: 0.2 }));
   else g.add(leafMesh(leaves, foliageColor ?? "#5a7d3c", rnd, { kind: "cluster", width: kind === "columnar" ? 0.26 : 0.34, height: kind === "columnar" ? 0.2 : 0.26 }));
   g.userData = { kind: "tree", height, spread };
