@@ -76,7 +76,14 @@ async def test_scene_pages_are_served_with_the_chosen_renderer(client: AsyncClie
     assert (await client.get("/scenes/p1/versions/3/index.html?kit=nope")).status_code == 404
     assert (await client.get("/scenes/p1/versions/9/index.html")).status_code == 404
     assert (await client.get("/scenes/../x/versions/3/index.html")).status_code in (404, 422)
-    # the snapshot's files are served by the kit mount
+    # the snapshot's files are served by the kit mount, and every kit or scene file tells the
+    # browser to revalidate (the working copy and the scene sources change under the same URL)
     js = await client.get(f"/kit/versions/{BASELINE}/house.js")
     assert js.status_code == 200
     assert "export function perimeterWalls" in js.text
+    assert js.headers["cache-control"] == "no-cache"
+    dev_js = await client.get("/kit/house.js")
+    assert dev_js.headers["cache-control"] == "no-cache"
+    again = await client.get("/kit/house.js", headers={"if-none-match": dev_js.headers["etag"]})
+    assert again.status_code == 304
+    assert (await client.get("/scenes/p1/versions/3/src/scene.js")).status_code == 404

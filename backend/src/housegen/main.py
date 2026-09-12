@@ -1,4 +1,5 @@
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -6,6 +7,9 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.responses import Response
+from starlette.staticfiles import PathLike
+from starlette.types import Scope
 
 from housegen.agent.pipeline import resume_interrupted_jobs
 from housegen.api.v1 import router as api_router
@@ -19,6 +23,24 @@ from housegen.render import renderer
 from housegen.render.kits import pages_router
 
 logger = logging.getLogger(__name__)
+
+
+class RevalidatedStaticFiles(StaticFiles):
+    """Static files the browser must revalidate on every load (Cache-Control: no-cache, answered
+    by a 304 when unchanged). The kit's working copy and a project's scene sources change under
+    the same URL, and a browser's heuristic caching would keep showing the old ones: a renderer
+    switch in the viewer or a build in progress then looks like nothing happened."""
+
+    def file_response(
+        self,
+        full_path: PathLike,
+        stat_result: os.stat_result,
+        scope: Scope,
+        status_code: int = 200,
+    ) -> Response:
+        response = super().file_response(full_path, stat_result, scope, status_code)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
 
 @asynccontextmanager
@@ -70,12 +92,12 @@ def create_app() -> FastAPI:
     # scene runtime + component kit + vendored three.js
     app.mount(
         "/kit/vendor/three",
-        StaticFiles(directory=settings.KIT_DIR / "node_modules" / "three"),
+        RevalidatedStaticFiles(directory=settings.KIT_DIR / "node_modules" / "three"),
         name="three",
     )
-    app.mount("/kit", StaticFiles(directory=settings.KIT_DIR), name="kit")
+    app.mount("/kit", RevalidatedStaticFiles(directory=settings.KIT_DIR), name="kit")
     # per-project files: scene working copy, versions, renders, photos, plan pages
-    app.mount("/scenes", StaticFiles(directory=settings.projects_dir), name="scenes")
+    app.mount("/scenes", RevalidatedStaticFiles(directory=settings.projects_dir), name="scenes")
     if settings.STATIC_DIR is not None:
         mount_spa(app, settings.STATIC_DIR)
     return app
