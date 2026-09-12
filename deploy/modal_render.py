@@ -38,13 +38,15 @@ app = modal.App("housegen-render")
 
 image = modal.Image.from_registry(
     IMAGE,
-    # Modal installs its runtime into a Python of the image. The image's `python` on PATH is the
-    # /app/.venv one (no pip), so give Modal its own; the service itself runs from /app/.venv by
-    # absolute path. If the first deploy fails inside the venv, try without add_python.
-    add_python="3.12",
+    # No add_python: the image is python:3.12-slim, with pip, at /usr/local (add_python collides
+    # with it). Modal installs its runtime into that interpreter; the service runs from /app/.venv
+    # by absolute path.
     secret=modal.Secret.from_name(IMAGE_SECRET) if IMAGE_SECRET else None,
 ).env(
     {
+        # the image puts /app/.venv/bin first, whose `python` has no pip: let Modal see the
+        # system one. The service is started by absolute path, so this changes nothing for it.
+        "PATH": "/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin",
         "RENDER_ANGLE": "gl-egl",  # the NVIDIA driver through EGL; "vulkan" is the other GPU path
         "BROWSER_CHANNEL": "",  # the bundled headless shell
         "NVIDIA_DRIVER_CAPABILITIES": "all",  # graphics, not only compute
