@@ -155,6 +155,14 @@ window.__house = {
     return { building: b(f.building), site: b(f.bounds), aspect: state.camera?.aspect };
   },
   renderOnce: () => renderFrame(),
+  // debugging: which GPU draws this page (WEBGL_debug_renderer_info), e.g. from the console of
+  // the app: document.querySelector("iframe").contentWindow.__house.gl
+  get gl() {
+    const ctx = state.renderer?.getContext();
+    if (!ctx) return null;
+    const ext = ctx.getExtension("WEBGL_debug_renderer_info");
+    return ext ? String(ctx.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(ctx.getParameter(ctx.RENDERER));
+  },
   // debugging: the presentation look in force on this page (after the calibration overrides)
   get look() { return PRESENTATION ? JSON.parse(JSON.stringify(PRESENTATION_LOOK)) : null; },
   // debugging: progress of the ultra accumulation, null on other pages
@@ -203,7 +211,14 @@ export async function boot(buildScene) {
 
   // presentation keeps the canvas multisampled too: it is what a page falls back to when the
   // frame-time guard drops the composer
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: PRESENTATION || !EFFECTS, preserveDrawingBuffer: HEADLESS });
+  // high-performance: on a dual-GPU laptop the browser otherwise runs WebGL on the integrated
+  // GPU; the hint asks for the discrete one (Windows' per-app graphics setting still wins)
+  const renderer = new THREE.WebGLRenderer({
+    canvas,
+    antialias: PRESENTATION || !EFFECTS,
+    preserveDrawingBuffer: HEADLESS,
+    powerPreference: HEADLESS ? "default" : "high-performance",
+  });
   renderer.setPixelRatio(QUALITY === "low" ? 1 : Math.min(window.devicePixelRatio, 2));
   renderer.setSize(W, H, false);
   renderer.shadowMap.enabled = QUALITY !== "low";
