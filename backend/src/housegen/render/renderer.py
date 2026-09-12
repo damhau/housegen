@@ -8,6 +8,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from PIL import Image
 from playwright.async_api import Browser, Playwright, async_playwright
@@ -28,11 +29,48 @@ class RenderResult:
     duration_ms: int = 0
 
 
+class SceneRenderer(Protocol):
+    """What the pipeline and the builder tools render with: the local browser (`Renderer`),
+    the remote service client, or the dispatcher between the two (`housegen.render.renderer`)."""
+
+    async def render(
+        self,
+        scene_url: str,
+        views: list[str],
+        out_dir: Path,
+        quality: str = "high",
+        camera: dict[str, float] | None = None,
+    ) -> RenderResult: ...
+
+    async def close(self) -> None: ...
+
+
+# WebGL flags per ANGLE backend (RENDER_ANGLE). SwiftShader draws in software on any machine;
+# the others need a GPU and its driver libraries in the container.
+_ANGLE_ARGS: dict[str, list[str]] = {
+    "swiftshader": ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"],
+    "gl-egl": ["--use-angle=gl-egl", "--enable-gpu-rasterization"],
+    "gl": ["--use-angle=gl", "--enable-gpu-rasterization"],
+    "vulkan": ["--use-angle=vulkan", "--enable-features=Vulkan", "--enable-gpu-rasterization"],
+}
+
+# what a page reports for its WebGL renderer (WEBGL_debug_renderer_info)
+_GL_PROBE = """() => {
+  const gl = document.createElement("canvas").getContext("webgl2");
+  if (!gl) return "no webgl2";
+  const ext = gl.getExtension("WEBGL_debug_renderer_info");
+  return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
+}"""
+
+
 class Renderer:
     def __init__(self) -> None:
         self._pw: Playwright | None = None
         self._browser: Browser | None = None
         self._lock = asyncio.Lock()
+        # the WebGL renderer string of the browser ("ANGLE (Google, Vulkan 1.3.0 (SwiftShader…",
+        # "ANGLE (NVIDIA, Tesla T4…"): the proof of which path draws. None until the browser runs.
+        self.gl: str | None = None
 
     async def _ensure_browser(self) -> Browser:
         if self._browser is not None and self._browser.is_connected():
@@ -41,10 +79,8 @@ class Renderer:
         if self._pw is None:
             self._pw = await async_playwright().start()
         args = [
-            # software WebGL: no GPU in a server / container
             "--use-gl=angle",
-            "--use-angle=swiftshader",
-            "--enable-unsafe-swiftshader",
+            *_ANGLE_ARGS[s.RENDER_ANGLE],
             "--ignore-gpu-blocklist",
             # containers: /dev/shm is tiny and Chrome's own sandbox needs privileges a pod lacks
             "--disable-dev-shm-usage",
@@ -61,8 +97,30 @@ class Renderer:
                 extra={"channel": s.BROWSER_CHANNEL, "error": str(exc)[:200]},
             )
             self._browser = await self._pw.chromium.launch(headless=True, args=args)
-        logger.info("render.browser.started", extra={"channel": s.BROWSER_CHANNEL})
+        self.gl = await self._probe_gl(self._browser)
+        logger.info(
+            "render.browser.started",
+            extra={"channel": s.BROWSER_CHANNEL, "angle": s.RENDER_ANGLE, "gl": self.gl},
+        )
         return self._browser
+
+    @staticmethod
+    async def _probe_gl(browser: Browser) -> str:
+        """The WebGL renderer string, read from a blank page (never fails a render)."""
+        try:
+            page = await browser.new_page()
+            try:
+                return str(await page.evaluate(_GL_PROBE))
+            finally:
+                await page.close()
+        except Exception as exc:
+            return f"probe failed: {str(exc)[:120]}"
+
+    async def probe(self) -> str:
+        """Start the browser if needed and return its WebGL renderer string (health checks)."""
+        async with self._lock:
+            await self._ensure_browser()
+        return self.gl or "unknown"
 
     async def close(self) -> None:
         if self._browser is not None:
@@ -171,6 +229,3 @@ def _to_jpeg(png: bytes, path: Path, width: int, quality: int) -> Path:
         img = img.resize((width, int(img.height * width / img.width)), Image.Resampling.LANCZOS)
     img.save(path, "JPEG", quality=quality, optimize=True)
     return path
-
-
-renderer = Renderer()

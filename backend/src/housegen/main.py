@@ -15,7 +15,7 @@ from housegen.core.exceptions import register_exception_handlers
 from housegen.core.logging import RequestLoggingMiddleware, configure_logging
 from housegen.jobs.manager import job_manager
 from housegen.projects.migrations import migrate_plans
-from housegen.render.renderer import renderer
+from housegen.render import renderer
 
 logger = logging.getLogger(__name__)
 

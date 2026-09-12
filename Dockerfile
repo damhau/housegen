@@ -51,7 +51,10 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 # --with-deps = the apt packages for this browser only. World-readable so the
 # unprivileged user below can run it (BROWSER_CHANNEL empty = this bundled browser).
+# libegl1/libgles2/libglvnd0: the GL dispatch libraries Chromium needs to reach an NVIDIA driver
+# (RENDER_ANGLE=gl-egl on a GPU host; the driver itself comes from the host at run time)
 RUN /app/.venv/bin/playwright install --with-deps chromium-headless-shell \
+    && apt-get update && apt-get install -y --no-install-recommends libegl1 libgles2 libglvnd0 libgl1 \
     && rm -rf /var/lib/apt/lists/* \
     && chmod -R a+rX /ms-playwright
 COPY backend/src ./src
@@ -74,7 +77,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     KIT_DIR=/app/kit \
     STATIC_DIR=/app/web/dist \
     BROWSER_CHANNEL="" \
-    RENDER_BASE_URL=http://127.0.0.1:8000
+    RENDER_BASE_URL=http://127.0.0.1:8000 \
+    NVIDIA_DRIVER_CAPABILITIES=all
 
 # The build that is running, shown by /api/v1/health and in the UI header. Set by the
 # workflow to the image tag ("1.2.3" on a v* tag, "sha-abc1234" from main) and the commit;

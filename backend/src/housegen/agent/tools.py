@@ -12,7 +12,7 @@ from housegen.agent.workspace import Workspace, WorkspaceError
 from housegen.core.exceptions import RenderError
 from housegen.llm.types import ImagePart, TextPart, ToolSpec
 from housegen.projects.storage import PlanSheet
-from housegen.render.renderer import Renderer
+from housegen.render.renderer import SceneRenderer
 
 logger = logging.getLogger(__name__)
 
@@ -345,7 +345,7 @@ class BuilderTools:
     def __init__(
         self,
         workspace: Workspace,
-        renderer: Renderer,
+        renderer: SceneRenderer,
         scene_url: str,
         renders_dir: Path,
         on_render: Callable[[dict[str, Path], list[str]], Awaitable[None]] | None = None,

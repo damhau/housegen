@@ -43,7 +43,7 @@ from housegen.projects import crud
 from housegen.projects.models import Job
 from housegen.projects.schemas import standard_views
 from housegen.projects.storage import PlanSheet, ProjectStorage
-from housegen.render.renderer import renderer
+from housegen.render import renderer
 
 logger = logging.getLogger(__name__)
 

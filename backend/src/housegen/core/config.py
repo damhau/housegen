@@ -81,6 +81,20 @@ class Settings(BaseSettings):
     # A planted scene at quality=high takes well over 30 s; a version render that runs out of
     # this budget is the "scene did not become ready" failure
     RENDER_READY_TIMEOUT_MS: int = 180000
+    # ANGLE backend for WebGL. swiftshader = software (any machine, slow); gl-egl = the NVIDIA
+    # driver through EGL, vulkan = its Vulkan ICD (a GPU with NVIDIA_DRIVER_CAPABILITIES=all).
+    # The renderer logs what it got at browser start (render.browser.started gl=…).
+    RENDER_ANGLE: Literal["swiftshader", "gl-egl", "gl", "vulkan"] = "swiftshader"
+
+    # remote render service (housegen.render.service on a GPU box, e.g. deploy/modal_render.py).
+    # Empty = render in this process. The service loads the scene from RENDER_BASE_URL, which
+    # must then be reachable from there (the public URL of this app).
+    RENDER_SERVICE_URL: str = ""
+    RENDER_SERVICE_TOKEN: str = ""  # bearer token, the same value on both sides
+    RENDER_SERVICE_TIMEOUT_S: float = 400.0  # one render call: page load + views, plus a cold start
+    # when the service cannot be reached (down, cold-start timeout): render locally instead of
+    # failing the job. Off = the call raises RenderError.
+    RENDER_SERVICE_FALLBACK: bool = True
 
     @property
     def database_url(self) -> str:

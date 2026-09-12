@@ -87,6 +87,17 @@ docker run -p 8000:8000 -v housegen-data:/data --env-file backend/.env --shm-siz
 The image carries its own version (`APP_VERSION` = that tag, `APP_COMMIT`): `/api/v1/health` returns it and
 the UI header shows it; a local build or `uvicorn` says `dev`.
 
+### GPU render service (optional)
+
+Rendering is half the wall clock of a build: the pod draws WebGL in software (SwiftShader), about
+45 s per `render_views` call. `housegen.render.service` is the same renderer behind one HTTP endpoint,
+to run from the same image on a machine with a GPU; the app sends every render there when
+`RENDER_SERVICE_URL` is set and falls back to the local browser when the service cannot be reached.
+`deploy/modal_render.py` deploys it on Modal (a T4 that scales to zero, per-second billing: cents per
+build); its docstring is the runbook. The service loads scenes from the app's `RENDER_BASE_URL`, which
+must then be the app's public URL. `GET /health` on the service reports the WebGL renderer string:
+`ANGLE (NVIDIA, …` means the GPU draws, `SwiftShader` means it does not.
+
 ## Configuration (backend/.env)
 
 The model, effort, critic rounds, step budget and in-loop render quality below are the defaults; each project can
@@ -105,6 +116,9 @@ every job snapshots the settings it started with.
 | `CRITIC_MAX_ITERATIONS` | 1 | independent critic rounds (0 disables) |
 | `CRITIC_SCORE_THRESHOLD` | 80 | stop when reached with no major issue |
 | `BROWSER_CHANNEL` | `chrome` | `chrome`, `msedge`, or empty for Playwright's Chromium |
+| `RENDER_ANGLE` | `swiftshader` | WebGL backend: `swiftshader` (software), `gl-egl` or `vulkan` (an NVIDIA GPU) |
+| `RENDER_SERVICE_URL`, `RENDER_SERVICE_TOKEN` | | render on the GPU service instead of in-process (see above); `RENDER_SERVICE_FALLBACK=false` fails the render instead of drawing locally when it is unreachable |
+| `RENDER_BASE_URL` | `http://HOST:PORT` | where the renderer loads scenes from; the app's public URL when a render service is used |
 | `MODEL_PRICES` | list prices for `claude-opus-5`, `gpt-6-astra` | JSON `{model: {input, cached, output[, cache_write]}}` in USD per million tokens, for the cost in each run's summary |
 
 ## Quality gates
