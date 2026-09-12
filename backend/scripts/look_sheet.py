@@ -174,13 +174,17 @@ def main() -> None:
         if args.kit:
             url += ("&" if "?" in url else "?") + f"kit={args.kit}"
         print(f"rendering {url} on {where}")
-        client = RenderClient()
-        try:
-            images = asyncio.run(
-                render_all(url, args.look, args.views, args.out.parent / "renders", client)
-            )
-        finally:
-            asyncio.run(client.close())
+
+        async def remote() -> dict[str, dict[str, Path]]:
+            client = RenderClient()  # one event loop for the renders and the client's close
+            try:
+                return await render_all(
+                    url, args.look, args.views, args.out.parent / "renders", client
+                )
+            finally:
+                await client.close()
+
+        images = asyncio.run(remote())
         args.out.parent.mkdir(parents=True, exist_ok=True)
         sheet(images, args.look, args.views, args.out, args.cell_width)
         return
@@ -202,19 +206,21 @@ def main() -> None:
         server, port = serve(www)
         try:
             renders = Path(tmp) / "renders"
-            local = Renderer()
-            try:
-                images = asyncio.run(
-                    render_all(
+
+            async def local() -> dict[str, dict[str, Path]]:
+                renderer = Renderer()
+                try:
+                    return await render_all(
                         f"http://127.0.0.1:{port}/scene/index.html",
                         args.look,
                         args.views,
                         renders,
-                        local,
+                        renderer,
                     )
-                )
-            finally:
-                asyncio.run(local.close())
+                finally:
+                    await renderer.close()
+
+            images = asyncio.run(local())
             args.out.parent.mkdir(parents=True, exist_ok=True)
             sheet(images, args.look, args.views, args.out, args.cell_width)
         finally:
