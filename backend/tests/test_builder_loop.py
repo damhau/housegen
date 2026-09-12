@@ -130,3 +130,69 @@ async def test_plain_text_ending_is_nudged_then_accepted(tools: BuilderTools) ->
     assert any(
         isinstance(p, TextPart) and "finish" in p.text for m in provider.calls[1] for p in m.content
     )
+
+
+class SizedFakeProvider(FakeProvider):
+    """A fake whose every call reports the same prompt size, to drive the prune trigger."""
+
+    def __init__(self, turns: list[list[ToolCallPart] | str], prompt_tokens: int) -> None:
+        super().__init__(turns)
+        self.prompt_tokens = prompt_tokens
+
+    async def complete(self, **kw: Any) -> Completion:
+        c = await super().complete(**kw)
+        c.usage.input_tokens = self.prompt_tokens
+        return c
+
+
+def _render_history() -> list[Message]:
+    """A conversation with two stale render results (images) and one current one."""
+    from housegen.llm.types import ImagePart, ToolResultPart
+
+    def result(i: int) -> Message:
+        img = ImagePart.from_bytes(b"x", "image/jpeg", label=f"r{i}")
+        return Message(role="user", content=[ToolResultPart(tool_call_id=f"c{i}", content=[img])])
+
+    return [Message.user("go"), result(1), result(2), result(3)]
+
+
+def _images_in(messages: list[Message]) -> int:
+    from housegen.llm.types import ImagePart, ToolResultPart
+
+    return sum(
+        isinstance(c, ImagePart)
+        for m in messages
+        for p in m.content
+        if isinstance(p, ToolResultPart)
+        for c in p.content
+    )
+
+
+async def test_history_is_not_pruned_under_the_token_threshold(tools: BuilderTools) -> None:
+    # prompts of 80k tokens, threshold 200k: the screenshots stay, the prefix cache is kept (#5)
+    provider = SizedFakeProvider(["a", "b", "c"], prompt_tokens=80_000)
+    messages = _render_history()
+    await run_builder(provider, "m", "sys", messages, tools, max_steps=10, max_tokens=100)
+    assert _images_in(messages) == 3
+
+
+async def test_history_is_pruned_once_a_prompt_exceeds_the_threshold(
+    tools: BuilderTools,
+) -> None:
+    provider = SizedFakeProvider(["a", "b", "c"], prompt_tokens=250_000)
+    messages = _render_history()
+    await run_builder(provider, "m", "sys", messages, tools, max_steps=10, max_tokens=100)
+    # the first call reports the size, the prune happens before the second: only the most
+    # recent render result keeps its image
+    assert _images_in(provider.calls[0]) == 3
+    assert _images_in(provider.calls[1]) == 1
+    assert _images_in(messages) == 1
+
+
+async def test_prune_threshold_zero_never_prunes(tools: BuilderTools) -> None:
+    provider = SizedFakeProvider(["a", "b", "c"], prompt_tokens=900_000)
+    messages = _render_history()
+    await run_builder(
+        provider, "m", "sys", messages, tools, max_steps=10, max_tokens=100, prune_above_tokens=0
+    )
+    assert _images_in(messages) == 3

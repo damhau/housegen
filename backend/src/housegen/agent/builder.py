@@ -28,9 +28,6 @@ from housegen.llm import (
 logger = logging.getLogger(__name__)
 
 
-PRUNE_EVERY = 3
-
-
 def prune_render_images(messages: list[Message], keep_last: int = 1, batch: int = 1) -> int:
     """Replace screenshots in all but the most recent render result(s) with a short note.
 
@@ -38,9 +35,10 @@ def prune_render_images(messages: list[Message], keep_last: int = 1, batch: int 
     them stay, so nothing it concluded is lost. Returns the number of images removed.
 
     Rewriting an old message invalidates the provider's prefix cache from that point, which
-    costs far more than the images it saves (#5): with `batch` > 1 nothing is pruned until at
-    least `batch` stale render results have piled up, then all of them go at once, so the
-    cache is lost at most once per `batch` render rounds.
+    costs far more than the images it saves (#5): the loop only calls this once a prompt has
+    grown past BUILDER_PRUNE_ABOVE_TOKENS, to stay inside the context window, and then every
+    stale render result goes at once. With `batch` > 1 nothing is pruned until at least `batch`
+    stale render results exist.
     """
 
     def has_images(m: Message) -> bool:
@@ -152,15 +150,18 @@ async def run_builder(
     require_checks: bool = True,
     effort: str | None = None,
     cache_key: str | None = None,
+    prune_above_tokens: int = 200_000,
 ) -> BuilderRun:
     """Drive the tool loop until `finish` is called or the step budget is spent.
 
     `messages` is mutated in place so the caller can continue the same conversation
     (e.g. feed critic feedback) in a later call. `progress(step)` returns a LiveProgress
-    scope used to stream the model's progress for that step.
+    scope used to stream the model's progress for that step. Old render screenshots are dropped
+    from `messages` only once a turn's prompt exceeds `prune_above_tokens` (0 = never).
     """
     run = BuilderRun(messages=messages)
     nudges = 0
+    last_prompt_tokens = 0  # input size of the previous turn: the prune trigger
 
     async def complete(step: int) -> Completion:
         if progress is None:
@@ -207,8 +208,10 @@ async def run_builder(
 
     while run.steps < max_steps:
         run.steps += 1
-        prune_render_images(messages, batch=PRUNE_EVERY)
+        if prune_above_tokens and last_prompt_tokens >= prune_above_tokens:
+            prune_render_images(messages)
         completion = await complete(run.steps)
+        last_prompt_tokens = completion.usage.input_tokens
         run.usage = run.usage + completion.usage
         messages.append(completion.message)
         turn = TurnMetric(

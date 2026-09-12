@@ -113,6 +113,7 @@ every job snapshots the settings it started with.
 | `BUILDER_EFFORT`, `CRITIC_EFFORT` | `xhigh`, `medium` | reasoning effort per role (OpenAI none…xhigh, Anthropic low…max) |
 | `LLM_MAX_TOKENS` | 96000 | per-turn output cap (reasoning tokens count against it on OpenAI) |
 | `BUILDER_MAX_STEPS` | 60 | tool calls per builder pass |
+| `BUILDER_PRUNE_ABOVE_TOKENS` | 200000 | drop old render screenshots from the builder's history once a prompt exceeds this (0 = never); a prune costs a prompt-cache miss, so only for the context window |
 | `CRITIC_MAX_ITERATIONS` | 1 | independent critic rounds (0 disables) |
 | `CRITIC_SCORE_THRESHOLD` | 80 | stop when reached with no major issue |
 | `BROWSER_CHANNEL` | `chrome` | `chrome`, `msedge`, or empty for Playwright's Chromium |

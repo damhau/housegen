@@ -318,6 +318,7 @@ class _Run:
             max_tokens=self.rs.max_tokens,
             effort=self.rs.builder_effort,
             cache_key=self.ctx.job_id,
+            prune_above_tokens=self.settings.BUILDER_PRUNE_ABOVE_TOKENS,
             on_step=self.on_step,
             progress=lambda step: LiveProgress(self.ctx, "builder", step=step, show_text=True),
         )

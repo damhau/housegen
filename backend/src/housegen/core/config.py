@@ -61,6 +61,12 @@ class Settings(BaseSettings):
 
     # agent loop
     BUILDER_MAX_STEPS: int = 60
+    # Old render screenshots are dropped from the builder's history only once a turn's prompt
+    # exceeds this many tokens (0 = never). Rewriting history costs a prompt-cache miss on the
+    # whole prefix (a full-price turn, often two), which outweighs the images it saves by an
+    # order of magnitude (#5, measured 2026-09-12); it exists to keep long builds inside the
+    # context window, not to save tokens.
+    BUILDER_PRUNE_ABOVE_TOKENS: int = 200000
     # independent critic rounds after the builder is done (0 disables the critic)
     CRITIC_MAX_ITERATIONS: int = 2
     CRITIC_SCORE_THRESHOLD: int = 80
