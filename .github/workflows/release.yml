@@ -1,14 +1,25 @@
-name: Build and publish image
+name: Release
 
-# Every push to main builds ghcr.io/damhau/housegen:sha-<short> (+ latest) and
-# rolls it out to the dev environment; a v* tag builds the semver image and
-# rolls it out to prod. Rollouts are commits to the GitOps repo (damhau/k8s-argocd),
-# from which Argo CD syncs: base/applications/housegen-dev for dev, .../housegen for prod.
+# Every push to main is analysed for Conventional Commits (feat: → minor, fix:/perf: → patch,
+# "!"/BREAKING CHANGE → minor while 0.x; other types and free-form messages → nothing). When it
+# warrants a release, python-semantic-release bumps backend/pyproject.toml (+ uv.lock), commits,
+# tags vX.Y.Z and publishes a GitHub Release; the image is then built FROM THAT TAGGED COMMIT as
+# ghcr.io/damhau/housegen:X.Y.Z (+ X.Y, sha-<short>, latest). A push that warrants no release
+# builds sha-<short> (+ latest) from the pushed commit, as before. Either way the build is rolled
+# out to the dev environment (deploy.yml); prod is a manual step (deploy-prod.yml).
+#
+# The build lives here and not in a tag-triggered workflow because a tag pushed with GITHUB_TOKEN
+# triggers no other workflow (GitHub's guard against recursion).
 on:
   push:
     branches: ["main"]
-    tags: ["v*"]
+  # Run from another branch: only publishes a sha-<short> image (no release, no rollout).
   workflow_dispatch:
+
+# One run at a time per branch: two quick pushes must not both analyse the history and tag.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -18,23 +29,57 @@ env:
   IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
+  release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the bump commit, the tag and the GitHub Release
+    outputs:
+      released: ${{ steps.release.outputs.released }}
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the whole history: commit analysis starts from the previous tag
+
+      # Configured in backend/pyproject.toml, [tool.semantic_release] (paths there are relative
+      # to the repository root, where this runs).
+      - name: Python Semantic Release
+        id: release
+        uses: python-semantic-release/python-semantic-release@v10.6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          config_file: backend/pyproject.toml
+          changelog: "false" # the notes go on the GitHub Release; no CHANGELOG.md in the repo
+
   build:
+    needs: release
+    # also after a skipped release (workflow_dispatch), never after a failed one
+    if: ${{ !cancelled() && needs.release.result != 'failure' }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
+      # A release is built from the commit python-semantic-release tagged (the pushed changes
+      # plus the version bump), anything else from the pushed commit.
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.released == 'true' && needs.release.outputs.tag || github.sha }}
 
       # The one version string: image tag, GitOps rollout and what the app displays.
-      #   v1.2.3 tag → 1.2.3     main → sha-<7 chars> (same as metadata-action's sha tag)
+      #   released → 1.2.3      otherwise → sha-<7 chars of the built commit>
       - name: Version
         id: version
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          commit=$(git rev-parse HEAD)
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+          echo "short=${commit::7}" >> "$GITHUB_OUTPUT"
+          if [[ "${{ needs.release.outputs.released }}" == "true" ]]; then
+            echo "version=${{ needs.release.outputs.version }}" >> "$GITHUB_OUTPUT"
           else
-            echo "version=sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+            echo "version=sha-${commit::7}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Set up Docker Buildx
@@ -52,12 +97,14 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.IMAGE }}
-          # v1.2.3 → 1.2.3 (prod); every build also gets sha-<7 chars> (what dev deploys);
+          flavor: latest=false
+          # every build: sha-<7 chars> of the built commit; a release adds 1.2.3 and 1.2;
           # latest only follows main
           tags: |
-            type=semver,pattern={{version}}
+            type=raw,value=sha-${{ steps.version.outputs.short }}
+            type=semver,pattern={{version}},value=${{ needs.release.outputs.version }},enable=${{ needs.release.outputs.released == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release.outputs.version }},enable=${{ needs.release.outputs.released == 'true' }}
             type=raw,value=latest,enable={{is_default_branch}}
-            type=sha,prefix=sha-,format=short
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -68,99 +115,17 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
-            APP_COMMIT=${{ github.sha }}
+            APP_COMMIT=${{ steps.version.outputs.commit }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Bump the image tag in the GitOps repo; Argo CD rolls it out from there.
-  #   main  → base/applications/housegen-dev, tag sha-<short> (immutable, one per commit)
-  #   v*    → base/applications/housegen,     tag <semver>
-  # A workflow_dispatch from any other branch only publishes an image.
-  deploy:
+  # Roll the build out to dev: Argo CD syncs base/applications/housegen-dev from the GitOps repo.
+  deploy-dev:
     needs: build
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    # one GitOps commit at a time: two quick pushes to main must not race on the push
-    concurrency:
-      group: gitops-housegen
-      cancel-in-progress: false
-    steps:
-      - name: Choose target
-        id: target
-        run: |
-          echo "tag=${{ needs.build.outputs.version }}" >> "$GITHUB_OUTPUT"
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            echo "app=housegen" >> "$GITHUB_OUTPUT"
-            echo "env=prod" >> "$GITHUB_OUTPUT"
-          else
-            echo "app=housegen-dev" >> "$GITHUB_OUTPUT"
-            echo "env=dev" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Checkout gitops repo
-        uses: actions/checkout@v4
-        with:
-          repository: damhau/k8s-argocd
-          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
-
-      - name: Install kustomize
-        uses: imranismail/setup-kustomize@v2
-
-      - name: Update image tag
-        run: |
-          cd base/applications/${{ steps.target.outputs.app }}
-          kustomize edit set image ${IMAGE}=${IMAGE}:${{ steps.target.outputs.tag }}
-
-      - name: Commit and push
-        run: |
-          APP=${{ steps.target.outputs.app }}
-          TAG=${{ steps.target.outputs.tag }}
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add base/applications/${APP}/kustomization.yaml
-          git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "chore: deploy ${APP} ${TAG} (${{ steps.target.outputs.env }})"
-          # another workflow may have pushed meanwhile: replay on top of it
-          git pull --rebase origin main
-          git push origin main
-
-      # Argo CD polls the GitOps repo every three minutes; asking it directly makes the rollout
-      # start now and turns a rollout that never becomes healthy into a failed workflow. The
-      # Argo CD API is only reachable on the tailnet: the runner joins it as tag:ci for the job.
-      - name: Connect to the tailnet
-        uses: tailscale/github-action@v3
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
-
-      - name: Refresh, sync and wait in Argo CD
-        env:
-          ARGOCD_SERVER: argocd.tailb2871.ts.net
-          ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
-          APP: ${{ steps.target.outputs.app }}
-        run: |
-          auth="Authorization: Bearer ${ARGOCD_TOKEN}"
-          base="https://${ARGOCD_SERVER}/api/v1/applications/${APP}"
-          # curl -f would hide Argo CD's error message: keep the body and fail on the status
-          call() {
-            local out code
-            out=$(curl -sS -H "$auth" -w '\n%{http_code}' "$@")
-            code=${out##*$'\n'}
-            body=${out%$'\n'*}
-            if [[ "$code" != 2* ]]; then
-              echo "::error::Argo CD answered ${code}: ${body}"
-              exit 1
-            fi
-          }
-          call "${base}?refresh=normal"
-          call -X POST -H "Content-Type: application/json" "${base}/sync" -d '{"prune": true}'
-          for i in $(seq 1 60); do
-            call "$base"
-            state=$(jq -r '.status.sync.status + "/" + .status.health.status' <<< "$body")
-            echo "${APP}: ${state}"
-            [[ "$state" == "Synced/Healthy" ]] && exit 0
-            sleep 5
-          done
-          echo "${APP} did not reach Synced/Healthy within 5 minutes"
-          exit 1
+    if: github.event_name == 'push'
+    uses: ./.github/workflows/deploy.yml
+    with:
+      app: housegen-dev
+      env: dev
+      tag: ${{ needs.build.outputs.version }}
+    secrets: inherit

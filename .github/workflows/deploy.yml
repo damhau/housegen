@@ -1,0 +1,104 @@
+name: Deploy (GitOps)
+
+# Bumps the image tag of one application in the GitOps repo (damhau/k8s-argocd), from which
+# Argo CD syncs, then asks Argo CD to sync it now and waits for it to be healthy. Called by
+# release.yml (dev, every build of main) and deploy-prod.yml (prod, by hand).
+on:
+  workflow_call:
+    inputs:
+      app:
+        description: "Argo CD application = directory under base/applications (housegen-dev, housegen)"
+        required: true
+        type: string
+      env:
+        description: "dev or prod (for the GitOps commit message)"
+        required: true
+        type: string
+      tag:
+        description: "Image tag to roll out (1.2.3 or sha-<short>)"
+        required: true
+        type: string
+    # Secrets: DEPLOY_REPO_TOKEN, TS_OAUTH_CLIENT_ID, TS_OAUTH_SECRET, ARGOCD_TOKEN, passed by the
+    # callers with `secrets: inherit`.
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # one GitOps commit at a time, dev and prod together: two rollouts must not race on the push
+    concurrency:
+      group: gitops-housegen
+      cancel-in-progress: false
+    steps:
+      - name: Checkout gitops repo
+        uses: actions/checkout@v4
+        with:
+          repository: damhau/k8s-argocd
+          token: ${{ secrets.DEPLOY_REPO_TOKEN }}
+
+      - name: Install kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Update image tag
+        run: |
+          cd base/applications/${{ inputs.app }}
+          kustomize edit set image ${IMAGE}=${IMAGE}:${{ inputs.tag }}
+
+      - name: Commit and push
+        run: |
+          APP=${{ inputs.app }}
+          TAG=${{ inputs.tag }}
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add base/applications/${APP}/kustomization.yaml
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: deploy ${APP} ${TAG} (${{ inputs.env }})"
+          # another workflow may have pushed meanwhile: replay on top of it
+          git pull --rebase origin main
+          git push origin main
+
+      # Argo CD polls the GitOps repo every three minutes; asking it directly makes the rollout
+      # start now and turns a rollout that never becomes healthy into a failed workflow. The
+      # Argo CD API is only reachable on the tailnet: the runner joins it as tag:ci for the job.
+      - name: Connect to the tailnet
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Refresh, sync and wait in Argo CD
+        env:
+          ARGOCD_SERVER: argocd.tailb2871.ts.net
+          ARGOCD_TOKEN: ${{ secrets.ARGOCD_TOKEN }}
+          APP: ${{ inputs.app }}
+        run: |
+          auth="Authorization: Bearer ${ARGOCD_TOKEN}"
+          base="https://${ARGOCD_SERVER}/api/v1/applications/${APP}"
+          # curl -f would hide Argo CD's error message: keep the body and fail on the status
+          call() {
+            local out code
+            out=$(curl -sS -H "$auth" -w '\n%{http_code}' "$@")
+            code=${out##*$'\n'}
+            body=${out%$'\n'*}
+            if [[ "$code" != 2* ]]; then
+              echo "::error::Argo CD answered ${code}: ${body}"
+              exit 1
+            fi
+          }
+          call "${base}?refresh=normal"
+          call -X POST -H "Content-Type: application/json" "${base}/sync" -d '{"prune": true}'
+          for i in $(seq 1 60); do
+            call "$base"
+            state=$(jq -r '.status.sync.status + "/" + .status.health.status' <<< "$body")
+            echo "${APP}: ${state}"
+            [[ "$state" == "Synced/Healthy" ]] && exit 0
+            sleep 5
+          done
+          echo "${APP} did not reach Synced/Healthy within 5 minutes"
+          exit 1

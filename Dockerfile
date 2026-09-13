@@ -82,7 +82,8 @@ ENV PATH="/app/.venv/bin:$PATH" \
     NVIDIA_DRIVER_CAPABILITIES=all
 
 # The build that is running, shown by /api/v1/health and in the UI header. Set by the
-# workflow to the image tag ("1.2.3" on a v* tag, "sha-abc1234" from main) and the commit;
+# workflow to the image tag ("1.2.3" when the push to main released a version, "sha-abc1234"
+# otherwise) and the commit;
 # a local `docker build` gets "dev". Last, so a new version never invalidates the layers above.
 ARG APP_VERSION=dev
 ARG APP_COMMIT=""

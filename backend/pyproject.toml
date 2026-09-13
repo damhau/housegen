@@ -30,6 +30,21 @@ dev = [
     "ruff>=0.6",
 ]
 
+[tool.semantic_release]
+# Run by .github/workflows/release.yml from the repository root (-c backend/pyproject.toml): the
+# paths below are relative to the root. The version lives here and in uv.lock (the "housegen"
+# entry); the running app learns it from the image tag (APP_VERSION), not from here.
+commit_parser = "conventional" # feat: → minor, fix:/perf: → patch, anything else → no release
+allow_zero_version = true # stay in the 0.x series
+major_on_zero = false # a breaking change bumps the minor while 0.x
+tag_format = "v{version}"
+commit_message = "chore(release): v{version}"
+version_toml = ["backend/pyproject.toml:project.version"]
+# uv.lock records the project's own version too: stamp it in place (no uv in the release
+# container, and a re-resolve would touch more than the version). NEW_VERSION is set by PSR.
+build_command = '''sed -i '/^name = "housegen"$/{n;s/^version = ".*"$/version = "'"$NEW_VERSION"'"/}' backend/uv.lock'''
+assets = ["backend/uv.lock"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
