@@ -234,3 +234,45 @@ through the run settings sheet, judged by score, pictures and wall time. Thinkin
   which ez-tree and two CC0 props cover.
 - Neighbouring buildings and interiors: the prompt says the house and its plot, and that stays.
 - A second LLM judging realism as a gate.
+
+## Status, 2026-09-13
+
+Done on 2026-09-12 (all on `main`, deployed to dev, build path still pinned to `2026-09-12-baseline`):
+
+- **Speed and cost (step 7)**: the GPU render service on Modal (`deploy/modal_render.py`): a render call went from
+  ~47 s to 5-8 s, rendering from 50 % of a build to 5 %. `prompt_cache_key` per job (#25). Pruning gated on prompt
+  size (#26). Measured: the same house 81 min / ~$33 on v0.0.4 → 14.4 min / $6.45 (Dev3) with an equal critic score.
+- **Instruments (step 2)**: renderer versions (`kit/versions/`, `?kit=`, viewer selector and Compare,
+  `look_sheet.py --kit` and `--scene-url` through the GPU service), `window.__house.gl` and `.stats`, kit and scene
+  files served with `Cache-Control: no-cache` and the dev kit URLs versioned by modification time.
+- **Build path, one measured run** (`build-path-2026-09-07.md`, "Changes since"): the first build furnishes the fixed
+  planting, in-loop renders at high, two prompt corrections. Dev4 vs Dev3: the garden is there (the picture the owner
+  wanted), 76/77 vs 82 on a critic measured to be ±4 at the same effort, $11.75 with the fix pass.
+- **Evaluation finding**: the same critic on the same version gave 82 and 78; high 81, xhigh 76, all with the same
+  seven findings. Effort does not buy accuracy; the score near 80 is noise. `CRITIC_FIRST_FIX` (on) makes the fix
+  pass unconditional; a photo-critic fix pass gained one point on every run measured (78→79, 76→77), so the setting
+  buys addressed findings, not score, and may be turned off.
+- **UI**: one form after a version (review findings, ticked additions, answers, note → one request, one job).
+- **Looks (step 3.4, trees)**: `leafTree`, `leafBush`, `hedge` rebuilt without a library (recursive limbs, leaf
+  clusters, leaf-shell bushes and hedges). Snapshot `2026-09-12-v1` is the viewer's default; dev holds the leaf-shell
+  bushes (`c79d63c`) for a `v2` once judged.
+
+Measured but not fixed yet:
+
+- The presentation look is washed out: same shade level as quality=high (p10 89/89) with darker lit walls (p50 182 vs
+  203), blue-grey sky fill desaturating the greens, a plot square on the meadow. Levels alone do not fix it (they
+  darken everything); it needs the light design: less sky fill, warmer stronger sun, darker warmer ground, no haze on
+  the plot, a slight contrast curve. Step 3.1-3.2 territory, judged on Dev4 v2 in Compare.
+- The two kit orientation bugs (`volume`, `shedRoof`) and the glass transmission/opacity are still in the code (the
+  reference was corrected for `shedRoof`). Step 1.
+
+Next, in order:
+
+1. Step 3, looks, on the presentation path with Compare on Dev4 v2: the light design pass above, then HDRI, then glass
+   with a dark cell, then textured materials. Snapshot after each one that holds up.
+2. Step 1 leftovers as one commit: `volume`, `shedRoof` code, glass, composer size, the unscored fixed version, the
+   warm-up ping, the effort list.
+3. Step 4, kit v2 (windows options, shaped openings, cladding, roof edges, hip roofs, terrace on a slope, batching
+   helper), one measured run; then move the pin to the newest snapshot so the builder and the critic see the new
+   plants and materials.
+4. Step 5, fidelity: a persisted camera per photo and a compare tool, the real fix for the critic's noise.
