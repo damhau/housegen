@@ -15,6 +15,11 @@
       "name": "2026-09-13-v2",
       "date": "2026-09-13",
       "note": "v1's trees with the bushes and hedges as thick shells of single outward-facing leaves over a dark core (the leaf-ball look). The presentation look is still the calibrated one of docs/presentation-look.md: the reference the light design pass in dev is compared with. Not pinned."
+    },
+    {
+      "name": "2026-09-13-v3",
+      "date": "2026-09-13",
+      "note": "v2 plus the light design pass on the presentation look: a stronger warmer sun, less sky fill, a near-neutral hemisphere, a graded meadow beyond the plot with a hole under the terrain (pools and sunken things show again), a touch of contrast and saturation at the end. The sky is still the analytic one: the reference the HDRI sky in dev is compared with. Not pinned."
     }
   ]
 }

@@ -320,3 +320,83 @@ What I would do next, in order
 2. Step 1 leftovers as one small commit, since they are all verified and a few lines each.
 3. Kit v2 with its measured run, and only then move the pin so the builder and the critic see the new plants and materials.
 4. Camera per photo and the compare tool, which is the change that would make the score mean something.
+## Status, 2026-09-13 evening: step 3 in progress
+
+Done today, all uncommitted or on `main` as noted:
+
+- **Renderer snapshots** `2026-09-13-v2` (the leaf-shell bushes and hedges, the old presentation look) and
+  `2026-09-13-v3` (v2 plus the light design pass below). v3 is the viewer's default; the build path stays pinned to
+  the baseline.
+- **Light design pass (step 3.1a), in v3 and dev**, presentation pages only, in `kit/runtime.js`: sun 2.2 → 3.0 and
+  warmer (`#ffe2b8`), sky fill 0.4 → 0.3, hemisphere 0.1 → 0.08 and near neutral, a grade pass at the end (contrast
+  1.08 about mid grey, saturation 1.06, the vignette as before). The land beyond the plot is one disc to the horizon
+  with a hole the size of the terrain's footprint (the old disc sliced through pools and anything dug below its
+  height), the lawn's own colour at the plot's edge darkening and warming over 60 m into a meadow (shader gradient by
+  world distance, no vertex-colour triangle pattern), one grain over all of it. Knobs: `p_contrast`, `p_sat`,
+  `p_vignette`, `p_meadow` next to the old ones. **Not yet looked at on a real project**: the first check is Compare
+  on Dev4 v2, v3 next to v2, aerial and south-photo: lit walls near the quality=high level (p50 ~200 vs 182 before),
+  the shade a little deeper, the greens greener, no square around the plot, the pools back. `presentation-look.md`
+  gets the new calibration once it holds.
+- **Modify: the verifier proposes, it does not fix.** Its findings go on the version as a review ("Apply the review's
+  findings"); the automatic fix pass and its mis-scored version are gone (step 1.5 closed).
+- **Plans: `PLAN_MAX_PAGES` 6 → 40**, the cut is recorded (`pages_total`), logged and shown in the plans panel
+  ("6 of 21 sheets"). Each sheet is ~1-2.5k tokens per builder call plus its PNG bytes on every call: ~0.3 MB for a CAD
+  export, ~3.6 MB for a scan, so 21 scanned sheets (76 MB a call) would exceed both providers' request limits. The fix
+  for that, a 1568 px JPEG of each sheet for the model (both providers reduce the image to that anyway) with the PNG
+  kept for `inspect_image`, is a build-path change for the next measured batch.
+- **Conversation layer**: issue #35 (talk before the job: clarify, confirm, then build). The observed case: a builder
+  question answered "no" started a full modification job on an ambiguous answer.
+
+### Step 3.1b, the HDRI sky: the plan
+
+What the owner wants is the photograph's sky: blue with cumulus, a warm sun, the clouds mirrored in the glass, and the
+map's own horizon (tree lines, hills) as the free scenery beyond the meadow. Everything below the horizon stays hidden
+under the meadow disc, so only the strip above the horizon of a map is ever seen; it has to look like a Swiss suburb.
+
+Measured on 2026-09-13 (Poly Haven, CC0, 2k `.hdr`; a script that parses the map with three's loader and prints the
+sun position, the sky's luminance percentiles and the horizon colour opposite the sun, plus tone-mapped previews of
+the whole map and the horizon strip: `kit/scripts/sky_stats.mjs` and `kit/scripts/sky_preview.mjs`, run from `kit/`):
+
+| map | size | sun elevation | sky median | sky | horizon strip |
+|---|---|---|---|---|---|
+| `kloofendal_48d_partly_cloudy_puresky` | 5.5 MB | 48° | 0.35 | the photo's cumulus sky | none (sky only) |
+| `kloofendal_43d_clear_puresky` | 4.6 MB | 43° | 0.22 | deep clear blue | none |
+| `kloppenheim_06_puresky` | 4.4 MB | 7° | 0.53 | overcast, sun on the horizon | none |
+| `kloofendal_48d_partly_cloudy` | 6.5 MB | 48° | 0.34 | the same cumulus sky | a rocky South African hill and a town: wrong |
+| `je_gray_park` | 6.1 MB | high | 0.07 | clear, a few clouds | a flat park with a tree line all round: right |
+| `noon_grass` | 6.4 MB | noon | 0.30 | light clear | a green park, mature trees on the horizon: right |
+| `meadow_2` | 6.3 MB | high | 0.17 | clear | a meadow with bushes and trees close by: usable |
+| `sunny_vondelpark`, `lakeside` | | | | | under trees / a lake: unusable |
+
+No single map has both the cumulus sky and a fitting horizon. The plan, one commit each, judged in Compare against v3
+and on the look sheet (p10/p50/p90 against quality=high, as in `presentation-look.md`):
+
+1. **Loading and alignment.** `?sky=<name>` on presentation pages (default the partly cloudy sky, `sky=analytic`
+   keeps today's Sky shader for comparison). The map is loaded once with three's `HDRLoader` (`RGBELoader` is
+   deprecated in r181), equirectangular. The sun is found in the map (centroid of the pixels above half the maximum):
+   its elevation replaces `sun_el`, and `scene.backgroundRotation` / `environmentRotation` turn the map so the sun
+   lands at the runtime's azimuth (200°, or `sun_az`); the directional light is aligned with it. The fog colour is
+   read from the map just above the horizon opposite the sun.
+2. **Light and background from the same map, the sun removed from the light.** The background is the full map. The
+   environment is a PMREM of a copy with its luminance clamped (about 8× the sky's median) so the sun's disc does not
+   light the scene a second time on top of the directional light and wash out the shadows; the analytic path did the
+   same by damping the forward scattering. One scale normalises the map (median sky radiance → 0.9 linear) before the
+   existing `p_env` / `p_bg` knobs, so the calibration numbers keep their meaning across maps.
+3. **Assets.** `kit/assets/sky/<map>.hdr`, served by the existing `/kit` mount (`/kit/assets/sky/...`, one copy for
+   every renderer snapshot since the files are named by content), added to the Dockerfile (`COPY kit/assets`) and to
+   the export zip. Budget: two maps at 2k, about 12 MB; 1k is too soft for the clouds on a 1080p screen.
+4. **The horizon.** Start with two maps: the partly cloudy puresky (the wanted sky, no scenery: the meadow and the
+   scene's own trees close the view) and `je_gray_park` or `noon_grass` (the tree line, a clearer sky), and judge
+   both on Dev4. If the owner wants the cumulus sky with the tree line, composite once, offline: the upper hemisphere
+   of the partly cloudy map over the horizon band of the park map, exposures matched at the horizon, saved as one
+   `.hdr` under `kit/assets/sky/` with the script that made it in `backend/scripts/`.
+5. **Calibration and snapshot.** Look sheet on Dev4 v2 and one other project, the four photo views and the aerial,
+   `quality=high` next to `look=presentation` with each map; re-measure `p_env` / `p_bg` the way `presentation-look.md`
+   did (a sunlit white wall level with quality=high, the shade a little under). Snapshot as `2026-09-1x-v4` when it
+   holds, update `presentation-look.md`.
+
+Then, in the plan's order: something behind the glass (3.2), textured materials (3.3, roofs and lawn first: the
+mowing stripes and the grain are most of what separates the render from the photograph once the sky is right),
+merged geometry for the frame rate (3.5). The scenery beyond the plot stays the map's horizon; a tree line of
+billboards at the plot's edge is the one cheap addition worth trying after 3.2, real relief beyond the plot is not
+planned (an Unreal-style landscape is neither the owner's plot nor a laptop's job).
