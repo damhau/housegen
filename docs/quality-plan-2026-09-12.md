@@ -276,3 +276,44 @@ Next, in order:
    helper), one measured run; then move the pin to the newest snapshot so the builder and the critic see the new
    plants and materials.
 4. Step 5, fidelity: a persisted camera per photo and a compare tool, the real fix for the critic's noise.
+
+
+Where we stand against the plan
+
+┌───────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│           step            │                                                                                 state                                                                                  │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 7, speed and cost         │ Done. GPU render service on Modal: a render call 47 s to 5 to 8 s. Cache key per job, pruning gated on prompt size. Same house: 81 min and about $33 on the old build, │
+│                           │  14.4 min and $6.45 now, equal critic score.                                                                                                                           │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 2, instruments            │ Done. Renderer versions with Compare in the viewer, the look sheet through the GPU service, GPU and stats getters, cache-proof kit URLs.                               │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ build path, one measured  │ Done and kept. First build furnishes the fixed planting, in-loop renders at high. Dev4 has the garden the prod picture had; its score sits inside the critic's         │
+│ run                       │ measured noise.                                                                                                                                                        │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ evaluation                │ Measured, not fixed. Same critic, same version: 82 and 78; effort changes labels, not findings. CRITIC_FIRST_FIX is on; it buys addressed findings, not score, and you │
+│                           │  can turn it off.                                                                                                                                                      │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ UI                        │ Done. One form and one job after a version.                                                                                                                            │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 3.4, trees                │ Done to your reference: recursive trunks and limbs, leaf clusters. 2026-09-12-v1 is the viewer default. Leaf-shell bushes and hedges are in dev, waiting for your      │
+│                           │ verdict for a v2.                                                                                                                                                      │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 3.1 to 3.3, the look      │ Not started. The washed-out final look is measured: same shade level as the fast path, darker lit walls, blue-grey sky fill. Levels do not fix it; the light design    │
+│                           │ does.                                                                                                                                                                  │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 1, correctness            │ Partly. Cache headers and prompt lines done; volume, shedRoof code, glass, composer size, the unscored fixed version, the warm-up ping and the effort list still open. │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 4, kit v2 and moving the  │ Not started.                                                                                                                                                           │
+│ pin                       │                                                                                                                                                                        │
+├───────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ 5, fidelity, camera per   │ Not started. This is the real fix for the critic's noise.                                                                                                              │
+│ photo                     │                                                                                                                                                                        │
+└───────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+What I would do next, in order
+
+1. The light design pass on the presentation path, judged in Compare on Dev4 version 2: less sky fill, a warmer and stronger sun, a darker warmer ground with no plot square, a touch of contrast. Then the HDRI and the dark cells behind glass. Each one a snapshot when it holds up. This is what turns the viewer's picture from "model" to "photo", and nothing in it touches the builder.
+2. Step 1 leftovers as one small commit, since they are all verified and a few lines each.
+3. Kit v2 with its measured run, and only then move the pin so the builder and the critic see the new plants and materials.
+4. Camera per photo and the compare tool, which is the change that would make the score mean something.
