@@ -88,7 +88,10 @@ class PlanDocument(Base):
     number: Mapped[int] = mapped_column(Integer)  # 1-based, upload order; plans/<number>/
     label: Mapped[str] = mapped_column(String(200), default="")
     original_name: Mapped[str] = mapped_column(String(300), default="")
-    pages: Mapped[int] = mapped_column(Integer, default=0)
+    pages: Mapped[int] = mapped_column(Integer, default=0)  # rasterised: what the agents see
+    # pages in the PDF (None on rows from before 2026-09-13: taken as `pages`); more than `pages`
+    # when PLAN_MAX_PAGES cut the document
+    pages_total: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
     project: Mapped[Project] = relationship(back_populates="plans")

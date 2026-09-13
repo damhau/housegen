@@ -181,3 +181,17 @@ def test_inspect_image_resolves_plan_n_to_its_document_page(tmp_path: Path) -> N
     assert "page-3 region" in (clip.label or "")
     with Image.open(io.BytesIO(base64.b64decode(clip.data))) as im:
         assert im.size[0] > 200  # re-rendered at 300 dpi, larger than the 72 dpi sheet region
+
+
+async def test_a_document_longer_than_the_cap_is_cut_and_says_so(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PLAN_MAX_PAGES", "2")
+    get_settings.cache_clear()
+    files = [("plans", ("long.pdf", _pdf(pages=5), "application/pdf"))]
+    r = await client.post("/api/v1/projects", data={"name": "t"}, files=files)
+    assert r.status_code == 201, r.text
+    doc = r.json()["plans"][0]
+    assert (doc["pages"], doc["pages_total"]) == (2, 5)
+    assert len(doc["page_urls"]) == 2
+    assert r.json()["plan_pages"] == 2

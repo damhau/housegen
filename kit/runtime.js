@@ -563,10 +563,13 @@ function sampleHorizon(renderer, skyScene, sunDir) {
 /**
  * The land on a presentation page. The runtime's base ground (a 400 m sheet, 20 % darker than
  * the terrain under its grain: the square the aerial views showed around the plot) is hidden and
- * one disc to the horizon takes its place at the terrain's far height: the lawn's own colour out
- * to the terrain's edge, then darkening and warming over 60 m into a meadow, one fine grain over
- * all of it, fading into the haze. Vertex colours carry the gradient; the grain's mean is
- * compensated so the lawn keeps its colour.
+ * one disc to the horizon takes its place at the terrain's far height, with a hole the size of
+ * the terrain's footprint: inside the plot only the builder's terrain and whatever is dug into it
+ * (a pool, a sunken terrace) are drawn, the meadow starts where the terrain ends. From that edge
+ * it darkens and warms over 60 m into a meadow, one fine grain over all of it, fading into the
+ * haze. The hole is in the geometry (every pass sees it, occlusion and depth included); the
+ * gradient is per fragment from the world distance to the plot, so there is no seam and no
+ * triangle pattern whatever the tessellation.
  */
 function presentationGround(scene, baseGround) {
   const look = PRESENTATION_LOOK;
@@ -577,42 +580,68 @@ function presentationGround(scene, baseGround) {
   const plot = terrain ?? baseGround;
   const material = Array.isArray(plot.material) ? plot.material[0] : plot.material;
   const lawn = material?.color ? material.color.clone() : new THREE.Color(PALETTE.grass);
-  // the plot: the terrain's footprint, or the house and its site on flat ground; the lawn zone
-  // is the disc that holds all of it (r0), the meadow starts 60 m further out (r1)
+  // the plot: the terrain's footprint (a hole in the disc), or the house and its site on flat
+  // ground (no hole: the disc is then the ground under the house)
   const box = terrain ? new THREE.Box3().setFromObject(terrain) : framingBounds(state.houseGroup).expandByScalar(12);
   if (box.isEmpty()) box.set(new THREE.Vector3(-45, 0, -45), new THREE.Vector3(45, 0, 45));
-  const centre = box.getCenter(new THREE.Vector3());
-  const r0 = Math.hypot(box.max.x - box.min.x, box.max.z - box.min.z) / 2;
-  const r1 = r0 + 60;
   const meadow = lawn.clone().multiply(new THREE.Color(look.meadow, look.meadow * 0.94, look.meadow * 0.8));
   const grainMean = new THREE.Color().setRGB(245 / 255, 245 / 255, 245 / 255, THREE.SRGBColorSpace).r;
   lawn.multiplyScalar(1 / grainMean);
   meadow.multiplyScalar(1 / grainMean);
-  const tile = 6; // metres per grain tile (the base sheet's was 6.7)
-  const group = new THREE.Group();
-  group.userData = { kind: "terrain", excludeFromBounds: true };
-  const inner = r1 + 30; // fine rings (8 m) through the gradient, coarse ones to the horizon
-  for (const [rIn, rOut, rings] of [[0, inner, Math.ceil(inner / 8)], [inner, 1400, 8]]) {
-    const geo = new THREE.RingGeometry(rIn, rOut, 96, rings);
-    const pos = geo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-      const t = THREE.MathUtils.smoothstep(Math.hypot(pos.getX(i), pos.getY(i)), r0, r1);
-      c.copy(lawn).lerp(meadow, t);
-      colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
-    }
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    const map = noiseTexture(256, 245, 20, 3, (2 * rOut) / tile);
-    map.colorSpace = THREE.SRGBColorSpace;
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, map, roughness: 1 }));
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.receiveShadow = true;
-    group.add(mesh);
+
+  // the disc, minus the plot: a shape in the xy plane rotated flat, so shape y = world -z and
+  // the UVs are world metres (the grain repeats per metre)
+  const radius = 1400, tile = 6, inset = 0.1; // the meadow reaches 10 cm under the terrain's rim: no hairline at the edge
+  const shape = new THREE.Shape();
+  shape.absarc(0, 0, radius, 0, Math.PI * 2, false);
+  if (terrain) {
+    const hole = new THREE.Path();
+    hole.moveTo(box.min.x + inset, -(box.max.z - inset));
+    hole.lineTo(box.max.x - inset, -(box.max.z - inset));
+    hole.lineTo(box.max.x - inset, -(box.min.z + inset));
+    hole.lineTo(box.min.x + inset, -(box.min.z + inset));
+    hole.closePath();
+    shape.holes.push(hole);
   }
-  group.position.set(centre.x, house.groundY(900, 900) - 0.02, centre.z);
+  const geo = new THREE.ShapeGeometry(shape, 96);
+  const map = noiseTexture(256, 245, 20, 3, 1 / tile);
+  map.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.MeshStandardMaterial({ map, roughness: 1 });
+  mat.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, {
+      uPlotMin: { value: new THREE.Vector2(box.min.x, box.min.z) },
+      uPlotMax: { value: new THREE.Vector2(box.max.x, box.max.z) },
+      uLawn: { value: lawn },
+      uMeadow: { value: meadow },
+      uFade: { value: 60 },
+    });
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec2 vLandXZ;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvLandXZ = (modelMatrix * vec4(transformed, 1.0)).xz;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        "#include <common>",
+        "#include <common>\nvarying vec2 vLandXZ;\nuniform vec2 uPlotMin;\nuniform vec2 uPlotMax;\nuniform vec3 uLawn;\nuniform vec3 uMeadow;\nuniform float uFade;",
+      )
+      .replace(
+        "#include <color_fragment>",
+        [
+          "#include <color_fragment>",
+          "vec2 outsidePlot = max(max(uPlotMin - vLandXZ, vLandXZ - uPlotMax), vec2(0.0));",
+          "diffuseColor.rgb *= mix(uLawn, uMeadow, smoothstep(0.0, uFade, length(outsidePlot)));",
+        ].join("\n"),
+      );
+  };
+  const disc = new THREE.Mesh(geo, mat);
+  disc.rotation.x = -Math.PI / 2;
+  disc.receiveShadow = true;
+  disc.userData = { kind: "terrain", excludeFromBounds: true };
+  // the terrain's far height, kept within the terrain's own heights (a heightAt function keeps
+  // climbing beyond the mesh on a sloped plot)
+  const far = terrain ? THREE.MathUtils.clamp(house.groundY(900, 900), box.min.y, box.max.y) : house.groundY(900, 900);
+  disc.position.y = far - 0.02;
   baseGround.visible = false;
-  scene.add(group);
+  scene.add(disc);
 }
 
 /**

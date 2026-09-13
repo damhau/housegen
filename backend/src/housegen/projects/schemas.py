@@ -56,7 +56,8 @@ class PlanDocumentOut(BaseModel):
     number: int
     label: str
     original_name: str
-    pages: int
+    pages: int  # sheets rasterised and shown to the agents
+    pages_total: int  # pages in the PDF; more than `pages` when PLAN_MAX_PAGES cut the document
     page_urls: list[str]
     created_at: datetime
 

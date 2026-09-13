@@ -40,8 +40,13 @@ export function PlansPanel({ project, busy }: { project: ProjectOut; busy: boole
               {d.number}. {d.label}
             </span>
             <span className="text-xs text-muted-foreground">
-              {d.pages} sheet{d.pages === 1 ? "" : "s"} · {d.original_name} · {relTime(d.created_at)}
+              {d.pages_total > d.pages ? `${d.pages} of ${d.pages_total} sheets` : `${d.pages} sheet${d.pages === 1 ? "" : "s"}`} · {d.original_name} · {relTime(d.created_at)}
             </span>
+            {d.pages_total > d.pages && (
+              <span className="text-xs text-amber-700 dark:text-amber-300" title="PLAN_MAX_PAGES on the server caps how many sheets are rasterised and shown to the agents">
+                only the first {d.pages} sheets are read: the rest of the PDF is not seen by the builder
+              </span>
+            )}
           </div>
           <div className="mt-1.5 grid grid-cols-3 gap-1.5">
             {d.page_urls.map((url, i) => (

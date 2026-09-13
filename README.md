@@ -25,7 +25,8 @@ turns a one-shot lottery into a converging process.
 * **intake** (no photos only) — one structured call over the plan sheets before the build: what the house is as drawn, which sheet is what (the elevation sheets become the critic's ground truth), and up to six questions for the owner, each with a suggested default. The answers join the project's **brief**, which every builder pass receives.
 * **builder** — gets the plan sheets and photos directly and a goal, not a recipe. Tool-use loop: `read/write/edit_file`, `apply_patch`, `render_views`, `inspect_image`, `check_scene`, `finish`. Every render is its own quality check against the photos, or against the elevation drawings through the straight-on `<side>-elevation` views.
 * **critic** — independent model call that only sees reference/render pairs (photo and photo-like render, or elevation sheet and elevation render) and returns a score + concrete geometric fixes. One round by default (`CRITIC_MAX_ITERATIONS`, 0 disables); further rounds send the findings back to the builder. Skipped when there is neither a photo nor an elevation sheet.
-* **modify** — same builder, request as ground truth, before/after renders verified by the critic.
+* **modify** — same builder, request as ground truth, before/after renders verified by the critic; its findings
+  are stored on the version as a review to apply on request, nothing is fixed unasked.
 * Both providers stream: the UI shows the model's phase, its reasoning summary, a token counter and, for the builder, the code as it is written.
 
 Every pass is snapshotted as a version (code + renders); restore is one click. The LLM layer is
@@ -134,6 +135,8 @@ every job snapshots the settings it started with.
 | `CRITIC_SCORE_THRESHOLD` | 80 | stop when reached with no major issue |
 | `CRITIC_FIRST_FIX` | `true` | a first build always gets one fix pass on the critic's findings (2+ rounds); the score near the threshold is noise, the findings are not |
 | `RENDER_QUALITY` | `high` | in-loop render quality (`render_views` without a quality); `medium` was the software-rendering compromise |
+| `PLAN_MAX_PAGES` | `40` | sheets per plan document rasterised and shown to the intake and the builder; a longer PDF is kept but cut, and the plans panel says "N of M sheets" (each sheet: ~1-2.5k tokens per builder call, its PNG bytes on every call) |
+| `PLAN_DPI` | `150` | rasterisation of the sheets (dimension strings on a 1:100 sheet stay legible; `inspect_image` zooms at 300 dpi) |
 | `BROWSER_CHANNEL` | `chrome` | `chrome`, `msedge`, or empty for Playwright's Chromium |
 | `RENDER_ANGLE` | `swiftshader` | WebGL backend: `swiftshader` (software), `gl-egl` or `vulkan` (an NVIDIA GPU) |
 | `RENDER_SERVICE_URL`, `RENDER_SERVICE_TOKEN` | | render on the GPU service instead of in-process (see above); `RENDER_SERVICE_FALLBACK=false` fails the render instead of drawing locally when it is unreachable |

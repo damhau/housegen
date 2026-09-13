@@ -253,6 +253,9 @@ Done on 2026-09-12 (all on `main`, deployed to dev, build path still pinned to `
   pass unconditional; a photo-critic fix pass gained one point on every run measured (78→79, 76→77), so the setting
   buys addressed findings, not score, and may be turned off.
 - **UI**: one form after a version (review findings, ticked additions, answers, note → one request, one job).
+- **Modify (2026-09-13)**: the verifier's findings are a review on the version ("Apply the review's findings"), no
+  automatic fix pass: it ran a full builder pass on findings nobody had read and saved its version under the score
+  of the one inspected (step 1.5, closed by removing the pass).
 - **Looks (step 3.4, trees)**: `leafTree`, `leafBush`, `hedge` rebuilt without a library (recursive limbs, leaf
   clusters, leaf-shell bushes and hedges). Snapshot `2026-09-12-v1` is the viewer's default; dev holds the leaf-shell
   bushes (`c79d63c`) for a `v2` once judged.

@@ -5,7 +5,7 @@ generate:  builder(plans [+ photos] [+ brief], self-assessing via renders) → [
 modify:    builder(request) → verifier → [builder]? → version
 resume:    after a server restart, continue an interrupted job from its files (#7)
 
-generate and modify are written as stages (build → critic rounds, apply → verify → fix) so that
+generate and modify are written as stages (build → critic rounds, apply → verify) so that
 `resume` can enter them at the stage the persisted events show was in progress.
 """
 
@@ -805,44 +805,19 @@ async def _modify_verify(
             )
         await run.add_call("critic", completion)
         await _emit_critic(ctx, 1, verdict)
-        await _modify_after_verdict(run, request, messages, verdict, version, summary)
+        await _modify_after_verdict(run, verdict, version, summary)
         return
     await _modify_finish(run, version, summary, None)
 
 
-async def _modify_after_verdict(
-    run: _Run,
-    request: str,
-    messages: list[Message],
-    verdict: Critique,
-    version: int,
-    summary: str,
-) -> None:
-    if not verdict.done and verdict.issues:
-        messages.append(Message.user(_verifier_feedback_text(verdict)))
-        version, summary = await _modify_fix(run, request, messages, verdict)
-    else:
-        await run.set_version_critique(version, verdict)
+async def _modify_after_verdict(run: _Run, verdict: Critique, version: int, summary: str) -> None:
+    """The verifier's findings are a proposition, not an order (2026-09-13): they are stored on
+    the version like a critic review, where the owner reads them and applies them with one
+    request ("Apply the review's findings") if they deserve a pass. Until then a fix pass ran
+    unasked on findings nobody had read, a full builder pass, and its version was saved under
+    the score of the version the verifier had inspected."""
+    await run.set_version_critique(version, verdict)
     await _modify_finish(run, version, summary, verdict.overall_score)
-
-
-def _verifier_feedback_text(verdict: Critique) -> str:
-    return (
-        "A verifier compared before/after renders against the request. Address these "
-        "points, render to verify, run check_scene, then finish.\n\n"
-        + verdict.as_builder_feedback()
-    )
-
-
-async def _modify_fix(
-    run: _Run, request: str, messages: list[Message], verdict: Critique
-) -> tuple[int, str]:
-    await run.ctx.emit("phase", name="builder", message="Fixing what the verifier flagged")
-    summary, after = await run.build_and_render(messages)
-    version = await run.snapshot(
-        "modification", request[:80], summary, verdict.overall_score, after
-    )
-    return version, summary
 
 
 async def _modify_finish(run: _Run, version: int, summary: str, score: int | None) -> None:
@@ -894,7 +869,8 @@ class _Progress:
 
     @property
     def fixing(self) -> bool:
-        """The builder was working on a critic's / verifier's findings."""
+        """The builder was working on a critic's findings (or, in a job from before
+        2026-09-13, a verifier's)."""
         return self.last_phase == "builder" and self.last_phase_message.startswith("Fixing")
 
     def round_number(self) -> int | None:
@@ -1030,24 +1006,18 @@ async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None
     await ctx.emit("phase", name="render", message="Rendering the scene as the restart left it")
     after = await run.render_standard()
     verdict = progress.last_verdict()
-    if progress.last_phase == "critic" and progress.versions:
-        # the version is saved: verify it again, or act on the verdict if it was persisted
+    if progress.versions and (progress.last_phase == "critic" or progress.fixing):
+        # the version is saved: verify it again, or attach the verdict if it was persisted
+        # ("fixing": a job from before 2026-09-13, interrupted in the fix pass that no longer
+        # exists; its verdict goes on the version it inspected)
         version = progress.versions[-1]
         summary = progress.builder_summary
-        messages = [Message.user(*_modify_message(request, history, inp, after, resume=True))]
         if verdict is not None:
-            await _modify_after_verdict(run, request, messages, verdict, version, summary)
+            await _modify_after_verdict(run, verdict, version, summary)
         else:
+            messages = [Message.user(*_modify_message(request, history, inp, after, resume=True))]
             await _modify_verify(run, inp, request, messages, kept, after, version, summary)
         return
 
-    parts = _modify_message(request, history, inp, after, resume=True)
-    fixing = progress.fixing and verdict is not None
-    if fixing and verdict is not None:
-        parts.append(_verifier_feedback_text(verdict))
-    messages = [Message.user(*parts)]
-    if fixing and verdict is not None:
-        version, summary = await _modify_fix(run, request, messages, verdict)
-        await _modify_finish(run, version, summary, verdict.overall_score)
-    else:
-        await _modify_apply(run, inp, request, messages, kept)
+    messages = [Message.user(*_modify_message(request, history, inp, after, resume=True))]
+    await _modify_apply(run, inp, request, messages, kept)

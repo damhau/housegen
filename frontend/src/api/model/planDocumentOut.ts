@@ -14,6 +14,7 @@ export interface PlanDocumentOut {
   label: string;
   original_name: string;
   pages: number;
+  pages_total: number;
   page_urls: string[];
   created_at: string;
 }

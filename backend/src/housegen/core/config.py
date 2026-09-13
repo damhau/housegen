@@ -81,7 +81,12 @@ class Settings(BaseSettings):
     RENDER_QUALITY: Literal["low", "medium", "high"] = "high"
     RENDER_IMAGE_WIDTH: int = 1024
     RENDER_JPEG_QUALITY: int = 82
-    PLAN_MAX_PAGES: int = 6
+    # Sheets per plan document that are rasterised and shown to the intake and the builder (the
+    # rest of the PDF is kept but unseen; the API and the plans panel say so). A real plan set
+    # can run to 20-30 sheets; every sheet costs about 1-2.5k tokens per builder call (cached
+    # after the first turn) and its PNG bytes on every call: ~0.3 MB for a CAD export, ~3.5 MB
+    # for a scan, against request limits of a few tens of MB.
+    PLAN_MAX_PAGES: int = 40
     PLAN_DPI: int = 150  # scanned sheets at 1:100 need this for dimension strings to stay legible
 
     # renderer

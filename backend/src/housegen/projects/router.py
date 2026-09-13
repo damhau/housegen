@@ -84,6 +84,7 @@ def _project_out(project: Project) -> ProjectOut:
                 label=d.label,
                 original_name=d.original_name,
                 pages=d.pages,
+                pages_total=d.pages_total if d.pages_total is not None else d.pages,
                 page_urls=[st.plan_page_url(d.number, i + 1) for i in range(d.pages)],
                 created_at=d.created_at,
             )
@@ -173,12 +174,14 @@ async def _add_plan(
     st.plan_dir(n).mkdir(parents=True, exist_ok=True)
     st.plan_pdf(n).write_bytes(await upload.read())
     try:
-        pages = await anyio.to_thread.run_sync(st.rasterize_plan, n)
+        pages, total = await anyio.to_thread.run_sync(st.rasterize_plan, n)
     except Exception as e:
         logger.exception("projects.plan.rasterize_failed", extra={"project_id": project.id})
         shutil.rmtree(st.plan_dir(n), ignore_errors=True)
         raise InvalidInputError(f"could not read the PDF '{upload.filename}': {e}") from e
-    await crud.add_plan_document(session, project, n, label, upload.filename or "", pages)
+    await crud.add_plan_document(
+        session, project, n, label, upload.filename or "", pages, pages_total=total
+    )
 
 
 @router.post("", status_code=201)

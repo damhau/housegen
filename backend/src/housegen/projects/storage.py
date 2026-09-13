@@ -128,12 +128,24 @@ class ProjectStorage:
         return [sh.png for sh in self.plan_sheets()]
 
     # ---- inputs ----
-    def rasterize_plan(self, document: int) -> int:
-        """Render the PDF pages of a document to PNG. Returns the number of pages rendered."""
+    def rasterize_plan(self, document: int) -> tuple[int, int]:
+        """Render the PDF pages of a document to PNG, the first PLAN_MAX_PAGES of them. Returns
+        (pages rendered, pages in the PDF); the difference is what the agents never see."""
         s = self.settings
         pdf = self.plan_pdf(document)
         doc = pymupdf.open(pdf)
-        n = min(len(doc), s.PLAN_MAX_PAGES)
+        total = len(doc)
+        n = min(total, s.PLAN_MAX_PAGES)
+        if n < total:
+            logger.warning(
+                "plan.truncated",
+                extra={
+                    "project_id": self.project_id,
+                    "document": document,
+                    "pages": n,
+                    "total": total,
+                },
+            )
         zoom = s.PLAN_DPI / 72
         for i in range(n):
             page = doc[i]
@@ -144,7 +156,7 @@ class ProjectStorage:
             "plan.rasterized",
             extra={"project_id": self.project_id, "document": document, "pages": n},
         )
-        return n
+        return n, total
 
     # ---- scene workspace ----
     def init_scene_from_template(self, force: bool = False) -> None:

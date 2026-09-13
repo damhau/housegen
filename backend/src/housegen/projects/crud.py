@@ -58,6 +58,7 @@ async def add_plan_document(
     label: str,
     original_name: str,
     pages: int,
+    pages_total: int | None = None,
 ) -> PlanDocument:
     doc = PlanDocument(
         project_id=project.id,
@@ -65,13 +66,20 @@ async def add_plan_document(
         label=label.strip() or original_name or f"Plans {number}",
         original_name=original_name,
         pages=pages,
+        pages_total=pages_total if pages_total is not None else pages,
     )
     session.add(doc)
     project.plan_pages = (project.plan_pages or 0) + pages
     await session.flush()
     logger.info(
         "plans.added",
-        extra={"project_id": project.id, "document": number, "pages": pages, "label": doc.label},
+        extra={
+            "project_id": project.id,
+            "document": number,
+            "pages": pages,
+            "total": doc.pages_total,
+            "label": doc.label,
+        },
     )
     return doc
 
