@@ -104,8 +104,8 @@ by the Vite plugin: run `vite build` before `tsc` on a clean checkout (the Docke
 - Logs are structured events (`llm.openai.done in= out= cached=`, `render.done`, `builder.pruned_images`…). Read them
   before guessing.
 - Commits: Conventional Commits (`feat:` → minor, `fix:`/`perf:` → patch, anything else → no release), plain
-  messages, **no Co-Authored-By**. Every push to `main` runs python-semantic-release (a release tags `vX.Y.Z` and
-  bumps `backend/pyproject.toml` + `uv.lock`), builds the image and deploys it to the dev environment
+  messages, **no Co-Authored-By**. Every push to `main` runs python-semantic-release (a release tags the pushed
+  commit `vX.Y.Z`; no file is bumped, `project.version` is unused), builds the image and deploys it to the dev environment
   (`housegen-dev.apps.dhconsulting.ch`); prod is the manual "Deploy to prod" workflow with a released version.
   Never push `v*` tags by hand. Rollouts are commits to `damhau/k8s-argocd`.
 - The user's OpenAI key is in their shell env, not in `backend/.env`; Claude cannot call the LLM from its shell.

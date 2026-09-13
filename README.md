@@ -82,9 +82,9 @@ docker run -p 8000:8000 -v housegen-data:/data --env-file backend/.env --shm-siz
 Releases are cut from [Conventional Commits](https://www.conventionalcommits.org/) by
 `.github/workflows/release.yml` on every push to `main`: `feat:` bumps the minor, `fix:`/`perf:` the patch, a
 `!`/`BREAKING CHANGE` the minor while 0.x, anything else (`docs:`, `chore:`, a free-form message) releases
-nothing. A release bumps `backend/pyproject.toml` (+ `uv.lock`), tags `vX.Y.Z`, publishes a GitHub Release and
-builds `ghcr.io/damhau/housegen:X.Y.Z` (+ `X.Y`, `sha-<short>`, `latest`) from the tagged commit; a push without
-a release builds `sha-<short>` (+ `latest`). Either build is rolled out to the **dev** environment by bumping the
+nothing. A release tags the pushed commit `vX.Y.Z` (no bump commit: the version lives in the tag only), publishes
+a GitHub Release and builds `ghcr.io/damhau/housegen:X.Y.Z` (+ `X.Y`, `sha-<short>`, `latest`); a push without a
+release builds `sha-<short>` (+ `latest`). Either build is rolled out to the **dev** environment by bumping the
 image tag in the GitOps repo (`damhau/k8s-argocd`, `base/applications/housegen-dev`) for Argo CD to sync
 (`deploy.yml`, which also asks Argo CD to sync now and waits for healthy). **Prod** is a manual step: Actions →
 "Deploy to prod" → the version (`deploy-prod.yml` checks that the image exists, then rolls it out to

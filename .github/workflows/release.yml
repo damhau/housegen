@@ -2,11 +2,11 @@ name: Release
 
 # Every push to main is analysed for Conventional Commits (feat: → minor, fix:/perf: → patch,
 # "!"/BREAKING CHANGE → minor while 0.x; other types and free-form messages → nothing). When it
-# warrants a release, python-semantic-release bumps backend/pyproject.toml (+ uv.lock), commits,
-# tags vX.Y.Z and publishes a GitHub Release; the image is then built FROM THAT TAGGED COMMIT as
+# warrants a release, python-semantic-release tags the pushed commit vX.Y.Z and publishes a
+# GitHub Release (no bump commit: the version lives in the tag only); the image is then built as
 # ghcr.io/damhau/housegen:X.Y.Z (+ X.Y, sha-<short>, latest). A push that warrants no release
-# builds sha-<short> (+ latest) from the pushed commit, as before. Either way the build is rolled
-# out to the dev environment (deploy.yml); prod is a manual step (deploy-prod.yml).
+# builds sha-<short> (+ latest), as before. Either way the build is rolled out to the dev
+# environment (deploy.yml); prod is a manual step (deploy-prod.yml).
 #
 # The build lives here and not in a tag-triggered workflow because a tag pushed with GITHUB_TOKEN
 # triggers no other workflow (GitHub's guard against recursion).
@@ -33,7 +33,7 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
-      contents: write # the bump commit, the tag and the GitHub Release
+      contents: write # the tag and the GitHub Release
     outputs:
       released: ${{ steps.release.outputs.released }}
       version: ${{ steps.release.outputs.version }}
@@ -45,11 +45,12 @@ jobs:
 
       - uses: astral-sh/setup-uv@v10.1.0 # no floating v10 tag: pin the release
 
-      # Configured in backend/pyproject.toml, [tool.semantic_release] (paths there are relative
-      # to the repository root, where this runs). Run as a CLI on the runner: the official
-      # action is a Docker action whose container GitHub rebuilds on every run (about a minute).
+      # Configured in backend/pyproject.toml, [tool.semantic_release]. Run as a CLI on the
+      # runner: the official action is a Docker action whose container GitHub rebuilds on every
+      # run (about a minute). --no-commit: no file is bumped, the tag goes on the pushed commit.
       # --no-changelog: the notes go on the GitHub Release, no CHANGELOG.md in the repo.
-      # HEAD moves only when PSR made the bump commit: that is the "released" signal.
+      # --strict: exit 2 when no release is due (any other non-zero code is a real failure).
+      # The tag needs a tagger identity (annotated tag), hence the git config.
       - name: Python Semantic Release
         id: release
         env:
@@ -57,15 +58,17 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          before=$(git rev-parse HEAD)
+          rc=0
           uvx --from python-semantic-release==10.6.2 \
-            semantic-release -c backend/pyproject.toml version --no-changelog
-          if [[ "$(git rev-parse HEAD)" == "$before" ]]; then
-            echo "No release: nothing to bump since $(git describe --tags --abbrev=0)"
+            semantic-release -c backend/pyproject.toml --strict version --no-commit --no-changelog || rc=$?
+          if [[ $rc -eq 2 ]]; then
+            echo "No release: nothing release-worthy since $(git describe --tags --abbrev=0)"
             echo "released=false" >> "$GITHUB_OUTPUT"
             exit 0
+          elif [[ $rc -ne 0 ]]; then
+            exit $rc
           fi
-          tag=$(git describe --tags --exact-match HEAD)
+          tag=$(git tag --points-at HEAD --list 'v*' | sort -V | tail -1)
           echo "Released ${tag}"
           {
             echo "released=true"
@@ -81,15 +84,11 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      # A release is built from the commit python-semantic-release tagged (the pushed changes
-      # plus the version bump), anything else from the pushed commit.
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.release.outputs.released == 'true' && needs.release.outputs.tag || github.sha }}
 
       # The one version string: image tag, GitOps rollout and what the app displays.
-      #   released → 1.2.3      otherwise → sha-<7 chars of the built commit>
+      #   released → 1.2.3      otherwise → sha-<7 chars of the commit>
       - name: Version
         id: version
         run: |
@@ -118,7 +117,7 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           flavor: latest=false
-          # every build: sha-<7 chars> of the built commit; a release adds 1.2.3 and 1.2;
+          # every build: sha-<7 chars> of the commit; a release adds 1.2.3 and 1.2;
           # latest only follows main
           tags: |
             type=raw,value=sha-${{ steps.version.outputs.short }}
