@@ -43,15 +43,35 @@ jobs:
         with:
           fetch-depth: 0 # the whole history: commit analysis starts from the previous tag
 
+      - uses: astral-sh/setup-uv@v10
+
       # Configured in backend/pyproject.toml, [tool.semantic_release] (paths there are relative
-      # to the repository root, where this runs).
+      # to the repository root, where this runs). Run as a CLI on the runner: the official
+      # action is a Docker action whose container GitHub rebuilds on every run (about a minute).
+      # --no-changelog: the notes go on the GitHub Release, no CHANGELOG.md in the repo.
+      # HEAD moves only when PSR made the bump commit: that is the "released" signal.
       - name: Python Semantic Release
         id: release
-        uses: python-semantic-release/python-semantic-release@v10.6.2
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          config_file: backend/pyproject.toml
-          changelog: "false" # the notes go on the GitHub Release; no CHANGELOG.md in the repo
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          before=$(git rev-parse HEAD)
+          uvx --from python-semantic-release==10.6.2 \
+            semantic-release -c backend/pyproject.toml version --no-changelog
+          if [[ "$(git rev-parse HEAD)" == "$before" ]]; then
+            echo "No release: nothing to bump since $(git describe --tags --abbrev=0)"
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          tag=$(git describe --tags --exact-match HEAD)
+          echo "Released ${tag}"
+          {
+            echo "released=true"
+            echo "tag=${tag}"
+            echo "version=${tag#v}"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     needs: release
