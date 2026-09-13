@@ -43,7 +43,7 @@ jobs:
         with:
           fetch-depth: 0 # the whole history: commit analysis starts from the previous tag
 
-      - uses: astral-sh/setup-uv@v10
+      - uses: astral-sh/setup-uv@v10.1.0 # no floating v10 tag: pin the release
 
       # Configured in backend/pyproject.toml, [tool.semantic_release] (paths there are relative
       # to the repository root, where this runs). Run as a CLI on the runner: the official
