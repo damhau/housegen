@@ -10,6 +10,11 @@
       "name": "2026-09-12-v1",
       "date": "2026-09-12",
       "note": "Trees rebuilt without a library (a trunk forking into arching limbs, branches and twigs, leaf-cluster cards), bushes and hedges as a dark core with a shell of outward-facing cards, the high-performance GPU hint, __house.stats and __house.gl. Not pinned: the build path keeps the baseline until the kit v2 measured run."
+    },
+    {
+      "name": "2026-09-13-v2",
+      "date": "2026-09-13",
+      "note": "v1's trees with the bushes and hedges as thick shells of single outward-facing leaves over a dark core (the leaf-ball look). The presentation look is still the calibrated one of docs/presentation-look.md: the reference the light design pass in dev is compared with. Not pinned."
     }
   ]
 }

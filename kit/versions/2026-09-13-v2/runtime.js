@@ -26,11 +26,8 @@
 //   ?samples=48                                    accumulation frames for look=ultra (headless default 16)
 //   ?sun_el=42&sun_az=200                          presentation sun: elevation and azimuth in degrees, azimuth
 //                                                  clockwise from north = the direction the light comes FROM
-//   ?p_env=0.3&p_bg=0.34&p_sun=3&p_hemi=0.08&p_expo=1&p_fog=0.0012&p_rayleigh=1.8&p_turbidity=2.5
+//   ?p_env=0.4&p_bg=0.34&p_sun=2.2&p_hemi=0.1&p_expo=1&p_fog=0.0012&p_rayleigh=1.8&p_turbidity=2.5
 //                                                  calibration overrides of the presentation look (tuning only)
-//   ?p_contrast=1.08&p_sat=1.06&p_vignette=0.28&p_meadow=0.78
-//                                                  the grade (contrast about mid grey, saturation, vignette) and
-//                                                  how much darker than the lawn the land beyond the plot is
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -84,30 +81,23 @@ const PALETTE = {
   sun: "#fff3e0",
 };
 
-// The presentation look. Calibrated against the quality=high renders of real projects
-// (docs/presentation-look.md): the sunlit plaster level with its quality=high brightness, the
-// shade a little deeper, a sky instead of a card. The light design pass of 2026-09-13: the first
-// calibration came out washed out (lit walls darker than quality=high at the same shade level, a
-// blue-grey sky fill desaturating the greens, the base ground's square around the plot), so: less
-// sky fill, a warmer and stronger sun, a near-neutral hemisphere, the land beyond the plot darker
-// and warmer than the lawn with no edge at the plot, a touch of contrast and saturation at the end.
+// The presentation look. Calibrated against the quality=high renders of real projects: same
+// brightness on the sunlit plaster, a little deeper in the shade, a sky instead of a card.
 const PRESENTATION_LOOK = {
   sun: { elevation: 42, azimuth: 200 }, // early afternoon, from a little west of south
-  sunColor: "#ffe2b8",
-  sunIntensity: 3.0,
+  sunColor: "#ffe9c8",
+  sunIntensity: 2.2,
   sunAngularRadius: 1.5, // degrees; the disc the ultra samples spread the sun over (soft daylight)
-  hemi: { sky: "#d6dbe0", ground: "#6e6a4e", intensity: 0.08 }, // near neutral: the sky map is the blue fill
+  hemi: { sky: "#b9cde6", ground: "#75785c", intensity: 0.1 },
   // the sky map is bright (see setupPresentationSky): these scale it as light and as background.
-  // As light it fills the shade: 0.4 put a shaded white wall level with quality=high, 0.3 a
-  // little under it, which reads as depth once the sun is stronger
-  environmentIntensity: 0.3,
+  // 0.4 puts a shaded white wall a little under its quality=high brightness and a sunlit one
+  // level with it (measured on real projects, see docs/presentation-look.md)
+  environmentIntensity: 0.4,
   backgroundIntensity: 0.34,
   exposure: 1.0,
-  meadow: 0.78, // the land beyond the plot: the lawn's colour times this, warmed (presentationGround)
+  meadow: "#6e7a54", // the land beyond the plot (the lawn's colour under its grain), fading into the haze
   fogDensity: 0.0012,
   vignette: 0.28,
-  contrast: 1.08, // about mid grey, after tone mapping (GradeShader)
-  saturation: 1.06,
   sky: { turbidity: 2.5, rayleigh: 1.8, mieCoefficient: 0.005, mieDirectionalG: 0.85 },
 };
 
@@ -115,7 +105,6 @@ const PRESENTATION_LOOK = {
 for (const [key, path] of [
   ["p_env", ["environmentIntensity"]], ["p_bg", ["backgroundIntensity"]], ["p_sun", ["sunIntensity"]], ["p_hemi", ["hemi", "intensity"]],
   ["p_expo", ["exposure"]], ["p_fog", ["fogDensity"]], ["p_rayleigh", ["sky", "rayleigh"]], ["p_turbidity", ["sky", "turbidity"]],
-  ["p_contrast", ["contrast"]], ["p_sat", ["saturation"]], ["p_vignette", ["vignette"]], ["p_meadow", ["meadow"]],
 ]) {
   const v = Number(params.get(key));
   if (params.get(key) !== null && Number.isFinite(v)) {
@@ -336,11 +325,9 @@ export async function boot(buildScene) {
     composer.addPass(gtao);
     composer.addPass(new OutputPass());
     if (PRESENTATION) {
-      const grade = new ShaderPass(GradeShader);
-      grade.uniforms.strength.value = PRESENTATION_LOOK.vignette;
-      grade.uniforms.contrast.value = PRESENTATION_LOOK.contrast;
-      grade.uniforms.saturation.value = PRESENTATION_LOOK.saturation;
-      composer.addPass(grade);
+      const vignette = new ShaderPass(VignetteShader);
+      vignette.uniforms.strength.value = PRESENTATION_LOOK.vignette;
+      composer.addPass(vignette);
     } else {
       composer.addPass(new SMAAPass(W, H));
     }
@@ -357,7 +344,7 @@ export async function boot(buildScene) {
   }
 
   if (PRESENTATION) {
-    applyPresentationLook(scene, sun, sunSpec, ground);
+    applyPresentationLook(scene, sun, sunSpec);
     state.accumulate?.rememberSun();
   }
 
@@ -519,7 +506,7 @@ function setupPresentationSky(scene, renderer, sun, spec) {
  * the scene did with ctx.scene's background, fog or environment, or with ctx.sun, the page
  * still shows the sky it was lit by.
  */
-function applyPresentationLook(scene, sun, spec, ground) {
+function applyPresentationLook(scene, sun, spec) {
   const look = PRESENTATION_LOOK;
   const { skyMap, horizon } = state.presentation;
   scene.environment = skyMap;
@@ -536,7 +523,7 @@ function applyPresentationLook(scene, sun, spec, ground) {
     hemi.intensity = look.hemi.intensity;
   }
   applyPresentationSun(sun, spec);
-  presentationGround(scene, ground);
+  scene.add(horizonGround());
 }
 
 /** Average linear radiance of the sky just above the horizon, opposite the sun. */
@@ -560,84 +547,32 @@ function sampleHorizon(renderer, skyScene, sunDir) {
   return new THREE.Color().setRGB(r / k, g / k, b / k, THREE.LinearSRGBColorSpace);
 }
 
-/**
- * The land on a presentation page. The runtime's base ground (a 400 m sheet, 20 % darker than
- * the terrain under its grain: the square the aerial views showed around the plot) is hidden and
- * one disc to the horizon takes its place at the terrain's far height: the lawn's own colour out
- * to the terrain's edge, then darkening and warming over 60 m into a meadow, one fine grain over
- * all of it, fading into the haze. Vertex colours carry the gradient; the grain's mean is
- * compensated so the lawn keeps its colour.
- */
-function presentationGround(scene, baseGround) {
-  const look = PRESENTATION_LOOK;
-  let terrain = null;
-  scene.traverse((o) => {
-    if (!terrain && o !== baseGround && o.isMesh && o.userData?.kind === "terrain") terrain = o;
-  });
-  const plot = terrain ?? baseGround;
-  const material = Array.isArray(plot.material) ? plot.material[0] : plot.material;
-  const lawn = material?.color ? material.color.clone() : new THREE.Color(PALETTE.grass);
-  // the plot: the terrain's footprint, or the house and its site on flat ground; the lawn zone
-  // is the disc that holds all of it (r0), the meadow starts 60 m further out (r1)
-  const box = terrain ? new THREE.Box3().setFromObject(terrain) : framingBounds(state.houseGroup).expandByScalar(12);
-  if (box.isEmpty()) box.set(new THREE.Vector3(-45, 0, -45), new THREE.Vector3(45, 0, 45));
-  const centre = box.getCenter(new THREE.Vector3());
-  const r0 = Math.hypot(box.max.x - box.min.x, box.max.z - box.min.z) / 2;
-  const r1 = r0 + 60;
-  const meadow = lawn.clone().multiply(new THREE.Color(look.meadow, look.meadow * 0.94, look.meadow * 0.8));
-  const grainMean = new THREE.Color().setRGB(245 / 255, 245 / 255, 245 / 255, THREE.SRGBColorSpace).r;
-  lawn.multiplyScalar(1 / grainMean);
-  meadow.multiplyScalar(1 / grainMean);
-  const tile = 6; // metres per grain tile (the base sheet's was 6.7)
-  const group = new THREE.Group();
-  group.userData = { kind: "terrain", excludeFromBounds: true };
-  const inner = r1 + 30; // fine rings (8 m) through the gradient, coarse ones to the horizon
-  for (const [rIn, rOut, rings] of [[0, inner, Math.ceil(inner / 8)], [inner, 1400, 8]]) {
-    const geo = new THREE.RingGeometry(rIn, rOut, 96, rings);
-    const pos = geo.attributes.position;
-    const colors = new Float32Array(pos.count * 3);
-    const c = new THREE.Color();
-    for (let i = 0; i < pos.count; i++) {
-      const t = THREE.MathUtils.smoothstep(Math.hypot(pos.getX(i), pos.getY(i)), r0, r1);
-      c.copy(lawn).lerp(meadow, t);
-      colors[i * 3] = c.r; colors[i * 3 + 1] = c.g; colors[i * 3 + 2] = c.b;
-    }
-    geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-    const map = noiseTexture(256, 245, 20, 3, (2 * rOut) / tile);
-    map.colorSpace = THREE.SRGBColorSpace;
-    const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, map, roughness: 1 }));
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.receiveShadow = true;
-    group.add(mesh);
-  }
-  group.position.set(centre.x, house.groundY(900, 900) - 0.02, centre.z);
-  baseGround.visible = false;
-  scene.add(group);
+/** The land beyond the plot: a wide disc at the terrain's far height, fading into the haze. */
+function horizonGround() {
+  const far = house.groundY(900, 900);
+  const disc = new THREE.Mesh(
+    new THREE.CircleGeometry(1400, 96),
+    new THREE.MeshStandardMaterial({ color: PRESENTATION_LOOK.meadow, roughness: 1 }),
+  );
+  disc.rotation.x = -Math.PI / 2;
+  disc.position.y = far - 0.06;
+  disc.userData = { kind: "terrain", excludeFromBounds: true };
+  return disc;
 }
 
-/**
- * The grade at the end of a presentation page, after tone mapping and the output colour space:
- * a touch of contrast about mid grey, a little saturation, a light vignette.
- */
-const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, strength: { value: 0.28 }, contrast: { value: 1.0 }, saturation: { value: 1.0 } },
+const VignetteShader = {
+  uniforms: { tDiffuse: { value: null }, strength: { value: 0.28 } },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
     uniform float strength;
-    uniform float contrast;
-    uniform float saturation;
     varying vec2 vUv;
     void main() {
       vec4 c = texture2D(tDiffuse, vUv);
-      vec3 col = (c.rgb - 0.5) * contrast + 0.5;
-      float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
-      col = mix(vec3(l), col, saturation);
       float r = length((vUv - 0.5) * vec2(1.0, 0.8));
-      col *= 1.0 - strength * smoothstep(0.35, 0.85, r);
-      gl_FragColor = vec4(clamp(col, 0.0, 1.0), c.a);
+      gl_FragColor = vec4(c.rgb * (1.0 - strength * smoothstep(0.35, 0.85, r)), c.a);
     }`,
 };
 
