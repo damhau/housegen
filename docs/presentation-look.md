@@ -20,8 +20,12 @@ Everything below lives in `kit/runtime.js`; the scene code the builder writes is
   The fog colour is read from the same sky just above the horizon, opposite the sun.
 - The sun light itself: warm, 2.2, placed by the runtime. A hemisphere light at 0.1 is all that is
   left of the diagnostic fill.
-- Ground to the horizon (a wide disc at the terrain's far height, the lawn's colour under its
-  grain) and exponential fog, so the plot is no longer an island.
+- Ground to the horizon and exponential fog, so the plot is no longer an island: a sheet with a
+  hole under every mesh the scene tagged as terrain, following the scene's own `groundY` for 40 m
+  past them, then easing over 80 m to the mean of that height; the lawn's colour at the plot's
+  edge darkening into a meadow over 60 m, under one grain. (Until 2026-09-17 it was one flat disc
+  at a single height, with a hole under the first terrain mesh only: on a sloped plot with a
+  second, wider context terrain it cut through the lower houses.)
 - MSAA on the post-processing target (the diagnostic path has none while the composer runs),
   ambient occlusion at a lighter blend, a light vignette. ACES tone mapping at exposure 1.0.
 - The far plane moves from 500 m to 2000 m so the horizon exists.
