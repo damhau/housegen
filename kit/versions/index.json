@@ -20,6 +20,11 @@
       "name": "2026-09-13-v3",
       "date": "2026-09-13",
       "note": "v2 plus the light design pass on the presentation look: a stronger warmer sun, less sky fill, a near-neutral hemisphere, a graded meadow beyond the plot with a hole under the terrain (pools and sunken things show again), a touch of contrast and saturation at the end. The sky is still the analytic one: the reference the HDRI sky in dev is compared with. Not pinned."
+    },
+    {
+      "name": "2026-09-17-v4",
+      "date": "2026-09-17",
+      "note": "v3 with the land beyond the plot fixed: a sheet with a hole under every mesh tagged terrain (not only the first) that follows the scene's groundY for 40 m past the plot before easing to a far height, instead of one flat disc clamped to the terrain's highest point, which buried the lower villas of a sloped three-house project whose scene had a 2000 m context terrain. house.js unchanged from v3. The viewer's default. Not pinned."
     }
   ]
 }

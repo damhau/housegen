@@ -325,7 +325,8 @@ What I would do next, in order
 Done today, all uncommitted or on `main` as noted:
 
 - **Renderer snapshots** `2026-09-13-v2` (the leaf-shell bushes and hedges, the old presentation look) and
-  `2026-09-13-v3` (v2 plus the light design pass below). v3 is the viewer's default; the build path stays pinned to
+  `2026-09-13-v3` (v2 plus the light design pass below), `2026-09-17-v4` (v3 with the land beyond the plot following
+  the scene's groundY, holes under every terrain mesh). v4 is the viewer's default; the build path stays pinned to
   the baseline.
 - **Light design pass (step 3.1a), in v3 and dev**, presentation pages only, in `kit/runtime.js`: sun 2.2 → 3.0 and
   warmer (`#ffe2b8`), sky fill 0.4 → 0.3, hemisphere 0.1 → 0.08 and near neutral, a grade pass at the end (contrast
