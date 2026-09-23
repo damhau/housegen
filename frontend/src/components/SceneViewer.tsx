@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { Columns2, Pause, Play, Sparkles } from "lucide-react"
+import { Columns2, Footprints, LogOut, Pause, Play, Sparkles } from "lucide-react"
 import { useKits } from "@/api/endpoints/meta/meta"
 import type { KitInfo } from "@/api/model"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,11 @@ function lookQuery(look: Look): string {
 }
 
 const CHROME = "relative overflow-hidden rounded-xl border bg-[#d9e0e4]"
+
+/** A room of the scene's floor plans, as the scene page announces it (walk mode). */
+type Room = { name: string; use?: string; area?: number }
+
+const TOUCH = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches
 
 /**
  * Which renderer draws the scene: a snapshot of the kit (kit/versions/<name>, listed by the
@@ -93,6 +98,12 @@ export function SceneViewer({
   const [progress, setProgress] = useState<{ count: number; total: number } | null>(null)
   // renderer: null = the newest snapshot once the list is known; compare = a second renderer
   // drawn next to it on the same scene, null = off
+  // walk mode: the rooms the scene announced (none: no interior, no Walk button), the credit lines of
+  // attribution-licensed models it uses, whether the visitor is walking and in which room
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [credits, setCredits] = useState<string[]>([])
+  const [walking, setWalking] = useState(false)
+  const [room, setRoom] = useState("")
   const [kit, setKit] = useState<string | null>(null)
   const [compare, setCompare] = useState<string | null>(null)
   const kitsQuery = useKits({ query: { staleTime: 60 * 60 * 1000 } })
@@ -112,11 +123,29 @@ export function SceneViewer({
     setError(null)
     setEffectsDropped(false)
     setProgress(null)
+    setRooms([])
+    setCredits([])
+    setWalking(false)
+    setRoom("")
     if (src === null) return
     const onMsg = (e: MessageEvent) => {
       if (e.source !== ref.current?.contentWindow) return
-      const d = e.data as { type?: string; message?: string; enabled?: boolean; count?: number; total?: number }
-      if (d?.type === "house:ready") setReady(true)
+      const d = e.data as {
+        type?: string
+        message?: string
+        enabled?: boolean
+        count?: number
+        total?: number
+        on?: boolean
+        rooms?: Room[]
+        credits?: string[]
+      }
+      if (d?.type === "house:ready") {
+        setReady(true)
+        setRooms(Array.isArray(d.rooms) ? d.rooms : [])
+        setCredits(Array.isArray(d.credits) ? d.credits : [])
+      }
+      if (d?.type === "house:walking") setWalking(!!d.on)
       if (d?.type === "house:error") setError(d.message ?? "error")
       if (d?.type === "house:effects" && d.enabled === false) setEffectsDropped(true)
       if (d?.type === "house:accumulate" && typeof d.count === "number" && typeof d.total === "number") {
@@ -129,6 +158,17 @@ export function SceneViewer({
 
   function setView(view: string) {
     for (const frame of [ref, refB]) frame.current?.contentWindow?.postMessage({ type: "house:setView", view }, "*")
+  }
+
+  function walk(on: boolean, into?: string) {
+    ref.current?.contentWindow?.postMessage({ type: "house:walk", on, room: into }, "*")
+    if (!on) setRoom("")
+  }
+
+  function goToRoom(name: string) {
+    setRoom(name)
+    ref.current?.contentWindow?.postMessage({ type: "house:jumpTo", room: name }, "*")
+    ref.current?.focus() // the keys (W A S D) go to the scene
   }
 
   function toggleCompare() {
@@ -150,6 +190,8 @@ export function SceneViewer({
     "loading…"
   ) : progress ? (
     `refining ${progress.count}/${progress.total}`
+  ) : walking ? (
+    TOUCH ? "drag to look · tap the floor to go there" : "click to look with the mouse · W A S D to walk · Esc to release"
   ) : effectsDropped && look !== "fast" ? (
     "effects off: this machine renders them too slowly"
   ) : (
@@ -203,12 +245,51 @@ export function SceneViewer({
         </div>
       )}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3">
-        <div className="pointer-events-auto flex gap-1 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
-          {VIEWS.map((v) => (
-            <Button key={v} size="sm" variant="ghost" className="h-7 px-2 capitalize" onClick={() => setView(v)}>
-              {v}
-            </Button>
-          ))}
+        <div className="pointer-events-auto flex flex-wrap gap-1 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
+          {walking ? (
+            <>
+              <select
+                value={room}
+                onChange={(e) => goToRoom(e.target.value)}
+                title="Go to a room"
+                className="h-7 max-w-48 rounded-md border bg-background px-1.5 text-[12px]"
+              >
+                <option value="" disabled>
+                  Go to a room…
+                </option>
+                {rooms.map((r) => (
+                  <option key={r.name} value={r.name}>
+                    {r.name}
+                    {r.area ? ` · ${r.area.toFixed(1)} m²` : ""}
+                  </option>
+                ))}
+              </select>
+              <Button size="sm" variant="ghost" className="h-7 px-2" title="Back to the view from outside" onClick={() => walk(false)}>
+                <LogOut className="size-3.5" />
+                Exit walk
+              </Button>
+            </>
+          ) : (
+            <>
+              {VIEWS.map((v) => (
+                <Button key={v} size="sm" variant="ghost" className="h-7 px-2 capitalize" onClick={() => setView(v)}>
+                  {v}
+                </Button>
+              ))}
+              {rooms.length > 0 && !compare && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2"
+                  title="Walk through the rooms at eye height"
+                  onClick={() => walk(true)}
+                >
+                  <Footprints className="size-3.5" />
+                  Walk
+                </Button>
+              )}
+            </>
+          )}
           <span className="mx-1 w-px self-stretch bg-border" />
           {LOOKS.map((l) => (
             <Button
@@ -227,7 +308,7 @@ export function SceneViewer({
               {l.label}
             </Button>
           ))}
-          {kits.length > 1 && (
+          {kits.length > 1 && !walking && (
             <>
               <span className="mx-1 w-px self-stretch bg-border" />
               <Button
@@ -243,7 +324,17 @@ export function SceneViewer({
             </>
           )}
         </div>
-        <span className="rounded-md bg-background/85 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">{status}</span>
+        <div className="flex flex-col items-end gap-1">
+          {credits.length > 0 && (
+            <span
+              className="pointer-events-auto max-w-80 truncate rounded-md bg-background/85 px-2 py-0.5 text-[10px] text-muted-foreground backdrop-blur"
+              title={credits.join("\n")}
+            >
+              Models: {credits.join(" · ")}
+            </span>
+          )}
+          <span className="rounded-md bg-background/85 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">{status}</span>
+        </div>
       </div>
     </div>
   )

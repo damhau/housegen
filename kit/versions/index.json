@@ -25,6 +25,11 @@
       "name": "2026-09-17-v4",
       "date": "2026-09-17",
       "note": "v3 with the land beyond the plot fixed: a sheet with a hole under every mesh tagged terrain (not only the first) that follows the scene's groundY for 40 m past the plot before easing to a far height, instead of one flat disc clamped to the terrain's highest point, which buried the lower villas of a sloped three-house project whose scene had a 2000 m context terrain. house.js unchanged from v3. The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-09-23-v5",
+      "date": "2026-09-23",
+      "note": "v4 plus textured surfaces (Poly Haven finishes at their real size, tinted to the colour asked for: render, roof tiles on sloped roofs, lawn, gravel, asphalt, wood, concrete) and the interior modules: rooms and partitions (interior.js), furniture (furnish.js), finishes (finishes.js), the first-person walk (walk.js, ?walk=1 or the viewer's Walk button). The viewer's default. Not pinned."
     }
   ]
 }
