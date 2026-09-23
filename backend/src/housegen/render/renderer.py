@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from PIL import Image
-from playwright.async_api import Browser, BrowserContext, Playwright, async_playwright
+from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
 
 from housegen.core.config import get_settings
 from housegen.core.exceptions import RenderError
@@ -126,6 +126,31 @@ class Renderer:
             await self._ensure_browser()
         return self.gl or "unknown"
 
+    @staticmethod
+    async def _wait_ready(page: Page, result: RenderResult, timeout_ms: int) -> None:
+        """Wait for window.__house.ready; raise at the timeout, or 3 s after an uncaught page error
+        while the scene is not ready yet (a module that fails to resolve or to load never boots
+        the runtime: waiting the whole timeout for it only wastes the builder's time)."""
+        ready = asyncio.ensure_future(
+            page.wait_for_function(
+                "() => window.__house && window.__house.ready", timeout=timeout_ms
+            )
+        )
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout_ms / 1000
+        grace: float | None = None
+        try:
+            while not ready.done():
+                if grace is None and any(e.startswith("pageerror:") for e in result.errors):
+                    grace = loop.time() + 3.0
+                if loop.time() > (grace if grace is not None else deadline):
+                    raise TimeoutError("scene did not become ready after a page error")
+                await asyncio.wait({ready}, timeout=0.25)
+            ready.result()
+        finally:
+            if not ready.done():
+                ready.cancel()
+
     async def _context(self, browser: Browser, width: int, height: int) -> BrowserContext:
         """One browser context per canvas size, kept between render calls: its HTTP cache holds the
         kit, three.js, the textures and the models, so a later call revalidates them (304) instead of
@@ -186,10 +211,7 @@ class Renderer:
             try:
                 await page.goto(url, wait_until="load", timeout=s.RENDER_TIMEOUT_MS)
                 try:
-                    await page.wait_for_function(
-                        "() => window.__house && window.__house.ready",
-                        timeout=s.RENDER_READY_TIMEOUT_MS,
-                    )
+                    await self._wait_ready(page, result, s.RENDER_READY_TIMEOUT_MS)
                 except Exception:
                     js_errors = await page.evaluate(
                         "() => (window.__house && window.__house.errors) || []"
