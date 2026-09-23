@@ -3,6 +3,7 @@
 // normal, roughness + meta.json with their real size) into kit/assets/polyhaven/textures/<id>/.
 // Run from kit/: node scripts/fetch_models.mjs
 import { mkdir, writeFile, access } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MODELS } from "../furnish.js";
@@ -45,6 +46,21 @@ for (const id of new Set(Object.values(TEXTURES).map((t) => t.id))) {
   console.log(`${id}: fetched, ${size.join(" × ")} m`);
 }
 
+/**
+ * Sketchfab models come with 2k–4k textures and heavy meshes (a sofa: 11 MB): compress them for the
+ * web (meshopt geometry, WebP textures at 1024 px; furnish.js loads meshopt) — about 9x lighter with
+ * no visible difference. Needs Node 22+ for the CLI; when it cannot run, the original is kept.
+ */
+function compress(file) {
+  try {
+    execFileSync("npx", ["--yes", "@gltf-transform/cli@4", "optimize", file, file,
+      "--texture-compress", "webp", "--texture-size", "1024", "--compress", "meshopt"], { stdio: "pipe" });
+    console.log(`${file}: compressed`);
+  } catch (e) {
+    console.log(`${file}: kept uncompressed (${String(e.message).split("\n")[0].slice(0, 120)})`);
+  }
+}
+
 // Sketchfab models (CC Attribution): the download API needs an account token
 const token = process.env.SKETCHFAB_TOKEN;
 for (const m of Object.values(MODELS).filter((m) => m.uid)) {
@@ -57,4 +73,5 @@ for (const m of Object.values(MODELS).filter((m) => m.uid)) {
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, await get(links.glb.url));
   console.log(`${m.file}: fetched`);
+  compress(file);
 }

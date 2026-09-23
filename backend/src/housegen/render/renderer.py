@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from PIL import Image
-from playwright.async_api import Browser, Playwright, async_playwright
+from playwright.async_api import Browser, BrowserContext, Playwright, async_playwright
 
 from housegen.core.config import get_settings
 from housegen.core.exceptions import RenderError
@@ -71,6 +71,7 @@ class Renderer:
         self._pw: Playwright | None = None
         self._browser: Browser | None = None
         self._lock = asyncio.Lock()
+        self._contexts: dict[tuple[int, int], BrowserContext] = {}
         # the WebGL renderer string of the browser ("ANGLE (Google, Vulkan 1.3.0 (SwiftShader…",
         # "ANGLE (NVIDIA, Tesla T4…"): the proof of which path draws. None until the browser runs.
         self.gl: str | None = None
@@ -125,7 +126,21 @@ class Renderer:
             await self._ensure_browser()
         return self.gl or "unknown"
 
+    async def _context(self, browser: Browser, width: int, height: int) -> BrowserContext:
+        """One browser context per canvas size, kept between render calls: its HTTP cache holds the
+        kit, three.js, the textures and the models, so a later call revalidates them (304) instead of
+        downloading them again; the scene's files are revalidated too (served no-cache)."""
+        key = (width, height)
+        ctx = self._contexts.get(key)
+        if ctx is None or ctx.browser is not browser:
+            ctx = await browser.new_context(
+                viewport={"width": width, "height": height}, device_scale_factor=1
+            )
+            self._contexts[key] = ctx
+        return ctx
+
     async def close(self) -> None:
+        self._contexts.clear()
         if self._browser is not None:
             await self._browser.close()
             self._browser = None
@@ -152,9 +167,7 @@ class Renderer:
         started = time.perf_counter()
         async with self._lock:
             browser = await self._ensure_browser()
-            context = await browser.new_context(
-                viewport={"width": s.RENDER_WIDTH, "height": s.RENDER_HEIGHT}, device_scale_factor=1
-            )
+            context = await self._context(browser, s.RENDER_WIDTH, s.RENDER_HEIGHT)
             page = await context.new_page()
             page.on(
                 "console",
@@ -219,7 +232,7 @@ class Renderer:
                 logger.exception("render.failed", extra={"url": scene_url})
                 raise RenderError(f"render failed: {exc}") from exc
             finally:
-                await context.close()
+                await page.close()
         result.duration_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
             "render.done",

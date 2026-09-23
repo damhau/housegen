@@ -2,8 +2,9 @@
 // colour, OpenGL normal, roughness), laid at their real size: a texture repeats every
 // `size` metres, so geometry must carry UVs in metres (`metricUV`; ExtrudeGeometry caps already do).
 //
-//   await loadFinishes()          once, before building (the page is ready only when they are loaded)
+//   await loadFinishes()          once, before building: which sets exist (their images load on first use)
 //   finishMaterial(name, opts)    the material, or null when that finish is not available
+//   await finishesReady()         after building: every material used has its images
 //
 // Textures are fetched with kit/scripts/fetch_models.mjs into kit/assets/polyhaven/textures/<id>/.
 // The runtime loads them before buildScene (house.js mat.* then return textured materials) and runs
@@ -33,14 +34,15 @@ export const TEXTURES = {
 
 // absolute: renderer snapshots (kit/versions/<name>/) share the working copy's assets
 const BASE = new URL("/kit/assets/polyhaven/textures/", import.meta.url);
-const _sets = new Map(); // name -> { map, normalMap, roughnessMap, size }
 const _mats = new Map();
 
-async function loadSet(name) {
+const _meta = new Map(); // name -> { size } when the set was fetched, null when it was not
+const _loading = new Map(); // name -> Promise of the set's textures (started on first use)
+const _pending = new Set(); // materials still waiting for their textures
+
+async function loadTextures(name) {
   const spec = TEXTURES[name];
   const dir = new URL(`${spec.id}/`, BASE);
-  const meta = await fetch(new URL("meta.json", dir)).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  if (!meta) return null; // not fetched: callers fall back to plain materials
   const loader = new THREE.TextureLoader();
   const get = async (suffix, srgb) => {
     const t = await loader.loadAsync(new URL(`${spec.id}_${suffix}_1k.jpg`, dir).href);
@@ -52,7 +54,12 @@ async function loadSet(name) {
   const [map, normalMap, roughnessMap] = await Promise.all([
     spec.colour === false ? null : get("diff", true), get("nor_gl", false), get("rough", false),
   ]);
-  return { map, normalMap, roughnessMap, size: meta.size, mean: map ? meanColour(map.image) : null };
+  return { map, normalMap, roughnessMap, mean: map ? meanColour(map.image) : null };
+}
+
+function texturesOf(name) {
+  if (!_loading.has(name)) _loading.set(name, loadTextures(name).catch(() => null));
+  return _loading.get(name);
 }
 
 /** Average colour of an image, linear RGB (to tint a texture to a given average colour). */
@@ -73,11 +80,21 @@ function meanColour(image) {
   return new THREE.Color(sum[0] / n, sum[1] / n, sum[2] / n);
 }
 
-/** Load the texture sets (all, or the names given). Missing ones are skipped silently. */
+/**
+ * Learn which texture sets are there (their small meta.json: size). The images themselves are
+ * fetched only for the finishes a scene uses, on first use; `finishesReady()` waits for them.
+ */
 export async function loadFinishes(names = Object.keys(TEXTURES)) {
   await Promise.all(names.map(async (n) => {
-    if (!_sets.has(n)) _sets.set(n, await loadSet(n));
+    if (_meta.has(n)) return;
+    const dir = new URL(`${TEXTURES[n].id}/`, BASE);
+    _meta.set(n, await fetch(new URL("meta.json", dir)).then((r) => (r.ok ? r.json() : null)).catch(() => null));
   }));
+}
+
+/** Resolves when every textured material handed out so far has its images. */
+export async function finishesReady() {
+  while (_pending.size) await Promise.all([..._pending]);
 }
 
 /**
@@ -86,12 +103,24 @@ export async function loadFinishes(names = Object.keys(TEXTURES)) {
  * Returns null when the finish is not loaded.
  */
 export function finishMaterial(name, { color, scale = 1, rotate = 0, roughness = 1 } = {}) {
-  const set = _sets.get(name);
-  if (!set) return null;
+  const meta = _meta.get(name);
+  if (!meta) return null;
   const spec = TEXTURES[name];
   const key = `${name}:${color}:${scale}:${rotate}:${roughness}`;
   if (_mats.has(key)) return _mats.get(key);
-  const [sx, sy] = set.size;
+  const [sx, sy] = meta.size;
+  const wanted = new THREE.Color(color ?? spec.tint ?? "#ffffff");
+  // plain in the colour asked for until the images arrive (the runtime waits for them)
+  const m = new THREE.MeshStandardMaterial({
+    color: wanted.clone(),
+    normalScale: new THREE.Vector2(spec.normalScale ?? 1, spec.normalScale ?? 1),
+    roughness,
+  });
+  m.userData.finish = name;
+  // the colour the surface should read as (with a texture the colour below is a tint): what code
+  // that derives colours from a material (the presentation look's meadow from the lawn) must use
+  m.userData.baseColor = wanted.clone();
+  _mats.set(key, m);
   const tex = (t) => {
     if (!t) return null;
     const c = t.clone();
@@ -100,24 +129,16 @@ export function finishMaterial(name, { color, scale = 1, rotate = 0, roughness =
     c.needsUpdate = true;
     return c;
   };
-  let tint = new THREE.Color(color ?? spec.tint ?? "#ffffff");
-  if (spec.match && set.mean && color) {
-    // colour-matched: texture × tint averages to `color` (in linear light)
-    tint = new THREE.Color(tint.r / Math.max(set.mean.r, 1e-3), tint.g / Math.max(set.mean.g, 1e-3), tint.b / Math.max(set.mean.b, 1e-3));
-  }
-  const m = new THREE.MeshStandardMaterial({
-    color: tint,
-    map: tex(set.map),
-    normalMap: tex(set.normalMap),
-    normalScale: new THREE.Vector2(spec.normalScale ?? 1, spec.normalScale ?? 1),
-    roughnessMap: tex(set.roughnessMap),
-    roughness,
-  });
-  m.userData.finish = name;
-  // the colour the surface should read as (the tint above is colour ÷ texture average): what code
-  // that derives colours from a material (the presentation look's meadow from the lawn) must use
-  m.userData.baseColor = new THREE.Color(color ?? spec.tint ?? "#ffffff");
-  _mats.set(key, m);
+  const ready = texturesOf(name).then((set) => {
+    if (!set) return;
+    Object.assign(m, { map: tex(set.map), normalMap: tex(set.normalMap), roughnessMap: tex(set.roughnessMap) });
+    if (spec.match && set.mean && color) {
+      // colour-matched: texture × tint averages to `color` (in linear light)
+      m.color.setRGB(wanted.r / Math.max(set.mean.r, 1e-3), wanted.g / Math.max(set.mean.g, 1e-3), wanted.b / Math.max(set.mean.b, 1e-3));
+    }
+    m.needsUpdate = true;
+  }).finally(() => _pending.delete(ready));
+  _pending.add(ready);
   return m;
 }
 
@@ -167,4 +188,4 @@ export function metricUV(geo) {
   return geo;
 }
 
-export default { TEXTURES, loadFinishes, finishMaterial, metricUV, metricUVs };
+export default { TEXTURES, loadFinishes, finishesReady, finishMaterial, metricUV, metricUVs };

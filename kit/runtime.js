@@ -48,7 +48,7 @@ import { CopyShader } from "three/addons/shaders/CopyShader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { Sky } from "three/addons/objects/Sky.js";
 import * as house from "housekit";
-import { loadFinishes, metricUVs } from "./finishes.js";
+import { finishesReady, loadFinishes, metricUVs } from "./finishes.js";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
@@ -389,6 +389,7 @@ export async function boot(buildScene) {
     result = await buildScene({ THREE, scene, house, group: houseGroup, sun, ground, renderer, camera });
     house.texturePitchedRoofs(houseGroup);
     metricUVs(houseGroup);
+    await finishesReady(); // only the texture sets the scene uses were fetched
   } catch (err) {
     recordError(`buildScene failed: ${err?.stack ?? err}`);
   }

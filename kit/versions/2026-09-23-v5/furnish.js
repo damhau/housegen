@@ -10,6 +10,7 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { finishMaterial, metricUV } from "./finishes.js";
 
 // --------------------------------------------------------------------------
@@ -330,7 +331,8 @@ export async function model(name) {
   const spec = MODELS[name];
   if (!spec) throw new Error(`unknown model ${name}. Known: ${Object.keys(MODELS).join(", ")}`);
   const file = spec.file ?? `polyhaven/${spec.id}/${spec.id}.gltf`;
-  if (!_loaded.has(file)) _loaded.set(file, new GLTFLoader().loadAsync(new URL(file, ASSETS).href).catch(() => null));
+  // models are fetched compressed (meshopt geometry, WebP textures at 1k: scripts/fetch_models.mjs)
+  if (!_loaded.has(file)) _loaded.set(file, new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(new URL(file, ASSETS).href).catch(() => null));
   const gltf = await _loaded.get(file);
   if (!gltf) {
     // not fetched (a build without the Sketchfab token): the parametric piece of the same kind
