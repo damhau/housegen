@@ -29,6 +29,9 @@ RUN npm install --omit=dev                  # node_modules/three
 # scenes fall back to the kit's parametric pieces
 COPY kit/*.js ./
 COPY kit/scripts ./scripts
+# secrets are not part of the layer cache key: this argument is ("on" when the build has the
+# token), so a layer cached without the models is not reused once the token is there
+ARG SKETCHFAB=off
 RUN --mount=type=secret,id=sketchfab_token \
     SKETCHFAB_TOKEN="$(cat /run/secrets/sketchfab_token 2>/dev/null || true)" node scripts/fetch_models.mjs
 
