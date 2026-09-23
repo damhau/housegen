@@ -48,11 +48,11 @@ deploy/    k8s.yaml, modal_render.py (GPU render service). Root Dockerfile = sin
   as kit/*.js) draws with the snapshot pinned in `kit/versions/index.json` (`RENDER_KIT` overrides), served to scene
   pages as `?kit=<name>` (`render/kits.py`). `kit/` is the working copy ("dev"): change it freely, judge it on a saved
   version next to the newest snapshot (viewer Compare, `look_sheet.py --kit`), copy it to `kit/versions/<date-name>/`
-  when it is right, and move the pin only after a measured run.
-- **The build path is frozen at v0.1.0** (what the builder, critic and intake see: prompts, tool descriptions, message
-  contents, views, response schemas). Any change to it ships with a measured run against a v0.1.0 run of the same
-  project; see `docs/build-path-2026-09-07.md` for what was removed and why. The order of quality work (bugs,
-  looks on the presentation path, kit v2, fidelity, stills) is `docs/quality-plan-2026-09-12.md`.
+  when it is right, and move the pin when it is better.
+- **No build-path freeze** (decided 2026-09-23: the tool has no users yet, iteration speed comes first). Prompts, tool
+  descriptions, views and the pinned kit may change without a measured run. Measure against an earlier run of the same
+  project when a change could plausibly hurt generation quality; `docs/build-path-2026-09-07.md` keeps the history.
+  The order of quality work is `docs/quality-plan-2026-09-12.md`.
 
 ## Kit conventions
 
@@ -66,10 +66,9 @@ deploy/    k8s.yaml, modal_render.py (GPU render service). Root Dockerfile = sin
   `agent/prompts.py`, then render the template headless to prove it.
 - Headless: shadow map computed once per page; interactive: render only on camera change; effects (GTAO+SMAA) only at
   `quality=high`, auto-disabled if a frame exceeds 250 ms.
-- **Two render paths.** `quality=…` is the diagnostic path (builder, critic, version pictures: frozen with the build
-  path). `look=presentation` / `look=ultra` is the owner's look (viewer, share page): physical sky, runtime-placed sun,
+- **Two render paths.** `quality=…` is the diagnostic path (builder, critic, version pictures). `look=presentation` / `look=ultra` is the owner's look (viewer, share page): physical sky, runtime-placed sun,
   environment from that sky, horizon, MSAA, vignette; ultra adds progressive accumulation (soft shadows, supersampling).
-  The backend never requests `look`, so it is outside the freeze. On a presentation page the runtime owns background,
+  The backend never requests `look`. On a presentation page the runtime owns background,
   fog, environment, hemisphere and sun and applies them AFTER `buildScene` (scene code sets them from inside).
   Calibration, knobs (`p_env`…) and the findings: `docs/presentation-look.md`. Any look change: run
   `backend/scripts/look_sheet.py` on a real project and LOOK at the sheet before it lands.
