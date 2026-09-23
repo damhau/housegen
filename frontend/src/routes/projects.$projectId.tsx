@@ -27,6 +27,7 @@ import { BuildingPlaceholder } from "@/components/BuildingPlaceholder"
 import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
 import { ConversationPanel } from "@/components/ConversationPanel"
+import { FurnishDialog } from "@/components/FurnishDialog"
 import { PlansPanel } from "@/components/PlansPanel"
 import { fmtUsd } from "@/components/RunSummaryCard"
 import { SceneViewer } from "@/components/SceneViewer"
@@ -93,6 +94,7 @@ function ProjectPage() {
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [furnishOpen, setFurnishOpen] = useState(false)
 
   // the job to follow: the most recent one that is still running (or interrupted by a server
   // restart: it resumes with the same id), else the most recent one at all
@@ -193,12 +195,7 @@ function ProjectPage() {
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
   }
-  async function onFurnish() {
-    const message = window.prompt(
-      "Furnish the interior from the floor plans: rooms, walls and doors checked against the plan sheets, then furniture and lights.\n\nAnything to specify? (which floor or flat, a style, a use per room) Leave empty for the whole house.",
-      "",
-    )
-    if (message === null) return
+  async function onFurnish(message: string) {
     await furnish.mutateAsync({ projectId, data: { message } })
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
@@ -292,7 +289,7 @@ function ProjectPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => void onFurnish()}
+              onClick={() => setFurnishOpen(true)}
               disabled={furnish.isPending}
               title="Build the interior from the floor plans: rooms, partitions, doors, furniture and lights"
             >
@@ -429,6 +426,9 @@ function ProjectPage() {
         </aside>
       </div>
       {settingsOpen && <SettingsSheet project={p} onClose={() => setSettingsOpen(false)} />}
+      {furnishOpen && (
+        <FurnishDialog estimate={estimateText(intEstimate.data)} onStart={onFurnish} onClose={() => setFurnishOpen(false)} />
+      )}
     </div>
   )
 }
