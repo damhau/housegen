@@ -24,6 +24,12 @@ WALLS = [
     (-5.5, -5.0, -5.1, 5.0),
     (5.1, -5.0, 5.5, 5.0),
     (-0.05, -4.6, 0.05, 1.0),
+    # a few partitions at different places: a real plan is never one symmetric box, and a single
+    # box registers equally well a few percent larger (its inner faces on the drawing's outer ones)
+    (-5.1, -1.2, -2.0, -1.1),
+    (2.6, -4.6, 2.7, -1.8),
+    (0.05, 2.3, 3.4, 2.4),
+    (-3.2, 2.9, -3.1, 4.6),
 ]
 
 
@@ -163,3 +169,48 @@ def test_finish_waits_for_the_walls_of_every_storey_to_match_the_plan(tmp_path: 
     # a storey checked PLAN_TRIES times is let through (some sheets measure poorly)
     t.plan_checks[2] = PLAN_TRIES
     assert t.finish_blockers() == []
+
+
+def _photo_sheet(ppm: float, ox: float, oy: float) -> Image.Image:
+    """A photographed paper plan: walls drawn as their two faces (thin lines), a dark border
+    around the paper, a second small drawing in a corner, and a scale unrelated to any dpi."""
+    img = Image.new("RGB", (1755, 1240), (60, 60, 60))
+    d = ImageDraw.Draw(img)
+    d.rectangle((70, 70, 1690, 1170), fill=(245, 245, 245))
+    for a, b, c, e in WALLS:
+        d.rectangle(
+            (
+                ox + (a + 5.5) * ppm,
+                oy + (b + 5.0) * ppm,
+                ox + (c + 5.5) * ppm,
+                oy + (e + 5.0) * ppm,
+            ),
+            outline=(30, 30, 30),
+            width=2,
+        )
+    for a, b, c, e in WALLS:  # the same house small in a corner (another storey of the set)
+        d.rectangle(
+            (
+                120 + (a + 5.5) * 18,
+                900 + (b + 5.0) * 18,
+                120 + (c + 5.5) * 18,
+                900 + (e + 5.0) * 18,
+            ),
+            outline=(30, 30, 30),
+        )
+    return img
+
+
+def test_the_plan_check_registers_on_a_photographed_sheet_with_hints() -> None:
+    ppm = 76.0  # a 1:50 sheet photographed: no dpi says it
+    sheet = _photo_sheet(ppm, ox=420, oy=260)
+    bbox = (-8.96, -5.6, 8.96, 5.6)
+    # the builder names the drawing's box and one dimension (the 11 m width = 836 px)
+    reg = plancheck.register(
+        _section(bbox), bbox, sheet, region=(380, 220, 950, 850), ppm_hint=11.0 * ppm / 11.0
+    )
+    assert reg is not None
+    assert abs(reg.ppm - ppm) / ppm < 0.03
+    assert abs(reg.x0 - (420 + (-8.96 + 5.5) * ppm)) < 6
+    assert abs(reg.y0 - (260 + (-5.6 + 5.0) * ppm)) < 6
+    assert reg.coverage > 0.8

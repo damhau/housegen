@@ -52,10 +52,24 @@ def dark_mask(sheet: Image.Image, threshold: int = 205) -> np.ndarray:
 
 
 def _resize_mask(mask: np.ndarray, factor: float) -> np.ndarray:
+    """Resize a boolean mask; shrinking keeps thin lines (max-pool first, then sample)."""
     h, w = mask.shape
     img = Image.fromarray(mask.astype(np.uint8) * 255)
     size = (max(1, round(w * factor)), max(1, round(h * factor)))
+    if factor < 1:
+        k = max(1, round(1 / factor))
+        if k > 1:
+            img = img.filter(ImageFilter.MaxFilter(k if k % 2 else k + 1))
+        return np.asarray(img.resize(size, Image.Resampling.NEAREST)) > 0
     return np.asarray(img.resize(size, Image.Resampling.BILINEAR)) > 96
+
+
+def _outline(mask: np.ndarray) -> np.ndarray:
+    """The edges of the model's walls: a plan draws a wall as its two faces (lines, sometimes a
+    fill between them), so the faces are what must land on the sheet's lines."""
+    img = Image.fromarray(mask.astype(np.uint8) * 255)
+    inner = np.asarray(img.filter(ImageFilter.MinFilter(3))) > 0
+    return mask & ~inner
 
 
 def _blur(mask: np.ndarray, radius: float) -> np.ndarray:
@@ -63,72 +77,110 @@ def _blur(mask: np.ndarray, radius: float) -> np.ndarray:
     return np.asarray(img).astype(np.float32) / 255.0
 
 
-def _correlate(sheet: np.ndarray, template: np.ndarray) -> tuple[float, int, int]:
-    """Best placement (score, x, y) of `template` inside `sheet`, by FFT cross-correlation."""
-    sh, sw = sheet.shape
+def _fft_corr(target: np.ndarray, template: np.ndarray) -> np.ndarray:
+    """Cross-correlation of `template` over every placement fully inside `target`."""
+    sh, sw = target.shape
     th, tw = template.shape
-    if th > sh or tw > sw:
-        return 0.0, 0, 0
     fh, fw = 1 << (sh + th).bit_length(), 1 << (sw + tw).bit_length()
-    fs = np.fft.rfft2(sheet, (fh, fw))
+    fs = np.fft.rfft2(target, (fh, fw))
     ft = np.fft.rfft2(template[::-1, ::-1], (fh, fw))
     corr = np.fft.irfft2(fs * ft, (fh, fw))
-    # valid placements only: the template fully inside the sheet
-    valid = corr[th - 1 : sh, tw - 1 : sw]
-    idx = int(np.argmax(valid))
-    y, x = divmod(idx, valid.shape[1])
-    return float(valid[y, x]) / max(1.0, float(template.sum())), x, y
+    return corr[th - 1 : sh, tw - 1 : sw]
+
+
+def _place(target: np.ndarray, template: np.ndarray) -> tuple[float, int, int]:
+    """Best placement (score, x, y) of the model's walls on the sheet's lines. The score is the
+    share of the walls on dark pixels MINUS the share of dark pixels under the section: a dark
+    border, a photo's background or a hatched area darkens everything and matches nothing."""
+    th, tw = template.shape
+    if th > target.shape[0] or tw > target.shape[1] or template.sum() < 1:
+        return -1.0, 0, 0
+    hit = _fft_corr(target, template) / float(template.sum())
+    # density of the target under the template's box, by an integral image
+    ii = np.pad(target, ((1, 0), (1, 0))).cumsum(0).cumsum(1)
+    box = ii[th:, tw:] - ii[:-th, tw:] - ii[th:, :-tw] + ii[:-th, :-tw]
+    density = box / float(th * tw)
+    score = hit - density[: hit.shape[0], : hit.shape[1]]
+    idx = int(np.argmax(score))
+    y, x = divmod(idx, score.shape[1])
+    return float(score[y, x]), x, y
 
 
 def register(
     section: Image.Image,
     bbox: tuple[float, float, float, float],
     sheet: Image.Image,
-    dpi: float,
+    dpi: float | None = None,
     scale_hint: int | None = None,
+    region: tuple[int, int, int, int] | None = None,
+    ppm_hint: float | None = None,
 ) -> Registration | None:
-    """Where the section lies on the sheet, or None when nothing matches."""
+    """Where the section lies on the sheet, or None when nothing matches. The scale is searched
+    (10 to 200 px/m) rather than derived from the sheet's resolution: a plan may be a photograph
+    of paper. `dpi` only names the scale (1:100) in the result when it is known."""
     model = wall_mask(section)
     if model.sum() < 50:
         return None
     x0, _, x1, _ = bbox
     model_ppm = section.width / (x1 - x0)
-    dark = dark_mask(sheet)
-    scales = [scale_hint] if scale_hint else list(SCALES)
+    # search with the walls only, not the section's empty margins (a region may be tight)
+    rows, cols = np.where(model.any(1))[0], np.where(model.any(0))[0]
+    cy0, cx0 = int(rows[0]), int(cols[0])
+    model = model[cy0 : int(rows[-1]) + 1, cx0 : int(cols[-1]) + 1]
+    dark_full = dark_mask(sheet)
+    # the sheet's lines as edges too: a CAD plan fills its walls (poché), a paper plan draws their
+    # two faces; either way the faces are what the model's wall faces must land on
+    dark = _outline(dark_full)
+    # a region of the sheet (one of several drawings, without the stamps and the legend)
+    rx, ry = 0, 0
+    if region:
+        rx, ry, rw, rh = (max(0, int(v)) for v in region)
+        dark = dark[ry : ry + rh, rx : rx + rw]
 
-    def search(ppm: float, down: int) -> tuple[float, int, int]:
-        tmpl = _resize_mask(model, ppm / model_ppm / down)
-        target = _blur(_resize_mask(dark, 1 / down), 1.2)
-        return _correlate(target, tmpl.astype(np.float32))
+    def search(ppm: float, down: int, target: np.ndarray) -> tuple[float, int, int]:
+        tmpl = _outline(_resize_mask(model, ppm / model_ppm / down)).astype(np.float32)
+        return _place(target, tmpl)
 
-    # coarse: each plan scale at a quarter resolution; then the scale refined by ±3 % at half
-    best: tuple[float, float, int] | None = None  # (score, ppm, scale)
-    for sc in scales:
-        ppm = dpi / INCH / sc
-        score, _, _ = search(ppm, 4)
-        if best is None or score > best[0]:
-            best = (score, ppm, sc)
+    # coarse: every scale from 10 to 200 px/m in 5 % steps at a quarter of the resolution
+    coarse_target = _blur(_resize_mask(dark, 1 / 4), 0.8)
+    ppms = (
+        [ppm_hint * f for f in (0.95, 0.97, 1.0, 1.03, 1.05)]
+        if ppm_hint
+        else [10.0 * 1.05**k for k in range(int(np.log(20) / np.log(1.05)) + 1)]
+    )
+    ranked = sorted(((search(p, 4, coarse_target)[0], p) for p in ppms), reverse=True)[:3]
+    # finer: around the three best, ±4 % in 1 % steps at half resolution
+    half_target = _blur(_resize_mask(dark, 1 / 2), 1.0)
+    best: tuple[float, float, int, int] | None = None
+    for _, p0 in ranked:
+        for f in (0.96, 0.97, 0.98, 0.99, 1.0, 1.01, 1.02, 1.03, 1.04):
+            score, x, y = search(p0 * f, 2, half_target)
+            if best is None or score > best[0]:
+                best = (score, p0 * f, x, y)
     assert best is not None
-    _, ppm0, sc = best
-    fine: tuple[float, float, int, int] | None = None
-    for f in (0.97, 0.98, 0.99, 1.0, 1.01, 1.02, 1.03):
-        score, x, y = search(ppm0 * f, 2)
-        if fine is None or score > fine[0]:
-            fine = (score, ppm0 * f, x, y)
-    assert fine is not None
-    score, ppm, x, y = fine
+    score, ppm, x, y = best
     # exact position at full resolution, near the half-resolution one
-    tmpl = _resize_mask(model, ppm / model_ppm)
+    tmpl = _outline(_resize_mask(model, ppm / model_ppm))
     th, tw = tmpl.shape
     pad = 6
     ys, xs = max(0, 2 * y - pad), max(0, 2 * x - pad)
     window = _blur(dark[ys : ys + th + 2 * pad, xs : xs + tw + 2 * pad], 1.0)
-    _, dx, dy = _correlate(window, tmpl.astype(np.float32))
+    _, dx, dy = _place(window, tmpl.astype(np.float32))
     px, py = xs + dx, ys + dy
-    near = _dilate(dark[py : py + th, px : px + tw], 3)
+    near = _dilate(dark_full[ry + py : ry + py + th, rx + px : rx + px + tw], 3)
     placed = tmpl[: near.shape[0], : near.shape[1]]
     coverage = float((placed & near).sum()) / max(1, int(placed.sum()))
-    return Registration(ppm=ppm, scale=sc, x0=px, y0=py, coverage=coverage, score=score)
+    scale = round(dpi / INCH / ppm) if dpi else (scale_hint or 0)
+    # back to the section's own corner (its bbox x0, z0) on the sheet
+    k = ppm / model_ppm
+    return Registration(
+        ppm=ppm,
+        scale=scale,
+        x0=px + rx - cx0 * k,
+        y0=py + ry - cy0 * k,
+        coverage=coverage,
+        score=score,
+    )
 
 
 def _dilate(mask: np.ndarray, r: int) -> np.ndarray:

@@ -206,7 +206,7 @@ Someone walking through the model at eye height should find the rooms the plan d
 
 ## How to work
 1. Fix the frame: the exterior model's coordinates (read its dimensions module) and where the outer walls fall on the floor-plan sheet. The inside faces of the exterior walls bound the rooms.
-2. Rooms and partitions first, from the chained dimensions: partition centre lines and thicknesses, door openings with their widths and swings, room polygons on the clear faces. Then check_plan: every red wall on a drawn wall, every drawn wall under red. Correct and check again until it matches; this is what the whole interior stands on.
+2. Rooms and partitions first, from the chained dimensions: partition centre lines and thicknesses, door openings with their widths and swings, room polygons on the clear faces. Then check_plan: every red wall on a drawn wall, every drawn wall under red. Correct and check again until it matches; this is what the whole interior stands on. First make sure the overlay sits on the right drawing: on a photographed sheet, or a sheet that holds several drawings, pass region (that drawing's box on the sheet) and dimension (one dimension line: its metres and its length in pixels); a wrong registration makes right walls look wrong.
 3. Then the furniture, room by room: the kitchen run and the bathroom fittings where the plan draws them, then beds, sofas, tables, wardrobes. Read the audit after each render: no blocked door, no room cut in two, 60 cm passages.
 4. Finally lights: a ceiling light or a pendant per room, with a point light where it glows.
 Summarise the rooms and what you furnished; list what you assumed (a room whose use the plan does not say, a door swing it does not draw) in finish.questions.

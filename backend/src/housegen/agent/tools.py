@@ -259,6 +259,33 @@ CHECK_PLAN_SPEC = ToolSpec(
         "properties": {
             "sheet": {"type": "integer", "minimum": 1, "description": "the plan sheet, as plan-N"},
             "storey": {"type": "integer", "minimum": 1, "description": "default 1"},
+            "region": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "minItems": 4,
+                "maxItems": 4,
+                "description": (
+                    "[x, y, w, h] in the sheet's pixels: the drawing of this storey when the sheet "
+                    "holds several drawings, stamps or a legend (recommended on photographed or "
+                    "crowded sheets)"
+                ),
+            },
+            "dimension": {
+                "type": "object",
+                "properties": {
+                    "metres": {
+                        "type": "number",
+                        "description": "a dimension written on the plan, in metres",
+                    },
+                    "px": {"type": "number", "description": "its length on the sheet, in pixels"},
+                },
+                "required": ["metres", "px"],
+                "additionalProperties": False,
+                "description": (
+                    "the sheet's scale from one dimension line (e.g. the overall width): fixes the "
+                    "scale when the sheet is a photograph or its scale is not the usual one"
+                ),
+            },
         },
         "required": ["sheet"],
         "additionalProperties": False,
@@ -565,19 +592,26 @@ class BuilderTools:
                 else "this renderer reports no floor plans"
             )
             return [TextPart(text=f"no plan section for storey {storey}: {why}")], True
-        bbox = tuple(float(v) for v in frame["bbox"])
+        b4 = [float(v) for v in frame["bbox"]]
+        bbox = (b4[0], b4[1], b4[2], b4[3])
         sheet = self.images.sheets[sheet_no - 1]
         dpi = plancheck.sheet_dpi(sheet.png, sheet.pdf, sheet.page) or 150.0
         hint = plancheck.scale_from_label(self.sheet_labels.get(sheet_no, ""))
+        r4 = [int(v) for v in a.get("region") or []]
+        region = (r4[0], r4[1], r4[2], r4[3]) if len(r4) == 4 else None
+        dim = a.get("dimension") or {}
+        ppm_hint = float(dim["px"]) / float(dim["metres"]) if dim.get("metres") else None
         with Image.open(res.images[view]) as section, Image.open(png) as sheet_img:
-            reg = plancheck.register(section, bbox, sheet_img, dpi, hint)  # type: ignore[arg-type]
+            reg = plancheck.register(
+                section, bbox, sheet_img, dpi, hint, region=region, ppm_hint=ppm_hint
+            )
             if reg is None:
                 return [
                     TextPart(
                         text="the section has no walls to register (no floorPlan walls at 1.2 m?)"
                     )
                 ], True
-            jpeg = plancheck.overlay(section, sheet_img, reg, bbox)  # type: ignore[arg-type]
+            jpeg = plancheck.overlay(section, sheet_img, reg, bbox)
         self.plan_coverage[storey] = reg.coverage
         self.plan_checks[storey] = self.plan_checks.get(storey, 0) + 1
         verdict = (
@@ -589,6 +623,13 @@ class BuilderTools:
             "stands on them), then check_plan again. finish is refused until it reaches "
             f"{PLAN_OK:.0%}."
         )
+        if reg.score < 0.33 and not (region and ppm_hint):
+            verdict = (
+                "Registration uncertain (the section matches the sheet poorly wherever it is put): "
+                "look at the overlay; if your walls are not over the right drawing, call check_plan "
+                "again with region (the drawing's box on the sheet) and dimension (a dimension line: "
+                "its metres and its length in pixels). "
+            ) + verdict
         text = (
             f"{verdict} Storey {storey} (floor at y={frame.get('y')}) on plan-{sheet_no}: registered at 1:{reg.scale} "
             f"({reg.ppm:.1f} px/m, section corner [{bbox[0]:.2f}, {bbox[1]:.2f}] at sheet pixel "

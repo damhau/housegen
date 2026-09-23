@@ -314,7 +314,7 @@ async def run_builder(
                                 "kind": "tool",
                                 "tool": "finish",
                                 "args": _arg_preview("finish", call.input),
-                                "result": "rejected: check_scene required",
+                                "result": "rejected: " + " ".join(blockers)[:300],
                                 "step": run.steps,
                             }
                         )
