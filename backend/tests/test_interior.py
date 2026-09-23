@@ -146,3 +146,20 @@ async def test_the_interior_endpoint_needs_an_exterior_and_starts_the_job(
     est = await client.get(f"/api/v1/projects/{pid}/estimate", params={"kind": "interior"})
     assert est.status_code == 200
     assert est.json()["kind"] == "interior"
+
+
+def test_finish_waits_for_the_walls_of_every_storey_to_match_the_plan(tmp_path: Path) -> None:
+    from housegen.agent.tools import PLAN_TRIES, BuilderTools
+    from housegen.agent.workspace import Workspace
+
+    t = BuilderTools(Workspace(tmp_path), renderer=None, scene_url="", renders_dir=tmp_path)  # type: ignore[arg-type]
+    t.last_check_ok = True
+    assert t.finish_blockers() == []
+    t.plan_coverage, t.plan_checks = {1: 0.95, 2: 0.51}, {1: 1, 2: 1}
+    blockers = t.finish_blockers()
+    assert len(blockers) == 1
+    assert "storey 2 (51%)" in blockers[0]
+    assert "storey 1" not in blockers[0]
+    # a storey checked PLAN_TRIES times is let through (some sheets measure poorly)
+    t.plan_checks[2] = PLAN_TRIES
+    assert t.finish_blockers() == []

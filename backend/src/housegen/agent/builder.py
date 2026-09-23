@@ -294,18 +294,12 @@ async def run_builder(
         results: list[ToolResultPart] = []
         for call in calls:
             if call.name == "finish":
-                if require_checks and not tools.last_check_ok:
+                blockers = tools.finish_blockers() if require_checks else []
+                if blockers:
                     results.append(
                         ToolResultPart(
                             tool_call_id=call.id,
-                            content=[
-                                TextPart(
-                                    text=(
-                                        "Not finished: run check_scene (it must report zero errors) "
-                                        "after your last edit, then call finish again."
-                                    )
-                                )
-                            ],
+                            content=[TextPart(text="Not finished: " + " ".join(blockers))],
                             is_error=True,
                         )
                     )

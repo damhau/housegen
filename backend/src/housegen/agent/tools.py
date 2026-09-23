@@ -239,6 +239,9 @@ TOOL_SPECS: list[ToolSpec] = [
 ]
 
 
+PLAN_OK = 0.8  # the plan-check coverage below which an interior storey must be fixed
+PLAN_TRIES = 3  # plan checks of one storey after which `finish` lets a low one through
+
 CHECK_PLAN_SPEC = ToolSpec(
     name="check_plan",
     description=(
@@ -387,6 +390,9 @@ class BuilderTools:
         self.render_ms_total = 0  # every render this instance ran (per-turn deltas, #13)
         self.default_quality = "medium"  # in-loop renders when the model gives no quality (#18)
         self.sheet_labels: dict[int, str] = {}  # plan sheet number → the intake's label (its scale)
+        # interiors: each storey's latest plan-check coverage and how many checks it had
+        self.plan_coverage: dict[int, float] = {}
+        self.plan_checks: dict[int, int] = {}
         # the tools the model is offered: the exterior set; the interior job adds check_plan
         self.specs: list[ToolSpec] = TOOL_SPECS
         self.handlers: dict[str, Handler] = {
@@ -507,6 +513,30 @@ class BuilderTools:
         orig = shown.parent / "orig" / shown.name
         return [*crop_image(shown, orig if orig.exists() else shown, x, y, w, h, label=name)], False
 
+    def finish_blockers(self) -> list[str]:
+        """Why `finish` must wait: no clean check_scene after the last edit; on interiors, a storey
+        whose last plan check is below PLAN_OK (after PLAN_TRIES checks it is let through: some
+        sheets measure poorly, text over walls or other drawings on the sheet)."""
+        out = []
+        if not self.last_check_ok:
+            out.append(
+                "run check_scene (it must report zero errors) after your last edit, then call "
+                "finish again."
+            )
+        low = [
+            f"storey {n} ({c:.0%})"
+            for n, c in sorted(self.plan_coverage.items())
+            if c < PLAN_OK and self.plan_checks.get(n, 0) < PLAN_TRIES
+        ]
+        if low:
+            out.append(
+                "the walls of "
+                + ", ".join(low)
+                + f" do not match the plan (check_plan below {PLAN_OK:.0%}): move them onto the "
+                "drawn walls, run check_plan on that storey again, then finish."
+            )
+        return out
+
     async def check_plan(self, a: dict[str, Any]) -> ToolOutput:
         """The model's storey section registered on a plan sheet and drawn over it (interiors)."""
         from PIL import Image
@@ -548,8 +578,19 @@ class BuilderTools:
                     )
                 ], True
             jpeg = plancheck.overlay(section, sheet_img, reg, bbox)  # type: ignore[arg-type]
+        self.plan_coverage[storey] = reg.coverage
+        self.plan_checks[storey] = self.plan_checks.get(storey, 0) + 1
+        verdict = (
+            "Good: the walls match the plan."
+            if reg.coverage >= 0.9
+            else "Close: look at the overlay for the walls off the plan."
+            if reg.coverage >= PLAN_OK
+            else "This storey does NOT match the plan: fix its walls before anything else (furniture "
+            "stands on them), then check_plan again. finish is refused until it reaches "
+            f"{PLAN_OK:.0%}."
+        )
         text = (
-            f"Storey {storey} (floor at y={frame.get('y')}) on plan-{sheet_no}: registered at 1:{reg.scale} "
+            f"{verdict} Storey {storey} (floor at y={frame.get('y')}) on plan-{sheet_no}: registered at 1:{reg.scale} "
             f"({reg.ppm:.1f} px/m, section corner [{bbox[0]:.2f}, {bbox[1]:.2f}] at sheet pixel "
             f"({reg.x0:.0f}, {reg.y0:.0f})). {reg.coverage:.0%} of your walls lie on drawn lines "
             "(a faithful floor reaches ~90 %; the rest is usually dimension text crossing walls). "
