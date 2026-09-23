@@ -1,0 +1,58 @@
+<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:#000}canvas{display:block}</style>
+<script type="importmap">{ "imports": {
+  "three": "/kit/vendor/three/build/three.module.js",
+  "three/addons/": "/kit/vendor/three/examples/jsm/",
+  "three/examples/jsm/": "/kit/vendor/three/examples/jsm/",
+  "three/tsl": "/kit/vendor/three/build/three.tsl.js",
+  "three/webgpu": "/kit/vendor/three/build/three.webgpu.js",
+  "three-mesh-bvh": "/kit/vendor/three-mesh-bvh/src/index.js",
+  "three-gpu-pathtracer": "/kit/vendor/three-gpu-pathtracer/src/index.js",
+  "xatlas-web": "/kit/vendor/stub.js",
+  "housekit": "/kit/house.js", "housekit/interior": "/kit/interior.js", "housekit/furnish": "/kit/furnish.js",
+    "housekit/finishes": "/kit/finishes.js"
+} }</script></head><body>
+<script type="module">
+// Path-traced still of one view of the scene: sun + sky through the windows, the lamps (point lights
+// and the emissive discs), bounced light. ?view=in-salon&w=800&h=500&samples=64
+import * as THREE from "three";
+import { WebGLPathTracer, GradientEquirectTexture } from "three-gpu-pathtracer";
+import house from "housekit";
+import { buildScene } from "./src/scene.js";
+const p = new URLSearchParams(location.search);
+const W = +(p.get("w") ?? 800), H = +(p.get("h") ?? 500), SAMPLES = +(p.get("samples") ?? 64);
+const renderer = new THREE.WebGLRenderer({ antialias: false, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.setPixelRatio(1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = +(p.get("exposure") ?? 1);
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const group = new THREE.Group(); scene.add(group);
+const camera = new THREE.PerspectiveCamera(70, W / H, 0.05, 500);
+const sun = new THREE.DirectionalLight("#fff2e0", +(p.get("sun") ?? 3.0));
+const el = THREE.MathUtils.degToRad(+(p.get("sun_el") ?? 30)), az = THREE.MathUtils.degToRad(+(p.get("sun_az") ?? 225));
+sun.position.set(Math.sin(az) * Math.cos(el) * 50, Math.sin(el) * 50, -Math.cos(az) * Math.cos(el) * 50);
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1)); ground.visible = false;
+const res = await buildScene({ THREE, scene, house, group, sun, ground, renderer, camera });
+const sky = new GradientEquirectTexture();
+sky.topColor.set("#8fb4e0"); sky.bottomColor.set("#e9eef2"); sky.update();
+scene.environment = sky; scene.background = sky; scene.environmentIntensity = +(p.get("env") ?? 1.0);
+const v = res.views[p.get("view") ?? "in-salon"];
+camera.position.set(...v.position); camera.fov = v.fov ?? 70; camera.updateProjectionMatrix(); camera.lookAt(...v.target);
+// point lights come from the scene (lamps); the path tracer also lights by the emissive discs
+const pt = new WebGLPathTracer(renderer);
+pt.tiles.set(2, 2);
+pt.filterGlossyFactor = 0.5;
+pt.minSamples = 1;
+pt.renderDelay = 0;
+pt.fadeDuration = 0;
+pt.setScene(scene, camera);
+window.__pt = { samples: 0, total: SAMPLES, ready: false };
+const t0 = performance.now();
+function frame() {
+  pt.renderSample();
+  window.__pt.samples = pt.samples;
+  if (pt.samples < SAMPLES) requestAnimationFrame(frame);
+  else { window.__pt.ready = true; window.__pt.ms = Math.round(performance.now() - t0); }
+}
+frame();
+</script></body></html>

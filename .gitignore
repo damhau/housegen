@@ -31,3 +31,7 @@ npm-debug.log*
 
 # Playwright MCP artefacts
 .playwright-mcp/
+
+# --- Furniture models fetched by kit/scripts/fetch_models.mjs (CC0, Poly Haven) ---
+kit/assets/polyhaven/
+kit/assets/sketchfab/

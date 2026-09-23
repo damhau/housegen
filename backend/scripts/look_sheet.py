@@ -199,8 +199,13 @@ def main() -> None:
         www = Path(tmp)
         (www / "kit" / "vendor").mkdir(parents=True)
         kit = kit_dir(args.kit or DEV, settings)  # the kit files the temp site serves as /kit/*
-        for name in ("house.js", "runtime.js"):
-            (www / "kit" / name).symlink_to(kit / name)
+        # house.js, runtime.js and the modules next to them (interior.js)
+        for path in kit.glob("*.js"):
+            (www / "kit" / path.name).symlink_to(path)
+        if (
+            settings.KIT_DIR / "assets"
+        ).is_dir():  # furniture models (kit/scripts/fetch_models.mjs)
+            (www / "kit" / "assets").symlink_to(settings.KIT_DIR / "assets")
         (www / "kit" / "vendor" / "three").symlink_to(settings.KIT_DIR / "node_modules" / "three")
         (www / "scene").symlink_to(scene)
         server, port = serve(www)

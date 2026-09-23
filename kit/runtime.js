@@ -23,6 +23,9 @@
 //                                                  jittered by a fraction of a pixel (supersampled anti-aliasing).
 //                                                  Interactive pages converge while the camera rests; headless
 //                                                  pages finish every sample before `ready`.
+//   ?walk=1                                        first-person walk (kit/walk.js): click to look with the mouse
+//                                                  (Esc releases) or drag, WASD, click/tap the
+//                                                  floor to glide; starts from `view` at 1.6 m above its floor
 //   ?samples=48                                    accumulation frames for look=ultra (headless default 16)
 //   ?sun_el=42&sun_az=200                          presentation sun: elevation and azimuth in degrees, azimuth
 //                                                  clockwise from north = the direction the light comes FROM
@@ -48,6 +51,7 @@ import * as house from "housekit";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
+const WALK = params.get("walk") === "1";
 // presentation looks (see the header): never on the builder's or the critic's pages
 const LOOK = params.get("look");
 const PRESENTATION = LOOK === "presentation" || LOOK === "ultra";
@@ -193,6 +197,26 @@ window.__house = {
   // deterministic plausibility audit of the built scene (see house.audit): the renderer
   // appends it to the builder's tool results and gives it to the critic
   audit: () => (state.houseGroup ? house.audit(state.houseGroup) : []),
+  // walk mode (?walk=1): the rooms of the scene's floor plans, glide / jump to a place
+  get rooms() {
+    const out = [];
+    state.houseGroup?.traverse((o) => { if (o.userData?.kind === "floorPlan") out.push(...o.userData.rooms); });
+    return out;
+  },
+  walkTo: (x, z) => state.walk?.goTo(x, z),
+  get walkDebug() {
+    const w = state.walk;
+    const r = ([x, z]) => [Math.round(x * 100) / 100, Math.round(z * 100) / 100];
+    return w ? { glide: w.glide && r(w.glide), path: w.path.map(r), doorways: w.doorways.map(r), blocked: w.blockedDoorways().map(r), reach: w.reach(), floorY: w.floorY } : null;
+  },
+  // tests: advance the walk by `seconds` in fixed 50 ms steps, without rendering
+  walkTick: (seconds) => { for (let t = 0; t < seconds; t += 0.05) state.walk?.update(0.05); },
+  jumpTo: (name) => {
+    const room = window.__house.rooms.find((r) => r.name === name);
+    if (room && state.walk) state.walk.jumpTo(room);
+    return !!room;
+  },
+  get position() { return state.camera?.position.toArray().map((v) => Math.round(v * 100) / 100) ?? null; },
 };
 
 function recordError(msg) {
@@ -400,7 +424,7 @@ export async function boot(buildScene) {
   }
   if (result?.views) {
     for (const [name, v] of Object.entries(result.views)) {
-      state.views[name] = { pos: v.position, target: new THREE.Vector3(...(v.target ?? [c.x, c.y, c.z])) };
+      state.views[name] = { pos: v.position, target: new THREE.Vector3(...(v.target ?? [c.x, c.y, c.z])), fov: v.fov };
     }
   }
 
@@ -421,9 +445,17 @@ export async function boot(buildScene) {
     state.composer?.setSize(w, h);
     state.needsRender = true;
   });
+  if (WALK) {
+    const { Walk } = await import("./walk.js");
+    camera.fov = 70;
+    camera.updateProjectionMatrix();
+    controls.enabled = false;
+    state.walk = new Walk({ camera, canvas, root: houseGroup, renderer, onChange: () => { state.needsRender = true; } });
+    window.__walk = state.walk; // debugging
+  }
   window.addEventListener("message", (e) => {
     const d = e.data ?? {};
-    if (d.type === "house:setView") setView(d.view);
+    if (d.type === "house:setView") setView(d.view).then(() => state.walk?.sync());
   });
   state.ready = true;
   try { parent.postMessage({ type: "house:ready", views: Object.keys(state.views) }, "*"); } catch { /* noop */ }
@@ -436,7 +468,7 @@ export async function boot(buildScene) {
   // keeps going: it only converges more slowly.
   let frames = 0, slowMs = 0;
   renderer.setAnimationLoop(() => {
-    const moved = controls.update();
+    const moved = state.walk ? state.walk.update() : controls.update();
     if (moved) state.accumulate?.reset();
     const converging = state.composer && state.accumulate && !state.accumulate.done;
     if (!moved && !state.needsRender && !converging) return;
