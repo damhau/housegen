@@ -13,4 +13,5 @@ export const RunEstimateKind = {
   intake: 'intake',
   generate: 'generate',
   modify: 'modify',
+  interior: 'interior',
 } as const;

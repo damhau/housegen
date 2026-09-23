@@ -12,7 +12,7 @@ from typing import Any
 
 from housegen.agent.metrics import ToolCallMetric, TurnMetric
 from housegen.agent.progress import LiveProgress
-from housegen.agent.tools import TOOL_SPECS, BuilderTools
+from housegen.agent.tools import BuilderTools
 from housegen.core.exceptions import LLMError
 from housegen.llm import (
     Completion,
@@ -169,7 +169,7 @@ async def run_builder(
                 model=model,
                 system=system,
                 messages=messages,
-                tools=TOOL_SPECS,
+                tools=tools.specs,
                 max_tokens=max_tokens,
                 effort=effort,
                 cache_key=cache_key,
@@ -179,7 +179,7 @@ async def run_builder(
                 model=model,
                 system=system,
                 messages=messages,
-                tools=TOOL_SPECS,
+                tools=tools.specs,
                 max_tokens=max_tokens,
                 on_progress=live.on_event,
                 effort=effort,

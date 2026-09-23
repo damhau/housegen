@@ -8,7 +8,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from PIL import Image
 from playwright.async_api import Browser, Playwright, async_playwright
@@ -26,6 +26,9 @@ class RenderResult:
     console: list[str] = field(default_factory=list)
     # deterministic plausibility findings from the runtime (window.__house.audit, #3)
     audit: list[str] = field(default_factory=list)
+    # what the runtime reports about the scene (window.__house.report): the rooms of its floor
+    # plans and the framing of each storey's plan-section view; None from an older kit
+    report: dict[str, Any] | None = None
     duration_ms: int = 0
 
 
@@ -192,6 +195,13 @@ class Renderer:
                     result.audit = [str(x) for x in found][:20]
                 except Exception as exc:  # the audit must never break a render
                     logger.warning("render.audit_failed", extra={"error": str(exc)[:200]})
+                try:
+                    rep = await page.evaluate(
+                        "() => (window.__house.report ? window.__house.report() : null)"
+                    )
+                    result.report = rep if isinstance(rep, dict) else None
+                except Exception as exc:  # nor the report
+                    logger.warning("render.report_failed", extra={"error": str(exc)[:200]})
                 for view in views:
                     ok = await page.evaluate("(v) => window.__house.setView(v)", view)
                     if not ok:

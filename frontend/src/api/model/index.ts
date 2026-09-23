@@ -7,6 +7,7 @@
 
 export * from './bodyAddPlanDocument';
 export * from './bodyCreateProject';
+export * from './bodyInterior';
 export * from './bodyModify';
 export * from './bodyModifyApplyReviewOf';
 export * from './chatMessageOut';

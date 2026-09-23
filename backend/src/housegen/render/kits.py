@@ -78,6 +78,19 @@ def pinned_kit(settings: Settings | None = None) -> str:
     return name
 
 
+def kit_with(module: str, settings: Settings | None = None) -> str:
+    """The renderer a job needs a module of (the interior job: interior.js): the pinned one when
+    it has it, else the newest snapshot that has it, else the working copy."""
+    settings = settings or get_settings()
+    pinned = pinned_kit(settings)
+    if (kit_dir(pinned, settings) / module).exists():
+        return pinned
+    for v in _snapshots(settings):
+        if (settings.KIT_DIR / "versions" / v["name"] / module).exists():
+            return v["name"]
+    return DEV
+
+
 def kit_dir(name: str, settings: Settings | None = None) -> Path:
     """The directory holding house.js and runtime.js of a renderer; KeyError when unknown."""
     settings = settings or get_settings()

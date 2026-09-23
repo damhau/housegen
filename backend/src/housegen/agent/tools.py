@@ -239,6 +239,30 @@ TOOL_SPECS: list[ToolSpec] = [
 ]
 
 
+CHECK_PLAN_SPEC = ToolSpec(
+    name="check_plan",
+    description=(
+        "Lay your model's floor plan over a plan sheet: the storey seen from above, cut at 1.2 m, "
+        "registered on the sheet automatically (scale and position), drawn over it: red = your walls "
+        "and partitions, green = your door leaves, orange = your furniture footprints, grey = the "
+        "sheet. Returns that overlay, the registration and the share of your walls that lie on drawn "
+        "lines. Use it after writing or moving walls: every red wall must sit on a drawn wall, every "
+        "drawn wall of the storey must be under red, doors where the plan draws them. Zoom on a "
+        "doubtful area with inspect_image on the plan sheet. storey: 1 = the lowest floor plan in "
+        "the scene (the order of your floorPlan calls by height)."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "sheet": {"type": "integer", "minimum": 1, "description": "the plan sheet, as plan-N"},
+            "storey": {"type": "integer", "minimum": 1, "description": "default 1"},
+        },
+        "required": ["sheet"],
+        "additionalProperties": False,
+    },
+)
+
+
 class ImageSources:
     """Where inspect_image finds the images the model has seen (photos by label, plan sheets)."""
 
@@ -362,6 +386,9 @@ class BuilderTools:
         self.last_check_ok = False
         self.render_ms_total = 0  # every render this instance ran (per-turn deltas, #13)
         self.default_quality = "medium"  # in-loop renders when the model gives no quality (#18)
+        self.sheet_labels: dict[int, str] = {}  # plan sheet number → the intake's label (its scale)
+        # the tools the model is offered: the exterior set; the interior job adds check_plan
+        self.specs: list[ToolSpec] = TOOL_SPECS
         self.handlers: dict[str, Handler] = {
             "list_files": self.list_files,
             "read_file": self.read_file,
@@ -372,6 +399,7 @@ class BuilderTools:
             "render_views": self.render_views,
             "inspect_image": self.inspect_image,
             "check_scene": self.check_scene,
+            "check_plan": self.check_plan,
         }
 
     async def call(self, name: str, args: dict[str, Any]) -> ToolOutput:
@@ -478,6 +506,56 @@ class BuilderTools:
             ], True
         orig = shown.parent / "orig" / shown.name
         return [*crop_image(shown, orig if orig.exists() else shown, x, y, w, h, label=name)], False
+
+    async def check_plan(self, a: dict[str, Any]) -> ToolOutput:
+        """The model's storey section registered on a plan sheet and drawn over it (interiors)."""
+        from PIL import Image
+
+        from housegen.agent import plancheck
+
+        sheet_no = int(a["sheet"])
+        storey = int(a.get("storey") or 1)
+        png = self.images.plan_page(sheet_no)
+        if png is None:
+            return [TextPart(text=f"no plan sheet {sheet_no}")], True
+        view = f"plan-section-{storey}"
+        res = await self.renderer.render(self.scene_url, [view], self.renders_dir, quality="low")
+        self.render_ms_total += res.duration_ms
+        sections = (res.report or {}).get("planSections") or []
+        frame = next((s for s in sections if s.get("view") == view), None)
+        if res.errors or view not in res.images or frame is None:
+            why = "; ".join(res.errors[:3]) or (
+                f"the scene has {len(sections)} storeys with a floor plan"
+                if res.report is not None
+                else "this renderer reports no floor plans"
+            )
+            return [TextPart(text=f"no plan section for storey {storey}: {why}")], True
+        bbox = tuple(float(v) for v in frame["bbox"])
+        sheet = self.images.sheets[sheet_no - 1]
+        dpi = plancheck.sheet_dpi(sheet.png, sheet.pdf, sheet.page) or 150.0
+        hint = plancheck.scale_from_label(self.sheet_labels.get(sheet_no, ""))
+        with Image.open(res.images[view]) as section, Image.open(png) as sheet_img:
+            reg = plancheck.register(section, bbox, sheet_img, dpi, hint)  # type: ignore[arg-type]
+            if reg is None:
+                return [
+                    TextPart(
+                        text="the section has no walls to register (no floorPlan walls at 1.2 m?)"
+                    )
+                ], True
+            jpeg = plancheck.overlay(section, sheet_img, reg, bbox)  # type: ignore[arg-type]
+        text = (
+            f"Storey {storey} (floor at y={frame.get('y')}) on plan-{sheet_no}: registered at 1:{reg.scale} "
+            f"({reg.ppm:.1f} px/m, section corner [{bbox[0]:.2f}, {bbox[1]:.2f}] at sheet pixel "
+            f"({reg.x0:.0f}, {reg.y0:.0f})). {reg.coverage:.0%} of your walls lie on drawn lines "
+            "(a faithful floor reaches ~90 %; the rest is usually dimension text crossing walls). "
+            "Look for red off the drawn walls and for drawn walls with no red over them."
+        )
+        return [
+            TextPart(text=text),
+            ImagePart.from_bytes(
+                jpeg, "image/jpeg", label=f"Plan check — storey {storey} over plan-{sheet_no}"
+            ),
+        ], False
 
     async def check_scene(self, _: dict[str, Any]) -> ToolOutput:
         res = await self.renderer.render(self.scene_url, [], self.renders_dir, quality="low")

@@ -27,13 +27,14 @@ from housegen.agent.progress import LiveProgress
 from housegen.agent.prompts import (
     BUILDER_SYSTEM,
     FIRST_RUN_ADDENDUM,
+    INTERIOR_SYSTEM,
     MODIFY_ADDENDUM,
     PLAN_ONLY_ADDENDUM,
     RESUME_ADDENDUM,
 )
 from housegen.agent.run_settings import ResolvedRunSettings, resolve
 from housegen.agent.schemas import Critique, Intake
-from housegen.agent.tools import BuilderTools, ImageSources
+from housegen.agent.tools import CHECK_PLAN_SPEC, TOOL_SPECS, BuilderTools, ImageSources
 from housegen.agent.workspace import Workspace
 from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
@@ -44,7 +45,7 @@ from housegen.projects.models import Job
 from housegen.projects.schemas import standard_views
 from housegen.projects.storage import PlanSheet, ProjectStorage
 from housegen.render import renderer
-from housegen.render.kits import kit_dir, pinned_kit
+from housegen.render.kits import kit_dir, kit_with, pinned_kit
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +95,9 @@ class _Inputs:
 class _Run:
     """Shared plumbing for one job."""
 
-    def __init__(self, ctx: JobContext, rs: ResolvedRunSettings | None = None) -> None:
+    def __init__(
+        self, ctx: JobContext, rs: ResolvedRunSettings | None = None, kit: str | None = None
+    ) -> None:
         self.ctx = ctx
         self.settings = get_settings()
         # what this job runs with (#18): the snapshot taken when it was started, so a settings
@@ -106,7 +109,7 @@ class _Run:
         self.storage.init_scene_from_template()
         # the renderer snapshot of the build path (frozen): what the builder reads as kit/*.js
         # and what every render of this job is drawn with
-        self.kit = pinned_kit(self.settings)
+        self.kit = kit or pinned_kit(self.settings)
         self.workspace = Workspace(
             self.storage.scene_dir, readonly={"kit": kit_dir(self.kit, self.settings)}
         )
@@ -125,12 +128,12 @@ class _Run:
         )
 
     @classmethod
-    async def create(cls, ctx: JobContext) -> _Run:
+    async def create(cls, ctx: JobContext, kit: str | None = None) -> _Run:
         async with session_factory()() as session:
             job = await crud.get_job(session, ctx.job_id)
             stored = job.settings
         rs = ResolvedRunSettings.model_validate(stored) if stored else None
-        run = cls(ctx, rs)
+        run = cls(ctx, rs, kit)
         run.tools.default_quality = run.rs.render_quality
         return run
 
@@ -831,6 +834,94 @@ async def _modify_finish(run: _Run, version: int, summary: str, score: int | Non
 
 
 # --------------------------------------------------------------------------
+# interior (#33): rooms, partitions, doors and furniture inside the existing exterior
+# --------------------------------------------------------------------------
+
+# the kit modules an interior scene imports, by import-map name
+INTERIOR_IMPORTS = {
+    "housekit/interior": "/kit/interior.js",
+    "housekit/furnish": "/kit/furnish.js",
+    "housekit/finishes": "/kit/finishes.js",
+}
+# eye-height views of the first rooms, in the version pictures
+INTERIOR_ROOM_VIEWS = 6
+
+
+def ensure_interior_imports(index_html: Path) -> bool:
+    """Add the interior modules to the scene page's import map (a scene made before them has
+    only housekit); True when the page changed."""
+    html = index_html.read_text(encoding="utf-8")
+    missing = {k: v for k, v in INTERIOR_IMPORTS.items() if f'"{k}"' not in html}
+    if not missing:
+        return False
+    anchor = re.search(r'"housekit"\s*:\s*"[^"]+"', html)
+    if anchor is None:
+        return False
+    extra = "".join(f',\n    "{k}": "{v}"' for k, v in missing.items())
+    index_html.write_text(html[: anchor.end()] + extra + html[anchor.end() :], encoding="utf-8")
+    return True
+
+
+async def interior(ctx: JobContext) -> None:
+    run = await _Run.create(ctx, kit=kit_with("interior.js"))
+    run.tools.specs = [*TOOL_SPECS, CHECK_PLAN_SPEC]
+    async with session_factory()() as session:
+        job = await crud.get_job(session, ctx.job_id)
+        request = job.request_text
+    inp = await run.inputs()
+    ensure_interior_imports(run.storage.scene_dir / "index.html")
+    floor_plans = [
+        sh for sh in (inp.intake.sheets if inp.intake else []) if sh.kind == "floor_plan"
+    ]
+    run.tools.sheet_labels = {sh.page: sh.label for sh in (inp.intake.sheets if inp.intake else [])}
+
+    await ctx.emit("phase", name="render", message="Rendering the current state")
+    before = await run.render_standard()
+    parts: list[ImagePart | str] = []
+    parts.append(
+        "## Request\n"
+        + (request.strip() or "Furnish the interior of the house as the floor plans draw it.")
+    )
+    if inp.brief:
+        parts.append(f"{BRIEF_HEADING}\n{inp.brief}")
+    pages = [sh.page for sh in floor_plans] or list(range(1, len(inp.pages) + 1))
+    parts.append(
+        "## Floor plans (zoom with inspect_image('plan-N', …); check_plan(sheet=N) lays your "
+        "storey over one)"
+    )
+    for page in pages:
+        if 1 <= page <= len(inp.pages):
+            label = next((sh.label for sh in floor_plans if sh.page == page), "")
+            parts.append(
+                ImagePart.from_file(
+                    inp.pages[page - 1], label=f"plan-{page}" + (f" — {label}" if label else "")
+                )
+            )
+    for view in ("aerial", "south"):
+        if view in before:
+            parts.append(ImagePart.from_file(before[view], label=f"The exterior model — {view}"))
+    messages = [Message.user(*parts)]
+
+    await ctx.emit("phase", name="builder", message="Building the interior")
+    summary = await run.build(messages, system=INTERIOR_SYSTEM)
+    # the version pictures: the exterior views, the plan of each storey and the first rooms
+    probe = await renderer.render(run.scene_url, [], run.renders_dir, quality="low")
+    report = probe.report or {}
+    run.views = (
+        list(run.views)
+        + [s["view"] for s in report.get("planSections", [])]
+        + [
+            f"room-{i}"
+            for i in range(1, min(len(report.get("rooms", [])), INTERIOR_ROOM_VIEWS) + 1)
+        ]
+    )
+    renders = await run.render_standard()
+    label = ("Interior: " + request.strip())[:80] if request.strip() else "Interior"
+    version = await run.snapshot("interior", label, summary, None, renders)
+    await _modify_finish(run, version, summary, None)
+
+
+# --------------------------------------------------------------------------
 # resume (#7): continue an interrupted job from its files after a server restart
 # --------------------------------------------------------------------------
 
@@ -937,6 +1028,9 @@ async def resume(ctx: JobContext) -> None:
     await ctx.emit("resumed", reason="server restart", attempt=progress.attempts + 1)
     if job.kind == "intake":
         await intake(ctx)
+    elif job.kind == "interior":
+        # its conversation is lost but its files are there: a fresh pass continues from them
+        await interior(ctx)
     elif job.kind == "generate":
         await _resume_generate(ctx, progress)
     else:

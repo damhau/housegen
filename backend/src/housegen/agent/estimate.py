@@ -16,13 +16,15 @@ from housegen.agent.run_settings import ResolvedRunSettings
 from housegen.core.config import Settings
 from housegen.projects.models import Job
 
-Kind = Literal["intake", "generate", "modify"]
+Kind = Literal["intake", "generate", "modify", "interior"]
 SAMPLES = 5
 # typical profiles at the default 60-step budget, from the runs of 2026-09 (mostly cached input)
 DEFAULT_PROFILE: dict[str, dict[str, int]] = {
     "generate": {"wall_ms": 35 * 60_000, "input": 6_000_000, "cached": 5_400_000, "output": 90_000},
     "modify": {"wall_ms": 10 * 60_000, "input": 1_500_000, "cached": 1_300_000, "output": 25_000},
     "intake": {"wall_ms": 2 * 60_000, "input": 25_000, "cached": 0, "output": 4_000},
+    # a guess until the first runs (#33): a generation's work on one storey, without a critic
+    "interior": {"wall_ms": 30 * 60_000, "input": 5_000_000, "cached": 4_500_000, "output": 80_000},
 }
 DEFAULT_STEPS = 60
 

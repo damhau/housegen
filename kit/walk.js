@@ -136,6 +136,13 @@ export class Walk {
     return this.doorways.filter(([x, z]) => !this.free(x, z));
   }
 
+  /** The same, with the partition and opening each blocked side belongs to. */
+  blockedDoors() {
+    return this.doorways
+      .map((p, i) => ({ at: p, ...this.doorwayOf[i] }))
+      .filter(({ at: [x, z] }) => !this.free(x, z));
+  }
+
   /**
    * Which rooms one can walk between: groups of room names, one per connected walkable area (0.2 m² or
    * more). A room split by furniture appears in two groups; a room nobody can stand in appears in none.
@@ -228,6 +235,7 @@ export class Walk {
   #plans() {
     this.rooms = [];
     this.doorways = [];
+    this.doorwayOf = []; // the partition opening of each doorway point
     this.root.traverse((o) => {
       if (o.userData?.kind !== "floorPlan" || Math.abs(o.userData.y - this.floorY) > 0.5) return;
       this.rooms.push(...o.userData.rooms);
@@ -236,7 +244,10 @@ export class Walk {
         const ux = (w.to[0] - w.from[0]) / len, uz = (w.to[1] - w.from[1]) / len;
         for (const op of w.openings) {
           const c = op.offset + op.width / 2;
-          for (const s of [-1, 1]) this.doorways.push([w.from[0] + ux * c - uz * s * 0.45, w.from[1] + uz * c + ux * s * 0.45]);
+          for (const s of [-1, 1]) {
+            this.doorways.push([w.from[0] + ux * c - uz * s * 0.45, w.from[1] + uz * c + ux * s * 0.45]);
+            this.doorwayOf.push({ from: w.from, to: w.to, offset: op.offset, width: op.width });
+          }
         }
       }
     });
@@ -473,7 +484,8 @@ export class Walk {
       timer = setTimeout(() => { line.style.opacity = "0"; }, 6000);
     };
     const touch = matchMedia("(pointer: coarse)").matches;
-    if (window.parent !== window) line.style.display = "none"; // in the app: its toolbar shows the hint
+    // in the app its toolbar shows the hint; a headless render shows none
+    if (window.parent !== window || new URLSearchParams(location.search).get("headless") === "1") line.style.display = "none";
     hint(touch ? "Drag to look around · tap the floor to go there" : "Click to look around with the mouse · W A S D to walk · drag also works");
     this.ui = { cross, line };
     return { cross, hint };

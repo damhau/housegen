@@ -73,6 +73,7 @@ class RemoteRenderer:
             errors=[str(e) for e in data.get("errors", [])],
             console=[str(c) for c in data.get("console", [])],
             audit=[str(a) for a in data.get("audit", [])],
+            report=data.get("report") if isinstance(data.get("report"), dict) else None,
         )
         for view, b64 in data.get("images", {}).items():
             path = out_dir / f"{view}.jpg"

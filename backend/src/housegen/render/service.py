@@ -20,7 +20,7 @@ import tempfile
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -53,6 +53,7 @@ class RenderOut(BaseModel):
     audit: list[str]
     duration_ms: int
     gl: str | None  # the WebGL renderer that drew it
+    report: dict[str, Any] | None = None  # window.__house.report: rooms, plan-section framings
 
 
 class HealthOut(BaseModel):
@@ -114,6 +115,7 @@ async def render(inp: RenderIn) -> RenderOut:
         errors=res.errors,
         console=res.console,
         audit=res.audit,
+        report=res.report,
         duration_ms=res.duration_ms,
         gl=renderer.gl,
     )

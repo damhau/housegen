@@ -293,7 +293,12 @@ async def delete_project(session: DbSession, project_id: str) -> None:
     shutil.rmtree(ProjectStorage(project_id).root, ignore_errors=True)
 
 
-_PIPELINES = {"intake": pipeline.intake, "generate": pipeline.generate, "modify": pipeline.modify}
+_PIPELINES = {
+    "intake": pipeline.intake,
+    "generate": pipeline.generate,
+    "modify": pipeline.modify,
+    "interior": pipeline.interior,
+}
 
 
 async def _start_job(
@@ -468,6 +473,26 @@ async def modify(
     return JobOut.model_validate(
         await _start_job(session, project_id, "modify", text, photos, keep)
     )
+
+
+@router.post("/{project_id}/interior", status_code=202)
+async def interior(
+    session: DbSession,
+    project_id: str,
+    message: Annotated[
+        str,
+        Form(
+            max_length=4000,
+            description="what to furnish and how (optional): which floor or flat, a style, a use per room",
+        ),
+    ] = "",
+) -> JobOut:
+    """Build the interior of the current scene from the floor plans: rooms, partitions, doors,
+    furniture and lights, checked against the plan sheets (#33)."""
+    project = await crud.get_project(session, project_id)
+    if project.current_version == 0:
+        raise ConflictError("generate the exterior before the interior")
+    return JobOut.model_validate(await _start_job(session, project_id, "interior", message.strip()))
 
 
 async def _review_request(session: AsyncSession, project: Project, number: int) -> str:

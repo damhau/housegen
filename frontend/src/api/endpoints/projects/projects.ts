@@ -26,6 +26,7 @@ import type {
 import type {
   BodyAddPlanDocument,
   BodyCreateProject,
+  BodyInterior,
   BodyModify,
   ChatMessageOut,
   Estimate,
@@ -1153,6 +1154,84 @@ export const useModify = <TError = HTTPValidationError,
       > => {
 
       const mutationOptions = getModifyMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Build the interior of the current scene from the floor plans: rooms, partitions, doors,
+furniture and lights, checked against the plan sheets (#33).
+ * @summary Interior
+ */
+export const getInteriorUrl = (projectId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/interior`
+}
+
+export const interior = async (projectId: string,
+    bodyInterior: BodyInterior, options?: RequestInit): Promise<JobOut> => {
+    const formUrlEncoded = new URLSearchParams();
+if(bodyInterior.message !== undefined) {
+ formUrlEncoded.append(`message`, bodyInterior.message)
+ }
+
+  return httpClient<JobOut>(getInteriorUrl(projectId),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded', ...options?.headers },
+    body: 
+      formUrlEncoded,
+  }
+);}
+
+
+
+
+export const getInteriorMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof interior>>, TError,{projectId: string;data: BodyInterior}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof interior>>, TError,{projectId: string;data: BodyInterior}, TContext> => {
+
+const mutationKey = ['interior'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof interior>>, {projectId: string;data: BodyInterior}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  interior(projectId,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type InteriorMutationResult = NonNullable<Awaited<ReturnType<typeof interior>>>
+    export type InteriorMutationBody = BodyInterior
+    export type InteriorMutationError = HTTPValidationError
+
+    /**
+ * @summary Interior
+ */
+export const useInterior = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof interior>>, TError,{projectId: string;data: BodyInterior}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof interior>>,
+        TError,
+        {projectId: string;data: BodyInterior},
+        TContext
+      > => {
+
+      const mutationOptions = getInteriorMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

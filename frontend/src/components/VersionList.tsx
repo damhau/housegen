@@ -6,7 +6,12 @@ import { ScoreBadge } from "@/components/JobTimeline"
 import { RunCompare, RunSummaryCard, fmtMs, fmtUsd } from "@/components/RunSummaryCard"
 import { cn, relTime } from "@/lib/utils"
 
-const KIND_LABEL: Record<string, string> = { intake: "plans read", generate: "generation", modify: "modification" }
+const KIND_LABEL: Record<string, string> = {
+  intake: "plans read",
+  generate: "generation",
+  modify: "modification",
+  interior: "interior",
+}
 
 function jobLabel(j: JobOut): string {
   return `${KIND_LABEL[j.kind] ?? j.kind}${j.result_version != null ? ` → v${j.result_version}` : ""} · ${relTime(j.created_at)}`

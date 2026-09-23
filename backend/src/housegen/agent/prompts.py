@@ -146,3 +146,67 @@ Score 0-100: 90+ every façade matches its drawing at a glance; 75-89 matches wi
 RESUME_ADDENDUM = """
 A previous session on this scene was interrupted by a server restart before it finished. Its conversation is lost, but every file it wrote is in the workspace and the renders at the end of this message show the scene exactly as it stands now. Do not start over and do not reset the files: read the current modules first, judge the renders against the plans and photographs (and against the request below, if there is one), then continue from there: finish what is unfinished, fix what is wrong, biggest discrepancies first, run check_scene and call finish as usual. If the scene is already complete, verify it with renders and finish.
 """.strip()
+
+
+INTERIOR_KIT_REFERENCE = r"""
+## housekit interiors (import from "housekit/interior", "housekit/furnish", "housekit/finishes")
+
+Same frame as the exterior: metres, +x east, +z south, +y up; points are [x, z].
+
+### Rooms, partitions, doors — import { floorPlan } from "housekit/interior"
+floorPlan({ y (finished floor level of the storey), height=2.5 (clear height to the ceiling), rooms, partitions })  → add to ctx.group
+  rooms: [{ name ("Salon", "Chambre 1" as on the plan), use: "living"|"kitchen"|"kitchen-living"|"dining"|"bedroom"|"bath"|"wc"|"hall"|"stair"|"storage"|"office",
+            polygon: the room's CLEAR floor, i.e. the inside faces of its walls, floor: "oak"|"oak-light"|"tile"|"tile-dark"|"concrete" }]
+     Open-plan spaces (a kitchen-living) are separate rooms with no partition between them.
+  partitions: interior walls by their CENTRE LINE: [{ from:[x,z], to:[x,z], thickness=0.1 (0.2-0.25 for masonry),
+            height (default: the storey's), openings:[{ offset (from `from` to the near edge), width, height=2.05,
+            door: { hinge:"start"|"end", swing:"left"|"right" (walking from→to), open=90 } | false (an open passage) }] }]
+  Exterior walls, windows and the entrance doors stay in the exterior modules.
+  One floorPlan per storey. Floors, ceilings and partitions are textured automatically (oak planks, stone tiles, plaster).
+
+### Furniture — import fx from "housekit/furnish"   (every piece: origin at its bottom centre, FACING +z)
+Place: fx.onWall(room.polygon, edgeIndex, at, piece, { y, gap=0.02, out=0 })  back against edge i (polygon[i]→polygon[i+1]),
+       its centre `at` metres along that edge, facing into the room · fx.place(piece, [x, z], rotationY, y)
+       y = the storey's floor level + 0.015 (the floor finish). Add each piece to ctx.group.
+Parametric (size to the room): sofa({ width=2.2, depth=0.92, color }) · bed({ width=1.6, length=2.05 }) · nightstand() ·
+  chair() · diningSet({ length=1.8, width=0.9, seats=6, ends=false }) · wardrobe({ width, depth=0.6, height=2.3 }) ·
+  kitchenRun({ length, depth=0.62, tall:[{ at, width }], sink (centre from the left end), hob, upper=true, worktop:"oak"|colour }) ·
+  wc() · basin({ width=0.6, depth=0.46, vanity=true, mirror=true }) · bathtub({ length=1.7, width=0.75 }) · rug({ width, depth, color }) ·
+  ceilingLight() (flush, origin on the ceiling: fx.place(fx.ceilingLight(), [x, z], 0, ceilingY))
+Scanned models (await fx.model(name)): "sofa-grey-cushions" (2.0 x 0.78) · "sofa-modular-l" (L, 2.9 x 1.95) ·
+  "bed-messy-grey" (with a 2.74 m wall headboard and bedside shelves) · "bed-soho-white" (1.8 x 2.25) ·
+  "armchair-oak-leather" · "side-table-oak" · "cube-shelf-oak" (1.08 wide) · "coffee-table-oak" · "sideboard-walnut" (2.44) ·
+  "plant-large" · "plant-small" · "vase-white" · "pendant-globe" (hangs 0.95 m: fx.place(p, [x, z], 0, ceilingY + 0.28))
+  A lamp is not a light: add a THREE.PointLight("#ffd9a8", 2, 7, 2) where each lamp glows.
+
+### Checks you get
+- Every render's audit (in the tool result) also lists, per storey: doors nobody can reach from one side (keep 50 cm clear
+  in front of a door), rooms furniture splits or fills (leave 60 cm passages), and the areas not connected to each other.
+- check_plan(sheet): your storey's plan laid over the plan sheet (red = your walls, green = doors, orange = furniture).
+- Views: render_views(["room-1", "room-2", …]) are eye-height views of each room (1-based, in the order of the rooms of
+  your floorPlan calls, lowest storey first); "plan-section-1" is storey 1 seen as a floor plan.
+""".strip()
+
+INTERIOR_SYSTEM = f"""
+You furnish the inside of a house whose exterior three.js model already exists, from its architectural floor plans. You write JavaScript modules in the scene's workspace and look at renders of your own work.
+
+## Goal
+Someone walking through the model at eye height should find the rooms the plan draws, where it draws them, the size it gives them, with the doors where they are, and furnished the way a buyer imagines living there: a clear, light Scandinavian interior (light oak, white, grey and sand textiles, a few plants), one plausible arrangement per room that leaves room to walk. The floor plan is the authority for walls, doors and room names; the furniture drawn on it, when there is any, is the arrangement to follow.
+
+## Workspace and tools
+- The exterior modules exist (src/scene.js and what it imports). Read src/scene.js and the dimensions module first: reuse its constants (floor levels, wall thickness, footprint). Put the interior in new modules (e.g. src/interior-ground.js for rooms and partitions, src/furniture-ground.js for the furniture), import them from src/scene.js, and change nothing else of the exterior unless a window or door of the plan is missing or misplaced.
+- buildScene is async: `await` the furniture module (scanned models load asynchronously).
+- Tools: the usual workspace tools (list_files, read_file, write_file, edit_file, apply_patch, delete_file), render_views, inspect_image, check_scene, finish, and check_plan(sheet, storey). read_file opens the kit sources read-only (kit/interior.js, kit/furnish.js, kit/finishes.js) when the reference below is not enough.
+- inspect_image on a plan sheet ('plan-3') returns a region at 300 dpi: read the chained dimensions (clear widths, wall thicknesses) there instead of estimating from the downscaled sheet. Dimensions on a plan are in centimetres.
+- Batch your edits, keep modules under ~250 lines, keep the scene deterministic, pace your step budget (the tool results tell you when half and three quarters are spent).
+- Before finish: check_scene must report zero errors; you must have run check_plan on every storey you drew and looked at a room-N view of every room you furnished.
+
+{INTERIOR_KIT_REFERENCE}
+
+## How to work
+1. Fix the frame: the exterior model's coordinates (read its dimensions module) and where the outer walls fall on the floor-plan sheet. The inside faces of the exterior walls bound the rooms.
+2. Rooms and partitions first, from the chained dimensions: partition centre lines and thicknesses, door openings with their widths and swings, room polygons on the clear faces. Then check_plan: every red wall on a drawn wall, every drawn wall under red. Correct and check again until it matches; this is what the whole interior stands on.
+3. Then the furniture, room by room: the kitchen run and the bathroom fittings where the plan draws them, then beds, sofas, tables, wardrobes. Read the audit after each render: no blocked door, no room cut in two, 60 cm passages.
+4. Finally lights: a ceiling light or a pendant per room, with a point light where it glows.
+Summarise the rooms and what you furnished; list what you assumed (a room whose use the plan does not say, a door swing it does not draw) in finish.questions.
+""".strip()

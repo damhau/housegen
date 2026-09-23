@@ -197,7 +197,13 @@ window.__house = {
   },
   // deterministic plausibility audit of the built scene (see house.audit): the renderer
   // appends it to the builder's tool results and gives it to the critic
-  audit: () => (state.houseGroup ? house.audit(state.houseGroup) : []),
+  audit: async () => (state.houseGroup ? [...house.audit(state.houseGroup), ...(await interiorAudit())] : []),
+  // what the backend reads with every render (the builder's plan check): the rooms of the floor
+  // plans and, per storey, the framing in metres of its plan-section view
+  report: () => ({
+    rooms: sceneRooms().map(({ name, use, area, polygon, y }) => ({ name, use, area, polygon, y })),
+    planSections: storeys().map((s, i) => ({ view: `plan-section-${i + 1}`, y: s.y, bbox: sectionFrame(i) })),
+  }),
   // walk mode (?walk=1): the rooms of the scene's floor plans, glide / jump to a place
   get rooms() {
     const out = [];
@@ -987,6 +993,156 @@ function withOverrides(name, v) {
   return { pos: pos.toArray(), target, fov: o.fov ?? v.fov };
 }
 
+/** The floor plans of the scene (one per storey), lowest first. */
+function storeys() {
+  const out = [];
+  state.houseGroup?.traverse((o) => { if (o.userData?.kind === "floorPlan") out.push({ y: o.userData.y, plan: o }); });
+  return out.sort((a, b) => a.y - b.y);
+}
+
+/** The framing [x0, z0, x1, z1] (metres) of storey i's plan section: its rooms + 1 m, at the canvas's aspect. */
+function sectionFrame(i) {
+  const s = storeys()[i];
+  if (!s) return null;
+  let [x0, z0, x1, z1] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const r of s.plan.userData.rooms) for (const [x, z] of r.polygon) {
+    x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z);
+  }
+  x0 -= 1; z0 -= 1; x1 += 1; z1 += 1;
+  const size = state.renderer.getSize(new THREE.Vector2());
+  const aspect = size.x / size.y;
+  const w = x1 - x0, d = z1 - z0;
+  if (w / d < aspect) { const e = (d * aspect - w) / 2; x0 -= e; x1 += e; } else { const e = (w / aspect - d) / 2; z0 -= e; z1 += e; }
+  return [x0, z0, x1, z1];
+}
+
+/**
+ * Storey i as a floor plan, into the canvas: seen from above, cut at 1.2 m above its floor, the cut
+ * solids filled (stencil: more back faces than front faces below the cut). Exterior walls dark
+ * blue, partitions red, door leaves green; furniture as orange footprints.
+ */
+function drawPlanSection(i) {
+  const s = storeys()[i];
+  const frame = sectionFrame(i);
+  if (!s || !frame) return false;
+  const [x0, z0, x1, z1] = frame;
+  const r = state.renderer;
+  const cut = s.y + 1.2;
+  const cam = new THREE.OrthographicCamera(x0, x1, -z0, -z1, 0.1, 500);
+  cam.up.set(0, 0, -1);
+  cam.position.set(0, cut + 100, 0);
+  cam.lookAt(0, 0, 0);
+  state.houseGroup.updateMatrixWorld(true);
+  const kindOf = (o) => { for (let a = o; a; a = a.parent) if (a.userData?.kind) return a.userData.kind; return null; };
+  const CATS = [["#1f3a93", ["wall", "perimeter"]], ["#d62728", ["partition"]], ["#2ca02c", ["interiorDoor"]]];
+  const out = new THREE.Scene();
+  const clip = [new THREE.Plane(new THREE.Vector3(0, -1, 0), cut)];
+  let order = 0;
+  // furniture first, as footprints under everything
+  state.houseGroup.traverse((o) => {
+    if (o.userData?.kind !== "furniture" || o.userData.flat) return;
+    const [w, d] = o.userData.footprint ?? [0, 0];
+    if (!(w > 0 && d > 0) || Math.abs(o.getWorldPosition(new THREE.Vector3()).y - s.y) > 0.6) return;
+    const q = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ color: "#ff9900", toneMapped: false, transparent: true, opacity: 0.55, depthTest: false }));
+    q.rotation.x = -Math.PI / 2;
+    const p = o.getWorldPosition(new THREE.Vector3());
+    const yaw = new THREE.Euler().setFromQuaternion(o.getWorldQuaternion(new THREE.Quaternion()), "YXZ").y;
+    q.position.set(p.x, s.y, p.z);
+    q.rotation.z = yaw;
+    q.renderOrder = order;
+    out.add(q);
+  });
+  order++;
+  for (const [color, kinds] of CATS) {
+    const meshes = [];
+    state.houseGroup.traverse((o) => {
+      if (!o.isMesh) return;
+      const k = kindOf(o);
+      if (kinds.includes(k)) meshes.push(o);
+    });
+    for (const [side, op] of [[THREE.BackSide, THREE.IncrementWrapStencilOp], [THREE.FrontSide, THREE.DecrementWrapStencilOp]]) {
+      const m = new THREE.MeshBasicMaterial({ side, colorWrite: false, depthWrite: false, depthTest: false, clippingPlanes: clip,
+        stencilWrite: true, stencilFunc: THREE.AlwaysStencilFunc, stencilFail: op, stencilZFail: op, stencilZPass: op });
+      for (const o of meshes) {
+        const c = new THREE.Mesh(o.geometry, m);
+        c.matrixAutoUpdate = false;
+        c.matrix.copy(o.matrixWorld);
+        c.renderOrder = order;
+        out.add(c);
+      }
+    }
+    const cap = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshBasicMaterial({ color, toneMapped: false,
+      depthTest: false, depthWrite: false, stencilWrite: true, stencilRef: 0, stencilFunc: THREE.NotEqualStencilFunc,
+      stencilFail: THREE.ReplaceStencilOp, stencilZFail: THREE.ReplaceStencilOp, stencilZPass: THREE.ReplaceStencilOp }));
+    cap.rotation.x = -Math.PI / 2;
+    cap.position.y = cut;
+    cap.renderOrder = order + 1;
+    out.add(cap);
+    order += 2;
+  }
+  out.background = new THREE.Color("#ffffff");
+  // the page's context has no stencil buffer: draw into a target that has one, then onto the canvas
+  const size = r.getDrawingBufferSize(new THREE.Vector2());
+  const target = new THREE.WebGLRenderTarget(size.x, size.y, { stencilBuffer: true, depthBuffer: true });
+  const saved = { local: r.localClippingEnabled, target: r.getRenderTarget(), autoClear: r.autoClear };
+  r.localClippingEnabled = true;
+  r.autoClear = true;
+  r.setRenderTarget(target);
+  r.clear(true, true, true);
+  r.render(out, cam);
+  r.setRenderTarget(null);
+  const blit = new FullScreenQuad(new THREE.MeshBasicMaterial({ map: target.texture, toneMapped: false }));
+  blit.render(r);
+  blit.dispose();
+  target.dispose();
+  r.localClippingEnabled = saved.local;
+  r.autoClear = saved.autoClear;
+  r.setRenderTarget(saved.target);
+  state.needsRender = false; // keep the section on screen until something moves
+  return true;
+}
+
+/**
+ * Plausibility of the interiors (added to audit): on each storey with a floor plan, the doors that
+ * cannot be reached from one side, the rooms furniture splits in two or fills, and the rooms that
+ * are not connected to each other (fine between two flats, a mistake inside one).
+ */
+async function interiorAudit() {
+  const floors = storeys();
+  if (!floors.length) return [];
+  const { Walk } = await import("./walk.js");
+  const lines = [];
+  const f = (v) => (Math.round(v * 100) / 100).toString();
+  for (const s of floors) {
+    const rooms = s.plan.userData.rooms;
+    const big = [...rooms].sort((a, b) => b.area - a.area)[0];
+    if (!big) continue;
+    let cx = 0, cz = 0;
+    for (const [x, z] of big.polygon) { cx += x / big.polygon.length; cz += z / big.polygon.length; }
+    const cam = new THREE.PerspectiveCamera(70, 1, 0.05, 100);
+    cam.position.set(cx, s.y + 1.62, cz);
+    const w = new Walk({ camera: cam, canvas: document.createElement("canvas"), root: state.houseGroup, renderer: state.renderer });
+    try {
+      for (const d of w.blockedDoors()) {
+        lines.push(`the door ${f(d.offset)}–${f(d.offset + d.width)} m along the partition [${d.from}]→[${d.to}] cannot be reached from one side: something stands at [${f(d.at[0])}, ${f(d.at[1])}] (keep 50 cm clear in front of a door)`);
+      }
+      const groups = w.reach();
+      for (const r of rooms) {
+        if (r.use === "storage" || r.area < 1.5) continue;
+        const n = groups.filter((g) => g.includes(r.name)).length;
+        if (n === 0) lines.push(`nobody can stand in "${r.name}": furniture fills it or leaves less than 50 cm anywhere`);
+        if (n > 1) lines.push(`"${r.name}" is split in parts one cannot walk between: move furniture to leave a 60 cm passage`);
+      }
+      if (groups.length > 1) {
+        lines.push(`storey at y=${f(s.y)}: ${groups.length} areas not connected to each other (fine between two flats, a mistake inside one): ${groups.map((g) => g.join(", ")).join(" | ")}`);
+      }
+    } finally {
+      w.dispose();
+    }
+  }
+  return lines;
+}
+
 /** The rooms of the floor plans in the scene, each with its storey's floor level `y`. */
 function sceneRooms() {
   const out = [];
@@ -1048,6 +1204,23 @@ function stopWalk() {
 }
 
 async function setView(name) {
+  // interiors: an eye-height view of a room (room-<n>, 1-based in the order of the rooms), or the
+  // plan section of a storey (plan-section-<n>) drawn at the framing report() gives
+  const roomView = /^room-(\d+)$/.exec(name);
+  const sectionView = /^plan-section-(\d+)$/.exec(name);
+  if (roomView) {
+    const room = sceneRooms()[Number(roomView[1]) - 1];
+    if (!room) { recordError(`unknown view: ${name} (${sceneRooms().length} rooms)`); return false; }
+    await startWalk(room.name);
+    renderFrame();
+    return true;
+  }
+  stopWalk();
+  if (sectionView) {
+    const ok = drawPlanSection(Number(sectionView[1]) - 1);
+    if (!ok) recordError(`unknown view: ${name} (${storeys().length} storeys with a floor plan)`);
+    return ok;
+  }
   let preset = state.views[name];
   if (typeof preset === "function") preset = preset();
   if (!preset) {

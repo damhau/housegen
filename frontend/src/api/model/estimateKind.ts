@@ -13,4 +13,5 @@ export const EstimateKind = {
   intake: 'intake',
   generate: 'generate',
   modify: 'modify',
+  interior: 'interior',
 } as const;

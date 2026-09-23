@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Square, Trash2 } from "lucide-react"
+import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Sofa, Square, Trash2 } from "lucide-react"
 import {
   getChatHistoryQueryKey,
   getGetProjectQueryKey,
@@ -11,6 +11,7 @@ import {
   useChatHistory,
   useDeleteProject,
   useGenerate,
+  useInterior,
   useGetProject,
   useIntake,
   useListJobs,
@@ -80,6 +81,7 @@ function ProjectPage() {
   const intake = useIntake()
   const cancel = useCancelJob()
   const modify = useModify()
+  const furnish = useInterior()
   const restore = useRestoreVersion()
   const fix = useFixVersion()
   const del = useDeleteProject()
@@ -111,6 +113,7 @@ function ProjectPage() {
   const idle = activeJob === null
   const genEstimate = useRunEstimate(projectId, { kind: "generate" }, { query: { enabled: idle, staleTime: 60_000 } })
   const modEstimate = useRunEstimate(projectId, { kind: "modify" }, { query: { enabled: idle, staleTime: 60_000 } })
+  const intEstimate = useRunEstimate(projectId, { kind: "interior" }, { query: { enabled: idle, staleTime: 60_000 } })
   const { events, live, progress, liveText, liveThought, disconnectedSince } = useJobStream(projectId, followed?.id, refreshAll)
   const elapsed = useElapsed(activeJob?.created_at ?? null)
   const reconnecting = useReconnecting(disconnectedSince, project.failureCount + jobs.failureCount)
@@ -189,6 +192,17 @@ function ProjectPage() {
     else await generate.mutateAsync({ projectId, data: null })
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
+  }
+  async function onFurnish() {
+    const message = window.prompt(
+      "Furnish the interior from the floor plans: rooms, walls and doors checked against the plan sheets, then furniture and lights.\n\nAnything to specify? (which floor or flat, a style, a use per room) Leave empty for the whole house.",
+      "",
+    )
+    if (message === null) return
+    await furnish.mutateAsync({ projectId, data: { message } })
+    setSelectedVersion(null)
+    void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
+    void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
   }
   async function onAnswer(answers: IntakeAnswer[], notes: string) {
     await generate.mutateAsync({ projectId, data: { answers, notes } })
@@ -272,6 +286,20 @@ function ProjectPage() {
             <Button size="sm" variant="outline" onClick={() => void onGenerate()} title={`Rebuild from scratch${genTitle ? ` · ${genTitle}` : ""}`}>
               <Play /> Regenerate
               {genHint && <span className="font-normal text-muted-foreground">{genHint}</span>}
+            </Button>
+          )}
+          {p.current_version > 0 && !busy && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void onFurnish()}
+              disabled={furnish.isPending}
+              title="Build the interior from the floor plans: rooms, partitions, doors, furniture and lights"
+            >
+              <Sofa /> Furnish
+              {estimateText(intEstimate.data) && (
+                <span className="font-normal text-muted-foreground">{estimateText(intEstimate.data)}</span>
+              )}
             </Button>
           )}
           <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)} title={`Run settings · ${p.effective_settings.model} · ${p.effective_settings.builder_effort} · ${p.effective_settings.critic_rounds} round(s) · ${p.effective_settings.max_steps} steps`}>
