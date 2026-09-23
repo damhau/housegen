@@ -13,18 +13,26 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { mat } from "./house.js";
 import { finishMaterial, metricUV } from "./finishes.js";
+
+// plain fallbacks (no import of house.js: a page may load it under another URL, ?v=<tag>, and a
+// second instance of it would carry its own caches)
+const _plain = new Map();
+const plain = (color, roughness = 0.9) => {
+  const k = `${color}:${roughness}`;
+  if (!_plain.has(k)) _plain.set(k, new THREE.MeshStandardMaterial({ color, roughness }));
+  return _plain.get(k);
+};
 
 // textured when the finishes are loaded (finishes.loadFinishes), plain colours otherwise
 const FLOORS = {
-  oak: () => finishMaterial("oak-floor") ?? mat.wood("#c9a57c"),
-  "oak-light": () => finishMaterial("oak-floor", { color: "#fff6ea" }) ?? mat.wood("#dcc3a0"),
-  tile: () => finishMaterial("stone-tile") ?? mat.plaster("#d8d5ce", 0.5),
-  "tile-dark": () => finishMaterial("stone-tile", { color: "#8d8b86" }) ?? mat.plaster("#8d8b86", 0.5),
-  concrete: () => mat.concrete("#b9b6ae"),
+  oak: () => finishMaterial("oak-floor") ?? plain("#c9a57c", 0.7),
+  "oak-light": () => finishMaterial("oak-floor", { color: "#fff6ea" }) ?? plain("#dcc3a0", 0.7),
+  tile: () => finishMaterial("stone-tile") ?? plain("#d8d5ce", 0.5),
+  "tile-dark": () => finishMaterial("stone-tile", { color: "#8d8b86" }) ?? plain("#8d8b86", 0.5),
+  concrete: () => plain("#b9b6ae", 0.95),
 };
-const PLASTER = () => finishMaterial("plaster") ?? mat.plaster("#f1efea", 0.92);
+const PLASTER = () => finishMaterial("plaster") ?? plain("#f1efea", 0.92);
 
 function shadow(mesh) {
   mesh.castShadow = true;
@@ -102,8 +110,9 @@ export function partition({ from, to, height = 2.5, thickness = 0.1, y = 0, open
  */
 export function interiorDoor({ width = 0.8, height = 2.05, thickness = 0.1, hinge = "start", swing = "left", open = 90, color = "#f4f2ee" }) {
   const g = new THREE.Group();
-  const paint = mat.paint(color);
+  const paint = plain(color, 0.6);
   const casing = 0.06, leafT = 0.04;
+  const steel = plain("#b8b8b8", 0.35);
   // casing: two jambs and a head on both faces
   for (const side of [-1, 1]) {
     const z = side * (thickness / 2 + 0.005);
@@ -124,7 +133,7 @@ export function interiorDoor({ width = 0.8, height = 2.05, thickness = 0.1, hing
   const leaf = shadow(new THREE.Mesh(new THREE.BoxGeometry(width - 0.01, height - 0.01, leafT), paint));
   leaf.position.set(dir * (width - 0.01) / 2, height / 2, side * leafT / 2);
   pivot.add(leaf);
-  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.02), mat.metal("#b8b8b8"));
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.02), steel);
   handle.position.set(dir * (width - 0.08), 1.02, side * (leafT + 0.03));
   pivot.add(handle);
   pivot.rotation.y = -dir * side * THREE.MathUtils.degToRad(open);
@@ -152,7 +161,7 @@ export function floorPlan({ y = 0, height = 2.5, rooms = [], partitions = [], ce
     f.userData = { kind: "roomFloor", room: r.name };
     g.add(f);
     if (ceiling) {
-      const c = horizontal(r.polygon, y + height + 0.02, 0.02, mat.plaster(ceilingColor, 0.95));
+      const c = horizontal(r.polygon, y + height + 0.02, 0.02, plain(ceilingColor, 0.95));
       c.userData = { kind: "ceiling", room: r.name };
       g.add(c);
     }

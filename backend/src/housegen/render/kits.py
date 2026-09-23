@@ -1,4 +1,5 @@
-"""Renderer versions: snapshots of the kit (house.js + runtime.js) a scene can be drawn with.
+"""Renderer versions: snapshots of the kit (house.js, runtime.js and the modules next to them) a
+scene can be drawn with.
 
 `kit/versions/<name>/` holds one snapshot and `kit/versions/index.json` lists them and names the
 one **pinned** for the build path: what the builder renders with and reads as `kit/*.js`, what
@@ -29,6 +30,7 @@ logger = logging.getLogger(__name__)
 
 DEV = "dev"
 _NAME = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_KIT_MODULE = re.compile(r'"/kit/([A-Za-z0-9_-]+\.js)"')
 
 
 class KitInfo(BaseModel):
@@ -118,8 +120,14 @@ def rewrite_page(html: str, name: str, settings: Settings | None = None) -> str:
         return html.replace('"/kit/house.js"', f'"/kit/house.js?v={tag}"').replace(
             '"/kit/runtime.js"', f'"/kit/runtime.js?v={tag}"'
         )
-    return html.replace('"/kit/house.js"', f'"/kit/versions/{name}/house.js"').replace(
-        '"/kit/runtime.js"', f'"/kit/versions/{name}/runtime.js"'
+    # every kit module the page names (house.js, runtime.js, interior.js…) that the snapshot holds;
+    # a module an older snapshot lacks stays on the working copy
+    snap = kit_dir(name, settings)
+    return _KIT_MODULE.sub(
+        lambda m: (
+            f'"/kit/versions/{name}/{m.group(1)}"' if (snap / m.group(1)).exists() else m.group(0)
+        ),
+        html,
     )
 
 

@@ -304,13 +304,13 @@ export const MODELS = {
   "sideboard-walnut": { id: "modern_wooden_cabinet", rotate: 0 },
   // Sketchfab, CC Attribution: the author must be credited where the scene is shown (credits()).
   // Fetched with a SKETCHFAB_TOKEN by kit/scripts/fetch_models.mjs into kit/assets/sketchfab/<name>.glb.
-  "bed-messy-grey": { file: "sketchfab/messy-bed.glb", uid: "a2b2645701c94fa49e65661806219c6b", rotate: 0,
+  "bed-messy-grey": { fallback: "bed", file: "sketchfab/messy-bed.glb", uid: "a2b2645701c94fa49e65661806219c6b", rotate: 0,
     credit: "“Messy bed 2.0” by thethieme, CC BY 4.0" },
-  "bed-soho-white": { file: "sketchfab/soho-bed.glb", uid: "97e361e8beda4112ac5b1b5bcd388cdf", rotate: 0,
+  "bed-soho-white": { fallback: "bed", file: "sketchfab/soho-bed.glb", uid: "97e361e8beda4112ac5b1b5bcd388cdf", rotate: 0,
     credit: "“Soho bed” by BertO, CC BY 4.0" },
-  "sofa-grey-cushions": { file: "sketchfab/modern-sofa.glb", uid: "ac92f6e97eaa43c4ad6cb8f7c65ac43f", rotate: 0,
+  "sofa-grey-cushions": { fallback: "sofa", file: "sketchfab/modern-sofa.glb", uid: "ac92f6e97eaa43c4ad6cb8f7c65ac43f", rotate: 0,
     credit: "“Modern Sofa” by 3dimentionalben, CC BY 4.0" },
-  "sofa-modular-l": { file: "sketchfab/modular-sofa.glb", uid: "c7a0c35f4f0b49f8b4fea273f9014001", rotate: 0, scale: 0.01,
+  "sofa-modular-l": { fallback: "sofa", file: "sketchfab/modular-sofa.glb", uid: "c7a0c35f4f0b49f8b4fea273f9014001", rotate: 0, scale: 0.01,
     credit: "“Sofa” by GreenG, CC BY 4.0" },
 };
 const ASSETS = new URL("./assets/", import.meta.url);
@@ -327,8 +327,14 @@ export async function model(name) {
   const spec = MODELS[name];
   if (!spec) throw new Error(`unknown model ${name}. Known: ${Object.keys(MODELS).join(", ")}`);
   const file = spec.file ?? `polyhaven/${spec.id}/${spec.id}.gltf`;
-  if (!_loaded.has(file)) _loaded.set(file, new GLTFLoader().loadAsync(new URL(file, ASSETS).href));
+  if (!_loaded.has(file)) _loaded.set(file, new GLTFLoader().loadAsync(new URL(file, ASSETS).href).catch(() => null));
   const gltf = await _loaded.get(file);
+  if (!gltf) {
+    // not fetched (a build without the Sketchfab token): the parametric piece of the same kind
+    console.warn(`housekit: model ${name} (${file}) not available, using ${spec.fallback ?? "nothing"}`);
+    const make = { sofa, bed }[spec.fallback];
+    return make ? make() : piece(new THREE.Group(), name, 0, 0);
+  }
   _used.add(name);
   const inner = gltf.scene.clone(true);
   inner.rotation.y = spec.rotate;

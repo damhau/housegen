@@ -16,6 +16,7 @@
 // Every builder returns a THREE.Object3D that the caller adds to the scene.
 
 import * as THREE from "three";
+import { finishMaterial } from "./finishes.js";
 
 // --------------------------------------------------------------------------
 // Materials
@@ -28,19 +29,26 @@ function cached(key, make) {
   return _cache.get(key);
 }
 
+// Surfaces are textured (finishes.js, at their real size, tinted to the colour asked for) once the
+// runtime has loaded the finishes; before that, or without the texture files, they are plain colours.
 export const mat = {
-  plaster: (color = "#e9e6dd", roughness = 0.9) =>
-    cached(`plaster:${color}:${roughness}`, () => new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 })),
-  concrete: (color = "#b9b7b0") =>
-    cached(`concrete:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.95 })),
-  wood: (color = "#8b6a42") =>
-    cached(`wood:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.7 })),
+  plaster: (color = "#e9e6dd", roughness = 0.9) => finishMaterial("render", { color, roughness })
+    ?? cached(`plaster:${color}:${roughness}`, () => new THREE.MeshStandardMaterial({ color, roughness, metalness: 0 })),
+  concrete: (color = "#b9b7b0") => finishMaterial("concrete", { color })
+    ?? cached(`concrete:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.95 })),
+  wood: (color = "#8b6a42") => finishMaterial("wood-planks", { color, roughness: 0.9 })
+    ?? cached(`wood:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.7 })),
   metal: (color = "#3a3d40") =>
     cached(`metal:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.8 })),
+  // plain: flat roofs (membrane, gravel) and sloped ones share it; texturePitchedRoofs() tiles the sloped ones
   roof: (color = "#4a4a4a") =>
-    cached(`roof:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.85 })),
-  tile: (color = "#a0523d") =>
-    cached(`tile:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.8 })),
+    cached(`roof:${color}`, () => {
+      const m = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+      m.userData = { role: "roof", color };
+      return m;
+    }),
+  tile: (color = "#a0523d") => finishMaterial("roof-tiles", { color })
+    ?? cached(`tile:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.8 })),
   glass: (tint = "#9fb8c8", opacity = 0.55) =>
     cached(`glass:${tint}:${opacity}`, () =>
       new THREE.MeshPhysicalMaterial({
@@ -52,12 +60,12 @@ export const mat = {
         opacity,
         reflectivity: 0.9,
       })),
-  grass: (color = "#7f9a52") =>
-    cached(`grass:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
-  gravel: (color = "#a6a39a") =>
-    cached(`gravel:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
-  asphalt: (color = "#5b5b5b") =>
-    cached(`asphalt:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
+  grass: (color = "#7f9a52") => finishMaterial("grass", { color })
+    ?? cached(`grass:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
+  gravel: (color = "#a6a39a") => finishMaterial("gravel", { color })
+    ?? cached(`gravel:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
+  asphalt: (color = "#5b5b5b") => finishMaterial("asphalt", { color })
+    ?? cached(`asphalt:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
   foliage: (color = "#5f8a3f") =>
     cached(`foliage:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.9, side: THREE.DoubleSide })),
   paint: (color) =>
@@ -80,6 +88,37 @@ function shapeFromPolygon(points) {
 // --------------------------------------------------------------------------
 // Primitive helpers
 // --------------------------------------------------------------------------
+
+/**
+ * After a scene is built: the sloped surfaces that wear mat.roof get roof tiles in the same colour
+ * (a flat roof keeps its plain membrane). No-op when the finishes are not loaded.
+ */
+export function texturePitchedRoofs(root) {
+  const n = new THREE.Vector3();
+  root.traverse((o) => {
+    if (!o.isMesh || o.material?.userData?.role !== "roof") return;
+    const tiles = finishMaterial("roof-tiles", { color: o.material.userData.color });
+    if (!tiles) return;
+    // area-weighted slope of the mesh's faces, in world space
+    const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
+    const p = g.attributes.position;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    let up = 0, area = 0;
+    o.updateMatrixWorld(true);
+    for (let i = 0; i + 2 < p.count; i += 3) {
+      a.fromBufferAttribute(p, i).applyMatrix4(o.matrixWorld);
+      b.fromBufferAttribute(p, i + 1).applyMatrix4(o.matrixWorld);
+      c.fromBufferAttribute(p, i + 2).applyMatrix4(o.matrixWorld);
+      n.crossVectors(b.clone().sub(a), c.clone().sub(a));
+      const s = n.length();
+      if (s < 1e-9) continue;
+      up += Math.abs(n.y);
+      area += s;
+    }
+    const slope = area ? up / area : 1; // cos of the mean slope
+    if (slope > 0.2 && slope < 0.97) o.material = tiles;
+  });
+}
 
 /** Axis-aligned box. size=[w,h,d], position = centre of the box. */
 export function box({ size, position = [0, 0, 0], material = mat.plaster(), rotationY = 0 }) {
@@ -1356,5 +1395,5 @@ export default {
   mat, box, slab, volume, wall, wallWithUnits, perimeterWalls, placeOnWall, UNIT_INSET, windowUnit, door, slidingDoor,
   flatRoof, gableRoof, shedRoof, chimney, railing, stairs, balcony, canopy, planter,
   hedge, pathway, groundPatch, gardenWall, fence, car, boundsOf, audit,
-  terrain, groundY, rod, ribbon, pebbleStrip, leafTree, leafBush, swingSet, bench, bicycle,
+  terrain, groundY, rod, ribbon, pebbleStrip, texturePitchedRoofs, leafTree, leafBush, swingSet, bench, bicycle,
 };

@@ -60,6 +60,15 @@ def test_rewrite_points_the_import_map_at_the_snapshot() -> None:
     assert f'"housekit": "/kit/versions/{BASELINE}/house.js"' in out
     assert f'from "/kit/versions/{BASELINE}/runtime.js"' in out
     assert '"/kit/vendor/three/build/three.module.js"' in out  # three stays shared
+    # a module the snapshot lacks (the baseline predates interior.js) stays on the working copy
+    extra = kits.rewrite_page(
+        html.replace(
+            '"housekit": "/kit/house.js"',
+            '"housekit": "/kit/house.js", "housekit/interior": "/kit/interior.js"',
+        ),
+        BASELINE,
+    )
+    assert '"housekit/interior": "/kit/interior.js"' in extra
     dev = kits.rewrite_page(html, "dev")
     tag = kits.dev_kit_tag()
     assert f'"housekit": "/kit/house.js?v={tag}"' in dev  # a changed working copy is a new URL

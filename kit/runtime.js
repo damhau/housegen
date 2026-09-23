@@ -48,6 +48,7 @@ import { CopyShader } from "three/addons/shaders/CopyShader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { Sky } from "three/addons/objects/Sky.js";
 import * as house from "housekit";
+import { loadFinishes, metricUVs } from "./finishes.js";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
@@ -375,7 +376,11 @@ export async function boot(buildScene) {
   // ---- user scene ----
   let result = null;
   try {
+    // textured surfaces: loaded first so house.js mat.* hands out textured materials (plain without the files)
+    await loadFinishes().catch((e) => console.warn(`housekit: finishes not loaded: ${e?.message ?? e}`));
     result = await buildScene({ THREE, scene, house, group: houseGroup, sun, ground, renderer, camera });
+    house.texturePitchedRoofs(houseGroup);
+    metricUVs(houseGroup);
   } catch (err) {
     recordError(`buildScene failed: ${err?.stack ?? err}`);
   }
@@ -616,7 +621,8 @@ function presentationGround(scene, baseGround) {
   });
   const plot = terrains[0] ?? baseGround;
   const material = Array.isArray(plot.material) ? plot.material[0] : plot.material;
-  const lawn = material?.color ? material.color.clone() : new THREE.Color(PALETTE.grass);
+  // a textured lawn carries a tint, not its colour: use the colour it reads as (finishes.js baseColor)
+  const lawn = material?.userData?.baseColor?.clone() ?? (material?.color ? material.color.clone() : new THREE.Color(PALETTE.grass));
   // the plot: the terrains' footprints (holes in the sheet), or the house and its site on flat
   // ground (no hole: the sheet is then the ground under the house)
   const inset = 0.1; // the meadow reaches 10 cm under the terrain's rim: no hairline at the edge

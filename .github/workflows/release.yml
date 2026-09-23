@@ -135,6 +135,10 @@ jobs:
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
             APP_COMMIT=${{ steps.version.outputs.commit }}
+          # Sketchfab (CC BY) furniture models; without the repository secret the build uses the
+          # kit's parametric pieces instead
+          secrets: |
+            sketchfab_token=${{ secrets.SKETCHFAB_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

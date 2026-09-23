@@ -24,6 +24,13 @@ RUN npm run api:gen && npm run build
 WORKDIR /kit
 COPY kit/package.json kit/package-lock.json* ./
 RUN npm install --omit=dev                  # node_modules/three
+# furniture models and surface textures: Poly Haven (CC0) always, Sketchfab (CC BY) when the build
+# is given the token (docker build --secret id=sketchfab_token,env=SKETCHFAB_TOKEN); without it the
+# scenes fall back to the kit's parametric pieces
+COPY kit/*.js ./
+COPY kit/scripts ./scripts
+RUN --mount=type=secret,id=sketchfab_token \
+    SKETCHFAB_TOKEN="$(cat /run/secrets/sketchfab_token 2>/dev/null || true)" node scripts/fetch_models.mjs
 
 
 # ---------------------------------------------------------------------------
@@ -60,8 +67,9 @@ RUN /app/.venv/bin/playwright install --with-deps chromium-headless-shell \
 COPY backend/src ./src
 RUN uv sync --frozen --no-dev
 
-# Scene kit (runtime + components + template) and vendored three.js
-COPY kit/house.js kit/runtime.js ./kit/
+# Scene kit (runtime + components + template), its fetched assets and vendored three.js
+COPY kit/*.js ./kit/
+COPY --from=web /kit/assets ./kit/assets
 COPY kit/template ./kit/template
 COPY kit/versions ./kit/versions
 COPY --from=web /kit/node_modules/three ./kit/node_modules/three
