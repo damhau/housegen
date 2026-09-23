@@ -521,6 +521,11 @@ class BuilderTools:
         view = f"plan-section-{storey}"
         res = await self.renderer.render(self.scene_url, [view], self.renders_dir, quality="low")
         self.render_ms_total += res.duration_ms
+        local = getattr(self.renderer, "local", None)
+        if res.report is None and local is not None:
+            # a render service on an older image returns no report: draw this view in-process
+            res = await local.render(self.scene_url, [view], self.renders_dir, quality="low")
+            self.render_ms_total += res.duration_ms
         sections = (res.report or {}).get("planSections") or []
         frame = next((s for s in sections if s.get("view") == view), None)
         if res.errors or view not in res.images or frame is None:
