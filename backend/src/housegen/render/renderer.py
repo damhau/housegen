@@ -18,6 +18,10 @@ from housegen.core.exceptions import RenderError
 
 logger = logging.getLogger(__name__)
 
+# a furnished house's first frame compiles every material's shader: give a screenshot more than
+# Playwright's 30 s default before giving up on that view
+SCREENSHOT_TIMEOUT_MS = 90_000
+
 
 @dataclass
 class RenderResult:
@@ -238,11 +242,22 @@ class Renderer:
                 except Exception as exc:  # nor the report
                     logger.warning("render.report_failed", extra={"error": str(exc)[:200]})
                 for view in views:
-                    ok = await page.evaluate("(v) => window.__house.setView(v)", view)
-                    if not ok:
+                    # one view that fails (a frame slower than the timeout) costs that view, not
+                    # the whole call: the others are kept and the failure is reported
+                    try:
+                        ok = await page.evaluate("(v) => window.__house.setView(v)", view)
+                        if not ok:
+                            continue
+                        await page.wait_for_timeout(80)
+                        png = await page.screenshot(type="png", timeout=SCREENSHOT_TIMEOUT_MS)
+                    except Exception as exc:
+                        result.errors.append(
+                            f"view '{view}' failed: {str(exc).splitlines()[0][:200]}"
+                        )
+                        logger.warning(
+                            "render.view_failed", extra={"view": view, "error": str(exc)[:200]}
+                        )
                         continue
-                    await page.wait_for_timeout(80)
-                    png = await page.screenshot(type="png")
                     result.images[view] = _to_jpeg(
                         png, out_dir / f"{view}.jpg", s.RENDER_IMAGE_WIDTH, s.RENDER_JPEG_QUALITY
                     )

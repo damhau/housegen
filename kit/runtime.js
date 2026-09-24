@@ -390,6 +390,7 @@ export async function boot(buildScene) {
     house.texturePitchedRoofs(houseGroup);
     metricUVs(houseGroup);
     await finishesReady(); // only the texture sets the scene uses were fetched
+    capPointLights(houseGroup, scene);
   } catch (err) {
     recordError(`buildScene failed: ${err?.stack ?? err}`);
   }
@@ -900,9 +901,53 @@ function framingBounds(root) {
   return box;
 }
 
+/**
+ * Lamps: three.js writes every light into every material's shader, so a furnished house with a
+ * point light per room (47 on one project) makes every shader huge (slow to compile, slow per
+ * pixel, even outdoors). Above LIGHT_BUDGET point lights, the scene's own are hidden and that many
+ * stand-ins take the place of the lamps nearest the camera before each frame: the shaders always
+ * see the same number of lights (nothing recompiles), the lamps' glowing shades stay as they are.
+ */
+const LIGHT_BUDGET = 6;
+
+function capPointLights(root, scene) {
+  const lamps = [];
+  root.traverse((o) => { if (o.isPointLight && o.visible && !o.castShadow) lamps.push(o); });
+  if (lamps.length <= LIGHT_BUDGET) return;
+  for (const l of lamps) l.visible = false;
+  const standIns = [];
+  for (let i = 0; i < LIGHT_BUDGET; i++) {
+    const s = new THREE.PointLight("#ffffff", 0, 1, 2);
+    s.name = "lamp-stand-in";
+    scene.add(s);
+    standIns.push(s);
+  }
+  state.lamps = { lamps, standIns, at: new THREE.Vector3(), tmp: new THREE.Vector3() };
+}
+
+function placeLampStandIns(camera) {
+  const L = state.lamps;
+  if (!L) return;
+  camera.getWorldPosition(L.at);
+  const near = L.lamps
+    .map((l) => ({ l, p: l.getWorldPosition(new THREE.Vector3()) }))
+    .sort((a, b) => a.p.distanceToSquared(L.at) - b.p.distanceToSquared(L.at))
+    .slice(0, LIGHT_BUDGET);
+  L.standIns.forEach((s, i) => {
+    const n = near[i];
+    if (!n) { s.intensity = 0; return; }
+    s.position.copy(n.p);
+    s.color.copy(n.l.color);
+    s.intensity = n.l.intensity;
+    s.distance = n.l.distance;
+    s.decay = n.l.decay;
+  });
+}
+
 function renderFrame() {
   const { renderer, scene, camera, composer } = state;
   if (!renderer) return;
+  placeLampStandIns(camera);
   if (composer) composer.render();
   else renderer.render(scene, camera);
 }
@@ -1162,6 +1207,9 @@ async function startWalk(roomName) {
   const room = rooms.find((r) => r.name === roomName)
     ?? rooms.find((r) => r.use === "hall")
     ?? [...rooms].sort((a, b) => b.area - a.area)[0];
+  if (state.walk && room && Math.abs(room.y - state.walk.floorY) > 0.5) {
+    stopWalk(); // another storey: its floor, its walkable grid
+  }
   if (state.walk) {
     if (room) state.walk.jumpTo(room);
     return;
