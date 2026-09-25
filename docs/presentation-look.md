@@ -90,7 +90,15 @@ Calibration on TestVillaGille, the same shaded plaster patch as the analytic loo
 sky's horizon is darker and bluer, so walls came out grey-blue (175, 175, 179 against 195, 197, 193).
 `photoSky.env` 2.4 (fill) and `photoSky.envSaturation` 0.4 (the fill's blue toned down, the sky kept)
 put it back at 194, 194, 195; `photoSky.saturation` 1.35 gives the dome back the blue tone mapping takes.
-Knobs: `p_skyenv`, `p_skyenvsat`, `p_skysat`; `?sky=analytic` draws the old sky, for comparison.
+Knobs: `p_skyenv`, `p_skyenvsat`; `?sky=analytic` draws the old sky, for comparison.
+
+The same day, the sky the camera sees was redone: a measured sky's blue, tone-mapped, came out grey and
+mauve (130, 143, 175, saturation 0.22, against 124, 164, 230, 0.68 on a daylight photograph), so the blue is
+now designed: a gradient from `photoSky.zenith` #5180d6 to `photoSky.horizon` #9bbeee, the HDRI's clouds laid
+over it (a cloud = where the photograph is grey-white instead of blue), all drawn through an inverse of three's
+ACES so the frame shows exactly these colours. Measured from the ground: 123, 162, 229, saturation 0.67. The
+picture is the 8k HDRI developed for the screen (908 KB, no banding once scaled), with mipmaps and the wrap
+seam handled. Knobs: `p_zenith`, `p_horizon` (hex without #); `?skymode=clear` leaves the clouds out.
 
 ## A finding about the renderer itself
 

@@ -3,7 +3,8 @@
  "env": "kloofendal_48d_partly_cloudy_puresky_env.hdr",
  "sky": "kloofendal_48d_partly_cloudy_puresky_sky.jpg",
  "skyBelow": 12,
- "scale": 5.58287,
+ "scale": 5.57999,
+ "develop": 12.0,
  "sun": {
   "azimuth": 124.28,
   "elevation": 47.99

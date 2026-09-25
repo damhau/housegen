@@ -5,9 +5,9 @@
 Writes, for the runtime's presentation look (setupPresentationSky):
   <id>_env.hdr   1k equirectangular radiance with the sun's disc taken out (the directional light
                  is the sun; the map would light the scene with it a second time), for the lighting
-  <id>_sky.jpg   4k equirectangular, from the zenith to 12° below the horizon, the linear radiance
-                 divided by `scale` and sRGB-encoded (the visible sky: sharp clouds at a sixth of the
-                 4k HDR's weight)
+  <id>_sky.jpg   8k equirectangular, from the zenith to 12° below the horizon, developed for the screen
+                 (1 - exp(-radiance / scale * DEVELOP), sRGB): the runtime takes the clouds from it and
+                 lays them over a blue of its own (all 256 levels used: no blocks, no banding)
   sky.json       which files, the scale, the sun's direction in the HDRI, the radiance the map's
                  upper hemisphere shines onto a level surface (to calibrate against), the credit
 The HDRI's columns: u = 0.5 + atan2(z, x) / 2π (three.js's equirectangular), so an azimuth (0 = north
@@ -28,6 +28,7 @@ from PIL import Image
 ID = sys.argv[1] if len(sys.argv) > 1 else "kloofendal_48d_partly_cloudy_puresky"
 OUT = Path(__file__).resolve().parent.parent / "sky"
 BELOW = 12  # degrees below the horizon kept in the visible sky (the meadow covers the rest)
+DEVELOP = 12.0  # exposure of the developed picture: the blue sky mid-range, the clouds rolled off to white
 
 
 def fetch(res: str) -> bytes:
@@ -91,7 +92,7 @@ def lum(img: np.ndarray) -> np.ndarray:
 def main() -> None:
     OUT.mkdir(exist_ok=True)
     small = read_hdr(fetch("1k"))
-    big = read_hdr(fetch("4k"))
+    big = read_hdr(fetch("8k"))
     h, w, _ = small.shape
 
     # the sun: the brightest spot; its disc and glare = where the radiance exceeds the brightest sky
@@ -120,10 +121,10 @@ def main() -> None:
     part = big[:rows]
     Lb = lum(part)
     scale = float(np.percentile(Lb[Lb < sky_only * 4], 99.9))
-    enc = np.clip(part / scale, 0, 1)
+    enc = 1.0 - np.exp(-np.clip(part / scale, 0, None) * DEVELOP)
     srgb = np.where(enc <= 0.0031308, enc * 12.92, 1.055 * np.power(enc, 1 / 2.4) - 0.055)
     Image.fromarray((srgb * 255 + 0.5).astype(np.uint8)).save(
-        OUT / f"{ID}_sky.jpg", "JPEG", quality=90, optimize=True, progressive=True
+        OUT / f"{ID}_sky.jpg", "JPEG", quality=88, optimize=True, progressive=True
     )
 
     meta = {
@@ -131,7 +132,8 @@ def main() -> None:
         "env": f"{ID}_env.hdr",
         "sky": f"{ID}_sky.jpg",
         "skyBelow": BELOW,  # the image runs from +90° to -BELOW°
-        "scale": round(scale, 5),  # radiance = decoded pixel * scale
+        "scale": round(scale, 5),
+        "develop": DEVELOP,  # pixel = 1 - exp(-radiance / scale * develop)
         "sun": {"azimuth": round(float(azimuth), 2), "elevation": round(float(elevation), 2)},
         "irradiance": round(irr, 5),
         "credit": f"Sky: “{ID}” by Greg Zaal and Jarod Guest, Poly Haven (CC0)",

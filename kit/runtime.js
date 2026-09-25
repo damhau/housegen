@@ -122,7 +122,7 @@ const PRESENTATION_LOOK = {
   // the photographed sky (setupPhotographedSky): its fill, relative to the analytic sky's at the same
   // light on a level surface (walls see mostly the horizon, darker and bluer in a photographed sky),
   // and the saturation of the sky the camera sees (tone mapping greys a blue sky)
-  photoSky: { env: 2.4, envSaturation: 0.4, saturation: 1.35 }, // 2026-09-25: shaded plaster matched (TestVillaGille)
+  photoSky: { env: 2.4, envSaturation: 0.4, zenith: "#5180d6", horizon: "#9bbeee" }, // 2026-09-25: shaded plaster matched (TestVillaGille); the blue measured on a daylight photo (123, 164, 231)
 };
 
 // calibration overrides (see the header): numbers only, anything else keeps the default
@@ -130,7 +130,7 @@ for (const [key, path] of [
   ["p_env", ["environmentIntensity"]], ["p_bg", ["backgroundIntensity"]], ["p_sun", ["sunIntensity"]], ["p_hemi", ["hemi", "intensity"]],
   ["p_expo", ["exposure"]], ["p_fog", ["fogDensity"]], ["p_rayleigh", ["sky", "rayleigh"]], ["p_turbidity", ["sky", "turbidity"]],
   ["p_contrast", ["contrast"]], ["p_sat", ["saturation"]], ["p_vignette", ["vignette"]], ["p_meadow", ["meadow"]],
-  ["p_skyenv", ["photoSky", "env"]], ["p_skysat", ["photoSky", "saturation"]], ["p_skyenvsat", ["photoSky", "envSaturation"]],
+  ["p_skyenv", ["photoSky", "env"]], ["p_skyenvsat", ["photoSky", "envSaturation"]],
 ]) {
   const v = Number(params.get(key));
   if (params.get(key) !== null && Number.isFinite(v)) {
@@ -675,12 +675,14 @@ async function setupPhotographedSky(scene, renderer, spec) {
   horizon.multiplyScalar(look.backgroundIntensity / Math.max(1, n));
   env.dispose();
 
-  // the sky the camera sees: a dome at the far plane, the picture's linear radiance tone-mapped
-  // like the rest of the frame (on the composer's path and on the direct one alike)
+  // the sky the camera sees: a dome at the far plane. Its blue is designed (the gradient of a
+  // daylight photograph of a blue sky, zenith to horizon) and the photographed clouds are laid over
+  // it, both drawn so that the frame's tone mapping shows exactly these colours: a real sky's blue,
+  // measured and then tone-mapped, comes out grey and mauve. ?skymode=clear leaves the clouds out.
   picture.colorSpace = THREE.SRGBColorSpace;
   picture.wrapS = THREE.RepeatWrapping;
-  picture.generateMipmaps = false;
-  picture.minFilter = THREE.LinearFilter;
+  picture.anisotropy = 8;
+  const hex = (name, fallback) => new THREE.Color(params.get(name) ? `#${params.get(name)}` : fallback);
   const dome = new THREE.Mesh(
     new THREE.SphereGeometry(1, 96, 48),
     new THREE.ShaderMaterial({
@@ -688,10 +690,12 @@ async function setupPhotographedSky(scene, renderer, spec) {
       depthWrite: false,
       uniforms: {
         uMap: { value: picture },
-        uScale: { value: meta.scale * k * look.backgroundIntensity },
         uShift: { value: shift },
         uSpan: { value: THREE.MathUtils.degToRad(90 + meta.skyBelow) },
-        uSat: { value: look.photoSky.saturation },
+        uClouds: { value: params.get("skymode") === "clear" ? 0 : 1 },
+        uExposure: { value: look.exposure },
+        uZenith: { value: hex("p_zenith", look.photoSky.zenith) },
+        uHorizon: { value: hex("p_horizon", look.photoSky.horizon) },
       },
       vertexShader: /* glsl */ `
         varying vec3 vDir;
@@ -703,15 +707,40 @@ async function setupPhotographedSky(scene, renderer, spec) {
       fragmentShader: /* glsl */ `
         #include <common>
         uniform sampler2D uMap;
-        uniform float uScale, uShift, uSpan, uSat;
+        uniform float uShift, uSpan, uClouds, uExposure;
+        uniform vec3 uZenith, uHorizon;
         varying vec3 vDir;
+        // three's ACESFilmicToneMapping, undone: the colour to draw so the tone mapping shows 'display'
+        vec3 inverseACES(vec3 display) {
+          const mat3 inMat = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
+          const mat3 outMat = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
+          vec3 y = clamp(inverse(outMat) * clamp(display, 0.0, 0.96), 0.0, 0.99);
+          // RRTAndODTFit: (v² + 0.0245786 v - 0.000090537) / (0.983729 v² + 0.4329510 v + 0.238081) = y
+          vec3 a = 1.0 - 0.983729 * y, b = 0.0245786 - 0.4329510 * y, c = -0.000090537 - 0.238081 * y;
+          vec3 v = (-b + sqrt(max(b * b - 4.0 * a * c, 0.0))) / (2.0 * a);
+          return max(inverse(inMat) * v, 0.0) * 0.6 / uExposure;
+        }
         void main() {
           vec3 d = normalize(vDir);
-          float u = fract(atan(d.z, d.x) * RECIPROCAL_PI2 + 0.5 - uShift);
-          float v = clamp((0.5 * PI - asin(clamp(d.y, -1.0, 1.0))) / uSpan, 0.0, 1.0);
-          vec3 c = texture2D(uMap, vec2(u, 1.0 - v)).rgb * uScale;
-          c = max(mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, uSat), 0.0);
-          gl_FragColor = vec4(c, 1.0);
+          float t = pow(clamp(d.y, 0.0, 1.0), 0.45);
+          vec3 display = mix(uHorizon, uZenith, t);
+          if (uClouds > 0.5) {
+            float u = atan(d.z, d.x) * RECIPROCAL_PI2 + 0.5 - uShift;
+            float v = 1.0 - clamp((0.5 * PI - asin(clamp(d.y, -1.0, 1.0))) / uSpan, 0.0, 1.0);
+            // the panorama wraps where u jumps from 1 to 0: take the gradient of whichever of u and
+            // u + 0.5 is continuous here, or the mipmap chain draws a seam
+            float u2 = fract(u + 0.5) - 0.5;
+            float du = fwidth(u) < fwidth(u2) ? 0.0 : 1.0;
+            vec2 gx = vec2(mix(dFdx(u), dFdx(u2), du), dFdx(v)), gy = vec2(mix(dFdy(u), dFdy(u2), du), dFdy(v));
+            vec3 p = textureGrad(uMap, vec2(fract(u), v), gx, gy).rgb; // developed for the screen (make_sky.py)
+            // a cloud is where the photograph is grey-white instead of blue; it keeps its own brightness
+            float blueness = (p.b - p.r) / max(p.b, 1e-4);
+            float cloud = 1.0 - smoothstep(0.12, 0.34, blueness);
+            float lum = dot(p, vec3(0.2126, 0.7152, 0.0722));
+            // they fade out toward the horizon, where the photograph's haze would read as a grey band
+            display = mix(display, vec3(lum) * vec3(1.0, 0.99, 0.97), cloud * smoothstep(0.04, 0.16, d.y));
+          }
+          gl_FragColor = vec4(inverseACES(display), 1.0);
           #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }`,
