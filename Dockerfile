@@ -74,6 +74,8 @@ RUN uv sync --frozen --no-dev
 COPY kit/*.js ./kit/
 COPY --from=web /kit/assets ./kit/assets
 COPY kit/template ./kit/template
+# the presentation look's photographed sky (scripts/make_sky.py, Poly Haven CC0)
+COPY kit/sky ./kit/sky
 COPY kit/versions ./kit/versions
 COPY --from=web /kit/node_modules/three ./kit/node_modules/three
 

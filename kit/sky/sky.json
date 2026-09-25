@@ -1,0 +1,13 @@
+{
+ "id": "kloofendal_48d_partly_cloudy_puresky",
+ "env": "kloofendal_48d_partly_cloudy_puresky_env.hdr",
+ "sky": "kloofendal_48d_partly_cloudy_puresky_sky.jpg",
+ "skyBelow": 12,
+ "scale": 5.58287,
+ "sun": {
+  "azimuth": 124.28,
+  "elevation": 47.99
+ },
+ "irradiance": 0.45214,
+ "credit": "Sky: \u201ckloofendal_48d_partly_cloudy_puresky\u201d by Greg Zaal and Jarod Guest, Poly Haven (CC0)"
+}

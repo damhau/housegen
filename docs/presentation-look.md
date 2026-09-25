@@ -73,6 +73,25 @@ Cost with software GL (the server's renderer): a presentation view renders in ab
 quality=high view; an ultra view with 16 samples took about 7 s per sample on the first real
 project, so ultra is for the owner's GPU, not for the server.
 
+## The photographed sky (2026-09-25)
+
+The analytic sky (three's Sky) read washed out: a pale blue-white sky with no cloud. The presentation
+look now draws a photographed one: Poly Haven's `kloofendal_48d_partly_cloudy_puresky` (CC0, deep blue,
+scattered cumulus), built by `kit/scripts/make_sky.py` into `kit/sky/` (committed, 2.3 MB):
+
+- the lighting: its 1k HDR with the sun's disc taken out (the directional light is the sun), turned so
+  the photographed sun stands at the scene sun's azimuth, scaled so a level surface receives what the
+  analytic sky gave it (`ANALYTIC_SKY_IRRADIANCE` = 1.1266, measured in the browser for the default sun);
+- the sky the camera sees: its 4k picture (zenith to 12° below the horizon, linear radiance / `scale`,
+  sRGB-encoded) on a dome at the far plane, tone-mapped with the frame, so it also holds when the effects
+  are dropped and the frame is drawn straight to the canvas.
+
+Calibration on TestVillaGille, the same shaded plaster patch as the analytic look: the photographed
+sky's horizon is darker and bluer, so walls came out grey-blue (175, 175, 179 against 195, 197, 193).
+`photoSky.env` 2.4 (fill) and `photoSky.envSaturation` 0.4 (the fill's blue toned down, the sky kept)
+put it back at 194, 194, 195; `photoSky.saturation` 1.35 gives the dome back the blue tone mapping takes.
+Knobs: `p_skyenv`, `p_skyenvsat`, `p_skysat`; `?sky=analytic` draws the old sky, for comparison.
+
 ## A finding about the renderer itself
 
 Two headless renders of the same scene with the same code differ: about 0.4 % of the template's

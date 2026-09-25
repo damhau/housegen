@@ -47,6 +47,7 @@ import { Pass, FullScreenQuad } from "three/addons/postprocessing/Pass.js";
 import { CopyShader } from "three/addons/shaders/CopyShader.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { Sky } from "three/addons/objects/Sky.js";
+import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import * as house from "housekit";
 import { finishesReady, loadFinishes, metricUVs } from "./finishes.js";
 import { planData, planStoreys, planSVG } from "./plan2d.js";
@@ -118,6 +119,10 @@ const PRESENTATION_LOOK = {
   contrast: 1.08, // about mid grey, after tone mapping (GradeShader)
   saturation: 1.06,
   sky: { turbidity: 2.5, rayleigh: 1.8, mieCoefficient: 0.005, mieDirectionalG: 0.85 },
+  // the photographed sky (setupPhotographedSky): its fill, relative to the analytic sky's at the same
+  // light on a level surface (walls see mostly the horizon, darker and bluer in a photographed sky),
+  // and the saturation of the sky the camera sees (tone mapping greys a blue sky)
+  photoSky: { env: 2.4, envSaturation: 0.4, saturation: 1.35 }, // 2026-09-25: shaded plaster matched (TestVillaGille)
 };
 
 // calibration overrides (see the header): numbers only, anything else keeps the default
@@ -125,6 +130,7 @@ for (const [key, path] of [
   ["p_env", ["environmentIntensity"]], ["p_bg", ["backgroundIntensity"]], ["p_sun", ["sunIntensity"]], ["p_hemi", ["hemi", "intensity"]],
   ["p_expo", ["exposure"]], ["p_fog", ["fogDensity"]], ["p_rayleigh", ["sky", "rayleigh"]], ["p_turbidity", ["sky", "turbidity"]],
   ["p_contrast", ["contrast"]], ["p_sat", ["saturation"]], ["p_vignette", ["vignette"]], ["p_meadow", ["meadow"]],
+  ["p_skyenv", ["photoSky", "env"]], ["p_skysat", ["photoSky", "saturation"]], ["p_skyenvsat", ["photoSky", "envSaturation"]],
 ]) {
   const v = Number(params.get(key));
   if (params.get(key) !== null && Number.isFinite(v)) {
@@ -326,7 +332,7 @@ export async function boot(buildScene) {
   scene.add(sun);
   const sunSpec = readSun(params);
   if (PRESENTATION) {
-    setupPresentationSky(scene, renderer, sun, sunSpec);
+    await setupPresentationSky(scene, renderer, sun, sunSpec);
   } else if (QUALITY !== "low") {
     const pmrem = new THREE.PMREMGenerator(renderer);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -568,7 +574,16 @@ function applyPresentationSun(sun, spec) {
  * sky (with the sun's glare damped: the directional light already carries the sun), the fog
  * and clear colour read from the sky at the horizon so the ground fades seamlessly into it.
  */
-function setupPresentationSky(scene, renderer, sun, spec) {
+async function setupPresentationSky(scene, renderer, sun, spec) {
+  // a photographed sky (blue with scattered cumulus) unless the page asks for the analytic one
+  if (params.get("sky") !== "analytic") {
+    try {
+      await setupPhotographedSky(scene, renderer, spec);
+      return;
+    } catch (err) {
+      console.warn(`housekit: photographed sky not loaded (${err?.message ?? err}), analytic sky instead`);
+    }
+  }
   const dir = sunDirection(spec);
   const look = PRESENTATION_LOOK;
   const sky = new Sky();
@@ -603,6 +618,114 @@ function setupPresentationSky(scene, renderer, sun, spec) {
   state.presentation = { skyMap, horizon };
 }
 
+// The analytic sky's light, measured once: its upper hemisphere's cosine-weighted mean radiance for
+// the default sun (42°, 200°). A photographed sky is scaled to shine as much, so the calibrated
+// environment and background intensities keep their meaning.
+const ANALYTIC_SKY_IRRADIANCE = 1.1266;
+const SKY_DIR = new URL("/kit/sky/", import.meta.url);
+
+/**
+ * A photographed sky (kit/sky/, made by scripts/make_sky.py from a Poly Haven HDRI, CC0): its 1k
+ * radiance with the sun taken out lights the scene, its 4k picture is the sky the camera sees, both
+ * turned so the photographed sun stands at the azimuth of the scene's sun. The fog is the sky's
+ * colour just above the horizon, away from the sun.
+ */
+async function setupPhotographedSky(scene, renderer, spec) {
+  const look = PRESENTATION_LOOK;
+  const meta = await fetch(new URL("sky.json", SKY_DIR)).then((r) => { if (!r.ok) throw new Error(`sky.json: HTTP ${r.status}`); return r.json(); });
+  const [env, picture] = await Promise.all([
+    new HDRLoader().setDataType(THREE.FloatType).loadAsync(new URL(meta.env, SKY_DIR).href),
+    new THREE.TextureLoader().loadAsync(new URL(meta.sky, SKY_DIR).href),
+  ]);
+  // turn: the photographed sun's azimuth onto the scene's (columns run with azimuth, see make_sky.py)
+  const shift = (((spec.azimuth - meta.sun.azimuth) / 360) % 1 + 1) % 1;
+  const k = ANALYTIC_SKY_IRRADIANCE / meta.irradiance;
+  const { width: w, height: h, data } = env.image;
+  const rolled = new Float32Array(data.length);
+  const cols = Math.round(shift * w), ch = data.length / (w * h);
+  // as light, the blue of a real sky is toned down (look.photoSky.envSaturation): the shade stays
+  // the near-neutral fill the look was calibrated with, the sky the camera sees keeps its colour
+  const es = look.photoSky.envSaturation;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const from = (y * w + x) * ch, to = (y * w + ((x + cols) % w)) * ch;
+    const r = data[from], g = data[from + 1], b = data[from + 2];
+    const l = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    rolled[to] = (l + (r - l) * es) * k;
+    rolled[to + 1] = (l + (g - l) * es) * k;
+    rolled[to + 2] = (l + (b - l) * es) * k;
+    if (ch > 3) rolled[to + 3] = data[from + 3];
+  }
+  env.image.data = rolled;
+  env.mapping = THREE.EquirectangularReflectionMapping;
+  env.needsUpdate = true;
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const skyMap = pmrem.fromEquirectangular(env).texture;
+  pmrem.dispose();
+
+  // the fog: the rows 0.5° to 4° above the horizon, the half of the sky turned away from the sun
+  const horizon = new THREE.Color(0, 0, 0);
+  let n = 0;
+  const sunCol = ((0.5 + (spec.azimuth - 90) / 360) % 1 + 1) % 1;
+  for (let y = Math.floor(h * (86 / 180)); y < Math.floor(h * (89.5 / 180)); y++) for (let x = 0; x < w; x++) {
+    const du = Math.abs(((x + 0.5) / w - sunCol + 1.5) % 1 - 0.5);
+    if (du < 0.25) continue;
+    const i = (y * w + x) * ch;
+    horizon.r += rolled[i]; horizon.g += rolled[i + 1]; horizon.b += rolled[i + 2]; n++;
+  }
+  horizon.multiplyScalar(look.backgroundIntensity / Math.max(1, n));
+  env.dispose();
+
+  // the sky the camera sees: a dome at the far plane, the picture's linear radiance tone-mapped
+  // like the rest of the frame (on the composer's path and on the direct one alike)
+  picture.colorSpace = THREE.SRGBColorSpace;
+  picture.wrapS = THREE.RepeatWrapping;
+  picture.generateMipmaps = false;
+  picture.minFilter = THREE.LinearFilter;
+  const dome = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 96, 48),
+    new THREE.ShaderMaterial({
+      side: THREE.BackSide,
+      depthWrite: false,
+      uniforms: {
+        uMap: { value: picture },
+        uScale: { value: meta.scale * k * look.backgroundIntensity },
+        uShift: { value: shift },
+        uSpan: { value: THREE.MathUtils.degToRad(90 + meta.skyBelow) },
+        uSat: { value: look.photoSky.saturation },
+      },
+      vertexShader: /* glsl */ `
+        varying vec3 vDir;
+        void main() {
+          vDir = position;
+          vec4 p = projectionMatrix * vec4(mat3(viewMatrix) * position, 1.0);
+          gl_Position = p.xyww; // on the far plane, whatever the camera's distance
+        }`,
+      fragmentShader: /* glsl */ `
+        #include <common>
+        uniform sampler2D uMap;
+        uniform float uScale, uShift, uSpan, uSat;
+        varying vec3 vDir;
+        void main() {
+          vec3 d = normalize(vDir);
+          float u = fract(atan(d.z, d.x) * RECIPROCAL_PI2 + 0.5 - uShift);
+          float v = clamp((0.5 * PI - asin(clamp(d.y, -1.0, 1.0))) / uSpan, 0.0, 1.0);
+          vec3 c = texture2D(uMap, vec2(u, 1.0 - v)).rgb * uScale;
+          c = max(mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, uSat), 0.0);
+          gl_FragColor = vec4(c, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+        }`,
+    }),
+  );
+  dome.name = "Sky";
+  dome.frustumCulled = false;
+  dome.renderOrder = -1;
+  dome.userData = { kind: "sky", excludeFromBounds: true };
+  scene.environment = skyMap;
+  scene.environmentIntensity = look.environmentIntensity * look.photoSky.env;
+  state.presentation = { skyMap, horizon, dome };
+}
+
 /**
  * The look the runtime owns on a presentation page, applied after buildScene so that whatever
  * the scene did with ctx.scene's background, fog or environment, or with ctx.sun, the page
@@ -612,10 +735,16 @@ function applyPresentationLook(scene, sun, spec, ground) {
   const look = PRESENTATION_LOOK;
   const { skyMap, horizon } = state.presentation;
   scene.environment = skyMap;
-  scene.environmentIntensity = look.environmentIntensity;
-  scene.background = skyMap;
-  scene.backgroundIntensity = look.backgroundIntensity;
-  scene.backgroundBlurriness = 0;
+  scene.environmentIntensity = look.environmentIntensity * (state.presentation.dome ? look.photoSky.env : 1);
+  if (state.presentation.dome) {
+    // the photographed sky: its dome, and its horizon as the clear colour behind it
+    scene.background = horizon.clone();
+    if (!state.presentation.dome.parent) scene.add(state.presentation.dome);
+  } else {
+    scene.background = skyMap;
+    scene.backgroundIntensity = look.backgroundIntensity;
+    scene.backgroundBlurriness = 0;
+  }
   scene.fog = new THREE.FogExp2(horizon, look.fogDensity);
   state.fog = scene.fog;
   const hemi = scene.children.find((o) => o.isHemisphereLight);
@@ -674,7 +803,14 @@ function presentationGround(scene, baseGround) {
   const plot = terrains[0] ?? baseGround;
   const material = Array.isArray(plot.material) ? plot.material[0] : plot.material;
   // a textured lawn carries a tint, not its colour: use the colour it reads as (finishes.js baseColor)
-  const lawn = material?.userData?.baseColor?.clone() ?? (material?.color ? material.color.clone() : new THREE.Color(PALETTE.grass));
+  let lawn = material?.userData?.baseColor?.clone() ?? (material?.color ? material.color.clone() : new THREE.Color(PALETTE.grass));
+  // a ground painted with vertex colours on a white material: the colour it reads as is their mean
+  const colors = plot.geometry?.attributes?.color;
+  if (material?.vertexColors && colors?.count) {
+    const mean = new THREE.Color(0, 0, 0);
+    for (let i = 0; i < colors.count; i++) { mean.r += colors.getX(i); mean.g += colors.getY(i); mean.b += colors.getZ(i); }
+    lawn = mean.multiplyScalar(1 / colors.count).multiply(material.color ?? new THREE.Color(1, 1, 1));
+  }
   // the plot: the terrains' footprints (holes in the sheet), or the house and its site on flat
   // ground (no hole: the sheet is then the ground under the house)
   const inset = 0.1; // the meadow reaches 10 cm under the terrain's rim: no hairline at the edge
