@@ -146,7 +146,7 @@ export function interiorDoor({ width = 0.8, height = 2.05, thickness = 0.1, hing
  * One storey of rooms, partitions and doors.
  *   y:        finished floor level of this storey (the top of the slab)
  *   height:   clear height to the ceiling
- *   rooms:    [{ name, use, polygon, floor = "oak" | "oak-light" | "tile" | "tile-dark" | "concrete", wallColor }]
+ *   rooms:    [{ name, use, polygon, area (as printed on the plan, optional), floor = "oak" | "oak-light" | "tile" | "tile-dark" | "concrete", wallColor }]
  *   partitions: [{ from, to, thickness = 0.1, openings: [{ offset, width, height,
  *               door: { hinge, swing, open } | false }] }]   door defaults to a leaf; false = open passage
  * Returns a Group (kind "floorPlan"); userData.rooms lists each room with its area, userData.partitions
@@ -165,7 +165,8 @@ export function floorPlan({ y = 0, height = 2.5, rooms = [], partitions = [], ce
       c.userData = { kind: "ceiling", room: r.name };
       g.add(c);
     }
-    listed.push({ name: r.name, use: r.use, polygon: r.polygon, area: Math.round(polygonArea(r.polygon) * 100) / 100 });
+    listed.push({ name: r.name, use: r.use, polygon: r.polygon, area: Math.round(polygonArea(r.polygon) * 100) / 100,
+      ...(r.area ? { planArea: r.area } : {}) });
   }
   for (const p of partitions) {
     const w = partition({ ...p, y, height: p.height ?? height });
@@ -178,7 +179,9 @@ export function floorPlan({ y = 0, height = 2.5, rooms = [], partitions = [], ce
     }
   }
   const walls = partitions.map((p) => ({ from: p.from, to: p.to, thickness: p.thickness ?? 0.1, height: p.height ?? height,
-    openings: (p.openings ?? []).map((o) => ({ offset: o.offset, width: o.width, height: o.height ?? 2.05, door: o.door !== false })) }));
+    // door: the leaf's hinge and swing (the 2D plan draws them), false for an open passage
+    openings: (p.openings ?? []).map((o) => ({ offset: o.offset, width: o.width, height: o.height ?? 2.05,
+      door: o.door === false ? false : { hinge: o.door?.hinge ?? "start", swing: o.door?.swing ?? "left" } })) }));
   g.userData = { kind: "floorPlan", y, height, rooms: listed, partitions: walls };
   return g;
 }

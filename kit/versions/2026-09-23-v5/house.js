@@ -139,6 +139,7 @@ export function slab({ polygon, y = 0, thickness = 0.25, material = mat.concrete
   // shape is in XY plane extruded along +Z; rotate so the polygon lies in XZ
   m.rotation.x = Math.PI / 2;
   m.position.y = y;
+  m.userData = { kind: "slab", slab: true, polygon, y, thickness }; // the 2D plan draws terraces from it (slab: kept if the scene retags kind)
   return m;
 }
 
@@ -507,6 +508,7 @@ export function balcony({ width = 3, depth = 1.5, thickness = 0.2, position = [0
   g.add(railing({ from: [width / 2, depth], to: [width / 2, 0], y, style: railingStyle, color: railingColor }));
   g.position.set(...position);
   g.rotation.y = rotationY;
+  g.userData = { kind: "balcony", balcony: true, width, depth }; // attached edge on local -z (the 2D plan draws it)
   return g;
 }
 

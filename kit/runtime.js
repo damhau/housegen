@@ -49,6 +49,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { Sky } from "three/addons/objects/Sky.js";
 import * as house from "housekit";
 import { finishesReady, loadFinishes, metricUVs } from "./finishes.js";
+import { planData, planStoreys, planSVG } from "./plan2d.js";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
@@ -163,6 +164,11 @@ window.__house = {
   get errors() { return state.errors; },
   listViews: () => Object.keys(state.views),
   setView: (name) => setView(name),
+  // the 2D plan of storey `index` (SVG), as the viewer's Plan dialog shows it
+  plan2d: (index = 0, opts = {}) => {
+    const data = state.houseGroup && planData(state.houseGroup, index);
+    return data ? planSVG(data, opts) : null;
+  },
   // debugging: what the fixed views frame (building = tagged walls/openings, or the site when none)
   get frame() {
     const f = state.frame;
@@ -468,6 +474,17 @@ export async function boot(buildScene) {
     if (d.type === "house:setView") { stopWalk(); setView(d.view); }
     if (d.type === "house:walk") (d.on ? startWalk(d.room) : Promise.resolve(stopWalk())).catch((err) => recordError(err?.message ?? err));
     if (d.type === "house:jumpTo") startWalk(d.room).catch((err) => recordError(err?.message ?? err));
+    if (d.type === "house:plan2d") {
+      // the viewer's Plan dialog: storey `index` as an SVG plan (furnished or fittings only)
+      const storeys = planStoreys(state.houseGroup);
+      const index = Math.max(0, Math.min(storeys.length - 1, d.index ?? 0));
+      let svg = null, error = null;
+      try {
+        const data = storeys.length ? planData(state.houseGroup, index) : null;
+        svg = data ? planSVG(data, { furnished: d.furnished !== false }) : null;
+      } catch (err) { error = String(err?.message ?? err); }
+      e.source?.postMessage({ type: "house:plan2d", id: d.id, storeys, index, svg, error }, "*");
+    }
   });
   state.ready = true;
   try {

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type ReactNode } from "react"
-import { Columns2, Footprints, LogOut, Pause, Play, Sparkles } from "lucide-react"
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { Columns2, Footprints, LogOut, Map as MapIcon, Pause, Play, Sparkles } from "lucide-react"
 import { useKits } from "@/api/endpoints/meta/meta"
 import type { KitInfo } from "@/api/model"
+import { FloorPlanDialog, type PlanReply } from "@/components/FloorPlanDialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -79,6 +80,7 @@ export function SceneViewer({
   live = false,
   autoReload = true,
   onToggleAutoReload,
+  planName = "plan",
 }: {
   sceneUrl: string | null
   reloadKey?: string | number
@@ -88,6 +90,8 @@ export function SceneViewer({
   live?: boolean
   autoReload?: boolean
   onToggleAutoReload?: () => void
+  /** start of the downloaded plans' file names (the project's name) */
+  planName?: string
 }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const refB = useRef<HTMLIFrameElement>(null)
@@ -106,6 +110,10 @@ export function SceneViewer({
   const [room, setRoom] = useState("")
   const [kit, setKit] = useState<string | null>(null)
   const [compare, setCompare] = useState<string | null>(null)
+  const [planOpen, setPlanOpen] = useState(false)
+  // plan requests waiting for the scene page's answer, by id
+  const planWaiting = useRef(new Map<number, (r: PlanReply) => void>())
+  const planSeq = useRef(0)
   const kitsQuery = useKits({ query: { staleTime: 60 * 60 * 1000 } })
   const kits = kitsQuery.data?.kits ?? []
   const kitsKnown = !kitsQuery.isLoading
@@ -127,6 +135,7 @@ export function SceneViewer({
     setCredits([])
     setWalking(false)
     setRoom("")
+    setPlanOpen(false)
     if (src === null) return
     const onMsg = (e: MessageEvent) => {
       if (e.source !== ref.current?.contentWindow) return
@@ -139,6 +148,7 @@ export function SceneViewer({
         on?: boolean
         rooms?: Room[]
         credits?: string[]
+        id?: number
       }
       if (d?.type === "house:ready") {
         setReady(true)
@@ -146,6 +156,10 @@ export function SceneViewer({
         setCredits(Array.isArray(d.credits) ? d.credits : [])
       }
       if (d?.type === "house:walking") setWalking(!!d.on)
+      if (d?.type === "house:plan2d" && typeof d.id === "number") {
+        planWaiting.current.get(d.id)?.(d as unknown as PlanReply)
+        planWaiting.current.delete(d.id)
+      }
       if (d?.type === "house:error") setError(d.message ?? "error")
       if (d?.type === "house:effects" && d.enabled === false) setEffectsDropped(true)
       if (d?.type === "house:accumulate" && typeof d.count === "number" && typeof d.total === "number") {
@@ -155,6 +169,19 @@ export function SceneViewer({
     window.addEventListener("message", onMsg)
     return () => window.removeEventListener("message", onMsg)
   }, [src])
+
+  const requestPlan = useCallback((index: number, furnished: boolean) => {
+    const frame = ref.current?.contentWindow
+    if (!frame) return Promise.reject(new Error("The scene is not loaded"))
+    const id = ++planSeq.current
+    return new Promise<PlanReply>((resolve, reject) => {
+      planWaiting.current.set(id, resolve)
+      frame.postMessage({ type: "house:plan2d", id, index, furnished }, "*")
+      setTimeout(() => {
+        if (planWaiting.current.delete(id)) reject(new Error("The scene did not answer: reload it and try again"))
+      }, 20000)
+    })
+  }, [])
 
   function setView(view: string) {
     for (const frame of [ref, refB]) frame.current?.contentWindow?.postMessage({ type: "house:setView", view }, "*")
@@ -288,6 +315,18 @@ export function SceneViewer({
                   Walk
                 </Button>
               )}
+              {rooms.length > 0 && !compare && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2"
+                  title="The 2D plan of each storey, furnished or not, to download"
+                  onClick={() => setPlanOpen(true)}
+                >
+                  <MapIcon className="size-3.5" />
+                  Plan
+                </Button>
+              )}
             </>
           )}
           <span className="mx-1 w-px self-stretch bg-border" />
@@ -336,6 +375,7 @@ export function SceneViewer({
           <span className="rounded-md bg-background/85 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">{status}</span>
         </div>
       </div>
+      {planOpen && <FloorPlanDialog request={requestPlan} fileBase={planName} onClose={() => setPlanOpen(false)} />}
     </div>
   )
 }

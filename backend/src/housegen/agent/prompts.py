@@ -156,7 +156,8 @@ Same frame as the exterior: metres, +x east, +z south, +y up; points are [x, z].
 ### Rooms, partitions, doors — import { floorPlan } from "housekit/interior"
 floorPlan({ y (finished floor level of the storey), height=2.5 (clear height to the ceiling), rooms, partitions })  → add to ctx.group
   rooms: [{ name ("Salon", "Chambre 1" as on the plan), use: "living"|"kitchen"|"kitchen-living"|"dining"|"bedroom"|"bath"|"wc"|"hall"|"stair"|"storage"|"office",
-            polygon: the room's CLEAR floor, i.e. the inside faces of its walls, floor: "oak"|"oak-light"|"tile"|"tile-dark"|"concrete" }]
+            polygon: the room's CLEAR floor, i.e. the inside faces of its walls, floor: "oak"|"oak-light"|"tile"|"tile-dark"|"concrete",
+            area: the room's area in m² as printed on the plan, when the plan prints one (the 2D plan shows it) }]
      Open-plan spaces (a kitchen-living) are separate rooms with no partition between them.
   partitions: interior walls by their CENTRE LINE: [{ from:[x,z], to:[x,z], thickness=0.1 (0.2-0.25 for masonry),
             height (default: the storey's), openings:[{ offset (from `from` to the near edge), width, height=2.05,

@@ -239,7 +239,7 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
       for (let i = 1; i < n; i++) block(g, [0.004, 0.68, 0.004], [x0 + a + ((b - a) / n) * i, 1.51, -depth / 2 + 0.35], gap);
     }
   }
-  return piece(g, "kitchenRun", length, depth);
+  return piece(g, "kitchenRun", length, depth, { sink, hob });
 }
 
 /** Wall-hung WC with a concealed cistern box. */

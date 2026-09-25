@@ -44,7 +44,8 @@ test("floorPlan keeps its partitions and puts a leaf in each door opening", () =
     ],
   });
   assert.equal(plan.userData.partitions.length, 1);
-  assert.deepEqual(plan.userData.partitions[0].openings.map((o) => o.door), [true, false]);
+  // a door keeps its hinge and swing (the 2D plan draws them), an open passage is false
+  assert.deepEqual(plan.userData.partitions[0].openings.map((o) => o.door), [{ hinge: "start", swing: "left" }, false]);
   let doors = 0;
   plan.traverse((o) => { if (o.userData?.kind === "interiorDoor") doors++; });
   assert.equal(doors, 1);

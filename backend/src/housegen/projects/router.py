@@ -674,8 +674,9 @@ async def export_zip(
         z.writestr("index.html", html)
         for p in (base / "src").rglob("*.js"):
             z.write(p, f"src/{p.relative_to(base / 'src')}")
-        z.write(kit / "house.js", "kit/house.js")
-        z.write(kit / "runtime.js", "kit/runtime.js")
+        # every kit module (the runtime imports its neighbours: finishes, plan2d; scenes import interior, furnish…)
+        for p in sorted(kit.glob("*.js")):
+            z.write(p, f"kit/{p.name}")
         three = kit / "node_modules" / "three"
         z.write(three / "build" / "three.module.js", "kit/vendor/three/build/three.module.js")
         z.write(three / "build" / "three.core.js", "kit/vendor/three/build/three.core.js")

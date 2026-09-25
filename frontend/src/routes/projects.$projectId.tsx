@@ -361,6 +361,7 @@ function ProjectPage() {
           live={Boolean(activeJob) && selectedVersion === null}
           autoReload={autoReload}
           onToggleAutoReload={() => setAutoReload((v) => !v)}
+          planName={p.name}
           placeholder={
             <BuildingPlaceholder
               running={Boolean(activeJob)}
