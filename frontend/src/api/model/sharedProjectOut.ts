@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SharedProjectOutRenderUrls } from './sharedProjectOutRenderUrls';
+import type { SharedProjectOutContextUrl } from './sharedProjectOutContextUrl';
 
 /**
  * What a recipient of a share link gets: the scene and its pictures, nothing else
@@ -18,4 +19,5 @@ export interface SharedProjectOut {
   render_urls: SharedProjectOutRenderUrls;
   photo_urls: string[];
   created_at: string;
+  context_url?: SharedProjectOutContextUrl;
 }

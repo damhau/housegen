@@ -50,10 +50,13 @@ import { Sky } from "three/addons/objects/Sky.js";
 import * as house from "housekit";
 import { finishesReady, loadFinishes, metricUVs } from "./finishes.js";
 import { planData, planStoreys, planSVG } from "./plan2d.js";
+import { loadContext } from "./context.js";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
 const WALK = params.get("walk") === "1";
+// the real surroundings (#39): a folder the viewer names, drawn on presentation pages only
+const CONTEXT = ["presentation", "ultra"].includes(params.get("look")) ? params.get("context") : null;
 // presentation looks (see the header): never on the builder's or the critic's pages
 const LOOK = params.get("look");
 const PRESENTATION = LOOK === "presentation" || LOOK === "ultra";
@@ -164,6 +167,11 @@ window.__house = {
   get errors() { return state.errors; },
   listViews: () => Object.keys(state.views),
   setView: (name) => setView(name),
+  // any viewpoint (scene metres): for checks and look sheets that need a view the scene did not name
+  setCamera: (position, target) => {
+    state.views.custom = { pos: position, target: new THREE.Vector3(...target) };
+    return setView("custom");
+  },
   // the 2D plan of storey `index` (SVG), as the viewer's Plan dialog shows it
   plan2d: (index = 0, opts = {}) => {
     const data = state.houseGroup && planData(state.houseGroup, index);
@@ -401,6 +409,14 @@ export async function boot(buildScene) {
     recordError(`buildScene failed: ${err?.stack ?? err}`);
   }
 
+  if (CONTEXT) {
+    try {
+      state.context = await loadContext(CONTEXT, { houseGroup, heightAt: house.groundY });
+      scene.add(state.context.group);
+    } catch (err) {
+      console.warn(`housekit: surroundings not loaded: ${err?.message ?? err}`);
+    }
+  }
   if (PRESENTATION) {
     applyPresentationLook(scene, sun, sunSpec, ground);
     state.accumulate?.rememberSun();
@@ -474,6 +490,10 @@ export async function boot(buildScene) {
     if (d.type === "house:setView") { stopWalk(); setView(d.view); }
     if (d.type === "house:walk") (d.on ? startWalk(d.room) : Promise.resolve(stopWalk())).catch((err) => recordError(err?.message ?? err));
     if (d.type === "house:jumpTo") startWalk(d.room).catch((err) => recordError(err?.message ?? err));
+    if (d.type === "house:outline") {
+      // the alignment editor: the scene seen from above, in scene metres (x east, z south)
+      e.source?.postMessage({ type: "house:outline", id: d.id, ...sceneOutline() }, "*");
+    }
     if (d.type === "house:plan2d") {
       // the viewer's Plan dialog: storey `index` as an SVG plan (furnished or fittings only)
       const storeys = planStoreys(state.houseGroup);
@@ -493,7 +513,7 @@ export async function boot(buildScene) {
       views: Object.keys(state.views),
       // walk mode: the rooms of the scene's floor plans; the credit lines of attribution-licensed models
       rooms: sceneRooms().map(({ name, use, area }) => ({ name, use, area })),
-      credits: globalThis.__housekitCredits?.() ?? [],
+      credits: [...(globalThis.__housekitCredits?.() ?? []), ...(state.context?.credits ?? [])],
     }, "*");
   } catch { /* noop */ }
   // Render on demand: only when the camera moves (or something asks for a frame). An idle page
@@ -662,8 +682,15 @@ function presentationGround(scene, baseGround) {
     .map((t) => new THREE.Box3().setFromObject(t))
     .filter((b) => !b.isEmpty() && b.max.x - b.min.x > 2 * inset && b.max.z - b.min.z > 2 * inset)
     .map((b) => b.expandByVector(new THREE.Vector3(-inset, 0, -inset)));
-  const box = holes.length ? holes.reduce((u, b) => u.union(b), new THREE.Box3()) : framingBounds(state.houseGroup).expandByScalar(12);
+  let box = holes.length ? holes.reduce((u, b) => u.union(b), new THREE.Box3()) : framingBounds(state.houseGroup).expandByScalar(12);
   if (box.isEmpty()) box.set(new THREE.Vector3(-45, 0, -45), new THREE.Vector3(45, 0, 45));
+  // with the real surroundings (#39) the meadow starts at the rim of their disc and lies under it
+  const ctx = state.context;
+  if (ctx) {
+    const { x, z, radius } = ctx.disc;
+    box = new THREE.Box3(new THREE.Vector3(x - radius, 0, z - radius), new THREE.Vector3(x + radius, 0, z + radius));
+    holes.length = 0;
+  }
   const meadow = lawn.clone().multiply(new THREE.Color(look.meadow, look.meadow * 0.94, look.meadow * 0.8));
   const grainMean = new THREE.Color().setRGB(245 / 255, 245 / 255, 245 / 255, THREE.SRGBColorSpace).r;
   lawn.multiplyScalar(1 / grainMean);
@@ -671,10 +698,11 @@ function presentationGround(scene, baseGround) {
 
   // the sheet: a grid whose lines include every hole's edges (a cell is then either inside a
   // hole or outside it), 2 m cells through the followed and eased bands, coarser to the edge
-  const follow = 40, ease = 80, step = 2, tile = 6;
+  const follow = ctx ? 0 : 40, ease = ctx ? 150 : 80, step = ctx ? 4 : 2, tile = 6;
   const halfSize = Math.max(1400, Math.max(-box.min.x, box.max.x, -box.min.z, box.max.z) + follow + ease + 100);
   const lines = (lo, hi) => {
     const s = new Set([lo, hi]);
+    if (ctx) for (let v = lo + step; v < hi; v += step) s.add(v); // under the disc too: its rim is round
     for (let k = 1; k * step <= follow + ease; k++) { s.add(lo - k * step); s.add(hi + k * step); }
     for (const d of [30, 80, 180, 350, 600, 900]) { s.add(lo - follow - ease - d); s.add(hi + follow + ease + d); }
     s.add(-halfSize); s.add(halfSize);
@@ -683,8 +711,19 @@ function presentationGround(scene, baseGround) {
   const xs = lines(box.min.x, box.max.x), zs = lines(box.min.z, box.max.z);
   // the far height: the mean of the scene's ground at the end of the followed band, so the
   // easing starts from where the land already is
-  const heightAt = (x, z) => { const y = house.groundY(x, z); return Number.isFinite(y) ? y : 0; };
-  const outsidePlot = (x, z) => Math.hypot(Math.max(box.min.x - x, x - box.max.x, 0), Math.max(box.min.z - z, z - box.max.z, 0));
+  const ctxEdge = (x, z) => {
+    // the real ground just inside the rim of the disc, on the way from its centre to (x, z)
+    const { x: cx, z: cz, radius } = ctx.disc;
+    const d = Math.hypot(x - cx, z - cz) || 1, r = Math.min(d, radius - 2);
+    const y = ctx.heightAt(cx + ((x - cx) * r) / d, cz + ((z - cz) * r) / d);
+    return Number.isFinite(y) ? y : 0;
+  };
+  const heightAt = ctx
+    ? (x, z) => ctxEdge(x, z) - 0.6 // under the real ground, never through it
+    : (x, z) => { const y = house.groundY(x, z); return Number.isFinite(y) ? y : 0; };
+  const outsidePlot = ctx
+    ? (x, z) => Math.max(0, Math.hypot(x - ctx.disc.x, z - ctx.disc.z) - ctx.disc.radius)
+    : (x, z) => Math.hypot(Math.max(box.min.x - x, x - box.max.x, 0), Math.max(box.min.z - z, z - box.max.z, 0));
   let farSum = 0, farCount = 0;
   for (let i = 0; i <= 8; i++) {
     const t = i / 8;
@@ -700,7 +739,9 @@ function presentationGround(scene, baseGround) {
     positions.push(x, THREE.MathUtils.lerp(heightAt(x, z), far, t) - 0.02, z);
     uvs.push(x / tile, -z / tile);
   }
-  const inHole = (x0, x1, z0, z1) => holes.some((h) => x0 >= h.min.x - 1e-6 && x1 <= h.max.x + 1e-6 && z0 >= h.min.z - 1e-6 && z1 <= h.max.z + 1e-6);
+  const underDisc = (x0, x1, z0, z1) => ctx && [[x0, z0], [x1, z0], [x0, z1], [x1, z1]]
+    .every(([x, z]) => Math.hypot(x - ctx.disc.x, z - ctx.disc.z) < ctx.disc.radius - 30);
+  const inHole = (x0, x1, z0, z1) => underDisc(x0, x1, z0, z1) || holes.some((h) => x0 >= h.min.x - 1e-6 && x1 <= h.max.x + 1e-6 && z0 >= h.min.z - 1e-6 && z1 <= h.max.z + 1e-6);
   const indices = [];
   for (let j = 0; j < zs.length - 1; j++) for (let i = 0; i < xs.length - 1; i++) {
     if (inHole(xs[i], xs[i + 1], zs[j], zs[j + 1])) continue;
@@ -742,6 +783,8 @@ function presentationGround(scene, baseGround) {
   };
   const land = new THREE.Mesh(geo, mat);
   land.receiveShadow = true;
+  // the photo fades into this meadow at the rim of the disc (the grain's mean put back)
+  ctx?.setMeadow(meadow.clone().multiplyScalar(grainMean));
   land.userData = { kind: "terrain", excludeFromBounds: true };
   baseGround.visible = false;
   scene.add(land);
@@ -1054,6 +1097,32 @@ function withOverrides(name, v) {
   if (o.eye_height !== undefined) pos.y = bounds.min.y + o.eye_height;
   if (o.target_height !== undefined) target.y = bounds.min.y + o.target_height;
   return { pos: pos.toArray(), target, fov: o.fov ?? v.fov };
+}
+
+/**
+ * The scene from above for the surroundings' alignment editor: its exterior walls as segments, its
+ * slabs (terraces, pools' decks) as polygons, the boxes of its terrain meshes, in scene metres.
+ */
+function sceneOutline() {
+  const g = state.houseGroup;
+  if (!g) return { walls: [], slabs: [], terrain: [] };
+  g.updateMatrixWorld(true);
+  const walls = [], slabs = [], terrain = [], seen = new Set();
+  const w = (o, [x, z], y) => { const v = new THREE.Vector3(x, y, z).applyMatrix4(o.parent?.matrixWorld ?? new THREE.Matrix4()); return [+v.x.toFixed(2), +v.z.toFixed(2)]; };
+  g.traverse((o) => {
+    const u = o.userData ?? {};
+    if (u.kind === "wall" && u.from && u.to) {
+      const a = w(o, u.from, u.y ?? 0), b = w(o, u.to, u.y ?? 0);
+      const key = [...a, ...b].join(",");
+      if (!seen.has(key)) { seen.add(key); walls.push([...a, ...b]); }
+    } else if ((u.slab || u.kind === "slab") && Array.isArray(u.polygon)) {
+      slabs.push(u.polygon.map((p) => w(o, p, u.y ?? 0)));
+    } else if (u.kind === "terrain" && o.isMesh) {
+      const b = new THREE.Box3().setFromObject(o);
+      if (!b.isEmpty()) terrain.push([b.min.x, b.min.z, b.max.x, b.max.z].map((v) => +v.toFixed(2)));
+    }
+  });
+  return { walls, slabs, terrain };
 }
 
 /** The floor plans of the scene (one per storey), lowest first. */

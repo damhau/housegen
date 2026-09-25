@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { Columns2, Footprints, LogOut, Map as MapIcon, Pause, Play, Sparkles } from "lucide-react"
+import { Columns2, Footprints, LogOut, Map as MapIcon, Mountain, Pause, Play, Sparkles } from "lucide-react"
 import { useKits } from "@/api/endpoints/meta/meta"
+import { useGetSurroundings } from "@/api/endpoints/surroundings/surroundings"
 import type { KitInfo } from "@/api/model"
 import { FloorPlanDialog, type PlanReply } from "@/components/FloorPlanDialog"
+import { SurroundingsDialog, type SceneOutline } from "@/components/SurroundingsDialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
@@ -81,6 +83,8 @@ export function SceneViewer({
   autoReload = true,
   onToggleAutoReload,
   planName = "plan",
+  projectId,
+  contextUrl,
 }: {
   sceneUrl: string | null
   reloadKey?: string | number
@@ -92,6 +96,10 @@ export function SceneViewer({
   onToggleAutoReload?: () => void
   /** start of the downloaded plans' file names (the project's name) */
   planName?: string
+  /** the project (its surroundings can be fetched and aligned here) */
+  projectId?: string
+  /** surroundings to show without a project (the share page) */
+  contextUrl?: string | null
 }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const refB = useRef<HTMLIFrameElement>(null)
@@ -111,9 +119,18 @@ export function SceneViewer({
   const [kit, setKit] = useState<string | null>(null)
   const [compare, setCompare] = useState<string | null>(null)
   const [planOpen, setPlanOpen] = useState(false)
-  // plan requests waiting for the scene page's answer, by id
-  const planWaiting = useRef(new Map<number, (r: PlanReply) => void>())
+  const [surroundingsOpen, setSurroundingsOpen] = useState(false)
+  // the real surroundings (#39): drawn by the scene page in the Final and Ultra looks only
+  const surroundings = useGetSurroundings(projectId ?? "", { query: { enabled: Boolean(projectId) } })
+  const ctx = projectId ? (surroundings.data?.exists ? surroundings.data : null) : null
+  const ctxUrl = projectId ? (ctx?.url ?? null) : (contextUrl ?? null)
+  const ctxKey = ctx ? `${ctx.fetched_at}-${ctx.alignment?.x}-${ctx.alignment?.z}-${ctx.alignment?.rotation}-${ctx.alignment?.ground}` : ""
+  // requests waiting for the scene page's answer (plans, the outline), by id
+  const planWaiting = useRef(new Map<number, (r: never) => void>())
   const planSeq = useRef(0)
+  // the scene page answers once it is ready: requests made while it loads wait for it
+  const frameReady = useRef(false)
+  const readyWaiters = useRef<(() => void)[]>([])
   const kitsQuery = useKits({ query: { staleTime: 60 * 60 * 1000 } })
   const kits = kitsQuery.data?.kits ?? []
   const kitsKnown = !kitsQuery.isLoading
@@ -121,9 +138,13 @@ export function SceneViewer({
   const frameSrc = (name: string | null) =>
     sceneUrl === null
       ? null
-      : `${sceneUrl}?${lookQuery(look)}&view=southeast${name ? `&kit=${encodeURIComponent(name)}` : ""}&r=${reloadKey ?? ""}`
+      : `${sceneUrl}?${lookQuery(look)}&view=southeast${name ? `&kit=${encodeURIComponent(name)}` : ""}${
+          look !== "fast" && ctxUrl ? `&context=${encodeURIComponent(ctxUrl)}&cv=${encodeURIComponent(ctxKey)}` : ""
+        }&r=${reloadKey ?? ""}`
   // wait for the renderer list so the first load is already the right renderer
-  const src = kitsKnown ? frameSrc(kitA) : null
+  // and for the surroundings, so the page loads once with them (not once without, then again)
+  const ctxKnown = !projectId || !surroundings.isLoading
+  const src = kitsKnown && ctxKnown ? frameSrc(kitA) : null
   const srcB = kitsKnown && compare ? frameSrc(compare) : null
 
   useEffect(() => {
@@ -136,6 +157,8 @@ export function SceneViewer({
     setWalking(false)
     setRoom("")
     setPlanOpen(false)
+    setSurroundingsOpen(false)
+    frameReady.current = false
     if (src === null) return
     const onMsg = (e: MessageEvent) => {
       if (e.source !== ref.current?.contentWindow) return
@@ -152,12 +175,14 @@ export function SceneViewer({
       }
       if (d?.type === "house:ready") {
         setReady(true)
+        frameReady.current = true
+        for (const w of readyWaiters.current.splice(0)) w()
         setRooms(Array.isArray(d.rooms) ? d.rooms : [])
         setCredits(Array.isArray(d.credits) ? d.credits : [])
       }
       if (d?.type === "house:walking") setWalking(!!d.on)
-      if (d?.type === "house:plan2d" && typeof d.id === "number") {
-        planWaiting.current.get(d.id)?.(d as unknown as PlanReply)
+      if ((d?.type === "house:plan2d" || d?.type === "house:outline") && typeof d.id === "number") {
+        planWaiting.current.get(d.id)?.(d as never)
         planWaiting.current.delete(d.id)
       }
       if (d?.type === "house:error") setError(d.message ?? "error")
@@ -170,18 +195,21 @@ export function SceneViewer({
     return () => window.removeEventListener("message", onMsg)
   }, [src])
 
-  const requestPlan = useCallback((index: number, furnished: boolean) => {
+  const ask = useCallback(async <T,>(type: string, payload: Record<string, unknown> = {}) => {
+    if (!frameReady.current) await new Promise<void>((r) => readyWaiters.current.push(r))
     const frame = ref.current?.contentWindow
-    if (!frame) return Promise.reject(new Error("The scene is not loaded"))
+    if (!frame) throw new Error("The scene is not loaded")
     const id = ++planSeq.current
-    return new Promise<PlanReply>((resolve, reject) => {
-      planWaiting.current.set(id, resolve)
-      frame.postMessage({ type: "house:plan2d", id, index, furnished }, "*")
+    return new Promise<T>((resolve, reject) => {
+      planWaiting.current.set(id, resolve as (r: never) => void)
+      frame.postMessage({ type, id, ...payload }, "*")
       setTimeout(() => {
         if (planWaiting.current.delete(id)) reject(new Error("The scene did not answer: reload it and try again"))
       }, 20000)
     })
   }, [])
+  const requestPlan = useCallback((index: number, furnished: boolean) => ask<PlanReply>("house:plan2d", { index, furnished }), [ask])
+  const requestOutline = useCallback(() => ask<SceneOutline>("house:outline"), [ask])
 
   function setView(view: string) {
     for (const frame of [ref, refB]) frame.current?.contentWindow?.postMessage({ type: "house:setView", view }, "*")
@@ -327,6 +355,25 @@ export function SceneViewer({
                   Plan
                 </Button>
               )}
+              {projectId && ready && !compare && (
+                <Button
+                  size="sm"
+                  variant={ctx ? "secondary" : "ghost"}
+                  className="h-7 px-2"
+                  title={
+                    ctx
+                      ? "The real surroundings (terrain, aerial photo, neighbours): shown in Final look and Ultra. Click to align or change them"
+                      : "Add the real surroundings from Swiss public geodata"
+                  }
+                  onClick={() => {
+                    setSurroundingsOpen(true)
+                    if (look === "fast" && ctx) setLook("final")
+                  }}
+                >
+                  <Mountain className="size-3.5" />
+                  Surroundings
+                </Button>
+              )}
             </>
           )}
           <span className="mx-1 w-px self-stretch bg-border" />
@@ -376,6 +423,16 @@ export function SceneViewer({
         </div>
       </div>
       {planOpen && <FloorPlanDialog request={requestPlan} fileBase={planName} onClose={() => setPlanOpen(false)} />}
+      {surroundingsOpen && projectId && (
+        <SurroundingsDialog
+          projectId={projectId}
+          requestOutline={requestOutline}
+          onChanged={() => {
+            if (look === "fast") setLook("final")
+          }}
+          onClose={() => setSurroundingsOpen(false)}
+        />
+      )}
     </div>
   )
 }

@@ -38,7 +38,7 @@ function SharedPage() {
           <Home className="size-3.5" /> made with housegen
         </Link>
       </div>
-      <SceneViewer sceneUrl={s.scene_url} reloadKey={`shared-${s.version}`} className="min-h-[420px]" />
+      <SceneViewer sceneUrl={s.scene_url} reloadKey={`shared-${s.version}`} contextUrl={s.context_url} className="min-h-[420px]" />
       {(renders.length > 0 || s.photo_urls.length > 0) && (
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {renders.map(([view, url]) => (

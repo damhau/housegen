@@ -135,6 +135,8 @@ class SharedProjectOut(BaseModel):
     render_urls: dict[str, str]
     photo_urls: list[str]
     created_at: datetime
+    # the real surroundings (#39), once the owner aligned the house on them
+    context_url: str | None = None
 
 
 class ProjectSummaryOut(BaseModel):

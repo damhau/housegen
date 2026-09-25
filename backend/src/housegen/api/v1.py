@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from housegen.agent.run_settings import Provider
 from housegen.core.config import get_settings
 from housegen.core.db import DbSession
+from housegen.geo import context as geo_context
+from housegen.geo.router import router as geo_router
 from housegen.llm.models import ModelsOut, list_models
 from housegen.projects import crud
 from housegen.projects.router import router as projects_router
@@ -15,6 +17,7 @@ from housegen.render.kits import KitsOut, list_kits
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(projects_router)
+router.include_router(geo_router)
 
 
 @router.get("/shared/{token}", tags=["shared"])
@@ -35,6 +38,14 @@ async def shared_project(session: DbSession, token: str) -> SharedProjectOut:
         render_urls=st.render_urls(version) if version else {},
         photo_urls=[st.photo_url(p.filename) for p in project.photos],
         created_at=project.created_at,
+        context_url=_aligned_context_url(st),
+    )
+
+
+def _aligned_context_url(st: ProjectStorage) -> str | None:
+    ctx = geo_context.load(st.root)
+    return (
+        f"/scenes/{st.project_id}/context/" if ctx and ctx.get("alignment", {}).get("set") else None
     )
 
 
