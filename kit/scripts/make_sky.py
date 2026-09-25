@@ -115,7 +115,7 @@ def main() -> None:
     irr = float((lum(env) * weight[:, None]).sum() / (weight.sum() * w))
 
     # the visible sky: 4k, zenith to BELOW° under the horizon, the sun's disc kept but clipped
-    H, W, _ = big.shape
+    H = big.shape[0]
     rows = int(H * (90 + BELOW) / 180)
     part = big[:rows]
     Lb = lum(part)
@@ -131,7 +131,7 @@ def main() -> None:
         "env": f"{ID}_env.hdr",
         "sky": f"{ID}_sky.jpg",
         "skyBelow": BELOW,  # the image runs from +90° to -BELOW°
-        "scale": round(scale, 5),  # radiance = decoded pixel × scale
+        "scale": round(scale, 5),  # radiance = decoded pixel * scale
         "sun": {"azimuth": round(float(azimuth), 2), "elevation": round(float(elevation), 2)},
         "irradiance": round(irr, 5),
         "credit": f"Sky: “{ID}” by Greg Zaal and Jarod Guest, Poly Haven (CC0)",
