@@ -245,3 +245,28 @@ async def test_fetch_align_and_share_the_surroundings(client: AsyncClient, tmp_p
 
     assert (await client.delete(f"/api/v1/projects/{pid}/surroundings")).status_code == 204
     assert (await client.get(f"/api/v1/projects/{pid}/surroundings")).json()["exists"] is False
+
+
+async def test_the_far_landscape_joins_the_surveyed_ground_and_drops_with_the_earth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from housegen.geo import far
+
+    r = far.radii()
+    assert r[0] == far.INNER
+    assert abs(r[-1] - far.EXTENT) < 1
+    assert (np.diff(r) > 0).all()
+
+    # the elevation tiles: a flat 500 m everywhere; the surveyed ground (the disc's): 600 m
+    async def flat(_client: object, lon: np.ndarray, _lat: np.ndarray, _z: int) -> np.ndarray:
+        return np.full(lon.shape, 500.0, dtype=np.float32)
+
+    monkeypatch.setattr(far, "_sample", flat)
+    ground = np.full((401, 401), 600.0, dtype=np.float32)
+    h = await far.heights(2537559.0, 1157053.0, None, ground, 200, 1.0)  # type: ignore[arg-type]
+    assert h.shape == (far.RINGS, far.AZIMUTHS)
+    assert abs(float(h[0].mean()) - 600) < 0.01  # under the disc's rim: the survey
+    ring_1km = int(np.argmin(np.abs(r - 1000)))
+    assert abs(float(h[ring_1km].mean()) - 500) < 0.2  # past 400 m: the tiles
+    # at 80 km the Earth's curvature (with refraction) takes about 437 m off
+    assert abs(float(h[-1].mean()) - (500 - 80_000**2 * 0.87 / (2 * 6_371_000))) < 1

@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
+import logging
 import re
 import shutil
 from datetime import UTC, datetime
@@ -25,7 +26,9 @@ from typing import Any
 import httpx
 from PIL import Image
 
-from housegen.geo import swiss
+from housegen.geo import far, swiss
+
+logger = logging.getLogger(__name__)
 
 VERSION = 1
 PHOTO_PIXELS = 3600
@@ -65,6 +68,13 @@ async def build(
         ground = await ground_task
         buildings = await swiss.buildings(e0, n0, radius, client, ground, step)
         photo = await photo_task
+        # the far landscape (the horizon: the lake, the Alps, the Jura): optional, the rest stands without it
+        try:
+            far_heights = await far.heights(e0, n0, client, ground, radius, step)
+            mid_photo, far_photo = await far.photos(e0, n0, client)
+        except (httpx.HTTPError, RuntimeError, ValueError, OSError) as e:
+            logger.warning("geo.far_failed", extra={"error": str(e)})
+            far_heights = None
     out = context_dir(project_root)
     tmp = out.with_name("context.tmp")
     shutil.rmtree(tmp, ignore_errors=True)
@@ -79,6 +89,10 @@ async def build(
         json.dumps({"buildings": [b.__dict__ for b in buildings]}, separators=(",", ":")),
         encoding="utf-8",
     )
+    if far_heights is not None:
+        (tmp / "far.bin").write_bytes(far_heights.astype("<f4").tobytes())
+        (tmp / "far-mid.jpg").write_bytes(mid_photo)
+        (tmp / "far.jpg").write_bytes(far_photo)
     center = float(ground[ground.shape[0] // 2, ground.shape[1] // 2])
     ctx: dict[str, Any] = {
         "version": VERSION,
@@ -87,6 +101,18 @@ async def build(
         "terrain": {"file": "terrain.bin", "size": int(ground.shape[0]), "step": step},
         "photo": {"file": "photo.jpg", "pixels": img.width},
         "buildings": {"file": "buildings.json", "count": len(buildings)},
+        # rings by azimuths, azimuth a at x = r cos a, z = r sin a; photos north up over ± their extent
+        "far": {
+            "file": "far.bin",
+            "radii": far.radii().tolist(),
+            "azimuths": far.AZIMUTHS,
+            "photos": [
+                {"file": "far-mid.jpg", "extent": far.MID},
+                {"file": "far.jpg", "extent": far.EXTENT},
+            ],
+        }
+        if far_heights is not None
+        else None,
         # a first guess: the scene's origin on the searched point, its -z to the north, its y=0 on
         # the ground there. The owner sets it right in the alignment editor.
         "alignment": {

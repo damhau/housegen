@@ -1,6 +1,6 @@
 """Build the presentation sky (kit/sky/) from a Poly Haven HDRI (CC0).
 
-    cd backend && uv run python ../kit/scripts/make_sky.py [hdri_id]
+    cd backend && uv run python ../kit/scripts/make_sky.py [hdri_id] [snapshot folder, default v6]
 
 Writes, for the runtime's presentation look (setupPresentationSky):
   <id>_env.hdr   1k equirectangular radiance with the sun's disc taken out (the directional light
@@ -26,7 +26,8 @@ import numpy as np
 from PIL import Image
 
 ID = sys.argv[1] if len(sys.argv) > 1 else "kloofendal_48d_partly_cloudy_puresky"
-OUT = Path(__file__).resolve().parent.parent / "sky"
+# kit/sky/<snapshot>: each renderer snapshot keeps the sky it was reviewed with (v5: kit/sky itself)
+OUT = Path(__file__).resolve().parent.parent / "sky" / (sys.argv[2] if len(sys.argv) > 2 else "v6")
 BELOW = 12  # degrees below the horizon kept in the visible sky (the meadow covers the rest)
 DEVELOP = 12.0  # exposure of the developed picture: the blue sky mid-range, the clouds rolled off to white
 
@@ -122,15 +123,32 @@ def main() -> None:
     Lb = lum(part)
     scale = float(np.percentile(Lb[Lb < sky_only * 4], 99.9))
     enc = 1.0 - np.exp(-np.clip(part / scale, 0, None) * DEVELOP)
-    srgb = np.where(enc <= 0.0031308, enc * 12.92, 1.055 * np.power(enc, 1 / 2.4) - 0.055)
-    Image.fromarray((srgb * 255 + 0.5).astype(np.uint8)).save(
-        OUT / f"{ID}_sky.jpg", "JPEG", quality=88, optimize=True, progressive=True
-    )
+
+    def save(img: np.ndarray, name: str, **kw: object) -> None:
+        srgb = np.where(img <= 0.0031308, img * 12.92, 1.055 * np.power(np.clip(img, 0, 1), 1 / 2.4) - 0.055)
+        Image.fromarray((np.clip(srgb, 0, 1) * 255 + 0.5).astype(np.uint8)).save(
+            OUT / name, "JPEG", quality=92, optimize=True, progressive=True, **kw
+        )
+
+    # the clouds, found in float (a cloud = where the sky is grey-white instead of blue): the mask and
+    # the clouds' brightness already multiplied by it, both grey, used linearly by the runtime (a mask
+    # thresholded at render time from a JPEG's colours turns its 8-pixel blocks into visible squares)
+    blueness = (enc[..., 2] - enc[..., 0]) / np.maximum(enc[..., 2], 1e-4)
+    t = np.clip((blueness - 0.12) / (0.34 - 0.12), 0, 1)
+    mask = 1.0 - t * t * (3 - 2 * t)
+    # softened a little: the photograph's grain, sharpened by the threshold, would speckle thin clouds
+    from PIL import ImageFilter
+
+    soft = Image.fromarray((mask * 255 + 0.5).astype(np.uint8)).filter(ImageFilter.GaussianBlur(1.5))
+    mask = np.asarray(soft).astype(np.float32) / 255
+    save(mask, f"{ID}_clouds_mask.jpg")
+    save(mask * lum(enc), f"{ID}_clouds.jpg")
 
     meta = {
         "id": ID,
         "env": f"{ID}_env.hdr",
-        "sky": f"{ID}_sky.jpg",
+        "clouds": f"{ID}_clouds.jpg",  # the clouds' screen brightness times their mask (sRGB grey)
+        "cloudsMask": f"{ID}_clouds_mask.jpg",
         "skyBelow": BELOW,  # the image runs from +90° to -BELOW°
         "scale": round(scale, 5),
         "develop": DEVELOP,  # pixel = 1 - exp(-radiance / scale * develop)
