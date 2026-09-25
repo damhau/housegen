@@ -48,7 +48,7 @@ function save(blob: Blob, name: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-async function toPng(svg: string, longSide = 2800): Promise<Blob> {
+async function toCanvas(svg: string, longSide: number): Promise<HTMLCanvasElement> {
   const w = Number(/width="(\d+)"/.exec(svg)?.[1] ?? 1200)
   const h = Number(/height="(\d+)"/.exec(svg)?.[1] ?? 900)
   const scale = longSide / Math.max(w, h)
@@ -62,9 +62,38 @@ async function toPng(svg: string, longSide = 2800): Promise<Blob> {
   if (!ctx) throw new Error("This browser cannot draw the picture")
   ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
   URL.revokeObjectURL(img.src)
+  return canvas
+}
+
+async function toPng(svg: string, longSide = 2800): Promise<Blob> {
+  const canvas = await toCanvas(svg, longSide)
   return new Promise((resolve, reject) =>
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("The picture could not be made"))), "image/png"),
   )
+}
+
+/**
+ * Every storey's plan in one PDF, one A4 page each (turned to suit the plan), in the order of the
+ * storeys. Pictures of about 250 dpi rather than vectors: the PDF's built-in fonts have neither
+ * the plan's typeface nor ≈.
+ */
+async function toPdf(svgs: string[]): Promise<Blob> {
+  const { jsPDF } = await import("jspdf")
+  let pdf: InstanceType<typeof jsPDF> | null = null
+  for (const svg of svgs) {
+    const canvas = await toCanvas(svg, 3000)
+    const landscape = canvas.width > canvas.height
+    const orientation = landscape ? "landscape" : "portrait"
+    if (!pdf) pdf = new jsPDF({ orientation, unit: "mm", format: "a4", compress: true })
+    else pdf.addPage("a4", orientation)
+    const [pw, ph] = landscape ? [297, 210] : [210, 297]
+    const margin = 10
+    const k = Math.min((pw - 2 * margin) / canvas.width, (ph - 2 * margin) / canvas.height)
+    const w = canvas.width * k, h = canvas.height * k
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", (pw - w) / 2, (ph - h) / 2, w, h, undefined, "FAST")
+  }
+  if (!pdf) throw new Error("No plan to put in the PDF")
+  return pdf.output("blob")
 }
 
 const slug = (s: string) =>
@@ -125,7 +154,7 @@ export function FloorPlanDialog({
   const [content, setContent] = useState<Content>("furnished")
   const [plans, setPlans] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
-  const [saving, setSaving] = useState<"svg" | "png" | null>(null)
+  const [saving, setSaving] = useState<"svg" | "png" | "pdf" | null>(null)
 
   const key = index === null ? null : `${index}-${content}`
   const svg = key ? plans[key] : undefined
@@ -181,6 +210,32 @@ export function FloorPlanDialog({
 
   const storey = storeys.find((s) => s.index === index)
   const name = `${slug(fileBase) || "plan"}-${slug(storey?.label ?? "plan")}${content === "fittings" ? "-fittings" : ""}`
+
+  /** All the storeys, furnished or not as shown, in one PDF. */
+  async function downloadPdf() {
+    setSaving("pdf")
+    setError(null)
+    try {
+      const furnished = content === "furnished"
+      const svgs: string[] = []
+      for (const s of storeys) {
+        const k = `${s.index}-${content}`
+        let one = plans[k]
+        if (!one) {
+          const r = await request(s.index, furnished)
+          if (r.error || !r.svg) throw new Error(r.error ?? `The plan of ${s.label} could not be drawn`)
+          one = r.svg
+          setPlans((p) => ({ ...p, [k]: one as string }))
+        }
+        svgs.push(await standalone(one))
+      }
+      save(await toPdf(svgs), `${slug(fileBase) || "plan"}-plans${furnished ? "" : "-fittings"}.pdf`)
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setSaving(null)
+    }
+  }
 
   async function download(kind: "svg" | "png") {
     if (!svg) return
@@ -254,6 +309,17 @@ export function FloorPlanDialog({
                 {k.toUpperCase()}
               </Button>
             ))}
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 px-2.5"
+              disabled={!storeys.length || saving !== null}
+              onClick={() => void downloadPdf()}
+              title="Every storey in one PDF, one A4 page each"
+            >
+              {saving === "pdf" ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+              PDF · all storeys
+            </Button>
           </div>
         </div>
 
