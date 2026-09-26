@@ -63,12 +63,12 @@ test("a bought model is served masked and unmasks to the same bytes", () => {
   assert.throws(() => maskLicensed(glb, true), /not a masked licensed model/);
 });
 
-test("a bought model missing from the data volume falls back to the parametric piece, at the size asked for", async () => {
+test("a bought model that cannot be loaded falls back to the parametric piece, at the size asked for", async () => {
   const warn = console.warn;
   console.warn = () => {};
   try {
     const p = await fx.model("bed-oak-linen", { width: 1.4, length: 2.0 });
-    assert.equal(p.userData.name, "bed"); // the parametric bed: no file here
+    assert.equal(p.userData.name, "bed"); // the parametric bed: Node cannot load /kit/assets/
     assert.deepEqual(p.userData.footprint.map((v) => +v.toFixed(2)), [1.46, 2.08]);
     const none = await fx.model("vase-dry-branches");
     assert.equal(none.children.length, 0); // no stand-in for decor

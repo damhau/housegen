@@ -1,8 +1,8 @@
 // Split a bought furniture pack (one GLB holding every object, as Fab / Sketchfab convert a pack)
 // into one small file per object for the data volume: meshopt geometry, WebP textures at 1024 px,
 // heavy meshes simplified, then masked (furnish.js maskLicensed) so that what the server hands out
-// is not a model anyone can open. The license forbids handing out the files: the output goes to
-// the data volume (LICENSED_DIR, by default backend/data/licensed/<pack>), never into the repository.
+// is not a model anyone can open. Output: kit/assets/licensed/<pack>, versioned. The license allows
+// that only while the repository and the image stay private; the source pack itself is not versioned.
 //
 //   node scripts/licensed/pack.mjs <pack.glb> --list [--scale 0.01]        objects, sizes (m), triangles
 //   node scripts/licensed/pack.mjs <pack.glb> <out_dir> [--scale 0.01] [object ...]

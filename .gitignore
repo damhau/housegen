@@ -35,3 +35,5 @@ npm-debug.log*
 # --- Furniture models fetched by kit/scripts/fetch_models.mjs (CC0, Poly Haven) ---
 kit/assets/polyhaven/
 kit/assets/sketchfab/
+# kit/assets/licensed/ IS versioned: bought models, masked (kit/scripts/licensed/pack.mjs). Their
+# license allows that only while the repository stays private.

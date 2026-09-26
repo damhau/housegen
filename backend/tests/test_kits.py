@@ -104,15 +104,16 @@ async def test_scene_pages_are_served_with_the_chosen_renderer(client: AsyncClie
     assert (await client.get("/scenes/p1/versions/3/src/scene.js")).status_code == 404
 
 
-async def test_bought_models_are_served_from_the_data_volume(client: AsyncClient) -> None:
-    # their license forbids handing out the files: they are not in the kit (public repository,
-    # public image) but on the data volume, and scene pages find them under /kit/assets/licensed/
-    lic = get_settings().licensed_dir
-    assert lic == get_settings().DATA_DIR / "licensed"
-    (lic / "pack").mkdir(parents=True)
-    (lic / "pack" / "sofa.glbx").write_bytes(b"HGX1masked")
-    r = await client.get("/kit/assets/licensed/pack/sofa.glbx")
+async def test_bought_models_are_served_masked(client: AsyncClient) -> None:
+    # their license forbids handing out the files: they are served under /kit/assets/licensed/
+    # masked (furnish.js maskLicensed), never as a GLB, and the kit mount lists no directory
+    licensed = get_settings().KIT_DIR / "assets" / "licensed"
+    files = sorted(licensed.glob("*/*.glbx"))
+    assert files, "no bought models in kit/assets/licensed"
+    for f in files:
+        with f.open("rb") as fh:
+            assert fh.read(4) == b"HGX1", f"{f} is not masked"
+    r = await client.get(f"/kit/assets/licensed/{files[0].parent.name}/{files[0].name}")
     assert r.status_code == 200
-    assert r.content == b"HGX1masked"
-    assert (await client.get("/kit/assets/licensed/pack/")).status_code == 404  # no listing
-    assert (await client.get("/kit/house.js")).status_code == 200  # the kit mount is unchanged
+    assert r.content[:4] == b"HGX1"
+    assert (await client.get(f"/kit/assets/licensed/{files[0].parent.name}/")).status_code == 404

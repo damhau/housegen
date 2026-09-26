@@ -1,10 +1,10 @@
-"""Contact sheets of a bought furniture pack on the data volume (kit/scripts/licensed/pack.mjs
-wrote it): every object in a cell with its name and size, seen three-quarters from the front, a
+"""Contact sheets of a bought furniture pack in kit/assets/licensed/<pack> (kit/scripts/licensed/
+pack.mjs wrote it): every object in a cell with its name and size, seen three-quarters from the front, a
 red stroke on the floor pointing +z (the way furnish.js wants a piece to face).
 
     uv run python scripts/pack_sheet.py --pack martel --out /tmp/martel   # /tmp/martel-0.png, -1.png…
 
-Serves the kit and the licensed directory itself (no backend needed) and draws with the app's
+Serves the kit itself (no backend needed) and draws with the app's
 browser (BROWSER_CHANNEL, SwiftShader). Run it from `backend/`.
 """
 
@@ -66,14 +66,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--pack", required=True, help="directory under LICENSED_DIR")
+    ap.add_argument("--pack", required=True, help="directory under kit/assets/licensed")
     ap.add_argument("--per", type=int, default=12, help="objects per sheet")
     ap.add_argument("--out", required=True, help="output prefix: <out>-<page>.png")
     args = ap.parse_args()
     s = get_settings()
-    if not (s.licensed_dir / args.pack / "catalog.json").exists():
+    licensed = s.KIT_DIR / "assets" / "licensed"
+    if not (licensed / args.pack / "catalog.json").exists():
         sys.exit(
-            f"no {s.licensed_dir / args.pack / 'catalog.json'}: run kit/scripts/licensed/pack.mjs first"
+            f"no {licensed / args.pack / 'catalog.json'}: run kit/scripts/licensed/pack.mjs first"
         )
     with tempfile.TemporaryDirectory(prefix="pack-sheet-") as tmp:
         www = Path(tmp)
@@ -83,7 +84,7 @@ def main() -> None:
         for path in s.KIT_DIR.glob("*.js"):
             (www / "kit" / path.name).symlink_to(path)
         (www / "kit" / "scripts" / "licensed").symlink_to(s.KIT_DIR / "scripts" / "licensed")
-        (www / "kit" / "assets" / "licensed").symlink_to(s.licensed_dir)
+        (www / "kit" / "assets" / "licensed").symlink_to(licensed)
         (www / "kit" / "vendor" / "three").symlink_to(s.KIT_DIR / "node_modules" / "three")
         server = ThreadingHTTPServer(
             ("127.0.0.1", 0), functools.partial(QuietHandler, directory=str(www))

@@ -314,8 +314,9 @@ export const MODELS = {
   "sofa-modular-l": { fallback: "sofa", file: "sketchfab/modular-sofa.glb", uid: "c7a0c35f4f0b49f8b4fea273f9014001", rotate: 0, scale: 0.01,
     credit: "“Sofa” by GreenG, CC BY 4.0" },
   // Bought: Aurélien Martel's "PBR Archviz Asset Pack" (Fab, Standard license), one light Scandinavian
-  // flat. On the data volume, not in the repository or the image (kit/scripts/licensed/pack.mjs);
-  // where they are missing, the parametric piece of the same kind (or nothing) stands in.
+  // flat, in kit/assets/licensed/martel (kit/scripts/licensed/pack.mjs). The license allows them in a
+  // private repository and image only; where one cannot be loaded, the parametric piece of the same
+  // kind (or nothing) stands in.
   // `nominal`: the size the piece stands for when it differs from its bounding box (a bed: its
   // mattress, the duvet hangs over), what model(name, { width, length }) scales from.
   "bed-oak-linen": { licensed: "martel/bed.glbx", fallback: "bed", rotate: 0, nominal: [1.4, 2.0] },
@@ -360,11 +361,11 @@ export const MODELS = {
 const ASSETS = new URL("/kit/assets/", import.meta.url);
 
 /**
- * Bought models (`licensed: "<pack>/<name>.glbx"`): their license forbids handing out the files,
- * so they live on the data volume, not in the repository or the image (served under
- * /kit/assets/licensed/), and are stored masked: a GLB XORed with this key, behind a 4-byte tag.
- * Not a secret, just not a file anyone can open as a model. XOR is its own inverse: the same
- * function masks (kit/scripts/licensed/pack.mjs) and unmasks (model()).
+ * Bought models (`licensed: "<pack>/<name>.glbx"`, in kit/assets/licensed/): their license forbids
+ * handing out the files and asks to keep the people who view a scene from extracting them, so
+ * they are stored and served masked: a GLB XORed with this key, behind a 4-byte tag. Not a
+ * secret, just not a file anyone can open as a model. XOR is its own inverse: the same function
+ * masks (kit/scripts/licensed/pack.mjs) and unmasks (model()).
  */
 const MASK_TAG = "HGX1";
 const MASK_KEY = new TextEncoder().encode("housegen:licensed-furniture:do-not-redistribute");
@@ -410,8 +411,8 @@ export async function model(name, { width, length, height } = {}) {
   if (!_loaded.has(file)) _loaded.set(file, loadGLTF(spec, file).catch(() => null));
   const gltf = await _loaded.get(file);
   if (!gltf) {
-    // not fetched (a build without the Sketchfab token, a data volume without the bought
-    // models): the parametric piece of the same kind
+    // not fetched (a build without the Sketchfab token) or not loadable: the parametric piece of
+    // the same kind
     console.warn(`housekit: model ${name} (${file}) not available, using ${spec.fallback ?? "nothing"}`);
     const make = { sofa, bed, nightstand, wardrobe, rug, chair }[spec.fallback];
     // at the size asked for (each parametric piece takes the dimensions it knows)

@@ -1,0 +1,812 @@
+{
+ "floor": {
+  "source": "floor",
+  "size": [
+   11.54,
+   0,
+   7.01
+  ],
+  "triangles": 2,
+  "bytes": 30724
+ },
+ "bedroomdoorframe-002": {
+  "source": "bedroomDoorFrame.002",
+  "size": [
+   0.13,
+   2.2,
+   0.9
+  ],
+  "triangles": 1228,
+  "bytes": 52276
+ },
+ "bedroomdoor-002": {
+  "source": "bedroomDoor.002",
+  "size": [
+   0.13,
+   2.14,
+   0.83
+  ],
+  "triangles": 5456,
+  "bytes": 82616
+ },
+ "kitchenappliances": {
+  "source": "kitchenAppliances",
+  "size": [
+   3.05,
+   1.52,
+   0.59
+  ],
+  "triangles": 21426,
+  "bytes": 224288
+ },
+ "ceilinglight": {
+  "source": "ceilingLight",
+  "size": [
+   0.99,
+   1.84,
+   1.17
+  ],
+  "triangles": 59702,
+  "bytes": 468068
+ },
+ "book11": {
+  "source": "book11",
+  "size": [
+   0.03,
+   0.23,
+   0.15
+  ],
+  "triangles": 108,
+  "bytes": 117592
+ },
+ "book7": {
+  "source": "book7",
+  "size": [
+   0.03,
+   0.25,
+   0.17
+  ],
+  "triangles": 108,
+  "bytes": 117496
+ },
+ "book10": {
+  "source": "book10",
+  "size": [
+   0.01,
+   0.23,
+   0.15
+  ],
+  "triangles": 108,
+  "bytes": 117536
+ },
+ "book9": {
+  "source": "book9",
+  "size": [
+   0.03,
+   0.21,
+   0.14
+  ],
+  "triangles": 108,
+  "bytes": 117552
+ },
+ "book8": {
+  "source": "book8",
+  "size": [
+   0.03,
+   0.28,
+   0.19
+  ],
+  "triangles": 108,
+  "bytes": 117492
+ },
+ "book3": {
+  "source": "book3",
+  "size": [
+   0.05,
+   0.27,
+   0.21
+  ],
+  "triangles": 370,
+  "bytes": 120844
+ },
+ "book2": {
+  "source": "book2",
+  "size": [
+   0.02,
+   0.27,
+   0.21
+  ],
+  "triangles": 370,
+  "bytes": 121884
+ },
+ "openbook": {
+  "source": "openBook",
+  "size": [
+   0.34,
+   0.04,
+   0.21
+  ],
+  "triangles": 1884,
+  "bytes": 133516
+ },
+ "book6": {
+  "source": "book6",
+  "size": [
+   0.03,
+   0.29,
+   0.22
+  ],
+  "triangles": 370,
+  "bytes": 121940
+ },
+ "book5": {
+  "source": "book5",
+  "size": [
+   0.02,
+   0.27,
+   0.2
+  ],
+  "triangles": 370,
+  "bytes": 121784
+ },
+ "book4": {
+  "source": "book4",
+  "size": [
+   0.02,
+   0.28,
+   0.21
+  ],
+  "triangles": 370,
+  "bytes": 121896
+ },
+ "book13": {
+  "source": "book13",
+  "size": [
+   0.01,
+   0.27,
+   0.21
+  ],
+  "triangles": 370,
+  "bytes": 120516
+ },
+ "book12": {
+  "source": "book12",
+  "size": [
+   0.01,
+   0.27,
+   0.21
+  ],
+  "triangles": 370,
+  "bytes": 120548
+ },
+ "book18": {
+  "source": "book18",
+  "size": [
+   0.01,
+   0.23,
+   0.15
+  ],
+  "triangles": 108,
+  "bytes": 117484
+ },
+ "book15": {
+  "source": "book15",
+  "size": [
+   0.01,
+   0.24,
+   0.19
+  ],
+  "triangles": 370,
+  "bytes": 120496
+ },
+ "book16": {
+  "source": "book16",
+  "size": [
+   0.02,
+   0.27,
+   0.2
+  ],
+  "triangles": 370,
+  "bytes": 121916
+ },
+ "book14": {
+  "source": "book14",
+  "size": [
+   0.02,
+   0.21,
+   0.16
+  ],
+  "triangles": 370,
+  "bytes": 122156
+ },
+ "mintplanter-003": {
+  "source": "mintPlanter.003",
+  "size": [
+   0.38,
+   0.4,
+   0.16
+  ],
+  "triangles": 32246,
+  "bytes": 607228
+ },
+ "dresser": {
+  "source": "dresser",
+  "size": [
+   1.78,
+   0.78,
+   0.42
+  ],
+  "triangles": 3312,
+  "bytes": 213548
+ },
+ "floorlamp": {
+  "source": "floorLamp",
+  "size": [
+   0.6,
+   1.98,
+   0.44
+  ],
+  "triangles": 39822,
+  "bytes": 368992
+ },
+ "walllamp": {
+  "source": "wallLamp",
+  "size": [
+   0.21,
+   1.3,
+   0.45
+  ],
+  "triangles": 18540,
+  "bytes": 214404
+ },
+ "ficus": {
+  "source": "ficus",
+  "size": [
+   0.43,
+   0.54,
+   0.52
+  ],
+  "triangles": 33234,
+  "bytes": 812244
+ },
+ "ceilinglight2": {
+  "source": "ceilingLight2",
+  "size": [
+   0.58,
+   1.44,
+   0.58
+  ],
+  "triangles": 22236,
+  "bytes": 294760
+ },
+ "desklamp": {
+  "source": "deskLamp",
+  "size": [
+   2.37,
+   1.09,
+   0.33
+  ],
+  "triangles": 25330,
+  "bytes": 240000
+ },
+ "computer": {
+  "source": "computer",
+  "size": [
+   1.76,
+   1.15,
+   0.54
+  ],
+  "triangles": 42132,
+  "bytes": 615028
+ },
+ "deskchair": {
+  "source": "deskChair",
+  "size": [
+   0.58,
+   0.84,
+   0.68
+  ],
+  "triangles": 30000,
+  "bytes": 334208
+ },
+ "desk": {
+  "source": "desk",
+  "size": [
+   2.13,
+   0.76,
+   0.72
+  ],
+  "triangles": 4864,
+  "bytes": 110720
+ },
+ "carpet": {
+  "source": "carpet",
+  "size": [
+   3.06,
+   0.01,
+   2.18
+  ],
+  "triangles": 110,
+  "bytes": 321448
+ },
+ "toaster": {
+  "source": "toaster",
+  "size": [
+   0.46,
+   0.17,
+   0.15
+  ],
+  "triangles": 27318,
+  "bytes": 279784
+ },
+ "clock": {
+  "source": "clock",
+  "size": [
+   0.2,
+   0.23,
+   0.09
+  ],
+  "triangles": 13656,
+  "bytes": 250628
+ },
+ "candleholder": {
+  "source": "candleHolder",
+  "size": [
+   0.13,
+   0.28,
+   0.16
+  ],
+  "triangles": 12258,
+  "bytes": 143636
+ },
+ "wineglass": {
+  "source": "wineGlass",
+  "size": [
+   0.04,
+   0.14,
+   0.04
+  ],
+  "triangles": 11070,
+  "bytes": 71768
+ },
+ "cup1": {
+  "source": "cup1",
+  "size": [
+   0.05,
+   0.05,
+   0.05
+  ],
+  "triangles": 3712,
+  "bytes": 132908
+ },
+ "cup2": {
+  "source": "cup2",
+  "size": [
+   0.05,
+   0.05,
+   0.05
+  ],
+  "triangles": 3712,
+  "bytes": 136496
+ },
+ "chair": {
+  "source": "chair",
+  "size": [
+   0.47,
+   0.99,
+   0.49
+  ],
+  "triangles": 12576,
+  "bytes": 156448
+ },
+ "photoframe": {
+  "source": "photoFrame",
+  "size": [
+   0.2,
+   0.13,
+   0.09
+  ],
+  "triangles": 64,
+  "bytes": 237224
+ },
+ "knife": {
+  "source": "knife",
+  "size": [
+   0.01,
+   0,
+   0.14
+  ],
+  "triangles": 4444,
+  "bytes": 28728
+ },
+ "spoon": {
+  "source": "spoon",
+  "size": [
+   0.08,
+   0.01,
+   0.02
+  ],
+  "triangles": 2168,
+  "bytes": 17460
+ },
+ "fork": {
+  "source": "fork",
+  "size": [
+   0.02,
+   0.01,
+   0.14
+  ],
+  "triangles": 2976,
+  "bytes": 23776
+ },
+ "plate3": {
+  "source": "plate3",
+  "size": [
+   0.22,
+   0.01,
+   0.22
+  ],
+  "triangles": 3328,
+  "bytes": 151724
+ },
+ "plate2": {
+  "source": "plate2",
+  "size": [
+   0.22,
+   0.01,
+   0.22
+  ],
+  "triangles": 3200,
+  "bytes": 199288
+ },
+ "plate1": {
+  "source": "plate1",
+  "size": [
+   0.22,
+   0.01,
+   0.22
+  ],
+  "triangles": 3200,
+  "bytes": 313560
+ },
+ "nightstand": {
+  "source": "nightStand",
+  "size": [
+   0.5,
+   0.48,
+   0.5
+  ],
+  "triangles": 4448,
+  "bytes": 156568
+ },
+ "cup3": {
+  "source": "cup3",
+  "size": [
+   0.05,
+   0.05,
+   0.05
+  ],
+  "triangles": 3712,
+  "bytes": 143588
+ },
+ "teapot": {
+  "source": "teaPot",
+  "size": [
+   0.14,
+   0.14,
+   0.21
+  ],
+  "triangles": 4992,
+  "bytes": 216708
+ },
+ "lightswitch": {
+  "source": "lightSwitch",
+  "size": [
+   0.06,
+   0.06,
+   0.01
+  ],
+  "triangles": 5128,
+  "bytes": 63536
+ },
+ "outlet": {
+  "source": "outlet",
+  "size": [
+   0.06,
+   0.1,
+   0
+  ],
+  "triangles": 170,
+  "bytes": 15076
+ },
+ "footboard": {
+  "source": "footboard",
+  "size": [
+   0.43,
+   0.5,
+   0.39
+  ],
+  "triangles": 11736,
+  "bytes": 230320
+ },
+ "vinegarbottle": {
+  "source": "vinegarBottle",
+  "size": [
+   0.08,
+   0.24,
+   0.08
+  ],
+  "triangles": 7318,
+  "bytes": 138812
+ },
+ "modernvase": {
+  "source": "modernVase",
+  "size": [
+   0.29,
+   0.81,
+   0.29
+  ],
+  "triangles": 27012,
+  "bytes": 1269632
+ },
+ "oilbottle": {
+  "source": "oilBottle",
+  "size": [
+   0.07,
+   0.32,
+   0.07
+  ],
+  "triangles": 14091,
+  "bytes": 127312
+ },
+ "curtain2": {
+  "source": "curtain2",
+  "size": [
+   0.11,
+   3.92,
+   0.8
+  ],
+  "triangles": 3456,
+  "bytes": 39656
+ },
+ "curtain1": {
+  "source": "curtain1",
+  "size": [
+   0.12,
+   3.92,
+   0.75
+  ],
+  "triangles": 5952,
+  "bytes": 61244
+ },
+ "curtain5": {
+  "source": "curtain5",
+  "size": [
+   0.12,
+   3.92,
+   0.75
+  ],
+  "triangles": 5952,
+  "bytes": 57204
+ },
+ "curtain4": {
+  "source": "curtain4",
+  "size": [
+   0.12,
+   3.92,
+   1.27
+  ],
+  "triangles": 4752,
+  "bytes": 53092
+ },
+ "posters": {
+  "source": "posters",
+  "size": [
+   2.65,
+   2.18,
+   0.02
+  ],
+  "triangles": 286,
+  "bytes": 110504
+ },
+ "lowtable2": {
+  "source": "lowTable2",
+  "size": [
+   0.62,
+   0.39,
+   0.98
+  ],
+  "triangles": 2300,
+  "bytes": 57656
+ },
+ "lowtable": {
+  "source": "lowTable",
+  "size": [
+   0.48,
+   0.35,
+   0.75
+  ],
+  "triangles": 1852,
+  "bytes": 73072
+ },
+ "dinnertable": {
+  "source": "dinnerTable",
+  "size": [
+   2.7,
+   0.79,
+   1
+  ],
+  "triangles": 2168,
+  "bytes": 95676
+ },
+ "couch": {
+  "source": "couch",
+  "size": [
+   3.12,
+   0.79,
+   1
+  ],
+  "triangles": 59999,
+  "bytes": 582212
+ },
+ "bedroomdoor": {
+  "source": "bedroomDoor",
+  "size": [
+   0.13,
+   2.14,
+   0.83
+  ],
+  "triangles": 5456,
+  "bytes": 82696
+ },
+ "bedroomdoorframe": {
+  "source": "bedroomDoorFrame",
+  "size": [
+   0.13,
+   2.2,
+   0.9
+  ],
+  "triangles": 1228,
+  "bytes": 52400
+ },
+ "heater": {
+  "source": "heater",
+  "size": [
+   0.11,
+   0.6,
+   2
+  ],
+  "triangles": 59998,
+  "bytes": 719128
+ },
+ "entrancedoor": {
+  "source": "entranceDoor",
+  "size": [
+   0.43,
+   2.2,
+   1
+  ],
+  "triangles": 12614,
+  "bytes": 113356
+ },
+ "kitchenelements": {
+  "source": "kitchenElements",
+  "size": [
+   3.62,
+   3.12,
+   0.61
+  ],
+  "triangles": 3604,
+  "bytes": 172232
+ },
+ "kitchenmarble": {
+  "source": "kitchenMarble",
+  "size": [
+   3.02,
+   0.71,
+   0.63
+  ],
+  "triangles": 700,
+  "bytes": 507124
+ },
+ "window": {
+  "source": "window",
+  "size": [
+   2.12,
+   2.91,
+   0.08
+  ],
+  "triangles": 28176,
+  "bytes": 376904
+ },
+ "bowls": {
+  "source": "bowls",
+  "size": [
+   0.12,
+   0.08,
+   0.12
+  ],
+  "triangles": 6656,
+  "bytes": 47108
+ },
+ "pot": {
+  "source": "pot",
+  "size": [
+   0.1,
+   0.08,
+   0.1
+  ],
+  "triangles": 13824,
+  "bytes": 814320
+ },
+ "pouffe": {
+  "source": "pouffe",
+  "size": [
+   0.57,
+   0.18,
+   0.55
+  ],
+  "triangles": 9184,
+  "bytes": 405048
+ },
+ "interiorplant": {
+  "source": "interiorPlant",
+  "size": [
+   0.32,
+   0.44,
+   0.36
+  ],
+  "triangles": 16094,
+  "bytes": 575456
+ },
+ "cardboard": {
+  "source": "cardboard",
+  "size": [
+   0.11,
+   0.11,
+   0.12
+  ],
+  "triangles": 12,
+  "bytes": 32412
+ },
+ "bed": {
+  "source": "bed",
+  "size": [
+   2.14,
+   1.17,
+   2.35
+  ],
+  "triangles": 29630,
+  "bytes": 519120
+ },
+ "curtain3": {
+  "source": "curtain3",
+  "size": [
+   0.11,
+   3.92,
+   0.8
+  ],
+  "triangles": 3456,
+  "bytes": 39680
+ },
+ "ivypot": {
+  "source": "ivyPot",
+  "size": [
+   0.45,
+   0.32,
+   0.42
+  ],
+  "triangles": 19888,
+  "bytes": 634980
+ },
+ "mirror": {
+  "source": "mirror",
+  "size": [
+   1.2,
+   1.2,
+   0.02
+  ],
+  "triangles": 1088,
+  "bytes": 487600
+ }
+}

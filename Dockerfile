@@ -73,6 +73,8 @@ RUN uv sync --frozen --no-dev
 # Scene kit (runtime + components + template), its fetched assets and vendored three.js
 COPY kit/*.js ./kit/
 COPY --from=web /kit/assets ./kit/assets
+# bought furniture (kit/scripts/licensed/pack.mjs): its license allows it in a private image only
+COPY kit/assets/licensed ./kit/assets/licensed
 COPY kit/template ./kit/template
 # the presentation look's photographed sky (scripts/make_sky.py, Poly Haven CC0)
 COPY kit/sky ./kit/sky
