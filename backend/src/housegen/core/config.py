@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     DATA_DIR: Path = _BACKEND_ROOT / "data"
     DATABASE_URL: str = ""  # defaults to sqlite file under DATA_DIR
     KIT_DIR: Path = _REPO_ROOT / "kit"
+    # Furniture bought under a license that forbids handing out the files (Fab / Sketchfab
+    # Standard): never in the repository or the image, which are public. Defaults to
+    # DATA_DIR/licensed (the data volume); served to scene pages under /kit/assets/licensed/.
+    LICENSED_DIR: Path | None = None
     # built frontend (Vite dist/) served from "/" by this process; unset in dev (Vite dev server)
     STATIC_DIR: Path | None = None
 
@@ -127,6 +131,10 @@ class Settings(BaseSettings):
     @property
     def projects_dir(self) -> Path:
         return self.DATA_DIR / "projects"
+
+    @property
+    def licensed_dir(self) -> Path:
+        return self.LICENSED_DIR or self.DATA_DIR / "licensed"
 
     @property
     def render_base_url(self) -> str:

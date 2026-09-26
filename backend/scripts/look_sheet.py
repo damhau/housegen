@@ -202,10 +202,14 @@ def main() -> None:
         # house.js, runtime.js and the modules next to them (interior.js)
         for path in kit.glob("*.js"):
             (www / "kit" / path.name).symlink_to(path)
-        if (
-            settings.KIT_DIR / "assets"
-        ).is_dir():  # furniture models (kit/scripts/fetch_models.mjs)
-            (www / "kit" / "assets").symlink_to(settings.KIT_DIR / "assets")
+        # furniture models: fetched ones (kit/scripts/fetch_models.mjs) and bought ones, which
+        # live on the data volume (kit/scripts/licensed/pack.mjs), as the app serves them
+        (www / "kit" / "assets").mkdir()
+        if (settings.KIT_DIR / "assets").is_dir():
+            for path in (settings.KIT_DIR / "assets").iterdir():
+                (www / "kit" / "assets" / path.name).symlink_to(path)
+        if settings.licensed_dir.is_dir():
+            (www / "kit" / "assets" / "licensed").symlink_to(settings.licensed_dir)
         (www / "kit" / "vendor" / "three").symlink_to(settings.KIT_DIR / "node_modules" / "three")
         (www / "scene").symlink_to(scene)
         server, port = serve(www)

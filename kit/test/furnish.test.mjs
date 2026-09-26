@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import fx from "../furnish.js";
+import fx, { maskLicensed } from "../furnish.js";
 
 const room = [[0, 0], [4, 0], [4, 3], [0, 3]]; // x 0..4, z 0..3
 
@@ -52,4 +52,27 @@ test("a kitchen run keeps its tall units out of the worktop and the sink out of 
   let steel = 0;
   k.traverse((o) => { if (o.isMesh && o.material === fx.finish.steel()) steel++; });
   assert.equal(steel, 0, "no sink inside the tall unit");
+});
+
+test("a bought model is served masked and unmasks to the same bytes", () => {
+  const glb = new Uint8Array([0x67, 0x6c, 0x54, 0x46, 2, 0, 0, 0, 1, 2, 3, 250]);
+  const masked = maskLicensed(glb, false);
+  assert.equal(new TextDecoder().decode(masked.subarray(0, 4)), "HGX1");
+  assert.notDeepEqual(masked.subarray(4), glb); // not a GLB anyone can open
+  assert.deepEqual(maskLicensed(masked, true), glb);
+  assert.throws(() => maskLicensed(glb, true), /not a masked licensed model/);
+});
+
+test("a bought model missing from the data volume falls back to the parametric piece, at the size asked for", async () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    const p = await fx.model("bed-oak-linen", { width: 1.4, length: 2.0 });
+    assert.equal(p.userData.name, "bed"); // the parametric bed: no file here
+    assert.deepEqual(p.userData.footprint.map((v) => +v.toFixed(2)), [1.46, 2.08]);
+    const none = await fx.model("vase-dry-branches");
+    assert.equal(none.children.length, 0); // no stand-in for decor
+  } finally {
+    console.warn = warn;
+  }
 });

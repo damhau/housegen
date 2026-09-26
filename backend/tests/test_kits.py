@@ -102,3 +102,17 @@ async def test_scene_pages_are_served_with_the_chosen_renderer(client: AsyncClie
     again = await client.get("/kit/house.js", headers={"if-none-match": dev_js.headers["etag"]})
     assert again.status_code == 304
     assert (await client.get("/scenes/p1/versions/3/src/scene.js")).status_code == 404
+
+
+async def test_bought_models_are_served_from_the_data_volume(client: AsyncClient) -> None:
+    # their license forbids handing out the files: they are not in the kit (public repository,
+    # public image) but on the data volume, and scene pages find them under /kit/assets/licensed/
+    lic = get_settings().licensed_dir
+    assert lic == get_settings().DATA_DIR / "licensed"
+    (lic / "pack").mkdir(parents=True)
+    (lic / "pack" / "sofa.glbx").write_bytes(b"HGX1masked")
+    r = await client.get("/kit/assets/licensed/pack/sofa.glbx")
+    assert r.status_code == 200
+    assert r.content == b"HGX1masked"
+    assert (await client.get("/kit/assets/licensed/pack/")).status_code == 404  # no listing
+    assert (await client.get("/kit/house.js")).status_code == 200  # the kit mount is unchanged

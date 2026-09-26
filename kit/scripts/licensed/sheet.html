@@ -1,0 +1,92 @@
+<!doctype html>
+<!--
+  Contact sheet of a bought pack on the data volume (kit/scripts/licensed/pack.mjs wrote it):
+  every object in a cell, seen three-quarters from the front (+z) with a red stroke on the floor
+  pointing +z, its name and size. To name the pieces and check which way each one faces
+  (furnish.js MODELS wants them facing +z).
+
+    /kit/scripts/licensed/sheet.html?pack=martel&page=0&per=12
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { margin: 0; background: #e9e7e3; font: 13px system-ui, sans-serif; }
+  #grid { position: relative; }
+  .label { position: absolute; padding: 4px 6px; color: #222; background: #fffc; border-radius: 3px; }
+</style>
+<script type="importmap">
+  { "imports": { "three": "/kit/vendor/three/build/three.module.js", "three/addons/": "/kit/vendor/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="grid"></div>
+<script type="module">
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { maskLicensed } from "/kit/furnish.js";
+
+const q = new URLSearchParams(location.search);
+const pack = q.get("pack"), page = Number(q.get("page") ?? 0), per = Number(q.get("per") ?? 12);
+const cols = Number(q.get("cols") ?? 4), cellW = 480, cellH = 400;
+const base = `/kit/assets/licensed/${pack}/`;
+const catalog = await (await fetch(base + "catalog.json")).json();
+const names = Object.keys(catalog).slice(page * per, (page + 1) * per);
+const rows = Math.ceil(names.length / cols);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(cols * cellW, rows * cellH);
+renderer.setScissorTest(true);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.shadowMap.enabled = true;
+document.getElementById("grid").appendChild(renderer.domElement);
+const env = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+for (const [i, name] of names.entries()) {
+  const buf = await (await fetch(base + name + ".glbx")).arrayBuffer();
+  const gltf = await loader.parseAsync(maskLicensed(new Uint8Array(buf), true).buffer, "");
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#f4f2ee");
+  scene.environment = env;
+  scene.environmentIntensity = 0.8;
+  const obj = gltf.scene;
+  const box = new THREE.Box3().setFromObject(obj), c = box.getCenter(new THREE.Vector3()), size = box.getSize(new THREE.Vector3());
+  obj.position.set(-c.x, -box.min.y, -c.z);
+  obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(obj);
+  const r = Math.max(size.x, size.y, size.z, 0.2);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(r * 6, r * 6), new THREE.MeshStandardMaterial({ color: "#dedad3" }));
+  floor.rotation.x = -Math.PI / 2;
+  floor.receiveShadow = true;
+  scene.add(floor);
+  // +z: the way furnish.js wants a piece to face
+  const front = new THREE.Mesh(new THREE.BoxGeometry(r * 0.02, 0.004, r * 0.7), new THREE.MeshBasicMaterial({ color: "#d11" }));
+  front.position.set(0, 0.002, size.z / 2 + r * 0.35);
+  scene.add(front);
+  const sun = new THREE.DirectionalLight("#fff", 1.6);
+  sun.position.set(r * 2, r * 4, r * 3);
+  sun.castShadow = true;
+  Object.assign(sun.shadow.camera, { left: -r * 2, right: r * 2, top: r * 2, bottom: -r * 2 });
+  scene.add(sun);
+  const cam = new THREE.PerspectiveCamera(35, cellW / cellH, r / 50, r * 50);
+  cam.position.set(r * 1.3, size.y * 0.5 + r * 0.9, r * 2.4);
+  cam.lookAt(0, size.y * 0.4, 0);
+  const x = (i % cols) * cellW, yTop = Math.floor(i / cols) * cellH;
+  renderer.setViewport(x, (rows - 1 - Math.floor(i / cols)) * cellH, cellW, cellH);
+  renderer.setScissor(x, (rows - 1 - Math.floor(i / cols)) * cellH, cellW, cellH);
+  renderer.render(scene, cam);
+  const label = document.createElement("div");
+  label.className = "label";
+  label.style.left = `${x + 6}px`;
+  label.style.top = `${yTop + 6}px`;
+  const e = catalog[name];
+  label.textContent = `${name} — ${e.size.join(" × ")} m, ${e.triangles} tris`;
+  document.getElementById("grid").appendChild(label);
+}
+window.__sheetDone = { page, pages: Math.ceil(Object.keys(catalog).length / per) };
+</script>
+</body>
+</html>

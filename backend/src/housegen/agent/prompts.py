@@ -174,11 +174,28 @@ Parametric (size to the room): sofa({ width=2.2, depth=0.92, color }) · bed({ w
   kitchenRun({ length, depth=0.62, tall:[{ at, width }], sink (centre from the left end), hob, upper=true, worktop:"oak"|colour }) ·
   wc() · basin({ width=0.6, depth=0.46, vanity=true, mirror=true }) · bathtub({ length=1.7, width=0.75 }) · rug({ width, depth, color }) ·
   ceilingLight() (flush, origin on the ceiling: fx.place(fx.ceilingLight(), [x, z], 0, ceilingY))
-Scanned models (await fx.model(name)): "sofa-grey-cushions" (2.0 x 0.78) · "sofa-modular-l" (L, 2.9 x 1.95) ·
+Models (await fx.model(name, { width, length, height })): real furniture, far more convincing than the parametric pieces;
+  prefer them wherever one fits. width / length / height (m) stretch the piece along x / z / y, each on its own
+  (p.userData.footprint gives the result). Sizes below are width x depth (x height), facing +z:
+  "bed-oak-linen" (oak headboard, rumpled linen duvet; pass the plan's mattress size: { width: 1.6, length: 2.0 };
+    the duvet hangs about 0.35 m over each side and 0.2 m over the foot; use the parametric bed() below 1.2 m) ·
+  "nightstand-round-black" (0.5 round, 0.48 high) · "sideboard-teak" (1.78 x 0.42) · "sofa-modular-grey" (3.12 x 1.0,
+    grey modules with a cognac ottoman at its left end) · "pouf-knit" (0.57) · "coffee-table-oval-white" (0.75 x 0.48) ·
+  "coffee-table-oval-black" (0.98 x 0.62) · "dining-table-white" (2.7 x 1.0) · "dining-chair-grey" (shell chair, oak legs) ·
+  "desk-trestle-white" (2.13 x 0.72) · "desk-chair-leather" · "step-stool-black" · "rug-grey-pattern" (3.06 x 2.18) ·
+  "curtain-grey" (one panel 0.75 wide, 3.92 high: give { height } = floor to ceiling) · "curtain-grey-wide" (1.27) ·
+  "radiator-white" (2.0 long, 0.6 high) · "wall-art-gallery" (seven frames, 2.65 x 2.18: onWall with { y } = floor + 0.9) ·
+  "mirror-round" (1.2, on a wall) · "floor-lamp-black" (1.98 high) · "pendant-cluster" (nine bulbs, hangs 1.84 m) ·
+  "pendant-drum" (hangs 1.44 m) · plants: "plant-ficus" (0.54 high) · "plant-leafy-white-pot" · "plant-ivy" · "planter-herbs" ·
+  decor: "vase-dry-branches" (0.81 high) · "candle-holder-brass" · "clock-black" · "photo-frame" · "book-open" ·
+  "teapot" · "plate" · "wine-glass" · "cup" · "bowls-black" · "toaster" · "bottle-oil" ·
+  "sofa-grey-cushions" (2.0 x 0.78) · "sofa-modular-l" (L, 2.9 x 1.95) ·
   "bed-messy-grey" (with a 2.74 m wall headboard and bedside shelves) · "bed-soho-white" (1.8 x 2.25) ·
   "armchair-oak-leather" · "side-table-oak" · "cube-shelf-oak" (1.08 wide) · "coffee-table-oak" · "sideboard-walnut" (2.44) ·
   "plant-large" · "plant-small" · "vase-white" · "pendant-globe" (hangs 0.95 m: fx.place(p, [x, z], 0, ceilingY + 0.28))
-  A lamp is not a light: add a THREE.PointLight("#ffd9a8", 2, 7, 2) where each lamp glows.
+  pendant-cluster and pendant-drum have their top on their origin: fx.place(p, [x, z], 0, ceilingY). Put small decor on a
+  surface with fx.place(p, [x, z], rot, surfaceY). A lamp is not a light: add a THREE.PointLight("#ffd9a8", 2, 7, 2)
+  where each lamp glows.
 
 ### Checks you get
 - Every render's audit (in the tool result) also lists, per storey: doors nobody can reach from one side (keep 50 cm clear

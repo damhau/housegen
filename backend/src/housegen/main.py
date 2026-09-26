@@ -95,6 +95,14 @@ def create_app() -> FastAPI:
         RevalidatedStaticFiles(directory=settings.KIT_DIR / "node_modules" / "three"),
         name="three",
     )
+    # bought furniture, from the data volume (kit/scripts/licensed/): before /kit, which would
+    # otherwise answer these paths from the kit's own assets
+    settings.licensed_dir.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        "/kit/assets/licensed",
+        RevalidatedStaticFiles(directory=settings.licensed_dir),
+        name="licensed",
+    )
     app.mount("/kit", RevalidatedStaticFiles(directory=settings.KIT_DIR), name="kit")
     # per-project files: scene working copy, versions, renders, photos, plan pages
     app.mount("/scenes", RevalidatedStaticFiles(directory=settings.projects_dir), name="scenes")

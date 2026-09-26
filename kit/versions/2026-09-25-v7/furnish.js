@@ -313,9 +313,79 @@ export const MODELS = {
     credit: "“Modern Sofa” by 3dimentionalben, CC BY 4.0" },
   "sofa-modular-l": { fallback: "sofa", file: "sketchfab/modular-sofa.glb", uid: "c7a0c35f4f0b49f8b4fea273f9014001", rotate: 0, scale: 0.01,
     credit: "“Sofa” by GreenG, CC BY 4.0" },
+  // Bought: Aurélien Martel's "PBR Archviz Asset Pack" (Fab, Standard license), one light Scandinavian
+  // flat. On the data volume, not in the repository or the image (kit/scripts/licensed/pack.mjs);
+  // where they are missing, the parametric piece of the same kind (or nothing) stands in.
+  // `nominal`: the size the piece stands for when it differs from its bounding box (a bed: its
+  // mattress, the duvet hangs over), what model(name, { width, length }) scales from.
+  "bed-oak-linen": { licensed: "martel/bed.glbx", fallback: "bed", rotate: 0, nominal: [1.4, 2.0] },
+  "nightstand-round-black": { licensed: "martel/nightstand.glbx", fallback: "nightstand", rotate: 0 },
+  "sideboard-teak": { licensed: "martel/dresser.glbx", rotate: 0 },
+  "sofa-modular-grey": { licensed: "martel/couch.glbx", fallback: "sofa", rotate: 0 },
+  "pouf-knit": { licensed: "martel/pouffe.glbx", rotate: 0 },
+  "coffee-table-oval-white": { licensed: "martel/lowtable.glbx", rotate: Math.PI / 2 },
+  "coffee-table-oval-black": { licensed: "martel/lowtable2.glbx", rotate: Math.PI / 2 },
+  "dining-table-white": { licensed: "martel/dinnertable.glbx", rotate: 0 },
+  "dining-chair-grey": { licensed: "martel/chair.glbx", fallback: "chair", rotate: 0 },
+  "desk-trestle-white": { licensed: "martel/desk.glbx", rotate: 0 },
+  "desk-chair-leather": { licensed: "martel/deskchair.glbx", rotate: 0 },
+  "step-stool-black": { licensed: "martel/footboard.glbx", rotate: 0 },
+  "rug-grey-pattern": { licensed: "martel/carpet.glbx", fallback: "rug", rotate: 0 },
+  "curtain-grey": { licensed: "martel/curtain1.glbx", rotate: Math.PI / 2 },
+  "curtain-grey-wide": { licensed: "martel/curtain4.glbx", rotate: Math.PI / 2 },
+  "radiator-white": { licensed: "martel/heater.glbx", rotate: Math.PI / 2 },
+  "wall-art-gallery": { licensed: "martel/posters.glbx", rotate: 0 },
+  "mirror-round": { licensed: "martel/mirror.glbx", rotate: 0 },
+  "floor-lamp-black": { licensed: "martel/floorlamp.glbx", rotate: 0 },
+  "pendant-cluster": { licensed: "martel/ceilinglight.glbx", rotate: 0, hang: true },
+  "pendant-drum": { licensed: "martel/ceilinglight2.glbx", rotate: 0, hang: true },
+  "plant-ficus": { licensed: "martel/ficus.glbx", rotate: 0 },
+  "plant-leafy-white-pot": { licensed: "martel/interiorplant.glbx", rotate: 0 },
+  "plant-ivy": { licensed: "martel/ivypot.glbx", rotate: 0 },
+  "planter-herbs": { licensed: "martel/mintplanter-003.glbx", rotate: 0 },
+  "vase-dry-branches": { licensed: "martel/modernvase.glbx", rotate: 0 },
+  "candle-holder-brass": { licensed: "martel/candleholder.glbx", rotate: 0 },
+  "clock-black": { licensed: "martel/clock.glbx", rotate: 0 },
+  "photo-frame": { licensed: "martel/photoframe.glbx", rotate: 0 },
+  "book-open": { licensed: "martel/openbook.glbx", rotate: 0 },
+  "teapot": { licensed: "martel/teapot.glbx", rotate: 0 },
+  "plate": { licensed: "martel/plate1.glbx", rotate: 0 },
+  "wine-glass": { licensed: "martel/wineglass.glbx", rotate: 0 },
+  "cup": { licensed: "martel/cup2.glbx", rotate: 0 },
+  "bowls-black": { licensed: "martel/bowls.glbx", rotate: 0 },
+  "toaster": { licensed: "martel/toaster.glbx", rotate: 0 },
+  "bottle-oil": { licensed: "martel/oilbottle.glbx", rotate: 0 },
 };
 // absolute: renderer snapshots (kit/versions/<name>/) share the working copy's assets
 const ASSETS = new URL("/kit/assets/", import.meta.url);
+
+/**
+ * Bought models (`licensed: "<pack>/<name>.glbx"`): their license forbids handing out the files,
+ * so they live on the data volume, not in the repository or the image (served under
+ * /kit/assets/licensed/), and are stored masked: a GLB XORed with this key, behind a 4-byte tag.
+ * Not a secret, just not a file anyone can open as a model. XOR is its own inverse: the same
+ * function masks (kit/scripts/licensed/pack.mjs) and unmasks (model()).
+ */
+const MASK_TAG = "HGX1";
+const MASK_KEY = new TextEncoder().encode("housegen:licensed-furniture:do-not-redistribute");
+export function maskLicensed(bytes, masked) {
+  const tag = new TextEncoder().encode(MASK_TAG);
+  const body = masked ? bytes.subarray(tag.length) : bytes;
+  if (masked && !tag.every((b, i) => bytes[i] === b)) throw new Error("not a masked licensed model");
+  const out = new Uint8Array((masked ? 0 : tag.length) + body.length);
+  if (!masked) out.set(tag);
+  const at = masked ? 0 : tag.length;
+  for (let i = 0; i < body.length; i++) out[at + i] = body[i] ^ MASK_KEY[i % MASK_KEY.length];
+  return out;
+}
+
+async function loadGLTF(spec, file) {
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  if (!spec.licensed) return loader.loadAsync(new URL(file, ASSETS).href);
+  const r = await fetch(new URL(file, ASSETS).href);
+  if (!r.ok) throw new Error(`${file}: ${r.status}`);
+  return loader.parseAsync(maskLicensed(new Uint8Array(await r.arrayBuffer()), true).buffer, "");
+}
 const _used = new Set();
 // shared with the runtime (it sends the page's credits to the app) without importing this module
 globalThis.__housekitCredits = () => credits();
@@ -326,19 +396,26 @@ export function credits() {
 }
 const _loaded = new Map();
 
-/** A scanned model by its catalogue name, bottom-centred and facing +z (async: it is loaded once). */
-export async function model(name) {
+/**
+ * A scanned or bought model by its catalogue name, bottom-centred and facing +z (async: it is
+ * loaded once). `width` / `length` / `height` (m) stretch it along x / z / y, each on its own: a bed
+ * given the plan's mattress size, a curtain the room's height. Width and length count from the
+ * piece's `nominal` size when the catalogue gives one (a bed: its mattress), else from its box.
+ */
+export async function model(name, { width, length, height } = {}) {
   const spec = MODELS[name];
   if (!spec) throw new Error(`unknown model ${name}. Known: ${Object.keys(MODELS).join(", ")}`);
-  const file = spec.file ?? `polyhaven/${spec.id}/${spec.id}.gltf`;
+  const file = spec.licensed ? `licensed/${spec.licensed}` : spec.file ?? `polyhaven/${spec.id}/${spec.id}.gltf`;
   // models are fetched compressed (meshopt geometry, WebP textures at 1k: scripts/fetch_models.mjs)
-  if (!_loaded.has(file)) _loaded.set(file, new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(new URL(file, ASSETS).href).catch(() => null));
+  if (!_loaded.has(file)) _loaded.set(file, loadGLTF(spec, file).catch(() => null));
   const gltf = await _loaded.get(file);
   if (!gltf) {
-    // not fetched (a build without the Sketchfab token): the parametric piece of the same kind
+    // not fetched (a build without the Sketchfab token, a data volume without the bought
+    // models): the parametric piece of the same kind
     console.warn(`housekit: model ${name} (${file}) not available, using ${spec.fallback ?? "nothing"}`);
-    const make = { sofa, bed }[spec.fallback];
-    return make ? make() : piece(new THREE.Group(), name, 0, 0);
+    const make = { sofa, bed, nightstand, wardrobe, rug, chair }[spec.fallback];
+    // at the size asked for (each parametric piece takes the dimensions it knows)
+    return make ? make({ width, length, depth: length, height }) : piece(new THREE.Group(), name, 0, 0);
   }
   _used.add(name);
   const inner = gltf.scene.clone(true);
@@ -353,7 +430,12 @@ export async function model(name) {
   // bottom centre on the origin; a hanging lamp has its top on the origin instead
   inner.position.set(-c.x, spec.hang ? -box.max.y : -box.min.y, -c.z);
   const size = box.getSize(new THREE.Vector3());
-  return piece(wrap, name, size.x, size.z, { hang: !!spec.hang, height: size.y });
+  const [nw, nl] = spec.nominal ?? [size.x, size.z];
+  const s = [width ? width / nw : 1, height ? height / size.y : 1, length ? length / nl : 1];
+  wrap.scale.set(...s);
+  const extra = { hang: !!spec.hang, height: size.y * s[1] };
+  if (spec.nominal) extra.nominal = [nw * s[0], nl * s[2]];
+  return piece(wrap, name, size.x * s[0], size.z * s[2], extra);
 }
 
 // --------------------------------------------------------------------------
