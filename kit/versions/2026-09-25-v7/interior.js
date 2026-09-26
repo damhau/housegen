@@ -13,7 +13,7 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { finishMaterial, metricUV } from "./finishes.js";
+import { finishMaterial, metricUV, tileMaterial } from "./finishes.js";
 
 // plain fallbacks (no import of house.js: a page may load it under another URL, ?v=<tag>, and a
 // second instance of it would carry its own caches)
@@ -161,7 +161,9 @@ export function floorPlan({ y = 0, height = 2.5, rooms = [], partitions = [], ce
     f.userData = { kind: "roomFloor", room: r.name };
     g.add(f);
     if (ceiling) {
-      const c = horizontal(r.polygon, y + height + 0.02, 0.02, plain(ceilingColor, 0.95));
+      // just under the clear height: level with it, the ceiling would share its plane with the
+      // underside of the slab above (flicker in the browser, black patches in a path tracer)
+      const c = horizontal(r.polygon, y + height - 0.005, 0.02, plain(ceilingColor, 0.95));
       c.userData = { kind: "ceiling", room: r.name };
       g.add(c);
     }
@@ -186,4 +188,105 @@ export function floorPlan({ y = 0, height = 2.5, rooms = [], partitions = [], ce
   return g;
 }
 
-export default { floorPlan, partition, interiorDoor, polygonArea };
+/**
+ * The openings in the walls of `root`, as spans at the centre line of their wall: the doors and
+ * passages of every floorPlan's partitions, and the window and door units of the shell (tagged
+ * kind "window" / "door", origin at their bottom centre, x along the wall).
+ */
+function wallOpenings(root) {
+  root.updateMatrixWorld(true);
+  const out = [];
+  const P = (m, x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(m);
+  root.traverse((o) => {
+    const u = o.userData ?? {};
+    if (u.kind === "floorPlan") {
+      for (const p of u.partitions ?? []) {
+        const d = Math.hypot(p.to[0] - p.from[0], p.to[1] - p.from[1]);
+        const dir = [(p.to[0] - p.from[0]) / d, (p.to[1] - p.from[1]) / d];
+        for (const op of p.openings ?? []) {
+          const at = (s) => P(o.matrixWorld, p.from[0] + dir[0] * s, u.y, p.from[1] + dir[1] * s);
+          out.push({ a: at(op.offset), b: at(op.offset + op.width), y0: u.y + (op.sill ?? 0), y1: u.y + (op.sill ?? 0) + (op.height ?? 2.05) });
+        }
+      }
+    } else if ((u.kind === "window" || u.kind === "door") && u.width) {
+      const w = u.width / 2;
+      const a = P(o.matrixWorld, -w, 0, 0), b = P(o.matrixWorld, w, 0, 0);
+      out.push({ a, b, y0: a.y, y1: a.y + (u.height ?? 2.1) });
+    }
+  });
+  return out;
+}
+
+/**
+ * Ceramic tiles on the walls of a room, cut around its doors and windows: `height` metres up all
+ * round, `fullHeight` on the edges listed in `full` (a shower, the wall behind a bath). Edge i runs
+ * from room.polygon[i] to the next point (the clear inside faces, as in floorPlan). `root` is the
+ * scene holding the walls: the openings are found in it (wallOpenings). `tiles` are tileMaterial's
+ * options ({ size: [0.3, 0.6], color, jointColor, joint }). Add the result to the scene.
+ */
+export function tileWalls(root, room, { y = 0, height = 1.2, full = [], fullHeight = 2.4, edges, tiles = {} } = {}) {
+  const poly = room.polygon ?? room;
+  const material = tileMaterial(tiles);
+  const openings = wallOpenings(root);
+  const T = 0.008; // tile + adhesive
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const [x1, z1] = poly[i], [x2, z2] = poly[(i + 1) % poly.length];
+    area += x1 * z2 - x2 * z1;
+  }
+  const inward = area > 0 ? 1 : -1; // as in furnish.onWall
+  const g = new THREE.Group();
+  g.userData = { kind: "wallTiles", room: room.name };
+  for (let i = 0; i < poly.length; i++) {
+    if (edges && !edges.includes(i)) continue;
+    const [ax, az] = poly[i], [bx, bz] = poly[(i + 1) % poly.length];
+    const L = Math.hypot(bx - ax, bz - az);
+    if (L < 0.05) continue;
+    const ux = (bx - ax) / L, uz = (bz - az) / L;
+    const nx = -uz * inward, nz = ux * inward;
+    const H = full.includes(i) ? fullHeight : height;
+    // the openings in this wall: parallel to it, their centre line within half a wall's thickness behind it
+    const holes = [];
+    for (const o of openings) {
+      const along = (p) => (p.x - ax) * ux + (p.z - az) * uz;
+      const across = (p) => (p.x - ax) * nx + (p.z - az) * nz;
+      const dx = o.b.x - o.a.x, dz = o.b.z - o.a.z, len = Math.hypot(dx, dz);
+      if (len < 1e-3 || Math.abs((dx * ux + dz * uz) / len) < 0.95) continue;
+      const c = (across(o.a) + across(o.b)) / 2;
+      if (c > 0.05 || c < -0.45) continue;
+      const s0 = Math.max(0, Math.min(along(o.a), along(o.b))), s1 = Math.min(L, Math.max(along(o.a), along(o.b)));
+      const h0 = Math.max(0, o.y0 - y), h1 = Math.min(H, o.y1 - y);
+      if (s1 - s0 > 1e-3 && h1 - h0 > 1e-3) holes.push([s0, s1, h0, h1]);
+    }
+    // the wall cut into columns at the openings' sides; in each, the heights no opening covers
+    const xs = [...new Set([0, L, ...holes.flatMap(([s0, s1]) => [s0, s1])])].sort((p, q) => p - q);
+    const parts = [];
+    for (let k = 0; k + 1 < xs.length; k++) {
+      const x0 = xs[k], x1 = xs[k + 1];
+      if (x1 - x0 < 1e-3) continue;
+      const cut = holes.filter(([s0, s1]) => s0 <= x0 + 1e-6 && s1 >= x1 - 1e-6).map(([, , h0, h1]) => [h0, h1]).sort((p, q) => p[0] - q[0]);
+      let at = 0;
+      for (const [h0, h1] of [...cut, [H, H]]) {
+        if (h0 - at > 1e-3) {
+          // in the wall's own frame (x along it from its start, y up, z into the room): the UVs in
+          // metres run on across the pieces, so the joints line up
+          const b = new THREE.BoxGeometry(x1 - x0, h0 - at, T);
+          b.translate((x0 + x1) / 2, (at + h0) / 2, T / 2);
+          parts.push(b);
+        }
+        at = Math.max(at, h1);
+      }
+    }
+    if (!parts.length) continue;
+    const mesh = new THREE.Mesh(metricUV(mergeGeometries(parts)), material);
+    mesh.receiveShadow = true;
+    // local x → the edge, local z → into the room
+    mesh.rotation.y = Math.atan2(-uz, ux);
+    if (inward < 0) mesh.scale.z = -1;
+    mesh.position.set(ax, y, az);
+    g.add(mesh);
+  }
+  return g;
+}
+
+export default { floorPlan, partition, interiorDoor, polygonArea, tileWalls };

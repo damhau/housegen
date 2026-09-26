@@ -142,6 +142,76 @@ export function finishMaterial(name, { color, scale = 1, rotate = 0, roughness =
   return m;
 }
 
+const _tiles = new Map();
+
+/**
+ * Ceramic tiles drawn on a canvas (nothing to fetch): one tile of `size` [w, h] metres per
+ * texture repeat, `joint` metres of grout between them, glossy tiles and matt grout (roughness
+ * map), a groove at every joint (normal map). Needs UVs in metres like the other finishes.
+ * Without a canvas (Node), the plain tile colour.
+ */
+export function tileMaterial({ size = [0.3, 0.6], joint = 0.003, color = "#f3f2ee", jointColor = "#c9c3b9", roughness = 0.2 } = {}) {
+  const key = JSON.stringify([size, joint, color, jointColor, roughness]);
+  if (_tiles.has(key)) return _tiles.get(key);
+  const m = new THREE.MeshStandardMaterial({ color, roughness });
+  m.userData.finish = "tiles";
+  m.userData.baseColor = new THREE.Color(color);
+  _tiles.set(key, m);
+  if (typeof document === "undefined") return m;
+  // ~1000 px per metre, at most 1024 px a side
+  const k = Math.min(1000, 1024 / Math.max(...size));
+  const W = Math.max(8, Math.round(size[0] * k)), H = Math.max(8, Math.round(size[1] * k));
+  const j = Math.max(1, Math.round(joint * k / 2)); // half a joint on each side of the tile
+  const bevel = Math.max(1, Math.round(0.0015 * k));
+  const canvas = (draw) => {
+    const c = document.createElement("canvas");
+    c.width = W;
+    c.height = H;
+    draw(c.getContext("2d"));
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(1 / size[0], 1 / size[1]);
+    t.anisotropy = 4;
+    return t;
+  };
+  const map = canvas((g) => {
+    g.fillStyle = jointColor;
+    g.fillRect(0, 0, W, H);
+    // a glazed tile is not a flat colour: a faint glaze cloud over the tile colour
+    g.fillStyle = color;
+    g.fillRect(j, j, W - 2 * j, H - 2 * j);
+    for (let i = 0; i < 24; i++) {
+      g.fillStyle = `rgba(${Math.random() < 0.5 ? "0,0,0" : "255,255,255"},0.005)`;
+      g.beginPath();
+      g.ellipse(Math.random() * W, Math.random() * H, W * (0.1 + Math.random() * 0.3), H * (0.1 + Math.random() * 0.3), 0, 0, Math.PI * 2);
+      g.fill();
+    }
+  });
+  map.colorSpace = THREE.SRGBColorSpace;
+  // roughness in the green channel (× material.roughness = 1): matt grout, the glaze `roughness`
+  const roughnessMap = canvas((g) => {
+    g.fillStyle = "rgb(0,255,0)";
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = `rgb(0,${Math.round(255 * roughness)},0)`;
+    g.fillRect(j, j, W - 2 * j, H - 2 * j);
+  });
+  // tangent-space normals (OpenGL, +y up): the glaze rounds off into the joint
+  const normalMap = canvas((g) => {
+    g.fillStyle = "rgb(128,128,255)";
+    g.fillRect(0, 0, W, H);
+    const edge = (r, gr, x, y, w, h) => { g.fillStyle = `rgb(${r},${gr},225)`; g.fillRect(x, y, w, h); };
+    edge(40, 128, j, j, bevel, H - 2 * j); // left edge leans left
+    edge(216, 128, W - j - bevel, j, bevel, H - 2 * j);
+    edge(128, 40, j, j, W - 2 * j, bevel); // canvas top = v 0 (flipY off): the tile's bottom edge
+    edge(128, 216, j, H - j - bevel, W - 2 * j, bevel);
+  });
+  map.flipY = roughnessMap.flipY = normalMap.flipY = false;
+  Object.assign(m, { map, roughnessMap, normalMap, color: new THREE.Color("#ffffff"), roughness: 1 });
+  m.userData.tile = { size, joint };
+  m.needsUpdate = true;
+  return m;
+}
+
 /**
  * After a scene is built: give every mesh that wears a textured finish UVs in metres, except shapes
  * that already have them (extruded and flat shapes: walls, slabs, patches).

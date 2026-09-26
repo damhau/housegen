@@ -164,6 +164,11 @@ floorPlan({ y (finished floor level of the storey), height=2.5 (clear height to 
             door: { hinge:"start"|"end", swing:"left"|"right" (walking from→to), open=90 } | false (an open passage) }] }]
   Exterior walls, windows and the entrance doors stay in the exterior modules.
   One floorPlan per storey. Floors, ceilings and partitions are textured automatically (oak planks, stone tiles, plaster).
+tileWalls(ctx.group, room, { y (the storey's floor + 0.015), height=1.2, full:[edge indices], fullHeight=2.4, tiles })
+  → add to ctx.group: ceramic tiles on the room's walls, cut around its doors and windows (call it after the floorPlan
+  and the exterior walls exist). Every bath, shower room and WC: 1.2 m all round, full height on the walls of the shower
+  and behind the bath. tiles: { size:[0.3,0.6] (w, h), color="#f3f2ee", jointColor, joint=0.003 }; pass the same
+  object to bathtub/wc({ tiles }) so their fronts match.
 
 ### Furniture — import fx from "housekit/furnish"   (every piece: origin at its bottom centre, FACING +z)
 Place: fx.onWall(room.polygon, edgeIndex, at, piece, { y, gap=0.02, out=0 })  back against edge i (polygon[i]→polygon[i+1]),
@@ -171,14 +176,25 @@ Place: fx.onWall(room.polygon, edgeIndex, at, piece, { y, gap=0.02, out=0 })  ba
        y = the storey's floor level + 0.015 (the floor finish). Add each piece to ctx.group.
 Parametric (size to the room): sofa({ width=2.2, depth=0.92, color }) · bed({ width=1.6, length=2.05 }) · nightstand() ·
   chair() · diningSet({ length=1.8, width=0.9, seats=6, ends=false }) · wardrobe({ width, depth=0.6, height=2.3 }) ·
-  kitchenRun({ length, depth=0.62, tall:[{ at, width }], sink (centre from the left end), hob, upper=true, worktop:"oak"|colour }) ·
-  wc() · basin({ width=0.6, depth=0.46, vanity=true, mirror=true }) · bathtub({ length=1.7, width=0.75 }) · rug({ width, depth, color }) ·
+  kitchenRun({ length, depth=0.62, tall:[{ at, width, oven }], sink (centre from the left end), hob, upper=true,
+  worktop:"oak"|colour, splash={ size:[0.3,0.1], color } (tile options, a colour or null), hood=true|"chimney", ceiling=2.4 })
+  (handleless units; `oven:true` puts a built-in oven in that tall unit; the hood is built into the wall unit over the
+  hob, or "chimney": a canopy up to `ceiling`, for a run without wall units; an island: upper:false, splash:null) ·
+  wc({ boxWidth=0.5, tiles }) (wall-hung, on its cistern box) · basin({ width=0.6, depth=0.46, vanity=true, mirror=true })
+  (bowl on a wall-hung oak vanity, mirror above) · bathtub({ length=1.7, width=0.75, tiles }) (tiled front) ·
+  shower({ width=1.2, depth=0.9, panel=0.8, side:"left"|"right"|null, floor }) (walk-in: flush tray, glass panel on
+  the front, `side` = a glass side where there is no wall, rain head and mixer on its back wall) ·
+  towelRail({ width=0.5, height=0.9, towels:[colours] }) (wall ladder with towels over it: place it at y = floor + 0.25) ·
+  coatHooks({ width=0.8, hooks=5, coats:[colours] }) (oak rail at 1.7 m with a shelf, on the wall) ·
+  bench({ width=1.0, depth=0.34 }) (oak, a shoe shelf under it) · washer({ dryer=false }) (front loader, 60 x 60, a
+  dryer stacked on it with dryer:true) ·
+  rug({ width, depth, color }) ·
   ceilingLight() (flush, origin on the ceiling: fx.place(fx.ceilingLight(), [x, z], 0, ceilingY))
 Models (await fx.model(name, { width, length, height })): real furniture, far more convincing than the parametric pieces;
   prefer them wherever one fits. width / length / height (m) stretch the piece along x / z / y, each on its own
   (p.userData.footprint gives the result). Sizes below are width x depth (x height), facing +z:
-  "bed-oak-linen" (oak headboard, rumpled linen duvet; pass the plan's mattress size: { width: 1.6, length: 2.0 };
-    the duvet hangs about 0.35 m over each side and 0.2 m over the foot; use the parametric bed() below 1.2 m) ·
+  "bed-oak-linen" (oak headboard, rumpled linen duvet; pass the plan's mattress size: { width: 1.6, length: 2.0 },
+    single beds too ({ width: 0.9 }); the duvet hangs about 0.35 m over each side and 0.2 m over the foot) ·
   "nightstand-round-black" (0.5 round, 0.48 high) · "sideboard-teak" (1.78 x 0.42) · "sofa-modular-grey" (3.12 x 1.0,
     grey modules with a cognac ottoman at its left end) · "pouf-knit" (0.57) · "coffee-table-oval-white" (0.75 x 0.48) ·
   "coffee-table-oval-black" (0.98 x 0.62) · "dining-table-white" (2.7 x 1.0) · "dining-chair-grey" (shell chair, oak legs) ·
@@ -189,13 +205,28 @@ Models (await fx.model(name, { width, length, height })): real furniture, far mo
   "pendant-drum" (hangs 1.44 m) · plants: "plant-ficus" (0.54 high) · "plant-leafy-white-pot" · "plant-ivy" · "planter-herbs" ·
   decor: "vase-dry-branches" (0.81 high) · "candle-holder-brass" · "clock-black" · "photo-frame" · "book-open" ·
   "teapot" · "plate" · "wine-glass" · "cup" · "bowls-black" · "toaster" · "bottle-oil" ·
+  kitchen: "coffee-machine-black" (0.31 x 0.46) · "fridge-black-glass" (0.7 x 0.7 x 1.82, free-standing) ·
+  "hood-angled-black" (1.29 wide, on the wall over a hob with no wall units) · "plant-hanging" (hangs 0.62 m from its
+  origin: fx.place(p, [x, z], 0, ceilingY)) · entrance: "shoe-cabinet-white" (1.61 x 0.44 x 0.81) ·
   "sofa-grey-cushions" (2.0 x 0.78) · "sofa-modular-l" (L, 2.9 x 1.95) ·
   "bed-messy-grey" (with a 2.74 m wall headboard and bedside shelves) · "bed-soho-white" (1.8 x 2.25) ·
   "armchair-oak-leather" · "side-table-oak" · "cube-shelf-oak" (1.08 wide) · "coffee-table-oak" · "sideboard-walnut" (2.44) ·
   "plant-large" · "plant-small" · "vase-white" · "pendant-globe" (hangs 0.95 m: fx.place(p, [x, z], 0, ceilingY + 0.28))
-  pendant-cluster and pendant-drum have their top on their origin: fx.place(p, [x, z], 0, ceilingY). Put small decor on a
+  pendant-cluster, pendant-drum and plant-hanging have their top on their origin: fx.place(p, [x, z], 0, ceilingY). Put small decor on a
   surface with fx.place(p, [x, z], rot, surfaceY). A lamp is not a light: add a THREE.PointLight("#ffd9a8", 2, 7, 2)
   where each lamp glows.
+
+### What each room gets
+- Bath / shower room: tiles (tileWalls, tiles on the fronts), WC, basin with mirror, the bath and/or shower the plan draws,
+  a towel rail with towels, a small plant or decor on a shelf, a flush ceiling light.
+- WC: tiles to 1.2 m, WC, a small basin (vanity:false), a towel on a rail.
+- Entrance / hall: "shoe-cabinet-white" or a bench, coatHooks, "mirror-round" ({ width: 0.6, height: 0.6 }, on a wall at
+  y = floor + 1.15), keeping every door clear.
+- Laundry / technical room: washer({ dryer: true }), the heat pump or boiler the plan draws, shelves.
+- Child's room: "bed-oak-linen" at the plan's size (often 0.9 x 2.0), a desk and chair, a rug, a lamp.
+- Kitchen: the run the plan draws (kitchenRun: tall units with the oven and the fridge, sink, hob, hood, splashback),
+  an island when drawn (upper:false, splash:null), and on the worktop a few things in use: "coffee-machine-black",
+  "planter-herbs", "bottle-oil", "bowls-black", "toaster", on a surface at y = floor + 0.9.
 
 ### Checks you get
 - Every render's audit (in the tool result) also lists, per storey: doors nobody can reach from one side (keep 50 cm clear

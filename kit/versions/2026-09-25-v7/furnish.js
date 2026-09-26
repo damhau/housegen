@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
-import { finishMaterial, metricUV } from "./finishes.js";
+import { finishMaterial, metricUV, tileMaterial } from "./finishes.js";
 
 // --------------------------------------------------------------------------
 // Materials
@@ -43,6 +43,13 @@ export const finish = {
   stone: (color = "#e4e1db") => m(`stone:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 0.35 })),
   glass: () => m("glass", () => new THREE.MeshStandardMaterial({ color: "#dfe9ec", roughness: 0.05, transparent: true, opacity: 0.25 })),
   black: () => m("black", () => new THREE.MeshStandardMaterial({ color: "#1d1e1f", roughness: 0.3 })),
+  // a silvered mirror: it shows the environment (the room's light), not the view through it
+  mirror: () => m("mirror", () => new THREE.MeshStandardMaterial({ color: "#e9eeee", roughness: 0.02, metalness: 1 })),
+  // shower screens: clear, a faint green edge tint, a little sheen
+  showerGlass: () => m("showerGlass", () => new THREE.MeshStandardMaterial({ color: "#e8f2ee", roughness: 0.03, metalness: 0.1, transparent: true, opacity: 0.18, side: THREE.DoubleSide })),
+  chrome: () => m("chrome", () => new THREE.MeshStandardMaterial({ color: "#e6e8ea", roughness: 0.08, metalness: 1 })),
+  towel: (color = "#ece8e0") => finishMaterial("cotton-weave", { color, scale: 0.6 })
+    ?? m(`towel:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
 };
 
 // --------------------------------------------------------------------------
@@ -192,18 +199,24 @@ export function wardrobe({ width = 1.2, depth = 0.6, height = 2.3 } = {}) {
 }
 
 /**
- * Kitchen run against a wall: base units with a worktop, plinth, optional wall units and tall units.
- *   tall: [{ at, width }]   tall units (fridge / oven column), `at` = centre measured from the left end
- *   sink / hob: centre positions from the left end (m), or null
- *   worktop: "oak" or a stone colour
+ * Kitchen run along a wall, `length` long, fronts `front`, worktop `worktop` ("oak" or a stone
+ * colour): base units of ~60 cm (handleless: dark joints, a grip rail under the worktop, a recessed
+ * plinth), tall units `tall: [{ at, width, oven }]` (centre from the left end; `oven` puts a
+ * built-in oven at eye height), an undermount sink and an induction hob at `sink` / `hob` (centres
+ * from the left end), wall units above (`upper`), a splashback between them (`splash`: tile options
+ * { size, color }, a colour, or null) and a hood over the hob: built into the wall units, or with
+ * `hood: "chimney"` a canopy and chimney up to `ceiling` (m above the floor), for a run with no
+ * wall units or an island.
  */
-export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null, hob = null, upper = true, front = "#f2f1ed", worktop = "#d9d5cc" } = {}) {
+export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null, hob = null, upper = true, front = "#f2f1ed",
+  worktop = "#d9d5cc", splash = { size: [0.3, 0.1], color: "#f4f3ef" }, hood = true, ceiling = 2.4 } = {}) {
   const g = new THREE.Group();
-  const white = finish.lacquer(front), gap = finish.lacquer("#cdcac3");
+  const white = finish.lacquer(front), gap = finish.lacquer("#8f8b84");
   const top = worktop === "oak" ? finish.oak() : finish.stone(worktop);
   const x0 = -length / 2;
   const inTall = (x) => tall.some((t) => Math.abs(x - t.at) < t.width / 2 - 1e-6);
-  block(g, [length, 0.1, depth - 0.06], [0, 0, -0.03], finish.lacquer("#dcd9d2"));
+  // plinth, 5 cm back and dark: the units seem to float over their own shadow
+  block(g, [length, 0.1, depth - 0.1], [0, 0, -0.05], finish.lacquer("#6f6c66"));
   // base units between the tall ones, doors of ~60 cm
   const spans = [];
   let s = 0;
@@ -216,12 +229,21 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
     block(g, [b - a, 0.76, depth - 0.02], [x0 + (a + b) / 2, 0.1, -0.01], white, 0.003);
     block(g, [b - a + 0.004, 0.04, depth + 0.02], [x0 + (a + b) / 2, 0.86, 0.01], top, 0.004);
     const n = Math.max(1, Math.round((b - a) / 0.6));
-    for (let i = 1; i < n; i++) block(g, [0.004, 0.74, 0.004], [x0 + a + ((b - a) / n) * i, 0.11, depth / 2 - 0.01], gap);
+    for (let i = 1; i < n; i++) block(g, [0.006, 0.74, 0.004], [x0 + a + ((b - a) / n) * i, 0.11, depth / 2 - 0.01], gap);
     block(g, [b - a, 0.004, 0.004], [x0 + (a + b) / 2, 0.66, depth / 2 - 0.01], gap);
+    // the grip rail: a dark recess under the worktop
+    block(g, [b - a - 0.01, 0.025, 0.006], [x0 + (a + b) / 2, 0.83, depth / 2 - 0.012], gap);
   }
   for (const t of tall) {
     block(g, [t.width - 0.004, 2.14, depth], [x0 + t.at, 0.1, 0], white, 0.003);
     block(g, [t.width - 0.02, 0.004, 0.004], [x0 + t.at, 0.95, depth / 2], gap);
+    if (t.oven) {
+      // a built-in oven: black glass, a steel handle, the control strip above
+      const w = Math.min(0.56, t.width - 0.04);
+      block(g, [w, 0.56, 0.01], [x0 + t.at, 0.96, depth / 2 + 0.002], finish.black(), 0.004);
+      block(g, [w, 0.07, 0.01], [x0 + t.at, 1.53, depth / 2 + 0.002], finish.black(), 0.003);
+      block(g, [w - 0.1, 0.018, 0.025], [x0 + t.at, 1.43, depth / 2 + 0.02], finish.steel(), 0.006);
+    }
   }
   if (sink !== null && !inTall(sink)) {
     block(g, [0.6, 0.012, 0.44], [x0 + sink, 0.9, 0.02], finish.steel(), 0.01);
@@ -231,44 +253,278 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
     g.add(tap);
     leg(g, x0 + sink, -depth / 2 + 0.1, 0.98, finish.steel(), 0.012);
   }
-  if (hob !== null && !inTall(hob)) block(g, [0.6, 0.008, 0.52], [x0 + hob, 0.9, 0.02], finish.black());
+  if (hob !== null && !inTall(hob)) {
+    block(g, [0.6, 0.008, 0.52], [x0 + hob, 0.9, 0.02], finish.black());
+    // induction zones: faint rings in the glass
+    const ring = m("hobRing", () => new THREE.MeshStandardMaterial({ color: "#55585b", roughness: 0.3 }));
+    for (const [dx, dz, r] of [[-0.15, -0.11, 0.09], [0.15, -0.11, 0.07], [-0.15, 0.14, 0.07], [0.15, 0.14, 0.09]]) {
+      const t = new THREE.Mesh(new THREE.TorusGeometry(r, 0.0025, 4, 40), ring);
+      t.rotation.x = Math.PI / 2;
+      t.position.set(x0 + hob + dx, 0.9085, 0.02 + dz);
+      g.add(t);
+    }
+  }
   if (upper) {
     for (const [a, b] of spans) {
       block(g, [b - a, 0.7, 0.35], [x0 + (a + b) / 2, 1.5, -depth / 2 + 0.175], white, 0.003);
       const n = Math.max(1, Math.round((b - a) / 0.6));
-      for (let i = 1; i < n; i++) block(g, [0.004, 0.68, 0.004], [x0 + a + ((b - a) / n) * i, 1.51, -depth / 2 + 0.35], gap);
+      for (let i = 1; i < n; i++) block(g, [0.006, 0.68, 0.004], [x0 + a + ((b - a) / n) * i, 1.51, -depth / 2 + 0.35], gap);
+    }
+    if (hob !== null && hood && hood !== "chimney" && !inTall(hob)) {
+      // a flat hood built into the wall unit: a steel lip under it
+      block(g, [0.6, 0.03, 0.3], [x0 + hob, 1.47, -depth / 2 + 0.17], finish.metal("#b7babc"), 0.004);
+    }
+  }
+  if (hob !== null && hood === "chimney" && !inTall(hob)) {
+    const steel = finish.metal("#b7babc");
+    block(g, [0.9, 0.06, 0.5], [x0 + hob, 1.55, -depth / 2 + 0.25], steel, 0.006);
+    block(g, [0.28, Math.max(0.1, ceiling - 1.61), 0.24], [x0 + hob, 1.61, -depth / 2 + 0.14], steel, 0.004);
+  }
+  if (splash && upper) {
+    const mat = typeof splash === "object" ? tileMaterial(splash) : finish.stone(splash);
+    for (const [a, b] of spans) {
+      const sp = block(g, [b - a, 0.6, 0.008], [x0 + (a + b) / 2, 0.9, -depth / 2 + 0.004], mat);
+      if (typeof splash === "object") metricUV(sp.geometry);
     }
   }
   return piece(g, "kitchenRun", length, depth, { sink, hob });
 }
 
-/** Wall-hung WC with a concealed cistern box. */
-export function wc() {
-  const g = new THREE.Group();
-  const c = finish.ceramic();
-  block(g, [0.5, 1.1, 0.16], [0, 0, -0.27], finish.lacquer("#f4f3f0"), 0.01);
-  block(g, [0.36, 0.3, 0.5], [0, 0.18, 0.02], c, 0.12);
-  block(g, [0.37, 0.025, 0.46], [0, 0.48, 0.03], c, 0.012);
-  block(g, [0.18, 0.012, 0.08], [0, 1.1, -0.27], finish.steel(), 0.005);
-  return piece(g, "wc", 0.5, 0.7);
+/** A plan outline with round corners (rx along x, rz along z): for bowls, basins, trays. */
+function roundedOutline(w, d, r) {
+  const sh = new THREE.Shape(), x = w / 2, z = d / 2;
+  r = Math.min(r, x, z);
+  sh.moveTo(-x + r, -z);
+  sh.lineTo(x - r, -z);
+  sh.quadraticCurveTo(x, -z, x, -z + r);
+  sh.lineTo(x, z - r);
+  sh.quadraticCurveTo(x, z, x - r, z);
+  sh.lineTo(-x + r, z);
+  sh.quadraticCurveTo(-x, z, -x, z - r);
+  sh.lineTo(-x, -z + r);
+  sh.quadraticCurveTo(-x, -z, -x + r, -z);
+  return sh;
 }
 
-/** Washbasin on an oak vanity with a mirror above. */
-export function basin({ width = 0.6, depth = 0.46, vanity = true, mirror = true } = {}) {
+/** A solid of that outline, `h` high, its bottom at `y`, bevelled all round. */
+function roundedSolid(g, w, d, h, r, y, z, material, bevel = 0.012) {
+  const geo = new THREE.ExtrudeGeometry(roundedOutline(w - 2 * bevel, d - 2 * bevel, r), {
+    depth: Math.max(0.001, h - 2 * bevel), bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 10 });
+  geo.rotateX(-Math.PI / 2); // outline in x/z, extruded up
+  geo.translate(0, bevel, 0);
+  const mesh = shade(new THREE.Mesh(geo, material));
+  mesh.position.set(0, y, z);
+  g.add(mesh);
+  return mesh;
+}
+
+/**
+ * A ceramic bowl `w` x `d`, its rim at `top`, `depth` deep: walls `rim` thick all the way down, a
+ * floor and a drain. The inside is open: whatever carries it must stay below top - depth.
+ */
+function sunkenBowl(g, w, d, top, depth, rim, material, z = 0) {
+  const y = top - depth;
+  block(g, [w, depth, rim], [0, y, z - d / 2 + rim / 2], material, 0.01);
+  block(g, [w, depth, rim], [0, y, z + d / 2 - rim / 2], material, 0.01);
+  block(g, [rim, depth, d - 2 * rim], [-w / 2 + rim / 2, y, z], material, 0.01);
+  block(g, [rim, depth, d - 2 * rim], [w / 2 - rim / 2, y, z], material, 0.01);
+  block(g, [w - 2 * rim, 0.02, d - 2 * rim], [0, y, z], material, 0.008);
+  const drain = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.004, 24), finish.chrome()));
+  drain.position.set(0, y + 0.021, z);
+  g.add(drain);
+}
+
+/** A mixer tap on the wall or the deck: body, spout reaching `reach` forward. */
+function tap(g, x, y, z, reach = 0.14) {
+  const c = finish.chrome();
+  block(g, [0.05, 0.05, 0.05], [x, y, z], c, 0.01);
+  block(g, [0.022, 0.022, reach], [x, y + 0.03, z + reach / 2], c, 0.008);
+  block(g, [0.03, 0.012, 0.012], [x, y + 0.055, z], c, 0.004); // lever
+}
+
+/**
+ * Wall-hung WC: the bowl (rounded, tapering to the front) with seat and lid, on a tiled or lacquered
+ * box that hides the cistern (`boxWidth` wide: 0 for none, e.g. when the wall is already built out),
+ * the flush plate on it.
+ */
+export function wc({ boxWidth = 0.5, boxHeight = 1.1, tiles } = {}) {
   const g = new THREE.Group();
-  if (vanity) block(g, [width, 0.4, depth - 0.02], [0, 0.45, -0.01], finish.oak(), 0.01);
-  block(g, [width, 0.12, depth], [0, 0.85, 0], finish.ceramic(), 0.04);
-  leg(g, 0, -depth / 2 + 0.06, 1.15, finish.steel(), 0.012);
-  if (mirror) block(g, [width, 0.7, 0.02], [0, 1.2, -depth / 2], finish.glass(), 0.01);
+  const c = finish.ceramic();
+  if (boxWidth > 0) {
+    const box = block(g, [boxWidth, boxHeight, 0.18], [0, 0, -0.26], tiles ? tileMaterial(tiles) : finish.lacquer("#f4f3f0"), 0.004);
+    if (tiles) metricUV(box.geometry);
+    block(g, [0.24, 0.16, 0.012], [0, boxHeight - 0.28, -0.166], finish.chrome(), 0.004);
+  }
+  // bowl: 36 x 54, hung 40 cm above the floor, narrower at the front
+  const bowl = roundedSolid(g, 0.36, 0.52, 0.32, 0.16, 0.08, 0.05, c, 0.02);
+  bowl.scale.set(1, 1, 1);
+  roundedSolid(g, 0.37, 0.5, 0.025, 0.17, 0.4, 0.06, c, 0.008); // seat
+  roundedSolid(g, 0.36, 0.48, 0.02, 0.17, 0.425, 0.055, finish.ceramic(), 0.008); // lid
+  return piece(g, "wc", Math.max(0.37, boxWidth), 0.7);
+}
+
+/**
+ * Washbasin: a ceramic top with a real bowl on an oak vanity (or wall-hung without), a tap, and
+ * a mirror above (silvered, `mirrorHeight` high, its bottom at 1.05 m).
+ */
+export function basin({ width = 0.6, depth = 0.46, vanity = true, mirror = true, mirrorHeight = 0.7 } = {}) {
+  const g = new THREE.Group();
+  if (vanity) {
+    // under the bowl (its floor at 0.74)
+    block(g, [width - 0.01, 0.28, depth - 0.03], [0, 0.46, -0.015], finish.oak(), 0.006);
+    block(g, [width - 0.06, 0.004, 0.004], [0, 0.62, depth / 2 - 0.03], finish.black()); // grip line
+  }
+  sunkenBowl(g, width, depth, 0.86, 0.12, 0.05, finish.ceramic());
+  tap(g, 0, 0.86, -depth / 2 + 0.06, Math.min(0.13, depth * 0.3));
+  if (mirror) {
+    block(g, [width, mirrorHeight, 0.012], [0, 1.05, -depth / 2 - 0.006], finish.mirror(), 0.004);
+  }
   return piece(g, "basin", width, depth);
 }
 
-/** Built-in bathtub with a tiled front. */
-export function bathtub({ length = 1.7, width = 0.75 } = {}) {
+/** Built-in bathtub: a white bath (rim, sunken inside) in a tiled or white front panel, a tap on the wall. */
+export function bathtub({ length = 1.7, width = 0.75, tiles } = {}) {
   const g = new THREE.Group();
-  block(g, [length, 0.56, width], [0, 0, 0], finish.lacquer("#eceae5"), 0.01);
-  block(g, [length - 0.12, 0.02, width - 0.12], [0, 0.55, 0], finish.ceramic(), 0.01);
+  const front = tiles ? tileMaterial(tiles) : finish.lacquer("#eceae5");
+  // the tub on a base under its floor, its front clad (tiles or a white panel) up to the rim
+  block(g, [length, 0.14, width - 0.02], [0, 0, -0.01], front, 0.004);
+  sunkenBowl(g, length, width - 0.02, 0.56, 0.42, 0.06, finish.ceramic(), -0.01);
+  const apron = block(g, [length, 0.51, 0.012], [0, 0, width / 2 - 0.006], front, 0.002);
+  if (tiles) metricUV(apron.geometry);
+  tap(g, -length / 2 + 0.3, 0.72, -width / 2 + 0.02, 0.16);
   return piece(g, "bathtub", length, width);
+}
+
+/**
+ * Walk-in shower `width` x `depth` (its back on the wall): a flush tray in `floor` (tile material
+ * options or a colour) with a linear drain, a fixed glass panel `panel` metres wide on the front,
+ * 2 m high with a steadying bar to the wall, the way in beside it; `side` "left" / "right" closes
+ * that side with glass too (a shower in a corner has a wall on the other side). A rain head on an
+ * arm, a hand shower on a rail and a thermostatic mixer on the back wall.
+ */
+export function shower({ width = 1.2, depth = 0.9, panel = 0.8, side = null, floor } = {}) {
+  const g = new THREE.Group();
+  const trayMat = floor && typeof floor === "object" ? tileMaterial(floor) : finish.stone(floor ?? "#8e8b85");
+  const tray = block(g, [width, 0.012, depth], [0, 0, 0], trayMat);
+  if (floor && typeof floor === "object") metricUV(tray.geometry);
+  block(g, [width - 0.1, 0.004, 0.05], [0, 0.012, -depth / 2 + 0.08], finish.steel()); // drain
+  const glass = finish.showerGlass(), black = finish.black();
+  const p = Math.min(panel, width);
+  // the front panel starts at the closed side (the glass side, or the left when both are walls)
+  const s = side === "right" ? 1 : -1;
+  const edge = s * (width / 2);
+  block(g, [p, 2.0, 0.008], [edge - s * (p / 2), 0.012, depth / 2 - 0.02], glass);
+  block(g, [0.02, 2.0, 0.02], [edge - s * 0.01, 0.012, depth / 2 - 0.02], black); // profile
+  if (side) {
+    block(g, [0.008, 2.0, depth - 0.04], [edge - s * 0.02, 0.012, 0], glass);
+  } else {
+    block(g, [0.012, 0.012, depth - 0.02], [edge - s * (p - 0.02), 1.95, 0], black); // bar to the back wall
+  }
+  const c = finish.chrome();
+  // rain head on an arm from the back wall
+  block(g, [0.02, 0.02, 0.35], [0, 2.1, -depth / 2 + 0.175], c, 0.006);
+  const head = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.012, 40), c));
+  head.position.set(0, 2.08, -depth / 2 + 0.33);
+  g.add(head);
+  // mixer and hand shower on a rail
+  block(g, [0.16, 0.08, 0.05], [width / 2 - 0.3, 1.05, -depth / 2 + 0.025], c, 0.01);
+  block(g, [0.02, 0.8, 0.02], [width / 2 - 0.14, 1.1, -depth / 2 + 0.03], c, 0.008);
+  block(g, [0.05, 0.2, 0.05], [width / 2 - 0.14, 1.6, -depth / 2 + 0.07], c, 0.02);
+  return piece(g, "shower", width, depth);
+}
+
+/**
+ * Heated towel rail (a ladder of bars on the wall) with `towels` hung over it (their colours),
+ * `width` x `height`, its bottom at its origin: place it with y = floor + 0.2.
+ */
+export function towelRail({ width = 0.5, height = 0.9, towels = ["#ece8e0", "#c9c3b6"], color } = {}) {
+  const g = new THREE.Group();
+  const bar = color ? finish.metal(color) : finish.lacquer("#f2f2f0");
+  const z = -0.04;
+  for (const s of [-1, 1]) leg(g, s * (width / 2 - 0.015), z, height, bar, 0.013); // uprights, bottom at 0
+  const rungs = Math.max(3, Math.round(height / 0.12));
+  for (let i = 0; i < rungs; i++) {
+    const r = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, width - 0.03, 10), bar));
+    r.rotation.z = Math.PI / 2;
+    r.position.set(0, 0.06 + (i * (height - 0.12)) / (rungs - 1), z);
+    g.add(r);
+  }
+  // each towel folded over a rung near the top: a front and a back fall, a round fold on the bar
+  towels.slice(0, 2).forEach((col, k) => {
+    const t = finish.towel(col);
+    const barY = height - 0.08 - k * 0.2, tw = width - 0.1, fall = 0.42 - k * 0.1;
+    block(g, [tw, fall, 0.012], [0, barY - fall, z + 0.018], t, 0.006);
+    block(g, [tw, fall * 0.8, 0.012], [0, barY - fall * 0.8, z - 0.018], t, 0.006);
+    const fold = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, tw, 16, 1, false, 0, Math.PI), t));
+    fold.rotation.z = Math.PI / 2;
+    fold.position.set(0, barY, z);
+    g.add(fold);
+  });
+  return piece(g, "towelRail", width, 0.1, { height });
+}
+
+/**
+ * Coat hooks on the wall: an oak rail `width` wide at 1.7 m with black hooks and a shelf above it;
+ * `coats` (their colours) hang from the first hooks. Origin: bottom centre on the floor, back on the wall.
+ */
+export function coatHooks({ width = 0.8, hooks = 5, coats = ["#4a4f55", "#b59f82"] } = {}) {
+  const g = new THREE.Group();
+  const oak = finish.oak(), black = finish.black();
+  block(g, [width, 0.1, 0.022], [0, 1.65, -0.02], oak, 0.004); // rail
+  block(g, [width, 0.022, 0.24], [0, 1.9, 0.08], oak, 0.004); // shelf
+  const step = width / hooks;
+  for (let i = 0; i < hooks; i++) {
+    const x = -width / 2 + step * (i + 0.5);
+    block(g, [0.016, 0.016, 0.07], [x, 1.69, 0.025], black, 0.006);
+  }
+  // coats on every other hook from the second, so they stay within the rail
+  coats.slice(0, Math.floor((hooks - 1) / 2)).forEach((col, i) => {
+    const x = -width / 2 + step * (1 + 2 * i + 0.5);
+    const fab = finish.fabric(col);
+    // a coat on a hook: shoulders, a body that widens a little, a fold where it hangs
+    block(g, [0.34, 0.2, 0.12], [x, 1.5, 0.08], fab, 0.05);
+    block(g, [0.36, 0.62, 0.1], [x, 0.9, 0.075], fab, 0.04);
+  });
+  return piece(g, "coatHooks", width, 0.24, { height: 1.92 });
+}
+
+/** Entrance bench: an oak seat on two panel legs, a shoe shelf under it. */
+export function bench({ width = 1.0, depth = 0.34, height = 0.45 } = {}) {
+  const g = new THREE.Group();
+  const oak = finish.oak();
+  block(g, [width, 0.035, depth], [0, height - 0.035, 0], oak, 0.006);
+  for (const s of [-1, 1]) block(g, [0.03, height - 0.035, depth - 0.02], [s * (width / 2 - 0.04), 0, 0], oak, 0.004);
+  block(g, [width - 0.1, 0.02, depth - 0.04], [0, 0.1, 0], oak, 0.004);
+  return piece(g, "bench", width, depth);
+}
+
+/**
+ * Front-loading washing machine (60 x 60 x 85): white, a round door with a chrome ring and dark
+ * glass, a control strip with a dial. `dryer: true` stacks a dryer on it (on a stacking frame).
+ */
+export function washer({ dryer = false } = {}) {
+  const g = new THREE.Group();
+  const white = finish.lacquer("#f3f3f1"), chrome = finish.chrome(), black = finish.black();
+  const unit = (y0) => {
+    block(g, [0.6, 0.85, 0.58], [0, y0, 0], white, 0.02);
+    block(g, [0.56, 0.1, 0.006], [0, y0 + 0.72, 0.293], finish.lacquer("#e2e2e0"), 0.003); // control strip
+    const dial = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.02, 24), chrome));
+    dial.rotation.x = Math.PI / 2;
+    dial.position.set(0.18, y0 + 0.77, 0.3);
+    g.add(dial);
+    const ring = shade(new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.022, 12, 40), chrome));
+    ring.position.set(0, y0 + 0.4, 0.3);
+    g.add(ring);
+    const glass = shade(new THREE.Mesh(new THREE.CircleGeometry(0.155, 40), black));
+    glass.position.set(0, y0 + 0.4, 0.302);
+    g.add(glass);
+  };
+  unit(0);
+  if (dryer) {
+    block(g, [0.6, 0.04, 0.58], [0, 0.85, 0], finish.lacquer("#dcdcda"), 0.004); // stacking frame
+    unit(0.89);
+  }
+  return piece(g, "washer", 0.6, 0.6, { height: dryer ? 1.74 : 0.85 });
 }
 
 /** Flush ceiling light (opal disc), for halls, bathrooms and low rooms. Its origin is on the ceiling. */
@@ -292,6 +548,8 @@ export function rug({ width = 2.0, depth = 1.4, color = "#d8d2c5" } = {}) {
 // --------------------------------------------------------------------------
 // Scanned models (Poly Haven, CC0), served from kit/assets/polyhaven/<id>/<id>.gltf
 // --------------------------------------------------------------------------
+
+const VISTHETIQUE = "“Modern Apartment” by visthetique, CC BY 4.0";
 
 export const MODELS = {
   "armchair-oak-leather": { id: "modern_arm_chair_01", rotate: 0 },
@@ -356,6 +614,13 @@ export const MODELS = {
   "bowls-black": { licensed: "martel/bowls.glbx", rotate: 0 },
   "toaster": { licensed: "martel/toaster.glbx", rotate: 0 },
   "bottle-oil": { licensed: "martel/oilbottle.glbx", rotate: 0 },
+  // CC Attribution (credited in the viewer): pieces of visthetique's "Modern Apartment" (Sketchfab),
+  // split and masked like the bought ones (kit/scripts/licensed/pack.mjs)
+  "coffee-machine-black": { licensed: "visthetique/coffee-maker.glbx", rotate: 0, credit: VISTHETIQUE },
+  "fridge-black-glass": { licensed: "visthetique/refrigator-001.glbx", rotate: 0, credit: VISTHETIQUE },
+  "hood-angled-black": { licensed: "visthetique/hood.glbx", rotate: 0, credit: VISTHETIQUE },
+  "plant-hanging": { licensed: "visthetique/flower.glbx", rotate: 0, hang: true, credit: VISTHETIQUE },
+  "shoe-cabinet-white": { licensed: "visthetique/shoerack.glbx", rotate: -Math.PI / 2, credit: VISTHETIQUE },
 };
 // absolute: renderer snapshots (kit/versions/<name>/) share the working copy's assets
 const ASSETS = new URL("/kit/assets/", import.meta.url);
@@ -475,6 +740,7 @@ export function onWall(room, edge, at, p, { y = 0, gap = 0.02, out = 0 } = {}) {
 }
 
 export default {
-  finish, sofa, bed, nightstand, chair, diningSet, wardrobe, kitchenRun, wc, basin, bathtub, rug, ceilingLight,
+  finish, sofa, bed, nightstand, chair, diningSet, wardrobe, kitchenRun, wc, basin, bathtub, shower, towelRail,
+  coatHooks, bench, washer, rug, ceilingLight,
   MODELS, model, credits, place, onWall,
 };

@@ -1,0 +1,82 @@
+{
+ "coffee-maker": {
+  "source": "Coffee+Maker",
+  "size": [
+   0.31,
+   0.44,
+   0.46
+  ],
+  "triangles": 5584,
+  "bytes": 123984
+ },
+ "dishwasher-001": {
+  "source": "Dishwasher.001",
+  "size": [
+   0.66,
+   0.86,
+   0.61
+  ],
+  "triangles": 987,
+  "bytes": 409636
+ },
+ "flower": {
+  "source": "Flower",
+  "size": [
+   0.29,
+   0.62,
+   0.31
+  ],
+  "triangles": 14230,
+  "bytes": 327364
+ },
+ "hobs-001": {
+  "source": "Hobs.001",
+  "size": [
+   0.88,
+   0,
+   0.58
+  ],
+  "triangles": 157,
+  "bytes": 23144
+ },
+ "hood": {
+  "source": "Hood",
+  "size": [
+   1.29,
+   0.87,
+   0.91
+  ],
+  "triangles": 36238,
+  "bytes": 543804
+ },
+ "oven-001": {
+  "source": "Oven.001",
+  "size": [
+   0.69,
+   0.99,
+   0.64
+  ],
+  "triangles": 2699,
+  "bytes": 87184
+ },
+ "refrigator-001": {
+  "source": "Refrigator.001",
+  "size": [
+   0.7,
+   1.82,
+   0.7
+  ],
+  "triangles": 19237,
+  "bytes": 585156
+ },
+ "shoerack": {
+  "source": "shoeRack",
+  "size": [
+   0.44,
+   0.81,
+   1.61
+  ],
+  "triangles": 2960,
+  "bytes": 431680
+ }
+}

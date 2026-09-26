@@ -11,11 +11,14 @@ function box(p) {
   return new THREE.Box3().setFromObject(p);
 }
 
-test("every parametric piece sits on the floor, tagged with its footprint", () => {
-  for (const p of [fx.sofa(), fx.bed(), fx.nightstand(), fx.chair(), fx.diningSet(), fx.wardrobe(), fx.kitchenRun(), fx.wc(), fx.basin(), fx.bathtub(), fx.rug()]) {
+test("every parametric piece sits on the floor (or hangs on the wall above it), tagged with its footprint", () => {
+  for (const p of [fx.sofa(), fx.bed(), fx.nightstand(), fx.chair(), fx.diningSet(), fx.wardrobe(), fx.kitchenRun(), fx.wc(), fx.basin(), fx.bathtub(), fx.shower(), fx.towelRail(), fx.coatHooks(), fx.bench(), fx.washer({ dryer: true }), fx.rug()]) {
     const b = box(p);
     assert.equal(p.userData.kind, "furniture");
-    assert.ok(Math.abs(b.min.y) < 0.02, `${p.userData.name} bottom at ${b.min.y.toFixed(3)}`);
+    // the basin's vanity and the coat hooks hang on the wall; everything else stands on the floor
+    // (the towel rail's origin is its own bottom)
+    if (["basin", "coatHooks"].includes(p.userData.name)) assert.ok(b.min.y > 0.2, `${p.userData.name} bottom at ${b.min.y.toFixed(3)}`);
+    else assert.ok(Math.abs(b.min.y) < 0.02, `${p.userData.name} bottom at ${b.min.y.toFixed(3)}`);
     const [w, d] = p.userData.footprint;
     const size = b.getSize(new THREE.Vector3());
     assert.ok(size.x <= w + 0.12 && size.z <= d + 0.12, `${p.userData.name} ${size.x.toFixed(2)}×${size.z.toFixed(2)} in ${w}×${d}`);

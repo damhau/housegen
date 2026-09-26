@@ -50,3 +50,36 @@ test("floorPlan keeps its partitions and puts a leaf in each door opening", () =
   plan.traverse((o) => { if (o.userData?.kind === "interiorDoor") doors++; });
   assert.equal(doors, 1);
 });
+
+test("tileWalls tiles the walls to the height asked for, around the doors and windows", async () => {
+  const { tileWalls, floorPlan } = await import("../interior.js");
+  const house = await import("../house.js");
+  const root = new THREE.Group();
+  // a 3 x 2 bathroom: a door in the partition on its north side, a window in its south wall
+  const bath = { name: "bath", use: "bath", polygon: [[0, 0], [3, 0], [3, 2], [0, 2]] };
+  root.add(floorPlan({ y: 0, height: 2.4, rooms: [bath],
+    partitions: [{ from: [0, -0.05], to: [3, -0.05], thickness: 0.1, openings: [{ offset: 1, width: 0.8 }] }] }));
+  const win = house.windowUnit({ width: 1.0, height: 1.0 });
+  win.position.set(1.5, 1.0, 2.15); // in the south wall, sill at 1.0: its bottom 20 cm under the tiles' top
+  root.add(win);
+  const tiled = (g) => {
+    let a = 0;
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      const pos = o.geometry.attributes.position, idx = o.geometry.index;
+      const P = [0, 1, 2].map(() => new THREE.Vector3());
+      for (let t = 0; t < idx.count; t += 3) {
+        [0, 1, 2].forEach((k) => P[k].fromBufferAttribute(pos, idx.getX(t + k)));
+        const n = new THREE.Vector3().crossVectors(P[1].clone().sub(P[0]), P[2].clone().sub(P[0]));
+        if (n.z / n.length() > 0.99) a += n.length() / 2; // the faces towards the room
+      }
+    });
+    return a;
+  };
+  const g = tileWalls(root, bath, { y: 0, height: 1.2 });
+  // perimeter 10 m x 1.2, less the door (0.8 x 1.2) and the window's bottom 0.2 m (1.0 x 0.2)
+  assert.ok(Math.abs(tiled(g) - (12 - 0.96 - 0.2)) < 0.02, `tiled ${tiled(g).toFixed(3)} m²`);
+  // full height behind the bath (edge 1, the east wall, 2 m): + 2 x 1.2
+  const full = tileWalls(root, bath, { y: 0, height: 1.2, full: [1] });
+  assert.ok(Math.abs(tiled(full) - (12 - 0.96 - 0.2 + 2 * 1.2)) < 0.02, `tiled ${tiled(full).toFixed(3)} m²`);
+});
