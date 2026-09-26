@@ -3,7 +3,7 @@
   heights   a polar grid around the anchor (AZIMUTHS directions by the RINGS radii), altitudes in m with the
             Earth's curvature taken off (as seen from the anchor, with the usual refraction), so the runtime
             draws it flat: the Terrarium elevation tiles (open, worldwide: Switzerland and its neighbours) at
-            ~25 m within 12 km, ~100 m beyond; within 400 m it joins swissALTI3D (the surroundings' ground)
+            ~25 m within 12 km, ~50 m to 40 km, ~100 m beyond; within 400 m it joins swissALTI3D (the surroundings' ground)
   photos    SWISSIMAGE over ±3 km at 2 m a pixel (mid) and ±80 km at 50 m (far): the WMS covers the
             neighbouring countries too
 Same local frame as the surroundings: x east, z south, metres around the anchor.
@@ -25,8 +25,8 @@ TERRARIUM = "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}
 EXTENT = 80_000  # metres: the Alps seen from the Plateau are 40 to 90 km away
 MID = 3_000
 INNER = 170  # the first ring, under the rim of the surroundings' disc
-AZIMUTHS = 512
-RINGS = 190
+AZIMUTHS = 1024  # 0.35°: a ridge 40 km away is drawn every ~250 m
+RINGS = 280
 EARTH = 6_371_000.0
 REFRACTION = 0.13
 
@@ -95,10 +95,12 @@ async def heights(
     zz = r[:, None] * np.sin(a)[None, :]
     lon, lat = Transformer.from_crs(2056, 4326, always_xy=True).transform(e0 + x, n0 - zz)
     lon, lat = np.asarray(lon), np.asarray(lat)
-    near = r < 12_000
+    # the finest tiles where a pixel still covers a few metres of screen: ~25 m within 12 km, ~50 m to 40 km
     h = np.empty(x.shape, dtype=np.float32)
-    h[near] = await _sample(client, lon[near], lat[near], 12)
-    h[~near] = await _sample(client, lon[~near], lat[~near], 10)
+    for lo, hi, zoom in ((0, 12_000, 12), (12_000, 40_000, 11), (40_000, math.inf, 10)):
+        band = (r[:, None] >= lo) & (r[:, None] < hi) & np.ones_like(x, dtype=bool)
+        if band.any():
+            h[band] = await _sample(client, lon[band], lat[band], zoom)
     # within 400 m: the survey's ground (the disc's), easing into the tiles by 400 m
     size = ground.shape[0]
     gi = np.clip((x + radius) / step, 0, size - 1.001)

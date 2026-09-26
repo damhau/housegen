@@ -14,7 +14,7 @@ from housegen.core.config import get_settings
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
-LATEST = "2026-09-25-v6"
+LATEST = "2026-09-25-v7"
 
 
 @pytest.fixture

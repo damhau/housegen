@@ -35,6 +35,11 @@
       "name": "2026-09-25-v6",
       "date": "2026-09-25",
       "note": "v5 plus the real far landscape with the surroundings (the relief to 80 km with its aerial photos, the Earth's curvature, drawn pulled in toward the camera, hazed into the sky's own horizon colour: the lake, the Alps, the Jura), generic windows and doors on the neighbours, a livelier ground up close, the plot's edge sunk instead of cut (no gap), and the sky's clouds from a mask computed at build time (kit/sky/v6: no blocks, no grain). The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-09-25-v7",
+      "date": "2026-09-25",
+      "note": "v6 with the far landscape recalibrated against photographs of the Alps from Lausanne (aerial perspective mixed as the screen shows it: slate-blue mountains, hue 215, saturation 0.26, where v6 drew them ultramarine; its own shading, rock on steep slopes; a finer relief once the surroundings are fetched again), the neighbours' renders varied (a Swiss palette), their foot darker, larger windows, shutters on some, a 5 m join to the plot (no bank tilting the roads), and no dithered rim. The viewer's default. Not pinned."
     }
   ]
 }
