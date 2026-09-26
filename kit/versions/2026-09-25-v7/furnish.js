@@ -527,6 +527,59 @@ export function washer({ dryer = false } = {}) {
   return piece(g, "washer", 0.6, 0.6, { height: dryer ? 1.74 : 0.85 });
 }
 
+/**
+ * Things on a bathroom ledge (the top of the WC's box, a shelf, a vanity): a tray with a soap
+ * dispenser and a toothbrush cup with two brushes. `width` x 0.12, origin at its bottom centre:
+ * place it at the ledge's height.
+ */
+export function bathAccessories({ width = 0.3, tray = "#2a2b2c" } = {}) {
+  const g = new THREE.Group();
+  block(g, [width, 0.012, 0.12], [0, 0, 0], finish.metal(tray), 0.004);
+  const cyl = (r, h, x, y, mat, seg = 24) => {
+    const c = shade(new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), mat));
+    c.position.set(x, y + h / 2, 0);
+    g.add(c);
+    return c;
+  };
+  // soap dispenser: an amber glass bottle, a chrome pump
+  const amber = m("amberGlass", () => new THREE.MeshStandardMaterial({ color: "#8a5a2b", roughness: 0.15, transparent: true, opacity: 0.85 }));
+  cyl(0.033, 0.13, -width / 4, 0.012, amber);
+  cyl(0.012, 0.03, -width / 4, 0.142, finish.chrome(), 12);
+  block(g, [0.008, 0.008, 0.04], [-width / 4, 0.165, 0.015], finish.chrome());
+  // toothbrush cup, two brushes leaning in it
+  cyl(0.032, 0.1, width / 4, 0.012, finish.ceramic());
+  for (const [dx, col] of [[-0.01, "#7fa7b5"], [0.012, "#e9e3d6"]]) {
+    const b = shade(new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.18, 0.012), finish.lacquer(col)));
+    b.position.set(width / 4 + dx, 0.14, 0);
+    b.rotation.z = dx * 12;
+    g.add(b);
+  }
+  return piece(g, "bathAccessories", width, 0.12, { height: 0.22 });
+}
+
+/** Folded towels stacked (their colours from the bottom), `width` x `depth`. */
+export function towelStack({ colors = ["#e7e2d8", "#cfc7b8", "#f2efe9"], width = 0.36, depth = 0.26 } = {}) {
+  const g = new THREE.Group();
+  colors.forEach((col, i) => {
+    const t = block(g, [width - i * 0.01, 0.055, depth - i * 0.008], [(i % 2 ? 0.006 : -0.004), i * 0.055, 0], finish.towel(col), 0.022);
+    t.rotation.y = (i - 1) * 0.03;
+  });
+  return piece(g, "towelStack", width, depth, { height: colors.length * 0.055 });
+}
+
+/** A woven laundry basket with its lid, `diameter` x `height`. */
+export function laundryBasket({ diameter = 0.38, height = 0.55, color = "#b9a47f" } = {}) {
+  const g = new THREE.Group();
+  const weave = finish.weave(color);
+  const body = shade(new THREE.Mesh(metricUV(new THREE.CylinderGeometry(diameter / 2, diameter / 2 - 0.03, height - 0.03, 32)), weave));
+  body.position.y = (height - 0.03) / 2;
+  g.add(body);
+  const lid = shade(new THREE.Mesh(metricUV(new THREE.CylinderGeometry(diameter / 2 + 0.01, diameter / 2 + 0.01, 0.03, 32)), weave));
+  lid.position.y = height - 0.015;
+  g.add(lid);
+  return piece(g, "laundryBasket", diameter + 0.02, diameter + 0.02, { height });
+}
+
 /** Flush ceiling light (opal disc), for halls, bathrooms and low rooms. Its origin is on the ceiling. */
 export function ceilingLight({ diameter = 0.32 } = {}) {
   const g = new THREE.Group();
@@ -741,6 +794,6 @@ export function onWall(room, edge, at, p, { y = 0, gap = 0.02, out = 0 } = {}) {
 
 export default {
   finish, sofa, bed, nightstand, chair, diningSet, wardrobe, kitchenRun, wc, basin, bathtub, shower, towelRail,
-  coatHooks, bench, washer, rug, ceilingLight,
+  coatHooks, bench, washer, bathAccessories, towelStack, laundryBasket, rug, ceilingLight,
   MODELS, model, credits, place, onWall,
 };

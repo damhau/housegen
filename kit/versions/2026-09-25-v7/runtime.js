@@ -1453,7 +1453,9 @@ async function interiorAudit() {
   const floors = storeys();
   if (!floors.length) return [];
   const { Walk } = await import("./walk.js");
-  const lines = [];
+  // rooms missing what their use needs (a bath without tiles or towel rail, a bedroom without a bed)
+  const { roomEssentials } = await import("./interior.js");
+  const lines = roomEssentials(state.houseGroup).map((l) => (l.startsWith('"') ? `room incomplete: ${l}` : l));
   const f = (v) => (Math.round(v * 100) / 100).toString();
   for (const s of floors) {
     const rooms = s.plan.userData.rooms;

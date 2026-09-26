@@ -236,7 +236,7 @@ export function tileWalls(root, room, { y = 0, height = 1.2, full = [], fullHeig
   }
   const inward = area > 0 ? 1 : -1; // as in furnish.onWall
   const g = new THREE.Group();
-  g.userData = { kind: "wallTiles", room: room.name };
+  g.userData = { kind: "wallTiles", room: room.name, polygon: poly, y };
   for (let i = 0; i < poly.length; i++) {
     if (edges && !edges.includes(i)) continue;
     const [ax, az] = poly[i], [bx, bz] = poly[(i + 1) % poly.length];
@@ -289,4 +289,90 @@ export function tileWalls(root, room, { y = 0, height = 1.2, full = [], fullHeig
   return g;
 }
 
-export default { floorPlan, partition, interiorDoor, polygonArea, tileWalls };
+/** Is point [x, z] inside polygon (even-odd), or within `margin` metres of its edges? */
+function nearPolygon([x, z], poly, margin = 0) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > z) !== (zj > z) && x < ((xj - xi) * (z - zi)) / (zj - zi) + xi) inside = !inside;
+  }
+  if (inside || margin <= 0) return inside;
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, az] = poly[i], [bx, bz] = poly[(i + 1) % poly.length];
+    const dx = bx - ax, dz = bz - az, L2 = dx * dx + dz * dz || 1;
+    const t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / L2));
+    if (Math.hypot(x - (ax + t * dx), z - (az + t * dz)) <= margin) return true;
+  }
+  return false;
+}
+
+// What a piece counts as, from the words of its name: the kit's pieces ("towelRail"), the catalogue's
+// models ("bed-oak-linen") and the builder's own tagged pieces ("Oak vanity and recessed washbasin").
+const KINDS = {
+  bed: (w) => w.includes("bed") || w.includes("bunk"),
+  wc: (w) => w.includes("wc") || w.includes("toilet"),
+  basin: (w) => ["basin", "washbasin", "vanity", "lavabo", "sink"].some((k) => w.includes(k)),
+  bathtub: (w) => w.includes("bathtub") || w.includes("tub"), // not "bath" alone: a bath mat is not a bath
+  shower: (w) => w.includes("shower"),
+  towels: (w) => w.includes("towelrail") || w.includes("towel") || w.includes("towels"),
+  kitchen: (w) => w.includes("kitchenrun") || w.includes("kitchen"),
+  seat: (w) => ["sofa", "armchair", "couch"].some((k) => w.includes(k)),
+  diningTable: (w) => w.includes("diningset") || w.includes("dining"),
+  desk: (w) => w.includes("desk"),
+};
+// What each room use needs (the builder's "What each room gets", the parts that can be checked)
+const ESSENTIALS = {
+  bath: [["tiles", "walls not tiled (tileWalls)"], [["basin"], "no basin (fx.basin)"], [["bathtub", "shower"], "no bath or shower (fx.bathtub, fx.shower)"],
+    [["towels"], "no towel rail with towels (fx.towelRail)"]],
+  wc: [["tiles", "walls not tiled (tileWalls)"], [["wc"], "no WC (fx.wc)"], [["basin"], "no hand basin (fx.basin)"]],
+  bedroom: [[["bed"], "no bed (\"bed-oak-linen\")"]],
+  kitchen: [[["kitchen"], "no kitchen run (fx.kitchenRun)"]],
+  "kitchen-living": [[["kitchen"], "no kitchen run (fx.kitchenRun)"]],
+  living: [[["seat"], "no sofa or armchair"]],
+  dining: [[["diningTable"], "no dining table"]],
+  office: [[["desk"], "no desk"]],
+};
+
+/**
+ * The rooms of every floorPlan in `root` that miss something their use needs (a bath without tiles
+ * or towel rail, a bedroom without a bed...). One line per room; empty when all are complete. A
+ * piece belongs to a room when its origin (bottom centre) stands in the room's floor polygon (or
+ * within 15 cm of its walls: wall-hung pieces) at the room's storey.
+ */
+export function roomEssentials(root) {
+  root.updateMatrixWorld(true);
+  const rooms = [], pieces = [], tiles = [];
+  const at = new THREE.Vector3();
+  root.traverse((o) => {
+    const u = o.userData ?? {};
+    if (u.kind === "floorPlan") {
+      o.getWorldPosition(at);
+      for (const r of u.rooms ?? []) rooms.push({ ...r, y: u.y + at.y });
+    } else if (u.kind === "furniture") {
+      o.getWorldPosition(at);
+      const words = String(u.name ?? "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+      // camelCase names count as one word too ("towelRail" → "towel", "rail", "towelrail")
+      words.push(String(u.name ?? "").toLowerCase().replace(/[^a-z]/g, ""));
+      pieces.push({ words, x: at.x, y: at.y, z: at.z });
+    } else if (u.kind === "wallTiles") {
+      tiles.push(u);
+    }
+  });
+  const lines = [];
+  for (const r of rooms) {
+    const need = ESSENTIALS[r.use];
+    if (!need) continue;
+    const here = pieces.filter((p) => p.y > r.y - 0.3 && p.y < r.y + 2.2 && nearPolygon([p.x, p.z], r.polygon, 0.15));
+    const has = (kinds) => here.some((p) => kinds.some((k) => KINDS[k](p.words)));
+    const tiled = tiles.some((t) => t.room === r.name || (t.polygon && Math.abs((t.y ?? r.y) - r.y) < 0.3 &&
+      nearPolygon(t.polygon.reduce(([sx, sz], [x, z]) => [sx + x / t.polygon.length, sz + z / t.polygon.length], [0, 0]), r.polygon)));
+    const missing = need.filter(([what]) => (what === "tiles" ? !tiled : !has(what))).map(([, say]) => say);
+    if (missing.length) lines.push(`"${r.name}" (${r.use}): ${missing.join(", ")}`);
+  }
+  if (lines.length) {
+    lines.push("(pieces are recognised by userData = { kind: \"furniture\", name }: tag the ones you build yourself with a name that says what they are)");
+  }
+  return lines;
+}
+
+export default { floorPlan, partition, interiorDoor, polygonArea, tileWalls, roomEssentials };

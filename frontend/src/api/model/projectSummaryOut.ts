@@ -5,12 +5,15 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ProjectSummaryOutThumbnailUrl } from './projectSummaryOutThumbnailUrl';
+import type { ProjectSummaryOutJob } from './projectSummaryOutJob';
 
 export interface ProjectSummaryOut {
   id: string;
   name: string;
   status: string;
   created_at: string;
+  updated_at: string;
   current_version: number;
   thumbnail_url: ProjectSummaryOutThumbnailUrl;
+  job?: ProjectSummaryOutJob;
 }

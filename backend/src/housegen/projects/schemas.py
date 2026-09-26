@@ -144,8 +144,13 @@ class ProjectSummaryOut(BaseModel):
     name: str
     status: str
     created_at: datetime
+    # when its current state was reached: its newest version, else its creation
+    updated_at: datetime
     current_version: int
     thumbnail_url: str | None
+    # the kind of the job at work on it (queued or running: intake|generate|modify|interior),
+    # none when idle: a Furnish run or a modification leaves `status` at "ready"
+    job: str | None = None
 
 
 class JobOut(BaseModel):

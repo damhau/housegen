@@ -7,8 +7,20 @@ import { errorMessage, relTime } from "@/lib/utils"
 
 export const Route = createFileRoute("/")({ component: HomePage })
 
+// what the list says while a job works on a project (its status stays "ready" during a Furnish run
+// or a modification: only the job knows)
+const JOB_LABEL: Record<string, string> = {
+  generate: "building",
+  modify: "modifying",
+  interior: "furnishing",
+  intake: "reading plans",
+}
+
 function HomePage() {
-  const projects = useListProjects()
+  // refreshed while something is at work, so a card turns back to "ready" on its own
+  const projects = useListProjects({
+    query: { refetchInterval: (q) => (q.state.data?.some((p) => p.job || p.status === "generating") ? 5000 : false) },
+  })
   return (
     <div className="mx-auto grid max-w-6xl gap-8 p-6 lg:grid-cols-[420px_1fr]">
       <section>
@@ -40,10 +52,10 @@ function HomePage() {
                   <div className="min-w-0">
                     <div className="truncate text-sm font-medium">{p.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      v{p.current_version} · {relTime(p.created_at)}
+                      v{p.current_version} · {relTime(p.updated_at)}
                     </div>
                   </div>
-                  <StatusBadge status={p.status} />
+                  {p.job ? <Badge variant="warning">{JOB_LABEL[p.job] ?? "working"}</Badge> : <StatusBadge status={p.status} />}
                 </CardContent>
               </Card>
             </Link>

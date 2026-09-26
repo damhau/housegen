@@ -34,6 +34,27 @@ async def list_projects(session: AsyncSession) -> list[Project]:
     return list(res.scalars().all())
 
 
+async def active_job_kinds(session: AsyncSession) -> dict[str, str]:
+    """The kind of the job at work on each project (queued or running; the newest if several):
+    a Furnish run or a modification leaves `Project.status` at "ready", only the jobs know."""
+    res = await session.execute(
+        select(Job.project_id, Job.kind)
+        .where(Job.status.in_(("queued", "running")))
+        .order_by(Job.created_at)
+    )
+    return dict(res.tuples().all())  # oldest first: the newest job wins
+
+
+async def latest_version_times(session: AsyncSession) -> dict[str, datetime]:
+    """When each project's newest version was saved."""
+    res = await session.execute(
+        select(SceneVersion.project_id, func.max(SceneVersion.created_at)).group_by(
+            SceneVersion.project_id
+        )
+    )
+    return dict(res.tuples().all())
+
+
 async def create_project(session: AsyncSession, name: str, brief: str | None = None) -> Project:
     project = Project(name=name, brief=brief or None)
     session.add(project)

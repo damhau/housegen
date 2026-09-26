@@ -141,6 +141,8 @@ def _share_out(project: Project) -> ShareOut | None:
 @router.get("")
 async def list_projects(session: DbSession) -> list[ProjectSummaryOut]:
     projects = await crud.list_projects(session)
+    jobs = await crud.active_job_kinds(session)
+    saved = await crud.latest_version_times(session)
     out = []
     for p in projects:
         st = ProjectStorage(p.id)
@@ -151,8 +153,10 @@ async def list_projects(session: DbSession) -> list[ProjectSummaryOut]:
                 name=p.name,
                 status=p.status,
                 created_at=p.created_at,
+                updated_at=saved.get(p.id, p.created_at),
                 current_version=p.current_version,
                 thumbnail_url=renders.get("aerial") or next(iter(renders.values()), None),
+                job=jobs.get(p.id),
             )
         )
     return out

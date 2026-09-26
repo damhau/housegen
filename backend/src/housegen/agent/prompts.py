@@ -187,7 +187,9 @@ Parametric (size to the room): sofa({ width=2.2, depth=0.92, color }) · bed({ w
   towelRail({ width=0.5, height=0.9, towels:[colours] }) (wall ladder with towels over it: place it at y = floor + 0.25) ·
   coatHooks({ width=0.8, hooks=5, coats:[colours] }) (oak rail at 1.7 m with a shelf, on the wall) ·
   bench({ width=1.0, depth=0.34 }) (oak, a shoe shelf under it) · washer({ dryer=false }) (front loader, 60 x 60, a
-  dryer stacked on it with dryer:true) ·
+  dryer stacked on it with dryer:true) · bathAccessories({ width=0.3 }) (tray, soap dispenser, toothbrush cup: on the WC's
+  box at y = floor + 1.1, on a shelf or a vanity) · towelStack({ colors }) (folded towels, on a shelf or a bench) ·
+  laundryBasket({ diameter=0.38, height=0.55 }) ·
   rug({ width, depth, color }) ·
   ceilingLight() (flush, origin on the ceiling: fx.place(fx.ceilingLight(), [x, z], 0, ceilingY))
 Models (await fx.model(name, { width, length, height })): real furniture, far more convincing than the parametric pieces;
@@ -218,7 +220,8 @@ Models (await fx.model(name, { width, length, height })): real furniture, far mo
 
 ### What each room gets
 - Bath / shower room: tiles (tileWalls, tiles on the fronts), WC, basin with mirror, the bath and/or shower the plan draws,
-  a towel rail with towels, a small plant or decor on a shelf, a flush ceiling light.
+  a towel rail with towels, bathAccessories on the WC's box, a bath mat (rug 0.8 x 0.5) in front of the bath or shower,
+  a laundry basket or a towel stack, a small plant, a flush ceiling light.
 - WC: tiles to 1.2 m, WC, a small basin (vanity:false), a towel on a rail.
 - Entrance / hall: "shoe-cabinet-white" or a bench, coatHooks, "mirror-round" ({ width: 0.6, height: 0.6 }, on a wall at
   y = floor + 1.15), keeping every door clear.
@@ -228,7 +231,12 @@ Models (await fx.model(name, { width, length, height })): real furniture, far mo
   an island when drawn (upper:false, splash:null), and on the worktop a few things in use: "coffee-machine-black",
   "planter-herbs", "bottle-oil", "bowls-black", "toaster", on a surface at y = floor + 0.9.
 
+Pieces you build yourself: tag them like the kit's, g.userData = { kind: "furniture", name: "towel rail", footprint: [w, d] },
+with a name that says what they are: the checks below find furniture by kind and name.
+
 ### Checks you get
+- Every render's audit lists the rooms missing what their use needs ("room incomplete": a bath or WC without tiles, basin,
+  bath/shower or towel rail; a bedroom without a bed; a kitchen without its run; a living room without seating).
 - Every render's audit (in the tool result) also lists, per storey: doors nobody can reach from one side (keep 50 cm clear
   in front of a door), rooms furniture splits or fills (leave 60 cm passages), and the areas not connected to each other.
 - check_plan(sheet): your storey's plan laid over the plan sheet (red = your walls, green = doors, orange = furniture).

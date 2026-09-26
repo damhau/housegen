@@ -59,6 +59,7 @@ export * from './projectOutBrief';
 export * from './projectOutIntake';
 export * from './projectOutShare';
 export * from './projectSummaryOut';
+export * from './projectSummaryOutJob';
 export * from './projectSummaryOutThumbnailUrl';
 export * from './resolvedRunSettings';
 export * from './resolvedRunSettingsBuilderEffort';

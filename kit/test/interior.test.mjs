@@ -83,3 +83,29 @@ test("tileWalls tiles the walls to the height asked for, around the doors and wi
   const full = tileWalls(root, bath, { y: 0, height: 1.2, full: [1] });
   assert.ok(Math.abs(tiled(full) - (12 - 0.96 - 0.2 + 2 * 1.2)) < 0.02, `tiled ${tiled(full).toFixed(3)} m²`);
 });
+
+test("roomEssentials names what each room's use needs and does not have", async () => {
+  const { roomEssentials, tileWalls } = await import("../interior.js");
+  const piece = (name, x, z, y = 0.015) => {
+    const g = new THREE.Group();
+    g.userData = { kind: "furniture", name };
+    g.position.set(x, y, z);
+    return g;
+  };
+  const bath = { name: "SDB", use: "bath", polygon: [[0, 0], [3, 0], [3, 2], [0, 2]] };
+  const bedroom = { name: "Chambre", use: "bedroom", polygon: [[3.1, 0], [7, 0], [7, 4], [3.1, 4]] };
+  const hall = { name: "Hall", use: "hall", polygon: [[0, 2.1], [3, 2.1], [3, 4], [0, 4]] };
+  const root = new THREE.Group();
+  root.add(floorPlan({ y: 0, height: 2.4, rooms: [bath, bedroom, hall] }));
+  // a builder's own basin, the kit's bathtub, and a bath mat (not a bath); a bedside lamp is not a bed
+  root.add(piece("Oak vanity and recessed washbasin", 0.4, 1.0), piece("bathMat", 1.5, 1.5), piece("bedside lamp", 5, 1));
+  const lines = roomEssentials(root);
+  assert.deepEqual(lines.slice(0, 2), [
+    '"SDB" (bath): walls not tiled (tileWalls), no bath or shower (fx.bathtub, fx.shower), no towel rail with towels (fx.towelRail)',
+    '"Chambre" (bedroom): no bed ("bed-oak-linen")',
+  ]);
+  assert.match(lines[2], /tag the ones you build yourself/);
+  // completed: tiles, a bath, a towel rail on the wall (its origin on the wall line), a Martel bed
+  root.add(tileWalls(root, bath, { y: 0 }), piece("bathtub", 1.5, 0.4), piece("towelRail", 2.99, 1.2, 0.25), piece("bed-oak-linen", 5, 2));
+  assert.deepEqual(roomEssentials(root), []);
+});

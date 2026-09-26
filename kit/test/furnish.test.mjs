@@ -12,7 +12,7 @@ function box(p) {
 }
 
 test("every parametric piece sits on the floor (or hangs on the wall above it), tagged with its footprint", () => {
-  for (const p of [fx.sofa(), fx.bed(), fx.nightstand(), fx.chair(), fx.diningSet(), fx.wardrobe(), fx.kitchenRun(), fx.wc(), fx.basin(), fx.bathtub(), fx.shower(), fx.towelRail(), fx.coatHooks(), fx.bench(), fx.washer({ dryer: true }), fx.rug()]) {
+  for (const p of [fx.sofa(), fx.bed(), fx.nightstand(), fx.chair(), fx.diningSet(), fx.wardrobe(), fx.kitchenRun(), fx.wc(), fx.basin(), fx.bathtub(), fx.shower(), fx.towelRail(), fx.coatHooks(), fx.bench(), fx.washer({ dryer: true }), fx.bathAccessories(), fx.towelStack(), fx.laundryBasket(), fx.rug()]) {
     const b = box(p);
     assert.equal(p.userData.kind, "furniture");
     // the basin's vanity and the coat hooks hang on the wall; everything else stands on the floor
