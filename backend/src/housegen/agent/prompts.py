@@ -191,7 +191,9 @@ Parametric (size to the room): sofa({ width=2.2, depth=0.92, color }) · bed({ w
   box at y = floor + 1.1, on a shelf or a vanity) · towelStack({ colors }) (folded towels, on a shelf or a bench) ·
   laundryBasket({ diameter=0.38, height=0.55 }) ·
   rug({ width, depth, color }) ·
-  ceilingLight() (flush, origin on the ceiling: fx.place(fx.ceilingLight(), [x, z], 0, ceilingY))
+  ceilingLight() (flush, origin on the ceiling: fx.place(fx.ceilingLight(), [x, z], 0, ceilingY)) ·
+  a mirror of your own: a thin plate with fx.finish.mirror() (it reflects the room in the walk, as the basin's mirror
+  and "mirror-round" do)
 Models (await fx.model(name, { width, length, height })): real furniture, far more convincing than the parametric pieces;
   prefer them wherever one fits. width / length / height (m) stretch the piece along x / z / y, each on its own
   (p.userData.footprint gives the result). Sizes below are width x depth (x height), facing +z:

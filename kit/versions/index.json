@@ -40,6 +40,11 @@
       "name": "2026-09-25-v7",
       "date": "2026-09-25",
       "note": "v6 with the far landscape recalibrated against photographs of the Alps from Lausanne (aerial perspective mixed as the screen shows it: slate-blue mountains, hue 215, saturation 0.26, where v6 drew them ultramarine; its own shading, rock on steep slopes; a finer relief once the surroundings are fetched again), the neighbours' renders varied (a Swiss palette), their foot darker, larger windows, shutters on some, a 5 m join to the plot (no bank tilting the roads), and no dithered rim. The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-09-27-v8",
+      "date": "2026-09-27",
+      "note": "v7 plus the indoor light of #41 in walk mode: each room lit by its own light (captured from inside it, every room of a storey on arrival), one exposure per storey set for its brighter rooms with a little adaptation per room, the light and exposure of two rooms mixed across their doors and open passages (no switch at the threshold); live mirrors (mirror.js: the mirror most in view reflects its room and the rooms its doors open onto); the sun's shadow drawn once instead of every frame (walk frames about 3x faster, pictures unchanged). The viewer's default. Not pinned."
     }
   ]
 }
