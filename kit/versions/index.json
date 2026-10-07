@@ -45,6 +45,11 @@
       "name": "2026-09-27-v8",
       "date": "2026-09-27",
       "note": "v7 plus the indoor light of #41 in walk mode: each room lit by its own light (captured from inside it, every room of a storey on arrival), one exposure per storey set for its brighter rooms with a little adaptation per room, the light and exposure of two rooms mixed across their doors and open passages (no switch at the threshold); live mirrors (mirror.js: the mirror most in view reflects its room and the rooms its doors open onto); the sun's shadow drawn once instead of every frame (walk frames about 3x faster, pictures unchanged). The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-04-v9",
+      "date": "2026-10-04",
+      "note": "v8 with the lamps chosen by what the camera sees: above the six live lights, the stand-ins go to the lamps of the rooms in view (the camera's room and the rooms open to it, less for a room through a door), ranked by intensity, distance and being in front, instead of the six nearest in a straight line (lamps of the other storeys and behind walls, which lit the room through the slabs); a lamp fades in and out instead of switching; each room's probe is captured with its own lamps at the indoor strength, and the exposure meter recalibrated for it (in_meter 0.5). The viewer's default. Not pinned."
     }
   ]
 }
