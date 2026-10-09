@@ -566,6 +566,11 @@ def main() -> None:
     )
     ap.add_argument("--base", default=DEV_BASE)
     ap.add_argument(
+        "--query",
+        default="",
+        help="extra query for the scene page, e.g. 'in_lamps=0&in_fill=0' (calibration knobs)",
+    )
+    ap.add_argument(
         "--kit",
         action="append",
         help="renderer from this checkout: 'dev' (working copy) or a snapshot name; repeat to compare (default: dev)",
@@ -632,6 +637,8 @@ def main() -> None:
     url += (
         "&" if "?" in url else "?"
     ) + "kit=dev"  # the modules come from this checkout (see the docstring)
+    if args.query:
+        url += "&" + args.query.lstrip("&?")
     args.out.mkdir(parents=True, exist_ok=True)
 
     async def run() -> list[dict[str, Any]]:
