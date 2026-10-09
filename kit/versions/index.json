@@ -1,5 +1,6 @@
 {
   "pinned": "2026-09-12-baseline",
+  "viewer": "2026-10-09-v11",
   "versions": [
     {
       "name": "2026-09-12-baseline",
@@ -60,6 +61,11 @@
       "name": "2026-10-09-v11",
       "date": "2026-10-09",
       "note": "v10 with the glide's view turning no faster than 2.4 rad/s (#53): leaving the start heading while the path itself turned could add up to about 4 rad/s on a glide that starts facing away from its path (Montelly49-Dev4); the glide ends once the view has reached its arrival heading. The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v12",
+      "date": "2026-10-09",
+      "note": "v11 with the room viewpoints (#54): arriving in a room (Walk, Go to a room, the room-N views) stands where a photographer would, from a corner or the doorway (the threshold for a small room), level, eye 1.45 m, the view chosen among the room's free spots and 32 headings for showing most of its floor with its windows, nothing near filling the frame and the view ending on the room's own walls (or the rooms open to it); a room's `view: { at, look }` in its floor plan, or a `room-<n>` view the scene returns, is taken instead. __house.viewpoint reports it. Waiting for review: not the viewer's default. Not pinned."
     }
   ]
 }

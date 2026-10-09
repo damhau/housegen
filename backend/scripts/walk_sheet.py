@@ -393,7 +393,7 @@ async def measure_kit(
         file = frames / f"room-{i + 1:02d}.jpg"
         await page.screenshot(path=str(file), type="jpeg", quality=88)
         info = await page.evaluate(
-            "() => ({ pos: window.__house.position, stats: window.__house.stats })"
+            "() => ({ pos: window.__house.position, stats: window.__house.stats, viewpoint: window.__house.viewpoint ?? null })"
         )
         info["render_ms"] = round(await page.evaluate(RENDER_JS, 20), 1)
         st = frame_stats(Image.open(file))
