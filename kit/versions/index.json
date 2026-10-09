@@ -91,6 +91,11 @@
       "name": "2026-10-09-v17",
       "date": "2026-10-09",
       "note": "v16 with walk frames about a third cheaper (#56): the house's static meshes merged by room (or 16 m tile for the shell and the outside) and material when the walk starts (2,465 meshes into 363 on TestVillaGille, 90 ms; the meshes as built stay for the plan, the audit and the exports, on a layer no camera draws), the ambient occlusion reading the scene pass's depth instead of drawing the whole scene again for its normals, and the furniture of the rooms the camera cannot see (through the openings in view) left out. Draw calls per frame 1,440-4,320 -> 330-1,150; render cost 37 -> 23 ms (TestVillaGille), 29 -> 18 ms (Montelly49-Dev4); 60 fps when turning on the RTX 3050; pictures unchanged. Knobs ?merge=0, ?cull=0, ?ao_gbuffer=1, ?merge_tile=16, ?ao_samples. Built on v12 (under review): not the viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v18",
+      "date": "2026-10-09",
+      "note": "v17 with glossy reflections projected on the room's box (#59): each room capture records the room's box and where it was captured from, and the 55 glossy materials of TestVillaGille (roughness under 0.5: tiles, worktops, lacquer, metal) correct their reflection vector on the box of the camera's room before reading it (parallax correction, off outdoors). No extra draw call, the frame time unchanged; the change is small on the test projects (no polished floors, 128 px captures). ?box=0: off. Built on v12 (under review): not the viewer's default. Not pinned."
     }
   ]
 }
