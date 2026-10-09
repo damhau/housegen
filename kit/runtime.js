@@ -669,7 +669,9 @@ export async function boot(buildScene) {
       const info = renderer.info;
       FRAME_LOG.push({ t: Math.round(t0), raf: Math.round(now), updateMs: Math.round(updateMs * 10) / 10, ms: Math.round((performance.now() - t0) * 10) / 10, probeMs: Math.round(probeMs), calls: info.render.calls,
         programs: info.programs?.length ?? 0, textures: info.memory.textures, geometries: info.memory.geometries, moved: !!moved,
-        at: [Math.round(state.camera.position.x * 100) / 100, Math.round(state.camera.position.z * 100) / 100], yaw: Math.round((state.walk?.yaw ?? 0) * 100) / 100 });
+        at: [Math.round(state.camera.position.x * 100) / 100, Math.round(state.camera.position.z * 100) / 100], yaw: Math.round((state.walk?.yaw ?? 0) * 100) / 100,
+        room: state.indoor?.name ?? null, doorway: state.indoor?.doorway ? `${state.indoor.doorway.from}>${state.indoor.doorway.to}:${state.indoor.doorway.w}` : null,
+        drawn: state.lastCull?.seen?.length ?? null });
       if (FRAME_LOG.length > 2000) FRAME_LOG.splice(0, 1000);
     }
     // a frame that compiled a shader or uploaded a texture, or one behind a fade, is a one-off cost,
