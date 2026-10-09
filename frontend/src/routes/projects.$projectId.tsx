@@ -363,6 +363,7 @@ function ProjectPage() {
           onToggleAutoReload={() => setAutoReload((v) => !v)}
           planName={p.name}
           projectId={projectId}
+          coverUrl={version ? (version.render_urls.southeast ?? Object.values(version.render_urls)[0] ?? null) : null}
           placeholder={
             <BuildingPlaceholder
               running={Boolean(activeJob)}

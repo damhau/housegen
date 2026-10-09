@@ -86,6 +86,7 @@ export function SceneViewer({
   projectId,
   contextUrl,
   autoTour = false,
+  coverUrl = null,
 }: {
   sceneUrl: string | null
   reloadKey?: string | number
@@ -103,6 +104,8 @@ export function SceneViewer({
   contextUrl?: string | null
   /** start the guided tour once the scene is ready (a share link ending in #autoplay) */
   autoTour?: boolean
+  /** a picture of the version shown while the scene loads (its render) */
+  coverUrl?: string | null
 }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const refB = useRef<HTMLIFrameElement>(null)
@@ -111,6 +114,8 @@ export function SceneViewer({
   const [look, setLook] = useState<Look>("final")
   const [effectsDropped, setEffectsDropped] = useState(false)
   const [progress, setProgress] = useState<{ count: number; total: number } | null>(null)
+  // while the scene loads (#60): the files fetched, then the first frame being drawn
+  const [loading, setLoading] = useState<{ phase: string; loaded?: number; total?: number } | null>(null)
   // renderer: null = the newest snapshot once the list is known; compare = a second renderer
   // drawn next to it on the same scene, null = off
   // walk mode: the rooms the scene announced (none: no interior, no Walk button), the credit lines of
@@ -165,6 +170,7 @@ export function SceneViewer({
     setRoom("")
     setTour(null)
     setTourable(false)
+    setLoading(null)
     setPlanOpen(false)
     setSurroundingsOpen(false)
     frameReady.current = false
@@ -183,6 +189,8 @@ export function SceneViewer({
         rooms?: Room[]
         credits?: string[]
         tour?: boolean
+        phase?: string
+        loaded?: number
         id?: number
       }
       if (d?.type === "house:ready") {
@@ -198,6 +206,7 @@ export function SceneViewer({
         }
       }
       if (d?.type === "house:walking") setWalking(!!d.on)
+      if (d?.type === "house:progress" && typeof d.phase === "string") setLoading({ phase: d.phase, loaded: d.loaded, total: d.total })
       if (d?.type === "house:tour") {
         setTour({ on: !!d.on, room: d.room ?? null, index: d.index ?? 0, total: d.total ?? 0 })
         if (d.room) setRoom(d.room)
@@ -268,7 +277,11 @@ export function SceneViewer({
   const status = error ? (
     <span className="text-destructive">scene error: {error}</span>
   ) : !ready ? (
-    "loading…"
+    loading?.phase === "drawing"
+      ? "preparing the first picture…"
+      : loading?.total
+        ? `loading… ${Math.min(loading.loaded ?? 0, loading.total)}/${loading.total}`
+        : "loading…"
   ) : progress ? (
     `refining ${progress.count}/${progress.total}`
   ) : tour?.on ? (
@@ -304,6 +317,16 @@ export function SceneViewer({
       ) : (
         <>
           {src && <iframe ref={ref} key={src} src={src} title="3D scene" className="size-full border-0" />}
+          {src && coverUrl && (
+            <img
+              src={coverUrl}
+              alt=""
+              className={cn(
+                "pointer-events-none absolute inset-0 size-full object-cover transition-opacity duration-500",
+                ready ? "opacity-0" : "opacity-100",
+              )}
+            />
+          )}
           {frameChip(kitA, setKit)}
         </>
       )}

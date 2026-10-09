@@ -44,6 +44,7 @@ function SharedPage() {
         contextUrl={s.context_url}
         className="min-h-[420px]"
         autoTour={window.location.hash.includes("autoplay")}
+        coverUrl={s.render_urls.southeast ?? Object.values(s.render_urls)[0] ?? null}
       />
       {(renders.length > 0 || s.photo_urls.length > 0) && (
         <div className="flex gap-1.5 overflow-x-auto pb-1">
