@@ -137,8 +137,18 @@ Where we're ahead:
        resolution), one or two 4K atlases per storey, stored as RGBM or KTX2 HDR next to the version;
      - the runtime applying them as `material.lightMap`, and indoors, when a bake exists, switching off the sun, the
        hemisphere fill, the lamps, GTAO and the captured diffuse light, keeping the room capture for reflections only.
-   - Bake time is unknown. A guess from the #40 stills (about 200 s for 1.6 million pixels at 512 samples): around 30 min per
-     4K atlas at the same samples, less with fewer samples and the denoiser.
+   - Shapespark bakes with **Cycles** too: its lightmap engine moved to Cycles 4.4 in Shapespark 3.4.0, and its bake device
+     setting is Cycles' list (CPU, CUDA, OptiX, AMD HIP). So this is the same engine we already run through bpy.
+   - Bake time is unknown. A guess from the #40 stills (about 200 s for 1.6 million pixels at 512 samples) gave around
+     30 min per 4K atlas, less with fewer samples and the denoiser. Shapespark's own guidance is more sobering: at least
+     800 samples for a final bake, and "from a few to 24 hours" depending on the computer and the model. OptiX is about
+     3× faster than their older CUDA path, but it fails under WSL here, so a local test runs on CUDA; a native Windows
+     Blender or the GPU render service has OptiX.
+   - First real number: Shapespark on the RTX 3050 (Windows, OptiX), "Medium" (250 samples, 8 bounces, lightmap res. 75,
+     2 lightmaps, light tree on, AI denoiser off), a bake **preview** of Shapespark's example scene: about 3 min.
+   - OptiX under WSL, rechecked on 2026-10-08 (driver 591.86, bpy 5.0.1): with `LD_LIBRARY_PATH=/usr/lib/wsl/lib` the
+     driver's `libnvoptix.so.1` is found (the #40 error 7804 is gone), but initialisation fails with error 7805 and Cycles
+     lists no OptiX device. CUDA sees the 3050.
    - A scene edit makes the bake stale: fall back to the live lighting (#41) until it is baked again.
    - A one-storey test on TestVillaGille would give the real number in about a day. It would also make most of #41
      unnecessary indoors.
