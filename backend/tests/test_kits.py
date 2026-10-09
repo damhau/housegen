@@ -14,7 +14,7 @@ from housegen.core.config import get_settings
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
-LATEST = "2026-10-09-v12"  # the newest snapshot
+LATEST = "2026-10-09-v13"  # the newest snapshot
 VIEWER = "2026-10-09-v11"  # the viewer's default (index.json "viewer": the newest waits for review)
 
 

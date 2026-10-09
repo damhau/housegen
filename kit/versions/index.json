@@ -66,6 +66,11 @@
       "name": "2026-10-09-v12",
       "date": "2026-10-09",
       "note": "v11 with the room viewpoints (#54): arriving in a room (Walk, Go to a room, the room-N views) stands where a photographer would, from a corner or the doorway (the threshold for a small room), level, eye 1.45 m, the view chosen among the room's free spots and 32 headings for showing most of its floor with its windows, nothing near filling the frame and the view ending on the room's own walls (or the rooms open to it); a room's `view: { at, look }` in its floor plan, or a `room-<n>` view the scene returns, is taken instead. __house.viewpoint reports it. Waiting for review: not the viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v13",
+      "date": "2026-10-09",
+      "note": "v12 with the walk going from room to room (#55): the viewer's \"Go to a room\" walks there (a glide to the room's viewpoint) on the same storey and flat when it takes at most 6 s, else it fades to black and back (0.3 s each way), behind which the walk changes storey; a storey's grids and viewpoints are kept, so going back is at once. Entering the walk fades too, behind which every material is compiled for the indoor light and drawn once (no compile mid-glide). The effects guard no longer switches the effects off for one slow frame (a compile, an upload, the driver's first draw): three in a row over 250 ms or eight averaging over 90 ms. __house.goToRoom. Built on v12 (under review): not the viewer's default. Not pinned."
     }
   ]
 }
