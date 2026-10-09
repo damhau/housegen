@@ -81,6 +81,11 @@
       "name": "2026-10-09-v15",
       "date": "2026-10-09",
       "note": "v14 with neutral whites indoors (#58): a room's white balance takes half of its colour cast out (in_wb=0.5: the mean colour of its middle tones, measured on its capture, luminance kept, linear gains before the tone mapping), blended across doors and eased like the exposure, neutral outdoors. The rooms read white instead of beige (median saturation 0.17 -> 0.08 on TestVillaGille, 0.15 -> 0.07 on Montelly49-Dev4), brightness unchanged, wood still warm. New knob in_probe_lamps (the lamps' share in the room captures, 1). Built on v12 (under review): not the viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v16",
+      "date": "2026-10-09",
+      "note": "v15 with the ambient occlusion's thickness at 0.3 m indoors (1 outdoors): a door leaf 0.6 m from the camera drew a large bright arc over the room behind it (the WC of TestVillaGille's App. 1 seen from its doorway, a #54 viewpoint). Shadows a touch lighter (p10 132 -> 139), the rest unchanged. Knob in_ao_thickness. Built on v12 (under review): not the viewer's default. Not pinned."
     }
   ]
 }
