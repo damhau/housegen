@@ -121,11 +121,12 @@ def frame_times(ms: list[float]) -> dict[str, float]:
 
 
 def glide_metrics(trace: list[list[float]]) -> dict[str, Any]:
-    """From per-frame rows [t ms, x, z, yaw, pitch]: what a visitor feels of a glide.
+    """From rows [t ms, x, z, yaw, pitch] logged at each of the walk's updates: what a visitor feels.
 
-    Speeds and turn rates are taken over three frames (the page's frame times jitter against the
-    walk's own clock); a drop is a frame whose own step is under 70 % of the one before, between 10 %
-    and 90 % of the path, where the camera already moves faster than 0.3 m/s."""
+    The trace is resampled every 50 ms; speed, acceleration and turn rate are taken over 100 ms (the
+    updates come 14-40 ms apart: differences over one of them are mostly noise). A drop is an update
+    whose own step is under 70 % of the one before, between 10 % and 90 % of the path, where the
+    camera already moves faster than 0.3 m/s (the old glide's stutter at each waypoint)."""
     moved = [
         i
         for i in range(1, len(trace))
@@ -142,14 +143,6 @@ def glide_metrics(trace: list[list[float]]) -> dict[str, Any]:
     ]
     length = sum(steps)
     v_raw = [s / max(t[i + 1] - t[i], 1e-3) for i, s in enumerate(steps)]
-    k = 3
-    v, w, tv = [], [], []
-    for i in range(len(rows) - k):
-        dt = max(t[i + k] - t[i], 1e-3)
-        v.append(sum(steps[i : i + k]) / dt)
-        w.append(_wrap(rows[i + k][3] - rows[i][3]) / dt)
-        tv.append((t[i] + t[i + k]) / 2)
-    a = [(v[i + 1] - v[i]) / max(tv[i + 1] - tv[i], 1e-3) for i in range(len(v) - 1)]
     drops, done = 0, 0.0
     for i in range(1, len(steps)):
         done += steps[i - 1]
@@ -159,23 +152,47 @@ def glide_metrics(trace: list[list[float]]) -> dict[str, Any]:
             and v_raw[i] < 0.7 * v_raw[i - 1]
         ):
             drops += 1
+    # distance travelled and (unwrapped) heading on a 50 ms grid
+    dist = [0.0]
+    for s_ in steps:
+        dist.append(dist[-1] + s_)
+    yaw = [rows[0][3]]
+    for i in range(1, len(rows)):
+        yaw.append(yaw[-1] + _wrap(rows[i][3] - rows[i - 1][3]))
+
+    def at(series: list[float], x: float) -> float:
+        k = max(
+            0, min(len(t) - 2, next((i for i in range(len(t) - 1) if t[i + 1] >= x), len(t) - 2))
+        )
+        span = t[k + 1] - t[k]
+        u = (x - t[k]) / span if span > 1e-9 else 0.0
+        return series[k] + (series[k + 1] - series[k]) * max(0.0, min(1.0, u))
+
+    grid = [t[0] + 0.05 * i for i in range(int((t[-1] - t[0]) / 0.05) + 1)]
+    d = [at(dist, x) for x in grid]
+    y = [at(yaw, x) for x in grid]
+    v = [(d[i + 1] - d[i - 1]) / 0.1 for i in range(1, len(grid) - 1)]
+    w = [(y[i + 1] - y[i - 1]) / 0.1 for i in range(1, len(grid) - 1)]
+    tv = grid[1:-1]
+    a = [(v[i + 2] - v[i]) / 0.1 for i in range(len(v) - 2)]
+    top = max(v, default=0.0)
     gaps = [(t[i + 1] - t[i]) * 1000 for i in range(len(t) - 1)]
     return {
         "moved": True,
         "duration_s": round(t[-1] - t[0], 2),
         "length_m": round(length, 2),
-        "speed_max": round(max(v, default=0), 2),
+        "speed_max": round(top, 2),
         # seconds from rest to 80 % of the top speed, and from the last time above it to rest
         # (0.0: full speed at once / a dead stop)
         "ramp_up_s": round(
-            next((x for x, s in zip(tv, v, strict=True) if s >= 0.8 * max(v)), t[0]) - t[0], 2
+            next((x for x, s_ in zip(tv, v, strict=True) if s_ >= 0.8 * top), t[0]) - t[0], 2
         )
         if v
         else 0,
         "ramp_down_s": round(
             t[-1]
             - next(
-                (x for x, s in zip(reversed(tv), reversed(v), strict=True) if s >= 0.8 * max(v)),
+                (x for x, s_ in zip(reversed(tv), reversed(v), strict=True) if s_ >= 0.8 * top),
                 t[-1],
             ),
             2,
@@ -187,7 +204,7 @@ def glide_metrics(trace: list[list[float]]) -> dict[str, Any]:
         "speed_drops": drops,
         "arrival_yaw_deg": round(math.degrees(rows[-1][3]) % 360, 1),
         "arrival_pitch_deg": round(math.degrees(rows[-1][4]), 1),
-        "frame_ms": frame_times(gaps),
+        "update_ms": frame_times(gaps),
     }
 
 
@@ -200,32 +217,61 @@ SETTLE_JS = """() => ({
   fading: (window.__house.lamps?.live ?? []).some((s) => s && s.w > 0 && s.w < 1),
 })"""
 
+# times are the frames' own (the rAF timestamp, what the page's loop and the walk's clock see), not
+# when this callback runs: that comes after the frame's render and jitters with it
 TURN_JS = """async (n) => {
-  const times = []; let last = performance.now();
+  const times = []; let last = null;
   window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
   await new Promise((res) => {
-    const f = () => { const t = performance.now(); times.push(t - last); last = t; times.length < n ? requestAnimationFrame(f) : res(); };
+    const f = (ts) => { if (last !== null) times.push(ts - last); last = ts; times.length < n ? requestAnimationFrame(f) : res(); };
     requestAnimationFrame(f);
   });
   window.dispatchEvent(new KeyboardEvent("keyup", { key: "ArrowLeft" }));
   return times.slice(3);
 }"""
 
+# the glide logged at each of the walk's own updates: its clock is what the motion runs on (the
+# display's frames are multiples of 16.7 ms, and a callback here runs after the frame's render)
 GLIDE_JS = """async ([x, z]) => {
-  const w = window.__walk, out = [], t0 = performance.now();
+  const w = window.__walk, out = [], update = w.update;
+  w.update = function (step) {
+    const r = update.call(this, step), p = this.camera.position;
+    out.push([performance.now(), p.x, p.z, this.yaw, this.pitch]);
+    return r;
+  };
   window.__house.walkTo(x, z);
+  const t0 = performance.now();
   await new Promise((res) => {
-    let quiet = 0;
-    const f = () => {
-      const p = w.camera.position, t = performance.now() - t0, prev = out[out.length - 1];
-      out.push([t, p.x, p.z, w.yaw, w.pitch]);
-      const moving = !prev || Math.hypot(p.x - prev[1], p.z - prev[2]) > 1e-4 || Math.abs(w.yaw - prev[3]) > 1e-4 || Math.abs(w.pitch - prev[4]) > 1e-4;
-      quiet = moving ? 0 : quiet + 1;
-      if ((quiet > 15 && out.length > 20) || t > 20000) res(); else requestAnimationFrame(f);
+    const still = (a, b) => Math.hypot(a[1] - b[1], a[2] - b[2]) < 1e-4 && Math.abs(a[3] - b[3]) < 1e-4 && Math.abs(a[4] - b[4]) < 1e-4;
+    const check = () => {
+      const n = out.length, quiet = n > 30 && out.slice(-15).every((r, i, a) => i === 0 || still(r, a[i - 1]));
+      if (quiet || performance.now() - t0 > 20000) res(); else requestAnimationFrame(check);
     };
-    requestAnimationFrame(f);
+    requestAnimationFrame(check);
   });
-  return out;
+  delete w.update;
+  const s = out.length ? out[0][0] : 0;
+  return out.map((r) => [r[0] - s, r[1], r[2], r[3], r[4]]);
+}"""
+
+# what one frame costs at the current view: the median of n renders, each followed by a pixel read
+# that waits for the GPU to finish it (CPU and GPU time in a row: an upper bound). Renders back to
+# back without a read pile up in the browser's command queue and cost several times more each; the
+# paced frame time is a multiple of the display's 16.7 ms.
+RENDER_JS = """(n) => {
+  const cv = document.querySelector("canvas"), gl = cv.getContext("webgl2") || cv.getContext("webgl"), px = new Uint8Array(4);
+  const sync = () => gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+  window.__house.renderOnce();
+  sync();
+  const each = [];
+  for (let i = 0; i < n; i++) {
+    const t0 = performance.now();
+    window.__house.renderOnce();
+    sync();
+    each.push(performance.now() - t0);
+  }
+  each.sort((a, b) => a - b);
+  return each[n >> 1];
 }"""
 
 CENTRE_JS = """(name) => {
@@ -349,6 +395,7 @@ async def measure_kit(
         info = await page.evaluate(
             "() => ({ pos: window.__house.position, stats: window.__house.stats })"
         )
+        info["render_ms"] = round(await page.evaluate(RENDER_JS, 20), 1)
         st = frame_stats(Image.open(file))
         result["rooms"].append(
             {
@@ -367,7 +414,7 @@ async def measure_kit(
         await page.evaluate("(n) => window.__house.startWalk(n)", first)
         await settle(page, args.settle)
         result["frame_turning"] = frame_times(await page.evaluate(TURN_JS, 120))
-        print(f"[{kit_name}] frame ms turning: {result['frame_turning']}", flush=True)
+        print(f"[{kit_name}] paced frame ms turning: {result['frame_turning']}", flush=True)
         # the glide: from the first room to the farthest room of the same flat on the same storey
         start, goal = args.glide.split("|") if args.glide else (first, None)
         await page.evaluate("(n) => window.__house.startWalk(n)", start)
@@ -410,6 +457,8 @@ def rooms_summary(rooms: list[dict[str, Any]]) -> dict[str, float]:
         "p90": mean("p90"),
         "clip": mean("clip"),
         "sat50": mean("sat50"),
+        "render_ms": mean("render_ms"),
+        "render_ms_max": max(r["render_ms"] for r in rooms),
     }
 
 
@@ -426,7 +475,8 @@ def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
 
 
 def _stats_line(s: dict[str, Any]) -> str:
-    return f"p10 {s['p10']} p50 {s['p50']} p90 {s['p90']}  clip {s['clip']}%  sat {s['sat50']:.2f}"
+    cost = f"  · {s['render_ms']} ms" if "render_ms" in s else ""
+    return f"p10 {s['p10']} p50 {s['p50']} p90 {s['p90']}  clip {s['clip']}%  sat {s['sat50']:.2f}{cost}"
 
 
 def write_sheet(
@@ -446,12 +496,12 @@ def write_sheet(
                 room_names.append(room["name"])
     for res in results:
         g = res.get("glide", {})
-        ft, gf = res.get("frame_turning", {}), g.get("frame_ms", {})
+        ft, gf = res.get("frame_turning", {}), g.get("update_ms", {})
         head = [
             f"{res['kit']}",
             f"ready {res['ready_s']} s · {res['mb']} MB"
             + ("  · EFFECTS DISABLED" if res["effects_disabled"] else ""),
-            f"frame turning {ft.get('median')} / p90 {ft.get('p90')} / max {ft.get('max')} ms",
+            f"render {res['summary'].get('render_ms')} ms (max {res['summary'].get('render_ms_max')}); paced {ft.get('median')} / p90 {ft.get('p90')} ms",
             f"glide {g.get('length_m')} m in {g.get('duration_s')} s, v ≤ {g.get('speed_max')} m/s, ramps {g.get('ramp_up_s')} / {g.get('ramp_down_s')} s",
             f"  accel ≤ {g.get('accel_max')} m/s², turn ≤ {g.get('turn_rate_max')} rad/s, {g.get('speed_drops')} drops, frames {gf.get('median')}/{gf.get('max')} ms",
         ]
