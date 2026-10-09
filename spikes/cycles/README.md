@@ -32,3 +32,13 @@ table setting, curtains, modular sofa, rug, coffee tables, pouf, frames, bed).
   the runtime's sun azimuth maps straight across.
 - To tune: exposure per room (north rooms come out dim), white balance (5900 K used), a black
   coffee table exported as glass-like, curtains lost their grey, lamp power.
+
+## Again on 2026-10-09: today's model, the runtime's photo camera
+
+The house exported by `spikes/bake/export.py` (TestVillaGille v9, furnished, renderer v19, 255 MB),
+imported in 8 s (3,791 objects, 56 lights), rendered from the walk's viewpoints with the runtime's
+`photo-<n>` camera: `render_villa.py render villa.blend photo:<x>,<z>,<yaw>,<floor> out.png 1600 1000 256 0`
+(1.3 m, 53° vertical, level, the frame shifted down 12 %). **89–102 s per 1600×1000 still** at 256
+samples with OIDN, CUDA on the RTX 3050 under WSL. The framing matches the live `photo-<n>` view
+exactly. Sheet: `docs/walk/40-stills-testvillagille.jpg`. Still to fix for real: the instanced foliage
+(left out of the export: the hedges read as grey balls) and a white balance (the stills read warm).

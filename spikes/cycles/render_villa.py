@@ -3,6 +3,8 @@
     uv run --no-project --python 3.11 --with bpy python render_villa.py import villa.glb villa.blend
     uv run --no-project --python 3.11 --with bpy python render_villa.py render villa.blend <view> <out.png> [w h samples exposure]
 
+<view>: a name in VIEWS, or photo:x,z,yaw,floor for the runtime's photo-<n> camera at a walk viewpoint.
+
 Scene frame (three.js): x east, y up, z south. glTF import puts it at Blender (x, -z, y): north = +Y.
 Views are the scene's own (position, target, vertical fov), rendered as a photographer would: a level
 camera, the framing moved with the lens shift so vertical lines stay vertical.
@@ -106,7 +108,30 @@ def fix_normals(scene):
     print(f"normals fixed on {len(fixed)} meshes")
 
 
+# the runtime's photo-<n> camera (#43): 1.3 m above the floor, 53° vertical, level, the frame shifted
+# down by 12 % of its height (kit/runtime.js PHOTO)
+PHOTO = {"eye": 1.3, "fov": 53, "shift": 0.12}
+
+
+def photo_camera(scene, spec, width, height):
+    """`photo:x,z,yaw,floor`: a walk viewpoint (three.js yaw: looking along (-sin, -cos))."""
+    x, z, yaw, floor = (float(v) for v in spec.split(":", 1)[1].split(","))
+    cam = bpy.data.cameras.new("photo")
+    cam.sensor_fit = "VERTICAL"
+    cam.angle_y = math.radians(PHOTO["fov"])
+    cam.clip_start = 0.05
+    cam.shift_y = -PHOTO["shift"] * (height / max(width, height))
+    obj = bpy.data.objects.new("photo", cam)
+    scene.collection.objects.link(obj)
+    obj.location = blender((x, floor + PHOTO["eye"], z))
+    d = blender((-math.sin(yaw), 0.0, -math.cos(yaw)))
+    obj.rotation_euler = (math.pi / 2, 0.0, math.atan2(d.y, d.x) - math.pi / 2)
+    scene.camera = obj
+
+
 def camera(scene, name, width, height):
+    if name.startswith("photo:"):
+        return photo_camera(scene, name, width, height)
     pos, target, fov = VIEWS[name]
     p, t = blender(pos), blender(target)
     cam = bpy.data.cameras.new(name)

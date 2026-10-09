@@ -111,6 +111,11 @@
       "name": "2026-10-09-v21",
       "date": "2026-10-09",
       "note": "v20 with interior finishes graded to sit together (#61): oak, oak-light, tile and tile-dark keep their names on less orange, more varied CC0 sets (Poly Haven laminate_floor_03, granite_tile) or drawn 60 x 60 porcelain tiles with a correction per finish (saturation, contrast, brightness, hue) applied to the colour map at load; new floors oak-smoked, herringbone, terrazzo, marble; terrazzo and marble worktops. Under review (#61): not the viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v22",
+      "date": "2026-10-09",
+      "note": "v21 with a clean frame at rest (#56): once the camera stops, 8 frames with the camera jittered by a fraction of a pixel are averaged (anti-aliasing and the occlusion's noise converge within about 0.6 s; ?rest=0: off), and a fix to the walk's room culling: a mesh belonged to the first room whose storey band held it, so the ground floor's rugs, low tables, bed bases and furniture legs counted as the cellar's and vanished whenever the cellar was not drawn (since v17); now the room on the highest floor below. Also ceiling cornices for period houses (#43, floorPlan cornice: true) and ?framelog=1 (__house.frameLog, __house.culling) for diagnosing frames. Built on v21 and v12 (under review): not the viewer's default. Not pinned."
     }
   ]
 }

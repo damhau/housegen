@@ -154,7 +154,8 @@ INTERIOR_KIT_REFERENCE = r"""
 Same frame as the exterior: metres, +x east, +z south, +y up; points are [x, z].
 
 ### Rooms, partitions, doors — import { floorPlan } from "housekit/interior"
-floorPlan({ y (finished floor level of the storey), height=2.5 (clear height to the ceiling), rooms, partitions })  → add to ctx.group
+floorPlan({ y (finished floor level of the storey), height=2.5 (clear height to the ceiling), rooms, partitions,
+  cornice=false (true for a period house, built before about 1950: a moulding where the walls meet the ceiling) })  → add to ctx.group
   rooms: [{ name ("Salon", "Chambre 1" as on the plan), use: "living"|"kitchen"|"kitchen-living"|"dining"|"bedroom"|"bath"|"wc"|"hall"|"stair"|"storage"|"office",
             polygon: the room's CLEAR floor, i.e. the inside faces of its walls, floor: "oak"|"oak-light"|"oak-smoked"|"herringbone"|"tile"|"tile-dark"|"terrazzo"|"marble"|"concrete",
             area: the room's area in m² as printed on the plan, when the plan prints one (the 2D plan shows it),
@@ -243,8 +244,8 @@ Models (await fx.model(name, { width, length, height })): real furniture, far mo
   bedroom window ("curtain-grey", { height } = floor to ceiling), something on the wall above the sofa and above the
   bed ("wall-art-gallery", frames), a plant in most rooms, a pendant over the dining table and over the island, the
   dining table laid, a fruit bowl or a vase on the island, a few books and small objects on shelves and sideboards.
-- Skirting and the inner window sills are added by the kit to every room of a floor plan (not in tiled rooms): do not
-  build them.
+- Skirting, the inner window sills and the curtain rails over curtained windows are added by the kit to every room of
+  a floor plan (no skirting in tiled rooms), and the ceiling cornice when the floor plan asks for one: do not build them.
 
 Pieces you build yourself: tag them like the kit's, g.userData = { kind: "furniture", name: "towel rail", footprint: [w, d] },
 with a name that says what they are: the checks below find furniture by kind and name.

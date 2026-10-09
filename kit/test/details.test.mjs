@@ -77,3 +77,27 @@ test("a curtain next to a window gets a rail under the ceiling, a bare window no
   assert.ok(b.max.y < 2.5 && b.min.y > 2.4, `under the ceiling: ${b.min.y}..${b.max.y}`);
   assert.ok(b.min.x < 1.2 && b.max.x > 2.8, "past both sides of the window");
 });
+
+test("a cornice only where the plan asks for one, under the ceiling, cut where an opening reaches it", () => {
+  const { root, plan } = scene();
+  interior.roomDetails(root);
+  assert.ok(!plan.children.some((c) => c.userData.kind === "cornice"), "no cornice by default");
+  const salon = { name: "Salon", polygon: [[0, 0], [4, 0], [4, 3], [0, 3]] };
+  const c = interior.cornice(root, salon, { y: 0, ceiling: 2.5 });
+  const b = box(c.children[0]);
+  assert.ok(b.max.y <= 2.5 && b.min.y >= 2.42, `under the ceiling: ${b.min.y.toFixed(3)}..${b.max.y.toFixed(3)}`);
+  assert.ok(b.min.x >= -1e-6 && b.max.x <= 4 + 1e-6 && b.min.z >= -1e-6 && b.max.z <= 3 + 1e-6, "inside the room");
+  // an open passage to the ceiling in the east wall (x = 4, z 1..2): no cornice across it
+  const open = new THREE.Group();
+  const p2 = interior.floorPlan({ y: 0, rooms: [], partitions: [{ from: [4.05, 0], to: [4.05, 3], openings: [{ offset: 1, width: 1, height: 2.5, door: false }] }] });
+  open.add(p2);
+  const cut = interior.cornice(open, salon, { y: 0, ceiling: 2.5 });
+  const pos = cut.children[0].geometry.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    if (pos.getX(i) > 3.9) assert.ok(pos.getZ(i) <= 1 + 1e-6 || pos.getZ(i) >= 2 - 1e-6, `cornice across the passage at z=${pos.getZ(i).toFixed(2)}`);
+  }
+  const withCornice = new THREE.Group();
+  withCornice.add(interior.floorPlan({ y: 0, cornice: true, rooms: [salon] }));
+  assert.ok(interior.roomDetails(withCornice) >= 1);
+  assert.ok(withCornice.children[0].children.some((c) => c.userData.kind === "cornice"));
+});
