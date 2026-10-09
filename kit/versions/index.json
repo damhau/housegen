@@ -50,6 +50,11 @@
       "name": "2026-10-04-v9",
       "date": "2026-10-04",
       "note": "v8 with the lamps chosen by what the camera sees: above the six live lights, the stand-ins go to the lamps of the rooms in view (the camera's room and the rooms open to it, less for a room through a door), ranked by intensity, distance and being in front, instead of the six nearest in a straight line (lamps of the other storeys and behind walls, which lit the room through the slabs); a lamp fades in and out instead of switching; each room's probe is captured with its own lamps at the indoor strength, and the exposure meter recalibrated for it (in_meter 0.5). The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v10",
+      "date": "2026-10-09",
+      "note": "v9 with the walk's motion of the reference tour (#53): a glide keeps to the middle of doors and passages, rounds its corners, speeds up and slows down (2 m/s², slower in sharp corners, 2.2 m/s at most, 1.5 s at least), looks a little ahead along its path, eases out of its start heading and into the arrival one (__house.walkTo(x, z, { yaw, pitch })) and levels the view; the keys speed up in 0.5 s (1.1 m/s, Shift runs) and stop in 0.17 s, the arrow keys ease their turn, the mouse look is smoothed. Pictures unchanged. The viewer's default. Not pinned."
     }
   ]
 }
