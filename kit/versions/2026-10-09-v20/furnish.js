@@ -201,8 +201,8 @@ export function wardrobe({ width = 1.2, depth = 0.6, height = 2.3 } = {}) {
 }
 
 /**
- * Kitchen run along a wall, `length` long, fronts `front`, worktop `worktop` ("oak", "terrazzo",
- * "marble" or a stone colour): base units of ~60 cm (handleless: dark joints, a grip rail under the worktop, a recessed
+ * Kitchen run along a wall, `length` long, fronts `front`, worktop `worktop` ("oak" or a stone
+ * colour): base units of ~60 cm (handleless: dark joints, a grip rail under the worktop, a recessed
  * plinth), tall units `tall: [{ at, width, oven }]` (centre from the left end; `oven` puts a
  * built-in oven at eye height), an undermount sink and an induction hob at `sink` / `hob` (centres
  * from the left end), wall units above (`upper`), a splashback between them (`splash`: tile options
@@ -214,9 +214,7 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
   worktop = "#d9d5cc", splash = { size: [0.3, 0.1], color: "#f4f3ef" }, hood = true, ceiling = 2.4 } = {}) {
   const g = new THREE.Group();
   const white = finish.lacquer(front), gap = finish.lacquer("#8f8b84");
-  // #61: a terrazzo or marble worktop, textured when the finishes are loaded
-  const stoneTop = { terrazzo: () => finishMaterial("terrazzo", { roughness: 0.45 }), marble: () => finishMaterial("stone-tile", { roughness: 0.4 }) }[worktop];
-  const top = worktop === "oak" ? finish.oak() : (stoneTop?.() ?? finish.stone(worktop === "terrazzo" ? "#ddd8cf" : worktop === "marble" ? "#ebe8e2" : worktop));
+  const top = worktop === "oak" ? finish.oak() : finish.stone(worktop);
   const x0 = -length / 2;
   const inTall = (x) => tall.some((t) => Math.abs(x - t.at) < t.width / 2 - 1e-6);
   // plinth, 5 cm back and dark: the units seem to float over their own shadow

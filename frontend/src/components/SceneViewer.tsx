@@ -127,6 +127,9 @@ export function SceneViewer({
   // the guided tour (#57): running or not, and where it is
   const [tour, setTour] = useState<{ on: boolean; room: string | null; index: number; total: number } | null>(null)
   const [tourable, setTourable] = useState(false) // the renderer has the tour (older ones do not)
+  // the storeys the renderer can show as a dollhouse (older renderers send none), the one shown
+  const [storeys, setStoreys] = useState<{ index: number; y: number; rooms: number }[]>([])
+  const [dollhouse, setDollhouse] = useState<number | null>(null)
   const autoTourDone = useRef(false)
   const [kit, setKit] = useState<string | null>(null)
   const [compare, setCompare] = useState<string | null>(null)
@@ -170,6 +173,8 @@ export function SceneViewer({
     setRoom("")
     setTour(null)
     setTourable(false)
+    setStoreys([])
+    setDollhouse(null)
     setLoading(null)
     setPlanOpen(false)
     setSurroundingsOpen(false)
@@ -189,6 +194,7 @@ export function SceneViewer({
         rooms?: Room[]
         credits?: string[]
         tour?: boolean
+        storeys?: { index: number; y: number; rooms: number }[]
         phase?: string
         loaded?: number
         id?: number
@@ -200,12 +206,14 @@ export function SceneViewer({
         setRooms(Array.isArray(d.rooms) ? d.rooms : [])
         setCredits(Array.isArray(d.credits) ? d.credits : [])
         setTourable(d.tour === true)
+        setStoreys(Array.isArray(d.storeys) ? d.storeys : [])
         if (autoTour && d.tour === true && !autoTourDone.current && Array.isArray(d.rooms) && d.rooms.length > 0) {
           autoTourDone.current = true
           ref.current?.contentWindow?.postMessage({ type: "house:tour", on: true }, "*")
         }
       }
       if (d?.type === "house:walking") setWalking(!!d.on)
+      if (d?.type === "house:dollhouse") setDollhouse(typeof d.index === "number" ? d.index : null)
       if (d?.type === "house:progress" && typeof d.phase === "string") setLoading({ phase: d.phase, loaded: d.loaded, total: d.total })
       if (d?.type === "house:tour") {
         setTour({ on: !!d.on, room: d.room ?? null, index: d.index ?? 0, total: d.total ?? 0 })
@@ -250,6 +258,10 @@ export function SceneViewer({
     if (!on) setRoom("")
   }
 
+  function showDollhouse(index: number | null) {
+    ref.current?.contentWindow?.postMessage({ type: "house:dollhouse", index }, "*")
+  }
+
   function playTour(on: boolean) {
     ref.current?.contentWindow?.postMessage({ type: "house:tour", on }, "*")
     if (on) ref.current?.focus() // a key pressed in the scene then stops it
@@ -286,6 +298,8 @@ export function SceneViewer({
     `refining ${progress.count}/${progress.total}`
   ) : tour?.on ? (
     `tour · ${tour.room ?? ""} (${tour.index + 1}/${tour.total}) · any key or click stops it`
+  ) : dollhouse !== null ? (
+    "dollhouse · click a room to walk into it · drag to orbit"
   ) : walking ? (
     TOUCH ? "drag to look · tap the floor to go there" : "click to look with the mouse · W A S D to walk · Esc to release"
   ) : effectsDropped && look !== "fast" ? (
@@ -417,6 +431,21 @@ export function SceneViewer({
                   <Play className="size-3.5" />
                   Tour
                 </Button>
+              )}
+              {storeys.length > 0 && !compare && (
+                <select
+                  value={dollhouse ?? ""}
+                  onChange={(e) => showDollhouse(e.target.value === "" ? null : Number(e.target.value))}
+                  title="A storey from above, its ceiling off: click a room to walk into it"
+                  className={cn("h-7 rounded-md border px-1.5 text-[12px]", dollhouse !== null ? "bg-secondary" : "bg-background")}
+                >
+                  <option value="">Dollhouse…</option>
+                  {storeys.map((s) => (
+                    <option key={s.index} value={s.index}>
+                      Storey {s.index + 1} · {s.rooms} rooms
+                    </option>
+                  ))}
+                </select>
               )}
               {rooms.length > 0 && !compare && (
                 <Button

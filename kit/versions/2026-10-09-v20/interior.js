@@ -25,18 +25,11 @@ const plain = (color, roughness = 0.9) => {
 };
 
 // textured when the finishes are loaded (finishes.loadFinishes), plain colours otherwise
-// (#61: oak, oak-light, tile and tile-dark keep their names on graded, less orange sets or, for the
-// light porcelain, drawn tiles)
 const FLOORS = {
-  oak: () => finishMaterial("oak-natural", { roughness: 0.85 }) ?? plain("#c9a57c", 0.7),
-  "oak-light": () => finishMaterial("oak-washed", { roughness: 0.85 }) ?? plain("#dcc3a0", 0.7),
-  "oak-smoked": () => finishMaterial("oak-smoked", { roughness: 0.8 }) ?? plain("#8a6a4c", 0.7),
-  herringbone: () => finishMaterial("oak-herringbone", { roughness: 0.8 }) ?? plain("#c9a57c", 0.7),
-  // large-format porcelain, 60 x 60, pale joints (drawn, nothing to fetch)
-  tile: () => tileMaterial({ size: [0.6, 0.6], joint: 0.002, color: "#e6e4df", jointColor: "#d2cfc8", roughness: 0.4 }),
-  "tile-dark": () => finishMaterial("porcelain-dark", { roughness: 0.65 }) ?? plain("#8d8b86", 0.5),
-  terrazzo: () => finishMaterial("terrazzo", { roughness: 0.55 }) ?? plain("#d9d4ca", 0.5),
-  marble: () => finishMaterial("stone-tile") ?? plain("#e2ddd3", 0.4),
+  oak: () => finishMaterial("oak-floor") ?? plain("#c9a57c", 0.7),
+  "oak-light": () => finishMaterial("oak-floor", { color: "#fff6ea" }) ?? plain("#dcc3a0", 0.7),
+  tile: () => finishMaterial("stone-tile") ?? plain("#d8d5ce", 0.5),
+  "tile-dark": () => finishMaterial("stone-tile", { color: "#8d8b86" }) ?? plain("#8d8b86", 0.5),
   concrete: () => plain("#b9b6ae", 0.95),
 };
 const PLASTER = () => finishMaterial("plaster") ?? plain("#f1efea", 0.92);

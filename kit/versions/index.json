@@ -101,6 +101,16 @@
       "name": "2026-10-09-v19",
       "date": "2026-10-09",
       "note": "v18 with the scene page reporting its load (#60: house:progress, the files fetched then the first frame being drawn, for the viewer's cover and progress) and its images (finishes, surroundings, the sky's clouds) decoded off the main thread while they download (ImageBitmap) instead of on the main thread at the first frame: TestVillaGille's first frame uploads its textures in 3.7 s instead of 4.8. Pictures unchanged. Built on v12 (under review): not the viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v20",
+      "date": "2026-10-09",
+      "note": "v19 with the details a builder leaves out of its rooms (#43), added by the kit to every floor plan once the scene is built: skirting (6 cm, stopping at the doors, not on tiled walls), inner window sills, and a curtain rail over each window with curtains next to it; the photographer's view of a room (photo-<n>: the walk's viewpoint at 1.3 m, a 24 mm lens, level, the frame shifted down instead of tilted); and the dollhouse (#62): a storey from above with everything over its ceiling hidden, hovering names a room, a click walks into it (house:dollhouse, __house.dollhouse(i)). The audit also asks for curtains on the windows of living rooms and bedrooms and for something on their walls. Coats on the coat hooks shaped like coats (#44: a body narrowing to the collar, sleeves, folds) instead of two boxes. Built on v12 (under review): not the viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v21",
+      "date": "2026-10-09",
+      "note": "v20 with interior finishes graded to sit together (#61): oak, oak-light, tile and tile-dark keep their names on less orange, more varied CC0 sets (Poly Haven laminate_floor_03, granite_tile) or drawn 60 x 60 porcelain tiles with a correction per finish (saturation, contrast, brightness, hue) applied to the colour map at load; new floors oak-smoked, herringbone, terrazzo, marble; terrazzo and marble worktops. Under review (#61): not the viewer's default. Not pinned."
     }
   ]
 }

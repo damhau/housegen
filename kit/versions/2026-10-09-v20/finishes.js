@@ -13,18 +13,9 @@
 import * as THREE from "three";
 
 // colour: false keeps the caller's colour and takes only the relief (normal + roughness) of the texture
-// grade: a correction of the colour map (#61) so the finishes sit together without new files:
-// { saturation, contrast, brightness, hue (degrees) }, 1/1/1/0 = as photographed
 export const TEXTURES = {
   "oak-floor": { id: "laminate_floor_02" },
   "stone-tile": { id: "marble_01" },
-  // interior floors (#61): the oak no longer orange and uniform at walking distance
-  "oak-natural": { id: "laminate_floor_03", grade: { saturation: 0.72, brightness: 1.08, hue: 4 } },
-  "oak-washed": { id: "laminate_floor_03", grade: { saturation: 0.42, brightness: 1.3, contrast: 0.92 } },
-  "oak-smoked": { id: "wood_floor", grade: { saturation: 0.62, brightness: 0.92, contrast: 1.05 } },
-  "oak-herringbone": { id: "herringbone_parquet", grade: { saturation: 0.6, brightness: 1.12 } },
-  "porcelain-dark": { id: "granite_tile", grade: { saturation: 0.5, brightness: 1.05 } },
-  terrazzo: { id: "terrazzo_tiles", grade: { saturation: 0.3, brightness: 1.65, contrast: 0.85 } },
   plaster: { id: "white_stucco", normalScale: 0.35, tint: "#ffffff" },
   oak: { id: "oak_veneer_03" },
   "fabric-melange": { id: "jogging_melange" },
@@ -78,41 +69,7 @@ async function loadTextures(name) {
   const [map, normalMap, roughnessMap] = await Promise.all([
     spec.colour === false ? null : get("diff", true), get("nor_gl", false), get("rough", false),
   ]);
-  if (map && spec.grade) await gradeTexture(map, spec.grade);
   return { map, normalMap, roughnessMap, mean: map ? meanColour(map.image) : null };
-}
-
-/**
- * Correct a colour texture in place (#61): saturation and hue around each pixel's own luminance,
- * contrast around mid-grey, brightness as a gain, in sRGB values as an image editor does. Once per
- * finish, on the CPU (a 1k map: ~15 ms); the shaders stay the stock ones.
- */
-async function gradeTexture(t, { saturation = 1, contrast = 1, brightness = 1, hue = 0 }) {
-  if (typeof OffscreenCanvas === "undefined" || !t.image) return;
-  const { width: w, height: h } = t.image;
-  const c = new OffscreenCanvas(w, h);
-  const g = c.getContext("2d", { willReadFrequently: true });
-  g.drawImage(t.image, 0, 0);
-  const img = g.getImageData(0, 0, w, h), px = img.data;
-  // hue: a rotation about the grey axis (the usual RGB hue-rotate matrix)
-  const a = THREE.MathUtils.degToRad(hue), cos = Math.cos(a), sin = Math.sin(a);
-  const m = [
-    0.213 + cos * 0.787 - sin * 0.213, 0.715 - cos * 0.715 - sin * 0.715, 0.072 - cos * 0.072 + sin * 0.928,
-    0.213 - cos * 0.213 + sin * 0.143, 0.715 + cos * 0.285 + sin * 0.14, 0.072 - cos * 0.072 - sin * 0.283,
-    0.213 - cos * 0.213 - sin * 0.787, 0.715 - cos * 0.715 + sin * 0.715, 0.072 + cos * 0.928 + sin * 0.072,
-  ];
-  for (let i = 0; i < px.length; i += 4) {
-    let r = px[i], gg = px[i + 1], b = px[i + 2];
-    if (hue) [r, gg, b] = [m[0] * r + m[1] * gg + m[2] * b, m[3] * r + m[4] * gg + m[5] * b, m[6] * r + m[7] * gg + m[8] * b];
-    const y = 0.2126 * r + 0.7152 * gg + 0.0722 * b;
-    r = y + (r - y) * saturation; gg = y + (gg - y) * saturation; b = y + (b - y) * saturation;
-    px[i] = ((r - 128) * contrast + 128) * brightness;
-    px[i + 1] = ((gg - 128) * contrast + 128) * brightness;
-    px[i + 2] = ((b - 128) * contrast + 128) * brightness;
-  }
-  g.putImageData(img, 0, 0);
-  t.image = await createImageBitmap(c);
-  t.needsUpdate = true;
 }
 
 function texturesOf(name) {

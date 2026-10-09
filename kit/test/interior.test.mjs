@@ -102,10 +102,11 @@ test("roomEssentials names what each room's use needs and does not have", async 
   const lines = roomEssentials(root);
   assert.deepEqual(lines.slice(0, 2), [
     '"SDB" (bath): walls not tiled (tileWalls), no bath or shower (fx.bathtub, fx.shower), no towel rail with towels (fx.towelRail)',
-    '"Chambre" (bedroom): no bed ("bed-oak-linen")',
+    '"Chambre" (bedroom): no bed ("bed-oak-linen"), nothing on the walls (frames above the bed)',
   ]);
   assert.match(lines[2], /tag the ones you build yourself/);
-  // completed: tiles, a bath, a towel rail on the wall (its origin on the wall line), a Martel bed
-  root.add(tileWalls(root, bath, { y: 0 }), piece("bathtub", 1.5, 0.4), piece("towelRail", 2.99, 1.2, 0.25), piece("bed-oak-linen", 5, 2));
+  // completed: tiles, a bath, a towel rail on the wall (its origin on the wall line), a Martel bed, frames above it
+  root.add(tileWalls(root, bath, { y: 0 }), piece("bathtub", 1.5, 0.4), piece("towelRail", 2.99, 1.2, 0.25), piece("bed-oak-linen", 5, 2),
+    piece("wall-art-gallery", 6.99, 2, 1.3));
   assert.deepEqual(roomEssentials(root), []);
 });
