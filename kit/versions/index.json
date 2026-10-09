@@ -55,6 +55,11 @@
       "name": "2026-10-09-v10",
       "date": "2026-10-09",
       "note": "v9 with the walk's motion of the reference tour (#53): a glide keeps to the middle of doors and passages, rounds its corners, speeds up and slows down (2 m/s², slower in sharp corners, 2.2 m/s at most, 1.5 s at least), looks a little ahead along its path, eases out of its start heading and into the arrival one (__house.walkTo(x, z, { yaw, pitch })) and levels the view; the keys speed up in 0.5 s (1.1 m/s, Shift runs) and stop in 0.17 s, the arrow keys ease their turn, the mouse look is smoothed. Pictures unchanged. The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v11",
+      "date": "2026-10-09",
+      "note": "v10 with the glide's view turning no faster than 2.4 rad/s (#53): leaving the start heading while the path itself turned could add up to about 4 rad/s on a glide that starts facing away from its path (Montelly49-Dev4); the glide ends once the view has reached its arrival heading. The viewer's default. Not pinned."
     }
   ]
 }
