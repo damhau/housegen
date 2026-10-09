@@ -85,6 +85,7 @@ export function SceneViewer({
   planName = "plan",
   projectId,
   contextUrl,
+  autoTour = false,
 }: {
   sceneUrl: string | null
   reloadKey?: string | number
@@ -100,6 +101,8 @@ export function SceneViewer({
   projectId?: string
   /** surroundings to show without a project (the share page) */
   contextUrl?: string | null
+  /** start the guided tour once the scene is ready (a share link ending in #autoplay) */
+  autoTour?: boolean
 }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const refB = useRef<HTMLIFrameElement>(null)
@@ -116,6 +119,10 @@ export function SceneViewer({
   const [credits, setCredits] = useState<string[]>([])
   const [walking, setWalking] = useState(false)
   const [room, setRoom] = useState("")
+  // the guided tour (#57): running or not, and where it is
+  const [tour, setTour] = useState<{ on: boolean; room: string | null; index: number; total: number } | null>(null)
+  const [tourable, setTourable] = useState(false) // the renderer has the tour (older ones do not)
+  const autoTourDone = useRef(false)
   const [kit, setKit] = useState<string | null>(null)
   const [compare, setCompare] = useState<string | null>(null)
   const [planOpen, setPlanOpen] = useState(false)
@@ -156,6 +163,8 @@ export function SceneViewer({
     setCredits([])
     setWalking(false)
     setRoom("")
+    setTour(null)
+    setTourable(false)
     setPlanOpen(false)
     setSurroundingsOpen(false)
     frameReady.current = false
@@ -169,8 +178,11 @@ export function SceneViewer({
         count?: number
         total?: number
         on?: boolean
+        room?: string | null
+        index?: number
         rooms?: Room[]
         credits?: string[]
+        tour?: boolean
         id?: number
       }
       if (d?.type === "house:ready") {
@@ -179,8 +191,17 @@ export function SceneViewer({
         for (const w of readyWaiters.current.splice(0)) w()
         setRooms(Array.isArray(d.rooms) ? d.rooms : [])
         setCredits(Array.isArray(d.credits) ? d.credits : [])
+        setTourable(d.tour === true)
+        if (autoTour && d.tour === true && !autoTourDone.current && Array.isArray(d.rooms) && d.rooms.length > 0) {
+          autoTourDone.current = true
+          ref.current?.contentWindow?.postMessage({ type: "house:tour", on: true }, "*")
+        }
       }
       if (d?.type === "house:walking") setWalking(!!d.on)
+      if (d?.type === "house:tour") {
+        setTour({ on: !!d.on, room: d.room ?? null, index: d.index ?? 0, total: d.total ?? 0 })
+        if (d.room) setRoom(d.room)
+      }
       if ((d?.type === "house:plan2d" || d?.type === "house:outline") && typeof d.id === "number") {
         planWaiting.current.get(d.id)?.(d as never)
         planWaiting.current.delete(d.id)
@@ -193,7 +214,7 @@ export function SceneViewer({
     }
     window.addEventListener("message", onMsg)
     return () => window.removeEventListener("message", onMsg)
-  }, [src])
+  }, [src, autoTour])
 
   const ask = useCallback(async <T,>(type: string, payload: Record<string, unknown> = {}) => {
     if (!frameReady.current) await new Promise<void>((r) => readyWaiters.current.push(r))
@@ -218,6 +239,11 @@ export function SceneViewer({
   function walk(on: boolean, into?: string) {
     ref.current?.contentWindow?.postMessage({ type: "house:walk", on, room: into }, "*")
     if (!on) setRoom("")
+  }
+
+  function playTour(on: boolean) {
+    ref.current?.contentWindow?.postMessage({ type: "house:tour", on }, "*")
+    if (on) ref.current?.focus() // a key pressed in the scene then stops it
   }
 
   function goToRoom(name: string) {
@@ -245,6 +271,8 @@ export function SceneViewer({
     "loading…"
   ) : progress ? (
     `refining ${progress.count}/${progress.total}`
+  ) : tour?.on ? (
+    `tour · ${tour.room ?? ""} (${tour.index + 1}/${tour.total}) · any key or click stops it`
   ) : walking ? (
     TOUCH ? "drag to look · tap the floor to go there" : "click to look with the mouse · W A S D to walk · Esc to release"
   ) : effectsDropped && look !== "fast" ? (
@@ -319,6 +347,18 @@ export function SceneViewer({
                   </option>
                 ))}
               </select>
+              {tourable && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2"
+                  title={tour?.on ? "Stop the tour" : "Walk through the rooms one after the other"}
+                  onClick={() => playTour(!tour?.on)}
+                >
+                  {tour?.on ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
+                  Tour
+                </Button>
+              )}
               <Button size="sm" variant="ghost" className="h-7 px-2" title="Back to the view from outside" onClick={() => walk(false)}>
                 <LogOut className="size-3.5" />
                 Exit walk
@@ -341,6 +381,18 @@ export function SceneViewer({
                 >
                   <Footprints className="size-3.5" />
                   Walk
+                </Button>
+              )}
+              {rooms.length > 0 && tourable && !compare && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2"
+                  title="A guided tour: the rooms one after the other (any key or click stops it)"
+                  onClick={() => playTour(true)}
+                >
+                  <Play className="size-3.5" />
+                  Tour
                 </Button>
               )}
               {rooms.length > 0 && !compare && (

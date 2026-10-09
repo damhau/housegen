@@ -71,6 +71,11 @@
       "name": "2026-10-09-v13",
       "date": "2026-10-09",
       "note": "v12 with the walk going from room to room (#55): the viewer's \"Go to a room\" walks there (a glide to the room's viewpoint) on the same storey and flat when it takes at most 6 s, else it fades to black and back (0.3 s each way), behind which the walk changes storey; a storey's grids and viewpoints are kept, so going back is at once. Entering the walk fades too, behind which every material is compiled for the indoor light and drawn once (no compile mid-glide). The effects guard no longer switches the effects off for one slow frame (a compile, an upload, the driver's first draw): three in a row over 250 ms or eight averaging over 90 ms. __house.goToRoom. Built on v12 (under review): not the viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-09-v14",
+      "date": "2026-10-09",
+      "note": "v13 with the guided tour (#57): the rooms one flat after the other, storey by storey, the hall and the day rooms first, then the nearest (storage and stairs skipped), a glide or a fade to each room's viewpoint and a 3 s pause; any key, click or wheel stops it; ?tour=1 or #autoplay starts it once loaded, house:tour from the viewer (its Tour button) too. The effects guard skips every frame while a fade is not clear and judges the median of eight frames. Built on v12 (under review): not the viewer's default. Not pinned."
     }
   ]
 }
