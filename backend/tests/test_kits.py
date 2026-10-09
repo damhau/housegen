@@ -41,6 +41,31 @@ def test_registry_lists_the_baseline_and_the_working_copy() -> None:
     assert out.kits[-1].dev
 
 
+def test_the_viewer_default_can_stay_on_a_reviewed_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = kits._index
+    monkeypatch.setattr(kits, "_index", lambda s: {**real(s), "viewer": BASELINE})
+    out = kits.list_kits()
+    assert out.kits[0].name == LATEST  # a newer snapshot is still listed first, and can be picked
+    assert out.latest == BASELINE  # but nobody gets it by default
+    assert kits.viewer_kit() == BASELINE
+    # an unknown name: the newest snapshot, as without the entry
+    monkeypatch.setattr(kits, "_index", lambda s: {**real(s), "viewer": "nope"})
+    assert kits.list_kits().latest == LATEST
+
+
+def test_jobs_needing_a_module_take_the_viewer_default_not_a_snapshot_under_review(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    real = kits._index
+    older = "2026-10-04-v9"  # has interior.js, the pinned baseline does not
+    monkeypatch.setattr(kits, "_index", lambda s: {**real(s), "viewer": older})
+    assert kits.kit_with("interior.js") == older
+    monkeypatch.setattr(kits, "_index", real)
+    assert kits.kit_with("interior.js") == kits.viewer_kit()
+
+
 def test_pinned_kit_is_a_snapshot_with_the_kit_files() -> None:
     s = get_settings()
     assert kits.pinned_kit(s) == BASELINE

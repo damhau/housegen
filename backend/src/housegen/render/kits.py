@@ -4,8 +4,8 @@ scene can be drawn with.
 `kit/versions/<name>/` holds one snapshot and `kit/versions/index.json` lists them and names the
 one **pinned** for the build path: what the builder renders with and reads as `kit/*.js`, what
 the critic compares, what the version pictures are drawn with. `dev` is the working copy in
-`kit/`. The viewer shows the newest snapshot by default and lets the owner pick any, side by
-side, so a change to how a house is drawn is judged on a saved scene before it is snapshotted
+`kit/`. The viewer shows the newest snapshot by default (or the index's `viewer`, while a newer
+one waits for review) and lets the owner pick any, side by side, so a change to how a house is drawn is judged on a saved scene before it is snapshotted
 and, later, pinned (after a measured run, see docs/quality-plan-2026-09-12.md).
 
 A scene page is served with `?kit=<name>`: the import map of its `index.html` is rewritten on
@@ -44,7 +44,7 @@ class KitInfo(BaseModel):
 class KitsOut(BaseModel):
     kits: list[KitInfo]  # newest snapshot first, the working copy last
     pinned: str
-    latest: str  # what the viewer shows by default: the newest snapshot (dev when none)
+    latest: str  # what the viewer shows by default: index.json's `viewer`, else the newest snapshot (dev when none)
 
 
 def _index(settings: Settings) -> dict[str, object]:
@@ -78,13 +78,29 @@ def pinned_kit(settings: Settings | None = None) -> str:
     return name
 
 
+def viewer_kit(settings: Settings | None = None) -> str:
+    """What the viewer shows by default: the index's `viewer` when it names a snapshot (a newer one
+    waits for review: it is listed and can be picked, but nobody gets it by default), else the
+    newest snapshot, else the working copy."""
+    settings = settings or get_settings()
+    snaps = _snapshots(settings)
+    chosen = str(_index(settings).get("viewer") or "")
+    if chosen in {v["name"] for v in snaps}:
+        return chosen
+    return snaps[0]["name"] if snaps else DEV
+
+
 def kit_with(module: str, settings: Settings | None = None) -> str:
     """The renderer a job needs a module of (the interior job: interior.js): the pinned one when
-    it has it, else the newest snapshot that has it, else the working copy."""
+    it has it, else the viewer's default when it has it (not a snapshot waiting for review), else
+    the newest snapshot that has it, else the working copy."""
     settings = settings or get_settings()
     pinned = pinned_kit(settings)
     if (kit_dir(pinned, settings) / module).exists():
         return pinned
+    viewer = viewer_kit(settings)
+    if viewer != DEV and (kit_dir(viewer, settings) / module).exists():
+        return viewer
     for v in _snapshots(settings):
         if (settings.KIT_DIR / "versions" / v["name"] / module).exists():
             return v["name"]
@@ -110,7 +126,7 @@ def list_kits(settings: Settings | None = None) -> KitsOut:
     kits.append(
         KitInfo(name=DEV, date="", note="the working copy in kit/", pinned=pinned == DEV, dev=True)
     )
-    return KitsOut(kits=kits, pinned=pinned, latest=snaps[0]["name"] if snaps else DEV)
+    return KitsOut(kits=kits, pinned=pinned, latest=viewer_kit(settings))
 
 
 def dev_kit_tag(settings: Settings | None = None) -> str:
