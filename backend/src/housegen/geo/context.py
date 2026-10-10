@@ -11,7 +11,8 @@
 
 The local frame is the kit's: metres, x east, z south, around the anchor. The alignment says where
 the scene sits in it: the scene's origin at local (x, z), turned by `rotation` degrees (clockwise
-seen from above: the scene's -z points `rotation`° east of north), its y=0 at altitude `ground`.
+seen from above: the scene's -z points `rotation`° east of north), its y=0 at altitude `ground`;
+`near` is the radius around the house drawn in 3D (trees, ground by type), the photo beyond (#51).
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ COVER_CREDIT = "mensuration officielle (geodienste.ch)"
 COVER_EXTENT = (
     180  # metres around the searched point: the ground by type, for a 3D radius up to 165 m
 )
+NEAR = 120  # metres: the default 3D radius around the house (#51)
 
 
 def context_dir(project_root: Path) -> Path:
@@ -181,6 +183,8 @@ async def build(
             "z": 0.0,
             "rotation": 0.0,
             "ground": round(center, 2),
+            # the 3D near the house (trees, ground by type), the photo beyond: the owner may change it
+            "near": NEAR,
             "set": False,
         },
         "credits": [

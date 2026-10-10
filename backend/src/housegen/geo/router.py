@@ -33,6 +33,12 @@ class AlignmentIn(BaseModel):
         ge=-360, le=360, description="degrees the scene is turned, clockwise seen from above"
     )
     ground: float = Field(description="altitude (m) of the scene's y = 0")
+    near: float = Field(
+        120,
+        ge=30,
+        le=165,
+        description="metres around the house drawn in 3D (the trees, the ground by type); the aerial photo beyond (#51)",
+    )
 
 
 class AlignmentOut(AlignmentIn):

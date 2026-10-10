@@ -1,6 +1,6 @@
 {
   "pinned": "2026-09-12-baseline",
-  "viewer": "2026-10-11-v27",
+  "viewer": "2026-10-11-v28",
   "versions": [
     {
       "name": "2026-09-12-baseline",
@@ -141,6 +141,11 @@
       "name": "2026-10-11-v27",
       "date": "2026-10-11",
       "note": "v26 with the ground by type near the house (#50, #39 step 4): the cadastral survey's land cover (cover.png from geo/landcover.py: asphalt, lawn, paving, gravel masks at 0.25 m) drawn in the kit's finishes on the surroundings' ground, each keeping its texture's detail with its colour moved toward the photo's there (all of it for a lawn, a third for asphalt), within 120 m of the house and fading into the photo over 15 m. The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-11-v28",
+      "date": "2026-10-11",
+      "note": "v27 with the 3D radius per project and the surroundings' switch (#51, #50): the trees and the ground by type stop at the owner's radius around the house (alignment.near, 30 to 165 m, 120 by default), fading into the photo over 15 m; house:surroundings { mode: \"3d\" | \"photo\" } (the viewer's switch, also ?surroundings=photo and __house.setSurroundings) shows the aerial photo alone, the neighbours in 3D as before. The viewer's default. Not pinned."
     }
   ]
 }

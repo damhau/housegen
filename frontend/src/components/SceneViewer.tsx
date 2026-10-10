@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { Columns2, Footprints, LogOut, Map as MapIcon, Mountain, Pause, Play, Ruler, Sparkles } from "lucide-react"
+import { Columns2, Footprints, Image as ImageIcon, LogOut, Map as MapIcon, Mountain, Pause, Play, Ruler, Sparkles, Trees } from "lucide-react"
 import { useKits } from "@/api/endpoints/meta/meta"
 import { useGetSurroundings } from "@/api/endpoints/surroundings/surroundings"
 import type { KitInfo } from "@/api/model"
@@ -142,11 +142,17 @@ export function SceneViewer({
   const [surfacesOpen, setSurfacesOpen] = useState(false)
   const [measurable, setMeasurable] = useState(false) // the renderer answers house:quantities (older ones do not)
   const [surroundingsOpen, setSurroundingsOpen] = useState(false)
+  // the surroundings' switch (#50): the 3D near the house (trees, ground by type) or the aerial photo
+  // alone; null when the page has no 3D part to switch (older renderer, older surroundings)
+  const [surroundingsMode, setSurroundingsMode] = useState<"3d" | "photo" | null>(null)
+  const wantedSurroundings = useRef<"3d" | "photo">("3d")
   // the real surroundings (#39): drawn by the scene page in the Final and Ultra looks only
   const surroundings = useGetSurroundings(projectId ?? "", { query: { enabled: Boolean(projectId) } })
   const ctx = projectId ? (surroundings.data?.exists ? surroundings.data : null) : null
   const ctxUrl = projectId ? (ctx?.url ?? null) : (contextUrl ?? null)
-  const ctxKey = ctx ? `${ctx.fetched_at}-${ctx.alignment?.x}-${ctx.alignment?.z}-${ctx.alignment?.rotation}-${ctx.alignment?.ground}` : ""
+  const ctxKey = ctx
+    ? `${ctx.fetched_at}-${ctx.alignment?.x}-${ctx.alignment?.z}-${ctx.alignment?.rotation}-${ctx.alignment?.ground}-${ctx.alignment?.near}`
+    : ""
   // requests waiting for the scene page's answer (plans, the outline), by id
   const planWaiting = useRef(new Map<number, (r: never) => void>())
   const planSeq = useRef(0)
@@ -186,6 +192,7 @@ export function SceneViewer({
     setPlanOpen(false)
     setSurfacesOpen(false)
     setMeasurable(false)
+    setSurroundingsMode(null)
     setSurroundingsOpen(false)
     frameReady.current = false
     if (src === null) return
@@ -204,6 +211,7 @@ export function SceneViewer({
         credits?: string[]
         tour?: boolean
         quantities?: boolean
+        surroundings?: "3d" | "photo" | null
         storeys?: { index: number; y: number; rooms: number }[]
         phase?: string
         loaded?: number
@@ -218,6 +226,12 @@ export function SceneViewer({
         setTourable(d.tour === true)
         setMeasurable(d.quantities === true)
         setStoreys(Array.isArray(d.storeys) ? d.storeys : [])
+        const switchable = d.surroundings === "3d" || d.surroundings === "photo"
+        setSurroundingsMode(switchable ? wantedSurroundings.current : null)
+        // a page loaded again (another look, another version) keeps the switch where the viewer left it
+        if (switchable && d.surroundings !== wantedSurroundings.current) {
+          ref.current?.contentWindow?.postMessage({ type: "house:surroundings", mode: wantedSurroundings.current }, "*")
+        }
         if (autoTour && d.tour === true && !autoTourDone.current && Array.isArray(d.rooms) && d.rooms.length > 0) {
           autoTourDone.current = true
           ref.current?.contentWindow?.postMessage({ type: "house:tour", on: true }, "*")
@@ -504,6 +518,27 @@ export function SceneViewer({
                 </Button>
               )}
             </>
+          )}
+          {ready && !compare && look !== "fast" && surroundingsMode && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2"
+              title={
+                surroundingsMode === "3d"
+                  ? "Surroundings: the trees and the ground by type near the house, the aerial photo beyond. Click for the aerial photo alone"
+                  : "Surroundings: the aerial photo alone. Click for the trees and the ground by type near the house"
+              }
+              onClick={() => {
+                const next = surroundingsMode === "3d" ? "photo" : "3d"
+                wantedSurroundings.current = next
+                setSurroundingsMode(next)
+                ref.current?.contentWindow?.postMessage({ type: "house:surroundings", mode: next }, "*")
+              }}
+            >
+              {surroundingsMode === "3d" ? <Trees className="size-3.5" /> : <ImageIcon className="size-3.5" />}
+              {surroundingsMode === "3d" ? "3D near" : "Photo"}
+            </Button>
           )}
           <span className="mx-1 w-px self-stretch bg-border" />
           {LOOKS.map((l) => (

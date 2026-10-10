@@ -218,11 +218,13 @@ async def test_fetch_align_and_share_the_surroundings(client: AsyncClient, tmp_p
     assert got["exists"]
     assert got["url"] == f"/scenes/{pid}/context/"
     assert got["alignment"]["set"] is False
+    # surroundings fetched before the 3D radius existed: the default
+    assert got["alignment"]["near"] == 120
 
     aligned = (
         await client.patch(
             f"/api/v1/projects/{pid}/surroundings",
-            json={"x": -2, "z": -10, "rotation": -28, "ground": 667.6},
+            json={"x": -2, "z": -10, "rotation": -28, "ground": 667.6, "near": 90},
         )
     ).json()
     assert aligned["alignment"] == {
@@ -230,14 +232,22 @@ async def test_fetch_align_and_share_the_surroundings(client: AsyncClient, tmp_p
         "z": -10,
         "rotation": -28,
         "ground": 667.6,
+        "near": 90,
         "set": True,
     }
+    # the 3D radius stays within what the ground by type covers
+    too_far = await client.patch(
+        f"/api/v1/projects/{pid}/surroundings",
+        json={"x": -2, "z": -10, "rotation": -28, "ground": 667.6, "near": 400},
+    )
+    assert too_far.status_code == 422
 
     # fetched again at the same place, the owner's alignment stays
     again = (
         await client.post(f"/api/v1/projects/{pid}/surroundings", json={"place": place})
     ).json()
     assert again["alignment"]["rotation"] == -28
+    assert again["alignment"]["near"] == 90
 
     token = (await client.post(f"/api/v1/projects/{pid}/share")).json()["token"]
     shared = (await client.get(f"/api/v1/shared/{token}")).json()

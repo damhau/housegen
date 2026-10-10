@@ -18,7 +18,7 @@ import { cn, errorMessage } from "@/lib/utils"
 type Quad = [number, number, number, number]
 export type SceneOutline = { walls: Quad[]; slabs: [number, number][][]; terrain: Quad[] }
 
-type Alignment = { x: number; z: number; rotation: number; ground: number }
+type Alignment = { x: number; z: number; rotation: number; ground: number; near: number }
 
 const KINDS: Record<string, string> = { parcel: "Parcel", address: "Address", gg25: "Commune", zipcode: "Postcode" }
 
@@ -126,8 +126,8 @@ export function SurroundingsDialog({
             <div>
               <h2 className="font-semibold">Surroundings</h2>
               <p className="text-xs text-muted-foreground">
-                The real terrain, aerial photo and neighbouring buildings, 200 m around the house (swisstopo). Shown in the
-                Final and Ultra looks.
+                The real terrain, aerial photo, neighbouring buildings and trees, 200 m around the house (swisstopo, official
+                survey). Shown in the Final and Ultra looks.
               </p>
             </div>
           </div>
@@ -251,14 +251,20 @@ function AlignEditor({
   photoUrl: string
   radius: number
   place: PlaceOut | null
-  initial: (Alignment & { set: boolean }) | null
+  initial: (Omit<Alignment, "near"> & { near?: number; set: boolean }) | null
   requestOutline: () => Promise<SceneOutline>
   onSaved: (out: Awaited<ReturnType<typeof alignSurroundings>>) => void
   onChangePlace: () => void
   onRemove: () => void
   credits: string[]
 }) {
-  const [a, setA] = useState<Alignment>({ x: initial?.x ?? 0, z: initial?.z ?? 0, rotation: initial?.rotation ?? 0, ground: initial?.ground ?? 0 })
+  const [a, setA] = useState<Alignment>({
+    x: initial?.x ?? 0,
+    z: initial?.z ?? 0,
+    rotation: initial?.rotation ?? 0,
+    ground: initial?.ground ?? 0,
+    near: initial?.near ?? 120,
+  })
   const [saved, setSaved] = useState<Alignment>(a)
   const [outline, setOutline] = useState<SceneOutline | null>(null)
   const [outlineError, setOutlineError] = useState<string | null>(null)
@@ -282,7 +288,7 @@ function AlignEditor({
     return r + 3
   }, [outline])
 
-  const dirty = a.x !== saved.x || a.z !== saved.z || a.rotation !== saved.rotation || a.ground !== saved.ground
+  const dirty = a.x !== saved.x || a.z !== saved.z || a.rotation !== saved.rotation || a.ground !== saved.ground || a.near !== saved.near
 
   function point(e: { clientX: number; clientY: number }): [number, number] {
     const el = svg.current
@@ -360,6 +366,8 @@ function AlignEditor({
           }}
         >
           <image href={photoUrl} x={-radius} y={-radius} width={2 * radius} height={2 * radius} preserveAspectRatio="none" />
+          {/* the 3D near the house (#51): trees and ground by type inside, the photo outside */}
+          <circle cx={a.x} cy={a.z} r={a.near} fill="none" stroke="#fff" strokeOpacity={0.8} strokeWidth={Math.max(0.3, half / 160)} strokeDasharray={`${half / 40} ${half / 60}`} pointerEvents="none" />
           <g transform={`translate(${a.x} ${a.z}) rotate(${a.rotation})`} onPointerDown={(e) => down("move", e)} className="cursor-move">
             {(outline?.terrain ?? []).map(([x0, z0, x1, z1], i) => (
               <rect key={`t${i}`} x={x0} y={z0} width={x1 - x0} height={z1 - z0} fill="rgba(255,255,255,0.12)" stroke="#fff" strokeWidth={0.25} strokeDasharray="1 0.7" />
@@ -416,6 +424,21 @@ function AlignEditor({
           <Field label="Ground floor at (±0.00)" unit="m" value={a.ground} step={0.05} onChange={(v) => setA({ ...a, ground: v })} />
           <p className="text-xs text-muted-foreground">
             The plans give the ground floor's altitude as ±0.00 (for example 667.60). The survey's ground at the place is the starting value.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">3D around the house</div>
+          <Field
+            label="Radius (dashed circle)"
+            unit="m"
+            value={a.near}
+            step={5}
+            onChange={(v) => setA({ ...a, near: Math.min(165, Math.max(30, Math.round(v))) })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Within it, the trees and the ground by type (roads, gardens, paving); beyond it, the aerial photo. 30 to 165 m. The
+            viewer's Surroundings switch shows the photo alone.
           </p>
         </div>
 

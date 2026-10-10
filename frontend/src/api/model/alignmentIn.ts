@@ -18,4 +18,10 @@ export interface AlignmentIn {
   rotation: number;
   /** altitude (m) of the scene's y = 0 */
   ground: number;
+  /**
+   * metres around the house drawn in 3D (the trees, the ground by type); the aerial photo beyond (#51)
+   * @minimum 30
+   * @maximum 165
+   */
+  near?: number;
 }
