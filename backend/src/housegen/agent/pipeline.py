@@ -34,7 +34,13 @@ from housegen.agent.prompts import (
 )
 from housegen.agent.run_settings import ResolvedRunSettings, resolve
 from housegen.agent.schemas import Critique, Intake
-from housegen.agent.tools import CHECK_PLAN_SPEC, TOOL_SPECS, BuilderTools, ImageSources
+from housegen.agent.tools import (
+    CHECK_PLAN_SPEC,
+    MEASURE_SPEC,
+    TOOL_SPECS,
+    BuilderTools,
+    ImageSources,
+)
 from housegen.agent.workspace import Workspace
 from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
@@ -316,14 +322,16 @@ class _Run:
         )
         return n
 
-    async def build(self, messages: list[Message], system: str = BUILDER_SYSTEM) -> str:
+    async def build(
+        self, messages: list[Message], system: str = BUILDER_SYSTEM, max_steps: int | None = None
+    ) -> str:
         run = await run_builder(
             self.provider,
             self.rs.model,
             system,
             messages,
             self.tools,
-            max_steps=self.rs.max_steps,
+            max_steps=max_steps or self.rs.max_steps,
             max_tokens=self.rs.max_tokens,
             effort=self.rs.builder_effort,
             cache_key=self.ctx.job_id,
@@ -862,9 +870,46 @@ def ensure_interior_imports(index_html: Path) -> bool:
     return True
 
 
+PLAN_GATE_STEPS = 20  # the plan check's repair round: steps at most (#70)
+_PLAN_GAP = "room area off the plan:"
+
+
+def plan_gaps(audit: list[str]) -> list[str]:
+    """The audit's lines about rooms off the areas printed on the plan (kit/layout.js, #70)."""
+    return [line for line in audit if line.startswith(_PLAN_GAP)]
+
+
+def _plan_gate_text(gaps: list[str], audit: list[str]) -> str:
+    others = [
+        line
+        for line in audit
+        if not line.startswith(_PLAN_GAP)
+        and (
+            line.split(":")[0] in ("support", "window", "passage", "size")
+            or line.startswith("no area from the plan")
+        )
+    ]
+    text = (
+        "Before this interior is saved, the plan check still finds rooms whose area in your model is "
+        "more than 5 % and 0.5 m² off the area printed on the plan:\n"
+        + "\n".join(f"- {g[len(_PLAN_GAP) :].strip()}" for g in gaps)
+        + "\n\nRe-read those rooms on the plan sheet (inspect_image at full resolution, check_plan) "
+        "and fix their outlines and the partitions around them, or the knee wall under the roof that "
+        "the plan draws. If the model is right and the printed area is the plan's own (a different "
+        "rule, a typo), leave it and say so in finish.summary."
+    )
+    if others:
+        text += (
+            "\n\nThe layout audit also still flags (fix those you can while you are at it; "
+            "measure() gives the numbers):\n" + "\n".join(f"- {o}" for o in others[:10])
+        )
+    return text + "\n\nThen run check_scene and call finish."
+
+
 async def interior(ctx: JobContext) -> None:
     run = await _Run.create(ctx, kit=kit_with("interior.js"))
-    run.tools.specs = [*TOOL_SPECS, CHECK_PLAN_SPEC]
+    run.tools.specs = [*TOOL_SPECS, CHECK_PLAN_SPEC, MEASURE_SPEC]
+    run.tools.show_audit = True  # the plan check and the layout audit after every render (#67, #70)
     async with session_factory()() as session:
         job = await crud.get_job(session, ctx.job_id)
         request = job.request_text
@@ -904,10 +949,25 @@ async def interior(ctx: JobContext) -> None:
 
     await ctx.emit("phase", name="builder", message="Building the interior")
     summary = await run.build(messages, system=INTERIOR_SYSTEM)
+    # the end-of-job gate (#70): rooms still off the areas printed on the plan get one bounded repair
+    # round, with the list (and what the layout audit still flags), the way the critic's rounds work
+    probe = await renderer.render(run.scene_url, [], run.renders_dir, quality="low")
+    gaps = plan_gaps(probe.audit)
+    if gaps:
+        logger.info("interior.plan_gate", extra={"project_id": ctx.project_id, "rooms": len(gaps)})
+        await ctx.emit(
+            "phase",
+            name="builder",
+            message=f"Plan check: {len(gaps)} room(s) off the areas printed on the plan, one repair round",
+        )
+        messages.append(Message.user(_plan_gate_text(gaps, probe.audit)))
+        summary = await run.build(
+            messages, system=INTERIOR_SYSTEM, max_steps=min(run.rs.max_steps, PLAN_GATE_STEPS)
+        )
+        probe = await renderer.render(run.scene_url, [], run.renders_dir, quality="low")
     # the version pictures: the exterior views, the plan of each storey and the first rooms, as a
     # photographer frames them (photo-<n>: the room's viewpoint, 1.3 m, a 24 mm lens, level, #43);
     # the builder's own checks above stay on the walk's room-<n> views
-    probe = await renderer.render(run.scene_url, [], run.renders_dir, quality="low")
     report = probe.report or {}
     run.views = (
         list(run.views)

@@ -160,7 +160,8 @@ floorPlan({ y (finished floor level of the storey), height=2.5 (clear height to 
             |"storage"|"cellar"|"laundry"|"garage"|"attic" (unheated roof space)|"technical" (plant room: boiler, heat pump)
             (the surfaces report classes each room by its use, SIA 416),
             polygon: the room's CLEAR floor, i.e. the inside faces of its walls, floor: "oak"|"oak-light"|"oak-smoked"|"herringbone"|"tile"|"tile-dark"|"terrazzo"|"marble"|"concrete",
-            area: the room's area in m² as printed on the plan, when the plan prints one (the 2D plan shows it),
+            area: the room's area in m² as printed on the plan: give it for EVERY room the plan prints one for (the
+            2D plan shows it; the scene audit and the surfaces report compare your room with it),
             view (optional): { at:[x,z], look:[x,z] } where the walk and the room-N view stand in this room and what they
             look at. Leave it out: they work out a photographer's spot (a corner or the doorway, level, across the room
             toward its windows). Set it only when that picture misses what matters; `at` must be free floor. }]
@@ -253,10 +254,23 @@ Pieces you build yourself: tag them like the kit's, g.userData = { kind: "furnit
 with a name that says what they are: the checks below find furniture by kind and name.
 
 ### Checks you get
-- Every render's audit lists the rooms missing what their use needs ("room incomplete": a bath or WC without tiles, basin,
-  bath/shower or towel rail; a bedroom without a bed; a kitchen without its run; a living room without seating).
-- Every render's audit (in the tool result) also lists, per storey: doors nobody can reach from one side (keep 50 cm clear
-  in front of a door), rooms furniture splits or fills (leave 60 cm passages), and the areas not connected to each other.
+Every render_views and check_scene result ends with the scene audit, measured on your model:
+- "room area off the plan": a room more than 5 % and 0.5 m² off the area printed on the plan, with the likely cause
+  (an outline to redraw; under a roof, a low knee wall the plan draws and you left out); the rooms with no plan area.
+- "support": a piece floating or sunk by more than 1 cm (a pot above its shelf, a sofa into the floor), overhanging what
+  it stands on, two pieces overlapping, a wall-hung piece (shelf, mirror, frames, rail, hooks) more than 5 cm off the
+  wall, a piece through a wall or in no room. Each line names the piece, what it stands on and the distance: fix the
+  height or the position from the numbers.
+- "window": a piece taller than a window's sill in front of it; outside, a plant within 1 m of a window or a door.
+- "passage": less than 80 cm between a room's doors, 60 cm beside a bed and in front of a sofa, 90 cm in front of a
+  wardrobe, a kitchen run or an appliance; a door swinging into a piece.
+- "size": a piece outside the usual sizes of its kind, or too big for its room.
+- The rooms missing what their use needs ("room incomplete": a bath or WC without tiles, basin, bath/shower or towel
+  rail; a bedroom without a bed; a kitchen without its run; a living room without seating); per storey, doors nobody
+  can reach from one side (keep 50 cm clear in front of a door), rooms furniture splits or fills, and the areas not
+  connected to each other.
+- measure(room?, storey?): every piece of a room, a storey or the house with its numbers (centre, size, rotation, base
+  above the floor, distance to the wall) and every finding, when the audit's short list is not enough.
 - check_plan(sheet): your storey's plan laid over the plan sheet (red = your walls, green = doors, orange = furniture).
 - Views: render_views(["room-1", "room-2", …]) are eye-height views of each room (1-based, in the order of the rooms of
   your floorPlan calls, lowest storey first); "plan-section-1" is storey 1 seen as a floor plan.
@@ -272,17 +286,17 @@ Someone walking through the model at eye height should find the rooms the plan d
 - The exterior modules exist (src/scene.js and what it imports). Read src/scene.js and the dimensions module first: reuse its constants (floor levels, wall thickness, footprint). Put the interior in new modules (e.g. src/interior-ground.js for rooms and partitions, src/furniture-ground.js for the furniture), import them from src/scene.js, and change nothing else of the exterior unless a window or door of the plan is missing or misplaced.
 - buildScene is async: `await` the furniture module (scanned models load asynchronously).
 - The scene page's import map knows exactly: "three", "three/addons/...", "housekit", "housekit/interior", "housekit/furnish" and "housekit/finishes"; anything else fails to load and the whole scene stays blank. Do not import kit/runtime.js or kit/walk.js: the runtime runs them itself (the walk, the room views, the plan sections and the interior checks of the audit), and the scene code only builds the model.
-- Tools: the usual workspace tools (list_files, read_file, write_file, edit_file, apply_patch, delete_file), render_views, inspect_image, check_scene, finish, and check_plan(sheet, storey). read_file opens the kit sources read-only (kit/interior.js, kit/furnish.js, kit/finishes.js) when the reference below is not enough.
+- Tools: the usual workspace tools (list_files, read_file, write_file, edit_file, apply_patch, delete_file), render_views, inspect_image, check_scene, finish, check_plan(sheet, storey) and measure(room, storey). read_file opens the kit sources read-only (kit/interior.js, kit/furnish.js, kit/finishes.js) when the reference below is not enough.
 - inspect_image on a plan sheet ('plan-3') returns a region at 300 dpi: read the chained dimensions (clear widths, wall thicknesses) there instead of estimating from the downscaled sheet. Dimensions on a plan are in centimetres.
 - Batch your edits, keep modules under ~250 lines, keep the scene deterministic, pace your step budget (the tool results tell you when half and three quarters are spent).
-- Before finish: check_scene must report zero errors; you must have run check_plan on every storey you drew and looked at a room-N view of every room you furnished.
+- Before finish: check_scene must report zero errors; you must have run check_plan on every storey you drew, looked at a room-N view of every room you furnished, and fixed what the scene audit and measure() report (a few centimetres of overlap or a pot floating above its shelf are hard to see in a picture and easy to read as a number). When you finish, the plan check runs once more: rooms still off the plan's areas come back to you for one more round.
 
 {INTERIOR_KIT_REFERENCE}
 
 ## How to work
 1. Fix the frame: the exterior model's coordinates (read its dimensions module) and where the outer walls fall on the floor-plan sheet. The inside faces of the exterior walls bound the rooms.
 2. Rooms and partitions first, from the chained dimensions: partition centre lines and thicknesses, door openings with their widths and swings, room polygons on the clear faces. Then check_plan: every red wall on a drawn wall, every drawn wall under red. Correct and check again until it matches; this is what the whole interior stands on. First make sure the overlay sits on the right drawing: on a photographed sheet, or a sheet that holds several drawings, pass region (that drawing's box on the sheet) and dimension (one dimension line: its metres and its length in pixels); a wrong registration makes right walls look wrong.
-3. Then the furniture, room by room: the kitchen run and the bathroom fittings where the plan draws them, then beds, sofas, tables, wardrobes. Read the audit after each render: no blocked door, no room cut in two, 60 cm passages.
+3. Then the furniture, room by room: the kitchen run and the bathroom fittings where the plan draws them, then beds, sofas, tables, wardrobes. Read the audit after each render and run measure on a room you doubt: nothing floating or overlapping, no blocked door or window, the passages kept.
 4. Finally lights: a ceiling light or a pendant per room, with a point light where it glows.
 Summarise the rooms and what you furnished; list what you assumed (a room whose use the plan does not say, a door swing it does not draw) in finish.questions.
 """.strip()

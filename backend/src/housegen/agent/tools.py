@@ -293,6 +293,95 @@ CHECK_PLAN_SPEC = ToolSpec(
 )
 
 
+MEASURE_SPEC = ToolSpec(
+    name="measure",
+    description=(
+        "Measure the furniture of your interior instead of judging it from renders: every piece "
+        "(userData.kind 'furniture') with its room, centre [x, z], width x depth x height, rotation, "
+        "how high its base is above the room's floor and how far it is from the nearest wall; then "
+        "what is wrong, with the numbers: rooms off the area printed on the plan, pieces floating, "
+        "sunk, overhanging or overlapping, wall-hung pieces off the wall, pieces through a wall or "
+        "outside their room, windows blocked, passages under 80 cm between doors, under 60 cm beside "
+        "a bed or in front of a sofa, under 90 cm in front of a wardrobe, a kitchen run or an "
+        "appliance, a door swinging into a piece, sizes unusual for the kind of piece or its room. "
+        "Scope it to a room (part of its name) or a storey; without either, the whole house. The "
+        "findings are also in every render's audit; this lists them all, with every piece."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "room": {
+                "type": "string",
+                "description": "part of a room's name, e.g. 'Chambre 2' (case-insensitive)",
+            },
+            "storey": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "1 = the lowest floor plan, as in check_plan",
+            },
+        },
+        "additionalProperties": False,
+    },
+)
+MEASURE_MAX_PIECES = 120  # a whole furnished house is longer: the tool says to narrow it
+
+
+def format_measure(layout: dict[str, Any] | None, room: str | None, storey: int | None) -> str:
+    """The measure tool's text from the scene's layout report (kit/layout.js layoutReport)."""
+    if not layout:
+        return (
+            "The scene reports no furniture layout: its renderer has no measure (an older kit) or "
+            "the scene has no floor plan."
+        )
+    key = (room or "").strip().lower()
+
+    def wanted(r: str | None, s: int | None) -> bool:
+        return (not key or (r or "").lower().find(key) >= 0) and (storey is None or s == storey)
+
+    rooms = {r["name"]: r for r in layout.get("rooms", [])}
+    pieces = [p for p in layout.get("pieces", []) if wanted(p.get("room"), p.get("storey"))]
+    findings = [
+        f
+        for f in layout.get("findings", [])
+        if (f.get("room") is None and not key and storey is None)
+        or (f.get("room") and wanted(f["room"], rooms.get(f["room"], {}).get("storey")))
+    ]
+    scope = (
+        " ".join(
+            x
+            for x in (
+                f"storey {storey}" if storey else "",
+                f'rooms matching "{room}"' if key else "",
+            )
+            if x
+        )
+        or "the whole house"
+    )
+    lines = [f"measure — {scope}: {len(pieces)} pieces, {len(findings)} findings"]
+    if pieces:
+        lines.append(
+            "piece · type · room · centre [x, z] · w x d x h m · turned · base above floor · to wall"
+        )
+        for p in pieces[:MEASURE_MAX_PIECES]:
+            at = p.get("at") or [0, 0]
+            wall = p.get("wall")
+            lines.append(
+                f"{p['name']} · {p.get('type', '')} · {p.get('room', '')} · [{at[0]:.2f}, {at[1]:.2f}] · "
+                f"{p['w']:.2f} x {p['d']:.2f} x {p['h']:.2f} · {p.get('rot', 0)}° · "
+                f"{p.get('bottom', 0):.2f} · {'-' if wall is None else f'{wall:.2f}'}"
+            )
+        if len(pieces) > MEASURE_MAX_PIECES:
+            lines.append(
+                f"… {len(pieces) - MEASURE_MAX_PIECES} more pieces: narrow it with room or storey"
+            )
+    if findings:
+        lines.append("Findings:")
+        lines.extend(f"- {f['kind']}: {f['text']}" for f in findings)
+    elif pieces:
+        lines.append("No findings: the layout passes every check.")
+    return "\n".join(lines)
+
+
 class ImageSources:
     """Where inspect_image finds the images the model has seen (photos by label, plan sheets)."""
 
@@ -420,8 +509,11 @@ class BuilderTools:
         # interiors: each storey's latest plan-check coverage and how many checks it had
         self.plan_coverage: dict[int, float] = {}
         self.plan_checks: dict[int, int] = {}
-        # the tools the model is offered: the exterior set; the interior job adds check_plan
+        # the tools the model is offered: the exterior set; the interior job adds check_plan and measure
         self.specs: list[ToolSpec] = TOOL_SPECS
+        # the scene audit in render_views / check_scene results: the interior job's (#67, #70); the
+        # exterior build path keeps it in the render log only (docs/build-path-2026-09-07.md)
+        self.show_audit = False
         self.handlers: dict[str, Handler] = {
             "list_files": self.list_files,
             "read_file": self.read_file,
@@ -433,6 +525,7 @@ class BuilderTools:
             "inspect_image": self.inspect_image,
             "check_scene": self.check_scene,
             "check_plan": self.check_plan,
+            "measure": self.measure,
         }
 
     async def call(self, name: str, args: dict[str, Any]) -> ToolOutput:
@@ -508,6 +601,8 @@ class BuilderTools:
             content.append(ImagePart.from_file(path, label=f"Render — view '{view}'"))
         if not res.images:
             content.append(TextPart(text="No image could be produced."))
+        if self.show_audit and res.audit:
+            content.append(TextPart(text=_audit_text(res.audit)))
         return content, bool(res.errors) and not res.images
 
     async def inspect_image(self, a: dict[str, Any]) -> ToolOutput:
@@ -651,4 +746,24 @@ class BuilderTools:
         self.last_check_ok = not res.errors
         if res.errors:
             return [TextPart(text="Errors:\n" + "\n".join(res.errors))], True
-        return [TextPart(text="OK — scene loaded with no errors.")], False
+        out: list[TextPart | ImagePart] = [TextPart(text="OK — scene loaded with no errors.")]
+        if self.show_audit and res.audit:
+            out.append(TextPart(text=_audit_text(res.audit)))
+        return out, False
+
+    async def measure(self, a: dict[str, Any]) -> ToolOutput:
+        res = await self.renderer.render(self.scene_url, [], self.renders_dir, quality="low")
+        self.render_ms_total += res.duration_ms
+        if res.errors:
+            return [TextPart(text="The scene has errors:\n" + "\n".join(res.errors))], True
+        layout = (res.report or {}).get("layout")
+        storey = int(a["storey"]) if a.get("storey") is not None else None
+        room = str(a["room"]) if a.get("room") else None
+        return [TextPart(text=format_measure(layout, room, storey))], False
+
+
+def _audit_text(audit: list[str]) -> str:
+    return (
+        "Scene audit (measured on the model; fix what applies, measure() gives the numbers):\n"
+        + "\n".join(f"- {line}" for line in audit)
+    )

@@ -129,6 +129,20 @@ def is_language_model(model_id: str) -> bool:
     return model_id.startswith("gpt-") or re.match(r"^o\d", model_id) is not None
 
 
+def _tool_defs(tools: list[ToolSpec]) -> list[dict[str, Any]]:
+    """The tools as Responses API function tools (the same specs as Anthropic's)."""
+    return [
+        {
+            "type": "function",
+            "name": t.name,
+            "description": t.description,
+            "parameters": t.input_schema,
+            "strict": False,
+        }
+        for t in tools
+    ]
+
+
 class OpenAIProvider:
     name = PROVIDER
 
@@ -179,16 +193,7 @@ class OpenAIProvider:
             # kept missing on the same boundary)
             kwargs["prompt_cache_key"] = cache_key
         if tools:
-            kwargs["tools"] = [
-                {
-                    "type": "function",
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.input_schema,
-                    "strict": False,
-                }
-                for t in tools
-            ]
+            kwargs["tools"] = _tool_defs(tools)
         if response_schema:
             kwargs["text"] = {
                 "format": {

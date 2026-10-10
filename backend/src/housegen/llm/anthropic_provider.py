@@ -55,6 +55,18 @@ def _content_blocks(parts: list[Part] | list[TextPart | ImagePart]) -> list[dict
     return blocks
 
 
+def _tool_defs(tools: list[ToolSpec]) -> list[dict[str, Any]]:
+    """The tools as Messages API tools (the same specs as OpenAI's), the last one marked for the cache
+    (the stable tool definitions + the system prompt prefix)."""
+    defs: list[dict[str, Any]] = [
+        {"name": t.name, "description": t.description, "input_schema": t.input_schema}
+        for t in tools
+    ]
+    if defs:
+        defs[-1]["cache_control"] = {"type": "ephemeral"}
+    return defs
+
+
 class AnthropicProvider:
     name = "anthropic"
 
@@ -96,12 +108,7 @@ class AnthropicProvider:
             "thinking": {"type": "adaptive", "display": "summarized"},
         }
         if tools:
-            kwargs["tools"] = [
-                {"name": t.name, "description": t.description, "input_schema": t.input_schema}
-                for t in tools
-            ]
-            # cache the (stable) tool definitions + system prompt prefix
-            kwargs["tools"][-1]["cache_control"] = {"type": "ephemeral"}
+            kwargs["tools"] = _tool_defs(tools)
         if response_schema:
             output_config["format"] = {"type": "json_schema", "schema": response_schema}
         if output_config:
