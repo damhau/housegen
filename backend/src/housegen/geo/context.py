@@ -4,7 +4,8 @@
                   the credits
   terrain.bin     altitudes, float32 little-endian, (2R/step + 1)² samples, rows north → south
   photo.jpg       the aerial photo over the same square, north up
-  buildings.json  the neighbours: positions (local x, altitude, local z) and roof / wall triangles
+  buildings.json  the neighbours: positions (local x, altitude, local z) and roof / wall triangles;
+                  swissBUILDINGS3D's, then the newer ones the lidar has (source "lidar", geo/lidar.py)
 
 The local frame is the kit's: metres, x east, z south, around the anchor. The alignment says where
 the scene sits in it: the scene's origin at local (x, z), turned by `rotation` degrees (clockwise
@@ -26,13 +27,14 @@ from typing import Any
 import httpx
 from PIL import Image
 
-from housegen.geo import far, swiss
+from housegen.geo import far, lidar, swiss
 
 logger = logging.getLogger(__name__)
 
 VERSION = 1
 PHOTO_PIXELS = 3600
 CREDITS = ["© swisstopo (swissALTI3D, SWISSIMAGE, swissBUILDINGS3D)"]
+LIDAR_CREDITS = ["© swisstopo (swissALTI3D, SWISSIMAGE, swissBUILDINGS3D, swissSURFACE3D)"]
 
 
 def context_dir(project_root: Path) -> Path:
@@ -65,9 +67,22 @@ async def build(
     async with httpx.AsyncClient(headers=swiss.UA, timeout=60, follow_redirects=True) as client:
         ground_task = asyncio.create_task(swiss.terrain(e0, n0, radius, client, step))
         photo_task = asyncio.create_task(swiss.aerial_photo(e0, n0, radius, client))
+        cloud_task = asyncio.create_task(lidar.cloud(e0, n0, radius, client))
         ground = await ground_task
         buildings = await swiss.buildings(e0, n0, radius, client, ground, step)
         photo = await photo_task
+        # the newest lidar: the houses swissBUILDINGS3D does not have yet (#66). Optional
+        cloud: lidar.Cloud | None = None
+        newer: list[swiss.Building] = []
+        try:
+            cloud = await cloud_task
+            if cloud is not None:
+                newer = await asyncio.to_thread(
+                    lidar.new_buildings, cloud, buildings, ground, radius, step
+                )
+        except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
+            logger.warning("geo.lidar_failed", extra={"error": str(e)})
+        buildings = [*buildings, *newer]
         # the far landscape (the horizon: the lake, the Alps, the Jura): optional, the rest stands without it
         try:
             far_heights = await far.heights(e0, n0, client, ground, radius, step)
@@ -100,7 +115,8 @@ async def build(
         "radius": radius,
         "terrain": {"file": "terrain.bin", "size": int(ground.shape[0]), "step": step},
         "photo": {"file": "photo.jpg", "pixels": img.width},
-        "buildings": {"file": "buildings.json", "count": len(buildings)},
+        "buildings": {"file": "buildings.json", "count": len(buildings), "lidar": len(newer)},
+        "lidar": {"year": cloud.year} if cloud is not None else None,
         # rings by azimuths, azimuth a at x = r cos a, z = r sin a; photos north up over ± their extent
         "far": {
             "file": "far.bin",
@@ -122,7 +138,7 @@ async def build(
             "ground": round(center, 2),
             "set": False,
         },
-        "credits": CREDITS,
+        "credits": LIDAR_CREDITS if cloud is not None else CREDITS,
         "fetched_at": datetime.now(UTC).isoformat(),
     }
     (tmp / "context.json").write_text(json.dumps(ctx, indent=1), encoding="utf-8")

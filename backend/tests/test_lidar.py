@@ -1,0 +1,175 @@
+"""The houses swissBUILDINGS3D lacks, from the lidar (#66): found, shaped, kept with the surroundings."""
+
+from __future__ import annotations
+
+import io
+import json
+from pathlib import Path
+from typing import Any
+
+import httpx
+import numpy as np
+import pytest
+from PIL import Image
+
+from housegen.geo import context, far, lidar, swiss
+
+GROUND = 500.0
+RADIUS = 40
+
+
+def _roof(kind: str, L: float, W: float, eave: float, ridge: float):  # type: ignore[no-untyped-def]
+    """Height above the ground of a roof over an L x W rectangle centred on 0, its long side along x."""
+
+    def at(u: np.ndarray, v: np.ndarray) -> np.ndarray:
+        if kind == "flat":
+            return np.full_like(u, eave)
+        if kind == "gable":
+            return ridge - (ridge - eave) * np.abs(v) / (W / 2)
+        half = (L - W) / 2  # hip
+        return ridge - (ridge - eave) * np.maximum(np.abs(v), np.abs(u) - half) / (W / 2)
+
+    return at
+
+
+def _house(
+    cx: float,
+    cz: float,
+    L: float,
+    W: float,
+    kind: str = "gable",
+    eave: float = 5.0,
+    ridge: float = 8.0,
+) -> np.ndarray:
+    u, v = np.meshgrid(
+        np.arange(-L / 2, L / 2, 0.25) + 0.125, np.arange(-W / 2, W / 2, 0.25) + 0.125
+    )
+    u, v = u.ravel(), v.ravel()
+    h = _roof(kind, L, W, eave, ridge)(u, v)
+    return np.c_[cx + u, cz + v, GROUND + h, np.full(len(u), lidar.BUILDING)]
+
+
+def _cloud(*parts: np.ndarray) -> lidar.Cloud:
+    a = np.concatenate(parts)
+    return lidar.Cloud(x=a[:, 0], z=a[:, 1], y=a[:, 2], cls=a[:, 3].astype(np.int16), year=2025)
+
+
+def _ground() -> np.ndarray:
+    return np.full((2 * RADIUS + 1, 2 * RADIUS + 1), GROUND, dtype=np.float32)
+
+
+def _known(cx: float, cz: float, L: float, W: float) -> swiss.Building:
+    x0, x1, z0, z1 = cx - L / 2, cx + L / 2, cz - W / 2, cz + W / 2
+    pos = [x0, GROUND + 6, z0, x1, GROUND + 6, z0, x1, GROUND + 6, z1, x0, GROUND + 6, z1]
+    return swiss.Building(
+        id="old", height=6, year=1990, positions=pos, roof=[0, 2, 1, 0, 3, 2], wall=[]
+    )
+
+
+def test_a_house_the_old_dataset_lacks_comes_from_the_lidar() -> None:
+    cloud = _cloud(
+        _house(10, -5, 12, 9),  # new: not in swissBUILDINGS3D
+        _house(-15, 10, 10, 8),  # already there
+        _house(25, 25, 1.5, 1.5),  # a bin: too small
+        _house(-25, -25, 8, 6, "flat", eave=1.8),  # a garden wall: too low
+    )
+    found = lidar.new_buildings(cloud, [_known(-15, 10, 10, 8)], _ground(), RADIUS)
+    assert len(found) == 1
+    b = found[0]
+    assert b.source == "lidar"
+    assert b.year == 2025
+    assert b.id == "lidar-10--5"
+    p = np.asarray(b.positions).reshape(-1, 3)
+    roof = p[np.asarray(b.roof)]
+    # the ridge at 8 m, the walls down into the ground (0.3 m), the outline on the house's
+    assert roof[:, 1].max() == pytest.approx(GROUND + 8.0, abs=0.3)
+    assert p[:, 1].min() == pytest.approx(GROUND - 0.3, abs=0.01)
+    assert p[:, 0].min() == pytest.approx(4.0, abs=0.6)
+    assert p[:, 0].max() == pytest.approx(16.0, abs=0.6)
+    assert b.height == pytest.approx(8.3, abs=0.3)
+    # every roof triangle faces up
+    t = roof.reshape(-1, 3, 3)
+    n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+    assert (n[:, 1] > 0).all()
+
+
+@pytest.mark.parametrize(("kind", "creases"), [("gable", 1), ("hip", 5), ("flat", 0)])
+def test_the_roof_is_fitted_to_its_shape(kind: str, creases: int) -> None:
+    from shapely.geometry import box
+
+    pts = _house(0, 0, 14, 9, kind)
+    at, found = lidar.roof_shape(pts[:, 0], pts[:, 1], pts[:, 2], box(-7, -4.5, 7, 4.5))
+    assert len(found) == creases
+    if kind == "flat":
+        assert at(3, 2) == pytest.approx(GROUND + 5.0, abs=0.05)
+        return
+    assert at(0, 0) == pytest.approx(GROUND + 8.0, abs=0.15)  # the ridge
+    assert at(0, 4.5) == pytest.approx(GROUND + 5.0, abs=0.15)  # the eaves
+    end = GROUND + (
+        5.0 if kind == "hip" else 8.0
+    )  # a hip slopes down at the ends too, a gable does not
+    assert at(7, 0) == pytest.approx(end, abs=0.15)
+
+
+async def test_the_surroundings_keep_the_newer_houses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def terrain(*a: Any, **k: Any) -> np.ndarray:
+        return np.full((2 * 100 + 1, 2 * 100 + 1), GROUND, dtype=np.float32)
+
+    async def photo(*a: Any, **k: Any) -> bytes:
+        buf = io.BytesIO()
+        Image.new("RGB", (64, 64), (90, 120, 60)).save(buf, "JPEG")
+        return buf.getvalue()
+
+    async def buildings(*a: Any, **k: Any) -> list[swiss.Building]:
+        return [_known(-15, 10, 10, 8)]
+
+    async def cloud(*a: Any, **k: Any) -> lidar.Cloud:
+        return _cloud(_house(10, -5, 12, 9), _house(-15, 10, 10, 8))
+
+    async def no_far(*a: Any, **k: Any) -> Any:
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(swiss, "terrain", terrain)
+    monkeypatch.setattr(swiss, "aerial_photo", photo)
+    monkeypatch.setattr(swiss, "buildings", buildings)
+    monkeypatch.setattr(lidar, "cloud", cloud)
+    monkeypatch.setattr(far, "heights", no_far)
+    place = swiss.Place(label="Le Mont 3013", kind="parcel", e=2537559, n=1157053)
+    ctx = await context.build(tmp_path, place, radius=100)
+    assert ctx["buildings"] == {"file": "buildings.json", "count": 2, "lidar": 1}
+    assert ctx["lidar"] == {"year": 2025}
+    assert "swissSURFACE3D" in ctx["credits"][0]
+    saved = json.loads((tmp_path / "context" / "buildings.json").read_text())["buildings"]
+    assert [b["source"] for b in saved] == ["swissbuildings3d", "lidar"]
+
+
+async def test_without_the_lidar_the_surroundings_are_as_before(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def terrain(*a: Any, **k: Any) -> np.ndarray:
+        return np.full((201, 201), GROUND, dtype=np.float32)
+
+    async def photo(*a: Any, **k: Any) -> bytes:
+        buf = io.BytesIO()
+        Image.new("RGB", (8, 8)).save(buf, "JPEG")
+        return buf.getvalue()
+
+    async def buildings(*a: Any, **k: Any) -> list[swiss.Building]:
+        return []
+
+    async def failing(*a: Any, **k: Any) -> Any:
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(swiss, "terrain", terrain)
+    monkeypatch.setattr(swiss, "aerial_photo", photo)
+    monkeypatch.setattr(swiss, "buildings", buildings)
+    monkeypatch.setattr(lidar, "cloud", failing)
+    monkeypatch.setattr(far, "heights", failing)
+    ctx = await context.build(
+        tmp_path, swiss.Place(label="x", kind="parcel", e=2537559, n=1157053), radius=100
+    )
+    assert ctx["lidar"] is None
+    assert ctx["buildings"]["lidar"] == 0
+    assert ctx["credits"] == context.CREDITS

@@ -47,6 +47,7 @@ class Building:
     positions: list[float] = field(default_factory=list)  # local x, y (altitude), z
     roof: list[int] = field(default_factory=list)  # triangles (vertex indices)
     wall: list[int] = field(default_factory=list)
+    source: str = "swissbuildings3d"  # or "lidar": newer than swissBUILDINGS3D (geo/lidar.py)
 
 
 def _plain(label: str) -> str:

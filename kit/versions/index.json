@@ -1,6 +1,6 @@
 {
   "pinned": "2026-09-12-baseline",
-  "viewer": "2026-10-10-v24",
+  "viewer": "2026-10-11-v25",
   "versions": [
     {
       "name": "2026-09-12-baseline",
@@ -126,6 +126,11 @@
       "name": "2026-10-10-v24",
       "date": "2026-10-10",
       "note": "v23 with the interior measured for the builder (#67, #68, #70): kit/layout.js checks every furniture piece of the floor plans and the rooms against the areas printed on the plan (more than 5 % and 0.5 m² off, with the likely cause; rooms with no plan area), windows blocked inside and outside, sizes unusual for a piece or its room, passages (80 cm between a room's doors, 60 cm beside a bed and in front of a sofa, 90 cm in front of a wardrobe, a kitchen run or an appliance, door swings), and supports (rays against the meshes: floating or sunk by more than 1 cm, overhanging, overlapping, wall-hung pieces more than 5 cm off the wall, through a wall or in no room). Its lines lead the scene audit (an interior's before the exterior's); __house.report() carries the full table for the builder's measure tool. Pictures unchanged. The viewer's default (the Furnish job draws with it). Not pinned."
+    },
+    {
+      "name": "2026-10-11-v25",
+      "date": "2026-10-11",
+      "note": "v24 with the surroundings fixed (#65, #66): the builder's ground ends with its site (the house, the garden, its fences and hedges, plus 3 m), clipped there, and the real ground takes over beyond it, instead of a lawn drawn out to 85 m or a 350 m backdrop lying over the real land as a green square; the neighbours swissBUILDINGS3D lacks come from the newest lidar (geo/lidar.py, source \"lidar\" in buildings.json) and wear roof tiles or gravel, since the aerial photo shows a building site there. Interiors and the build path unchanged. The viewer's default. Not pinned."
     }
   ]
 }
