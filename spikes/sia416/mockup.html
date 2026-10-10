@@ -1,0 +1,446 @@
+<title>Rapport SIA 416</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a desk (themed) holding A4-proportioned sheets of paper (one look, the printed report). */
+:root {
+  --desk: #e6e9e6; --desk-ink: #26302d; --desk-muted: #5c6763; --desk-line: #c9cfcb;
+  --paper: #ffffff; --ink: #1d2422; --muted: #5f6966; --rule: #d9dedb; --rule-strong: #1d2422;
+  --accent: #1f5f7a; --warn: #a2471a; --warn-bg: #fbeee6; --ok: #2d6a45; --ok-bg: #e6f1ea; --field: #eef5f7;
+  --sup: #f1dfb5; --sus: #d2dce6; --sd: #e5e3dc; --si: #e9c9bd; --balc: #f3f4f1;
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --desk: #161a19; --desk-ink: #e3e8e5; --desk-muted: #a3aeaa; --desk-line: #2c3331; color-scheme: dark; } }
+:root[data-theme="dark"] { --desk: #161a19; --desk-ink: #e3e8e5; --desk-muted: #a3aeaa; --desk-line: #2c3331; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { background: var(--desk); color: var(--desk-ink); font-family: var(--font-body); font-size: 14px; line-height: 1.45; padding-inline: 16px; padding-block: 28px 56px; }
+.mono { font-family: var(--font-mono); }
+.small { font-size: 11.5px; }
+.desk-head { max-width: 860px; margin: 0 auto 22px; display: grid; gap: 8px; }
+.desk-head h1 { font-size: 26px; line-height: 1.15; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+.desk-head p { margin: 0; color: var(--desk-muted); max-width: 68ch; }
+.toc { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; font-size: 13px; }
+.toc a { color: var(--desk-ink); text-decoration: none; border-bottom: 1px solid var(--desk-line); padding-bottom: 1px; }
+.toc a:hover, .toc a:focus-visible { border-color: var(--desk-ink); outline: none; }
+.sheet { background: var(--paper); color: var(--ink); max-width: 860px; margin: 0 auto 26px; padding: 34px 44px 26px; box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 8px 28px rgb(0 0 0 / .10); display: flex; flex-direction: column; gap: 18px; min-height: 1100px; }
+.sheet > .grow { flex: 1; display: flex; flex-direction: column; gap: 18px; }
+.run { display: flex; justify-content: space-between; gap: 12px; font-size: 10.5px; color: var(--muted); letter-spacing: .02em; flex-wrap: wrap; }
+header.run { border-bottom: 1px solid var(--rule); padding-bottom: 8px; text-transform: uppercase; letter-spacing: .08em; }
+footer.run { border-top: 1px solid var(--rule); padding-top: 8px; }
+.page-title { font-size: 21px; margin: 0; display: flex; align-items: baseline; gap: 12px; text-wrap: balance; }
+.page-no { font-size: 12px; color: var(--muted); font-weight: 500; }
+h3 { font-size: 15px; margin: 0; }
+p { margin: 0; }
+.lead { max-width: 68ch; color: var(--muted); }
+.cover { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: start; }
+.cover dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 13px; }
+.cover dt { color: var(--muted); }
+.cover dd { margin: 0; }
+.big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 2px solid var(--rule-strong); border-bottom: 1px solid var(--rule); }
+.big div { padding: 10px 12px 10px 0; display: grid; gap: 2px; }
+.big div + div { padding-left: 14px; border-left: 1px solid var(--rule); }
+.big b { font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.big span { font-size: 11.5px; color: var(--muted); }
+.tablewrap { overflow-x: auto; min-width: 0; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 5px 8px 5px 0; vertical-align: top; }
+thead th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--rule-strong); white-space: nowrap; }
+tbody td { border-bottom: 1px solid var(--rule); }
+tfoot td { padding-top: 6px; }
+tr.strong td { font-weight: 700; border-top: 1px solid var(--rule-strong); }
+.num { text-align: right; white-space: nowrap; }
+td.num:last-child, th.num:last-child { padding-right: 0; }
+.muted { color: var(--muted); }
+.warn { color: var(--warn); font-weight: 600; }
+tr.flag td { background: var(--warn-bg); }
+.formula { font-size: 11.5px; color: var(--muted); }
+table.quant td:first-child { width: 46%; }
+table.quant .sub td:first-child { padding-left: 16px; color: var(--muted); }
+table.quant .code { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.cls { display: inline-block; font-family: var(--font-mono); font-size: 10.5px; padding: 0 5px; border-radius: 2px; color: var(--ink); }
+.cls-sup { background: var(--sup); } .cls-sus { background: var(--sus); } .cls-sd { background: var(--sd); } .cls-si { background: var(--si); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 10px; display: inline-block; border: 1px solid rgb(0 0 0 / .12); }
+.note { border-left: 3px solid var(--accent); padding: 8px 12px; background: #f4f8f9; font-size: 12.5px; display: grid; gap: 4px; }
+.note.warnbox { border-color: var(--warn); background: var(--warn-bg); }
+.note b { font-weight: 600; }
+.storey { display: grid; gap: 10px; }
+.storey + .storey { border-top: 1px solid var(--rule); padding-top: 18px; }
+.storey-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.plan-big { max-width: 560px; width: 100%; justify-self: center; }
+table.rooms td.no { font-size: 12px; white-space: nowrap; }
+.flatname { display: block; font-size: 11.5px; color: var(--muted); }
+.plan-fig { margin: 0; display: grid; gap: 4px; }
+.plan-fig figcaption { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+svg.plan { width: 100%; height: auto; display: block; font-family: var(--font-body); }
+.pl-room { stroke: none; } .pl-sup { fill: var(--sup); } .pl-sus { fill: var(--sus); } .pl-sd { fill: var(--sd); } .pl-si { fill: var(--si); }
+.pl-stair { fill: url(#hatch); }
+.pl-balc { fill: var(--balc); stroke: var(--muted); stroke-width: 0.03; stroke-dasharray: 0.15 0.1; }
+.pl-wall { fill: var(--ink); }
+.pl-gap { fill: var(--paper); }
+.pl-glass { stroke: var(--ink); stroke-width: 0.035; }
+.pl-mass { stroke: var(--ink); } .pl-part { stroke: #4a5350; }
+.pl-no { font-size: 0.34px; font-weight: 700; fill: var(--ink); text-anchor: middle; }
+.pl-area { font-size: 0.28px; fill: var(--muted); text-anchor: middle; font-variant-numeric: tabular-nums; }
+.pl-note { font-size: 0.32px; fill: var(--muted); }
+.pl-ring { fill: none; stroke: var(--muted); stroke-width: 0.03; } .pl-north { fill: var(--ink); } .pl-n { font-size: 0.38px; font-weight: 700; fill: var(--ink); }
+.pl-bar { fill: var(--ink); } .pl-bar2 { fill: none; stroke: var(--ink); stroke-width: 0.03; } .pl-scale { font-size: 0.32px; fill: var(--muted); }
+table.rooms td:nth-child(2) { min-width: 9em; }
+table.compact td, table.compact th { padding-block: 4px; }
+.vol { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
+.vol > * { min-width: 0; }
+svg.section { width: 100%; height: auto; display: block; font-family: var(--font-body); }
+.sx-ground { fill: #efeee8; } .sx-under { fill: var(--sus); stroke: var(--ink); stroke-width: 0.06; } .sx-above { fill: var(--sup); stroke: var(--ink); stroke-width: 0.06; }
+.sx-over { stroke: var(--muted); stroke-width: 0.06; stroke-dasharray: 0.2 0.14; fill: none; }
+.sx-terrain { stroke: var(--ink); stroke-width: 0.09; } .sx-slab { stroke: var(--ink); stroke-width: 0.05; }
+.sx-tick { stroke: var(--muted); stroke-width: 0.03; } .sx-lv { font-size: 0.5px; fill: var(--muted); text-anchor: end; font-family: var(--font-mono); }
+.sx-v { font-size: 0.6px; font-weight: 700; fill: var(--ink); text-anchor: middle; } .sx-cap { font-size: 0.5px; fill: var(--muted); }
+table.takeoff td:nth-child(1), table.takeoff td:nth-child(2) { white-space: nowrap; font-size: 12px; } table.takeoff td:nth-child(3) { min-width: 12em; } table.takeoff td:nth-child(5) { min-width: 16em; }
+table.takeoff tr.grp td { padding-top: 12px; font-weight: 700; font-size: 12px; border-bottom: 1px solid var(--rule-strong); }
+.rules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 22px; font-size: 12.5px; }
+.rules > div { display: grid; gap: 2px; min-width: 0; }
+.rules b { font-weight: 600; }
+.flats { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.flats > * { min-width: 0; }
+.flat { display: grid; gap: 8px; align-content: start; }
+.est { display: grid; gap: 8px; }
+.est + .est { border-top: 1px solid var(--rule); padding-top: 16px; }
+.est-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.field { width: 7.5em; font: inherit; font-variant-numeric: tabular-nums; color: var(--ink); background: var(--field); border: 0; border-bottom: 1.5px solid var(--accent); border-radius: 2px 2px 0 0; padding: 3px 6px; text-align: right; }
+.field::placeholder { color: var(--muted); opacity: .8; }
+.field:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.presets { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.presets button { font: inherit; font-size: 12px; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 3px; padding: 3px 9px; cursor: pointer; }
+.presets button[aria-pressed="true"] { border-color: var(--accent); background: var(--field); color: var(--accent); font-weight: 600; }
+.presets button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+td.amount { font-weight: 600; }
+td.amount.empty { color: var(--muted); font-weight: 400; }
+table.est-t td:nth-child(2) { min-width: 13em; }
+table.est-t tr.grp td { padding-top: 10px; font-size: 12px; border-bottom: 1px solid var(--rule-strong); }
+table.est-t td .field { margin-block: -3px; }
+tr.total td { font-weight: 700; border-top: 1.5px solid var(--rule-strong); }
+.balance { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 2px solid var(--rule-strong); border-bottom: 1px solid var(--rule); }
+.balance div { padding: 10px 12px 10px 0; display: grid; gap: 2px; }
+.balance div + div { padding-left: 14px; border-left: 1px solid var(--rule); }
+.balance b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.balance span { font-size: 11.5px; color: var(--muted); }
+.st { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 2px; white-space: nowrap; }
+.st-ok { color: var(--ok); background: var(--ok-bg); } .st-warn { color: var(--warn); background: var(--warn-bg); }
+@media (max-width: 760px) {
+  .balance { grid-template-columns: 1fr; } .balance div + div { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); }
+  .sheet { padding: 20px 16px 16px; min-height: 0; }
+  .cover, .vol, .rules, .flats { grid-template-columns: 1fr; }
+  .big { grid-template-columns: 1fr; } .big div + div { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><pattern id="hatch" patternUnits="userSpaceOnUse" width="0.22" height="0.22" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="0.22" stroke="#8b938f" stroke-width="0.025"/></pattern></defs></svg>
+
+<div class="desk-head">
+  <h1>Rapport SIA 416, maquette</h1>
+  <p>La mise en page du rapport que housegen produira (#47, #48), calculée ici sur TestVillaGille, version 10 sur dev : les surfaces, plans, volumes et quantités viennent de la maquette 3D de la villa. À la page 8, les prix se saisissent et l'estimation se recalcule. Le rapport final se télécharge en PDF et en CSV.</p>
+  <nav class="toc" aria-label="Pages du rapport"><a href="#p1">1 Récapitulatif</a><a href="#p2">2–5 Surfaces par niveau</a><a href="#p6">6 Volume bâti</a><a href="#p7">7 Métré des finitions</a><a href="#p8">8 Estimation</a><a href="#p9">9 Surface habitable</a></nav>
+</div>
+
+<article class="sheet" id="p1">
+  <header class="run"><span>housegen · Surfaces et volumes SIA 416</span><span>TestVillaGille · version 10</span></header><h2 class="page-title"><span class="page-no mono">1/9</span>Quantités de base selon SIA 416</h2>
+  <div class="grow">
+    <div class="cover">
+      <div style="display:grid;gap:10px">
+        <p class="lead">Récapitulatif des surfaces et volumes selon la norme SIA 416 (édition 2003), sur le modèle de la fiche L9 du Guide romand des marchés publics. Les calculs sont détaillés par niveau (pages 2 à 5), chacun avec son schéma.</p>
+        <div class="legend" aria-label="Affectations SIA 416"><span><i style="background:var(--sup)"></i>SUP utile principale</span><span><i style="background:var(--sus)"></i>SUS utile secondaire</span><span><i style="background:var(--sd)"></i>SD dégagement</span><span><i style="background:var(--si)"></i>SI installations</span></div>
+      </div>
+      <dl>
+        <dt>Projet</dt><dd>TestVillaGille, villa de deux appartements</dd>
+        <dt>Parcelle</dt><dd>BF n° 3013, Le Mont-sur-Lausanne</dd>
+        <dt>Source</dt><dd>maquette 3D, version 10</dd>
+        <dt>Date</dt><dd class="mono">10.10.2026</dd>
+        <dt>Norme</dt><dd>SIA 416:2003, Surfaces et volumes des bâtiments</dd>
+      </dl>
+    </div>
+    <div class="big" role="group" aria-label="Chiffres principaux, objet 1">
+      <div><b>440.00 m²</b><span>surface de plancher SP</span></div>
+      <div><b>354.51 m²</b><span>surface nette SN</span></div>
+      <div><b>1'270.34 m³</b><span>volume bâti VB, dont 335.50 m³ en sous-sol</span></div>
+    </div>
+    <div class="tablewrap"><table class="quant">
+      <thead><tr><th>Quantité SIA 416</th><th class="num">Objet 1 · Villa</th><th class="num">Objet 2 · Garage</th></tr></thead>
+      <tbody>
+        <tr><td><span class="code">SB</span> Surface de terrain bâtie</td><td class="num">110.00 m²</td><td class="num">33.00 m²</td></tr>
+        <tr><td><span class="code">SP</span> Surface de plancher</td><td class="num">440.00 m²</td><td class="num">33.00 m²</td></tr>
+        <tr><td><span class="code">SN</span> Surface nette</td><td class="num">354.51 m²</td><td class="num">28.99 m²</td></tr>
+        <tr class="sub"><td><span class="code">SUP</span> utile principale</td><td class="num">224.95 m²</td><td class="num">—</td></tr>
+        <tr class="sub"><td><span class="code">SUS</span> utile secondaire</td><td class="num">67.04 m²</td><td class="num">28.99 m²</td></tr>
+        <tr class="sub"><td><span class="code">SD</span> dégagement</td><td class="num">49.68 m²</td><td class="num">—</td></tr>
+        <tr class="sub"><td><span class="code">SI</span> installations</td><td class="num">12.83 m²</td><td class="num">—</td></tr>
+        <tr><td><span class="code">SC</span> Surface de construction</td><td class="num">85.49 m² <span class="muted small">(19.4 % de SP)</span></td><td class="num">4.01 m²</td></tr>
+        <tr class="strong"><td><span class="code">VB</span> Volume bâti</td><td class="num">1'270.34 m³</td><td class="num">101.64 m³</td></tr>
+        <tr class="sub"><td>hors-sol (rez, étage, combles et toiture)</td><td class="num">934.84 m³</td><td class="num">101.64 m³</td></tr>
+        <tr class="sub"><td>sous-sol</td><td class="num">335.50 m³</td><td class="num">—</td></tr>
+      </tbody>
+    </table></div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Niveau</th><th class="num">SP</th><th class="num">SN</th><th class="num">SC</th><th class="num">SUP</th><th class="num">SUS</th><th class="num">SD</th><th class="num">SI</th><th class="num">VB m³</th></tr></thead>
+      <tbody><tr><td>Sous-sol</td><td class="num">110.00</td><td class="num">88.37</td><td class="num">21.63</td><td class="num">0.00</td><td class="num">67.04</td><td class="num">8.49</td><td class="num">12.83</td><td class="num">335.50</td></tr><tr><td>Rez-de-chaussée</td><td class="num">110.00</td><td class="num">89.57</td><td class="num">20.43</td><td class="num">67.68</td><td class="num">0.00</td><td class="num">21.88</td><td class="num">0.00</td><td class="num">301.40</td></tr><tr><td>1er étage</td><td class="num">110.00</td><td class="num">88.52</td><td class="num">21.48</td><td class="num">76.60</td><td class="num">0.00</td><td class="num">11.92</td><td class="num">0.00</td><td class="num">301.40</td></tr><tr><td>Combles</td><td class="num">110.00</td><td class="num">88.06</td><td class="num">21.94</td><td class="num">80.67</td><td class="num">0.00</td><td class="num">7.39</td><td class="num">0.00</td><td class="num">332.03</td></tr></tbody>
+      <tfoot><tr class="strong"><td>Total</td><td class="num">440.00</td><td class="num">354.51</td><td class="num">85.49</td><td class="num">224.95</td><td class="num">67.04</td><td class="num">49.68</td><td class="num">12.83</td><td class="num">1'270.34</td></tr></tfoot>
+    </table></div>
+    <div class="note warnbox"><b>6 locaux s'écartent de plus de 5 % de la surface inscrite sur les plans</b><span>Sur 25 locaux dont le plan donne la surface, l'écart total est de +1.9 %. Les trois chambres des combles mesurent 9 à 22 % de plus dans la maquette : les plans comptent probablement sans la bande basse sous la pente (mur de pied, ou une règle de hauteur). Le hall de l'appartement 2 au rez mesure 16 % de moins, les deux WC 8 à 9 % de plus. À vérifier avant de reprendre ces chiffres.</span></div>
+  </div>
+  <footer class="run"><span>Estimé sur la maquette 3D, non contractuel. Les surfaces lues sur les plans sont indiquées à côté.</span><span class="mono">1/9</span></footer>
+</article>
+
+<article class="sheet" id="p2">
+  <header class="run"><span>housegen · Surfaces et volumes SIA 416</span><span>TestVillaGille · version 10</span></header><h2 class="page-title"><span class="page-no mono">2/9</span>Surfaces par niveau : sous-sol</h2>
+  <div class="grow"><section class="storey" aria-labelledby="st-basement">
+  <div class="storey-head"><h3 id="st-basement">Sous-sol</h3><p class="mono small">niveau −2.80 · hauteur libre 2.43 m</p></div>
+  <figure class="plan-fig plan-big"><svg class="plan" viewBox="-8.7 -7.4 15 14" role="img" aria-label="Plan schématique, Sous-sol : locaux colorés par affectation SIA 416"><polygon class="pl-room pl-si" points="-1.655,-4.6 5.1,-4.6 5.1,-2.7 -1.655,-2.7"/><polygon class="pl-room pl-sus" points="-2.89,-4.6 -1.905,-4.6 -1.905,-2.45 -0.125,-2.45 -0.125,2.8 -5.1,2.8 -5.1,-2.45 -2.89,-2.45"/><polygon class="pl-room pl-sus" points="-5.1,2.9 -0.125,2.9 -0.125,4.6 -5.1,4.6"/><polygon class="pl-room pl-sus" points="0.125,-2.45 5.1,-2.45 5.1,2.8 2.735,2.8 2.735,0.59 1.9,0.59 1.9,-0.45 0.125,-0.45"/><polygon class="pl-room pl-sus" points="0.125,1.55 2.635,1.55 2.635,2.9 5.1,2.9 5.1,4.6 0.125,4.6"/><polygon class="pl-room pl-sd" points="-5.1,-4.6 -3.01,-4.6 -3.01,-2.7 -5.1,-2.7"/><polygon class="pl-stair" points="-5.1,-4.6 -3.01,-4.6 -3.01,-2.7 -5.1,-2.7"/><polygon class="pl-room pl-sd" points="0.125,-0.35 2.635,-0.35 2.635,1.45 0.125,1.45"/><polygon class="pl-stair" points="0.125,-0.35 2.635,-0.35 2.635,1.45 0.125,1.45"/><path class="pl-wall" fill-rule="evenodd" d="M-5.5 -5 H5.5 V5 H-5.5 Z M-5.1 -4.6 V4.6 H5.1 V-4.6 Z"/><rect class="pl-gap" x="3.8" y="-5" width="1" height="0.4"/><line class="pl-glass" x1="3.8" y1="-4.8" x2="4.8" y2="-4.8"/><rect class="pl-gap" x="5.1" y="1.18" width="0.4" height="1"/><line class="pl-glass" x1="5.3" y1="1.18" x2="5.3" y2="2.18"/><rect class="pl-gap" x="5.1" y="-4.3" width="0.4" height="1"/><line class="pl-glass" x1="5.3" y1="-4.3" x2="5.3" y2="-3.3"/><rect class="pl-gap" x="-5.5" y="-2" width="0.4" height="1"/><line class="pl-glass" x1="-5.3" y1="-2" x2="-5.3" y2="-1"/><line class="pl-mass" stroke-width="0.25" x1="-5.1" y1="-2.575" x2="-3.01" y2="-2.575"/><line class="pl-mass" stroke-width="0.25" x1="-1.78" y1="-4.6" x2="-1.78" y2="-4.5"/><line class="pl-mass" stroke-width="0.25" x1="-1.78" y1="-3.62" x2="-1.78" y2="-2.575"/><line class="pl-mass" stroke-width="0.25" x1="-1.78" y1="-2.575" x2="0.03" y2="-2.575"/><line class="pl-mass" stroke-width="0.25" x1="0.91" y1="-2.575" x2="5.1" y2="-2.575"/><line class="pl-mass" stroke-width="0.25" x1="0" y1="-2.575" x2="0" y2="4.6"/><line class="pl-part" stroke-width="0.1" x1="-5.1" y1="2.85" x2="-1.255" y2="2.85"/><line class="pl-part" stroke-width="0.1" x1="-0.375" y1="2.85" x2="-0.125" y2="2.85"/><line class="pl-part" stroke-width="0.1" x1="0.125" y1="-0.4" x2="1.9" y2="-0.4"/><line class="pl-part" stroke-width="0.1" x1="1.03" y1="0.54" x2="2.685" y2="0.54"/><line class="pl-part" stroke-width="0.1" x1="2.685" y1="0.54" x2="2.685" y2="1.67"/><line class="pl-part" stroke-width="0.1" x1="2.685" y1="2.55" x2="2.685" y2="2.85"/><line class="pl-part" stroke-width="0.1" x1="0.125" y1="1.5" x2="2.685" y2="1.5"/><line class="pl-part" stroke-width="0.1" x1="2.685" y1="2.85" x2="5.1" y2="2.85"/><text class="pl-no" x="-0.705" y="-3.69">-1.01</text><text class="pl-area" x="-0.705" y="-3.35">12.83</text><text class="pl-no" x="-2.6" y="0.01">-1.02</text><text class="pl-area" x="-2.6" y="0.35">28.24</text><text class="pl-no" x="-4.25" y="3.71">-1.03</text><text class="pl-area" x="-4.25" y="4.05">8.46</text><text class="pl-no" x="3.475" y="-0.89">-1.04</text><text class="pl-area" x="3.475" y="-0.55">18.50</text><text class="pl-no" x="1.425" y="3.26">-1.05</text><text class="pl-area" x="1.425" y="3.6">11.85</text><text class="pl-no" x="-4.15" y="-3.69">-1.06</text><text class="pl-area" x="-4.15" y="-3.35">3.97</text><text class="pl-no" x="1.025" y="0.51">-1.07</text><text class="pl-area" x="1.025" y="0.85">4.52</text><g transform="translate(4.9 -6.4)"><circle class="pl-ring" r="0.55"/><g transform="rotate(45)"><path class="pl-north" d="M0 -0.5 L0.17 0.18 L0 0.06 L-0.17 0.18 Z"/></g><text class="pl-n" x="0.62" y="-0.5">N</text></g><g transform="translate(-8.2 6.1)"><rect class="pl-bar" x="0" y="0" width="2.5" height="0.12"/><rect class="pl-bar2" x="2.5" y="0" width="2.5" height="0.12"/><text class="pl-scale" x="0" y="0.48">0</text><text class="pl-scale" x="5" y="0.48" text-anchor="end">5 m</text></g></svg><figcaption>Schéma SIA 416 · Sous-sol · même échelle à chaque niveau</figcaption></figure>
+  <div class="tablewrap"><table class="rooms">
+      <thead><tr><th>N°</th><th>Local</th><th>SIA</th><th>Calcul</th><th class="num">SN m²</th><th class="num">Plan m²</th><th class="num">Écart</th></tr></thead>
+      <tbody><tr><td class="mono no">-1.01</td><td>Local technique PAC<span class="flatname">Commun</span></td><td><span class="cls cls-si">SI</span></td><td class="mono formula">6.75 × 1.90</td><td class="num">12.83</td><td class="num muted">12.80</td><td class="num muted">+0.3 %</td></tr><tr><td class="mono no">-1.02</td><td>Rangements<span class="flatname">App. 2</span></td><td><span class="cls cls-sus">SUS</span></td><td class="mono formula">polygone, 8 sommets</td><td class="num">28.24</td><td class="num muted">28.50</td><td class="num muted">−0.9 %</td></tr><tr><td class="mono no">-1.03</td><td>Cave<span class="flatname">App. 2</span></td><td><span class="cls cls-sus">SUS</span></td><td class="mono formula">4.97 × 1.70</td><td class="num">8.46</td><td class="num muted">8.45</td><td class="num muted">+0.1 %</td></tr><tr><td class="mono no">-1.04</td><td>Rangements<span class="flatname">App. 1</span></td><td><span class="cls cls-sus">SUS</span></td><td class="mono formula">polygone, 8 sommets</td><td class="num">18.50</td><td class="num muted">18.45</td><td class="num muted">+0.3 %</td></tr><tr><td class="mono no">-1.05</td><td>Cave<span class="flatname">App. 1</span></td><td><span class="cls cls-sus">SUS</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">11.85</td><td class="num muted">11.85</td><td class="num muted">−0.0 %</td></tr><tr><td class="mono no">-1.06</td><td>Escalier sous-sol<span class="flatname">App. 2</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">2.09 × 1.90</td><td class="num">3.97</td><td class="num muted">—</td><td class="num muted"></td></tr><tr><td class="mono no">-1.07</td><td>Escalier sous-sol<span class="flatname">App. 1</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">2.51 × 1.80</td><td class="num">4.52</td><td class="num muted">—</td><td class="num muted"></td></tr></tbody>
+      <tfoot>
+        <tr><td colspan="4">Surface nette SN</td><td class="num">88.37</td><td colspan="2"></td></tr>
+        <tr><td colspan="4">Surface de construction SC = SP − SN</td><td class="num">21.63</td><td colspan="2"></td></tr>
+        <tr class="strong"><td colspan="4">Surface de plancher SP <span class="mono small">11.00 × 10.00</span></td><td class="num">110.00</td><td colspan="2"></td></tr>
+      </tfoot>
+  </table></div>
+</section></div>
+  <footer class="run"><span>Estimé sur la maquette 3D, non contractuel. Les surfaces lues sur les plans sont indiquées à côté.</span><span class="mono">2/9</span></footer>
+</article>
+<article class="sheet" id="p3">
+  <header class="run"><span>housegen · Surfaces et volumes SIA 416</span><span>TestVillaGille · version 10</span></header><h2 class="page-title"><span class="page-no mono">3/9</span>Surfaces par niveau : rez-de-chaussée</h2>
+  <div class="grow"><section class="storey" aria-labelledby="st-ground">
+  <div class="storey-head"><h3 id="st-ground">Rez-de-chaussée</h3><p class="mono small">niveau +0.00 · hauteur libre 2.45 m</p></div>
+  <figure class="plan-fig plan-big"><svg class="plan" viewBox="-8.7 -7.4 15 14" role="img" aria-label="Plan schématique, Rez-de-chaussée : locaux colorés par affectation SIA 416"><polygon class="pl-room pl-sup" points="-5.1,-2.45 -1.275,-2.45 -1.275,4.6 -5.1,4.6"/><polygon class="pl-room pl-sup" points="-1.275,1.6 5.1,1.6 5.1,4.6 -1.275,4.6"/><polygon class="pl-room pl-sup" points="-1.025,-0.975 -0.125,-0.975 -0.125,1.505 -1.025,1.505"/><polygon class="pl-room pl-sup" points="0.125,-4.6 2.005,-4.6 2.005,-2.195 0.125,-2.195"/><polygon class="pl-room pl-sup" points="2.105,-4.6 5.1,-4.6 5.1,-1.1 3.8,-1.1 3.8,-0.505 2.105,-0.505 2.105,-0.405 0.125,-0.405 0.125,-2.095 2.105,-2.095"/><polygon class="pl-room pl-sd" points="2.005,-0.405 3.9,-0.405 3.9,-1 5.1,-1 5.1,1.505 2.685,1.505 2.685,0.495 2.005,0.495"/><polygon class="pl-room pl-sd" points="-2.89,-4.6 -0.125,-4.6 -0.125,-3.6 -1.085,-3.6 -1.085,-2.7 -2.89,-2.7"/><polygon class="pl-room pl-sd" points="-5.1,-4.6 -3.01,-4.6 -3.01,-2.7 -1.025,-2.7 -1.025,-3.6 -0.125,-3.6 -0.125,-1.225 -1.025,-1.225 -1.025,-2.45 -5.1,-2.45"/><polygon class="pl-stair" points="-5.1,-4.6 -3.01,-4.6 -3.01,-2.7 -1.025,-2.7 -1.025,-3.6 -0.125,-3.6 -0.125,-1.225 -1.025,-1.225 -1.025,-2.45 -5.1,-2.45"/><polygon class="pl-room pl-sd" points="0.125,-0.305 2.585,-0.305 2.585,1.495 0.125,1.495"/><polygon class="pl-stair" points="0.125,-0.305 2.585,-0.305 2.585,1.495 0.125,1.495"/><path class="pl-wall" fill-rule="evenodd" d="M-5.5 -5 H5.5 V5 H-5.5 Z M-5.1 -4.6 V4.6 H5.1 V-4.6 Z"/><rect class="pl-gap" x="0.92" y="-5" width="0.8" height="0.4"/><line class="pl-glass" x1="0.92" y1="-4.8" x2="1.72" y2="-4.8"/><rect class="pl-gap" x="-1.125" y="-5" width="1" height="0.4"/><rect class="pl-gap" x="-4.55" y="-5" width="1.2" height="0.4"/><line class="pl-glass" x1="-4.55" y1="-4.8" x2="-3.35" y2="-4.8"/><rect class="pl-gap" x="5.1" y="-0.3" width="0.4" height="1"/><rect class="pl-gap" x="5.1" y="-3.75" width="0.4" height="2.3"/><line class="pl-glass" x1="5.3" y1="-3.75" x2="5.3" y2="-1.45"/><rect class="pl-gap" x="-4.115" y="4.6" width="3" height="0.4"/><line class="pl-glass" x1="-4.115" y1="4.8" x2="-1.115" y2="4.8"/><rect class="pl-gap" x="1.195" y="4.6" width="3" height="0.4"/><line class="pl-glass" x1="1.195" y1="4.8" x2="4.195" y2="4.8"/><rect class="pl-gap" x="-5.5" y="0.15" width="0.4" height="3"/><line class="pl-glass" x1="-5.3" y1="0.15" x2="-5.3" y2="3.15"/><line class="pl-mass" stroke-width="0.25" x1="0" y1="-4.6" x2="0" y2="1.555"/><line class="pl-mass" stroke-width="0.25" x1="-5.1" y1="-2.575" x2="-1.15" y2="-2.575"/><line class="pl-mass" stroke-width="0.25" x1="-1.15" y1="-2.575" x2="-1.15" y2="1.555"/><line class="pl-mass" stroke-width="0.25" x1="-1.15" y1="-1.1" x2="0" y2="-1.1"/><line class="pl-part" stroke-width="0.1" x1="-1.15" y1="1.555" x2="-0.955" y2="1.555"/><line class="pl-part" stroke-width="0.1" x1="-0.175" y1="1.555" x2="0" y2="1.555"/><line class="pl-part" stroke-width="0.12" x1="-2.95" y1="-3.68" x2="-2.95" y2="-2.7"/><line class="pl-part" stroke-width="0.1" x1="2.055" y1="-4.6" x2="2.055" y2="-2.095"/><line class="pl-part" stroke-width="0.1" x1="2.055" y1="-1.1" x2="2.055" y2="-0.455"/><line class="pl-part" stroke-width="0.1" x1="0.125" y1="-2.145" x2="0.915" y2="-2.145"/><line class="pl-part" stroke-width="0.1" x1="1.695" y1="-2.145" x2="2.055" y2="-2.145"/><line class="pl-part" stroke-width="0.1" x1="0.125" y1="-0.355" x2="2.055" y2="-0.355"/><line class="pl-part" stroke-width="0.1" x1="2.055" y1="-0.455" x2="2.77" y2="-0.455"/><line class="pl-part" stroke-width="0.1" x1="3.65" y1="-0.455" x2="3.85" y2="-0.455"/><line class="pl-part" stroke-width="0.1" x1="3.85" y1="-1.1" x2="3.85" y2="-0.455"/><line class="pl-part" stroke-width="0.1" x1="3.85" y1="-1.05" x2="5.1" y2="-1.05"/><line class="pl-part" stroke-width="0.1" x1="0.125" y1="1.555" x2="2.635" y2="1.555"/><line class="pl-part" stroke-width="0.1" x1="2.635" y1="0.545" x2="2.635" y2="0.605"/><line class="pl-part" stroke-width="0.1" x1="2.635" y1="1.485" x2="2.635" y2="1.555"/><line class="pl-part" stroke-width="0.1" x1="1.03" y1="0.545" x2="2.635" y2="0.545"/><line class="pl-part" stroke-width="0.1" x1="3.9" y1="1.555" x2="5.1" y2="1.555"/><text class="pl-no" x="-3.2" y="-0.59">0.01</text><text class="pl-area" x="-3.2" y="-0.25">26.97</text><text class="pl-no" x="0.225" y="3.06">0.02</text><text class="pl-area" x="0.225" y="3.4">19.13</text><text class="pl-no" x="-0.575" y="-0.435">0.03</text><text class="pl-no" x="1.075" y="-3.69">0.04</text><text class="pl-area" x="1.075" y="-3.35">4.52</text><text class="pl-no" x="3.625" y="-3.14">0.05</text><text class="pl-area" x="3.625" y="-2.8">14.84</text><text class="pl-no" x="3.655" y="0.51">0.06</text><text class="pl-area" x="3.655" y="0.85">5.94</text><text class="pl-no" x="-1.99" y="-3.69">0.07</text><text class="pl-area" x="-1.99" y="-3.35">4.39</text><text class="pl-no" x="-4.05" y="-3.59">0.08</text><text class="pl-area" x="-4.05" y="-3.25">7.13</text><text class="pl-no" x="1.025" y="0.555">0.09</text><text class="pl-area" x="1.025" y="0.895">4.43</text><g transform="translate(4.9 -6.4)"><circle class="pl-ring" r="0.55"/><g transform="rotate(45)"><path class="pl-north" d="M0 -0.5 L0.17 0.18 L0 0.06 L-0.17 0.18 Z"/></g><text class="pl-n" x="0.62" y="-0.5">N</text></g><g transform="translate(-8.2 6.1)"><rect class="pl-bar" x="0" y="0" width="2.5" height="0.12"/><rect class="pl-bar2" x="2.5" y="0" width="2.5" height="0.12"/><text class="pl-scale" x="0" y="0.48">0</text><text class="pl-scale" x="5" y="0.48" text-anchor="end">5 m</text></g></svg><figcaption>Schéma SIA 416 · Rez-de-chaussée · même échelle à chaque niveau</figcaption></figure>
+  <div class="tablewrap"><table class="rooms">
+      <thead><tr><th>N°</th><th>Local</th><th>SIA</th><th>Calcul</th><th class="num">SN m²</th><th class="num">Plan m²</th><th class="num">Écart</th></tr></thead>
+      <tbody><tr><td class="mono no">0.01</td><td>Cuisine / Séjour<span class="flatname">App. 1</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">3.82 × 7.05</td><td class="num">26.97</td><td class="num muted">26.95</td><td class="num muted">+0.1 %</td></tr><tr><td class="mono no">0.02</td><td>Salon<span class="flatname">App. 1</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">6.38 × 3.00</td><td class="num">19.13</td><td class="num muted">19.35</td><td class="num muted">−1.2 %</td></tr><tr class="flag"><td class="mono no">0.03</td><td>WC<span class="flatname">App. 1</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">0.90 × 2.48</td><td class="num">2.23</td><td class="num muted">2.05</td><td class="num warn">+8.9 %</td></tr><tr><td class="mono no">0.04</td><td>SDB<span class="flatname">App. 1</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">1.88 × 2.40</td><td class="num">4.52</td><td class="num muted">4.50</td><td class="num muted">+0.5 %</td></tr><tr><td class="mono no">0.05</td><td>Chambre 1<span class="flatname">App. 1</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">polygone, 10 sommets</td><td class="num">14.84</td><td class="num muted">14.60</td><td class="num muted">+1.6 %</td></tr><tr><td class="mono no">0.06</td><td>Hall<span class="flatname">App. 1</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">polygone, 8 sommets</td><td class="num">5.94</td><td class="num muted">5.80</td><td class="num muted">+2.4 %</td></tr><tr class="flag"><td class="mono no">0.07</td><td>Hall<span class="flatname">App. 2</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">4.39</td><td class="num muted">5.25</td><td class="num warn">−16.4 %</td></tr><tr><td class="mono no">0.08</td><td>Escaliers<span class="flatname">App. 2</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">polygone, 10 sommets</td><td class="num">7.13</td><td class="num muted">—</td><td class="num muted"></td></tr><tr><td class="mono no">0.09</td><td>Escalier RDC<span class="flatname">App. 1</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">2.46 × 1.80</td><td class="num">4.43</td><td class="num muted">—</td><td class="num muted"></td></tr></tbody>
+      <tfoot>
+        <tr><td colspan="4">Surface nette SN</td><td class="num">89.57</td><td colspan="2"></td></tr>
+        <tr><td colspan="4">Surface de construction SC = SP − SN</td><td class="num">20.43</td><td colspan="2"></td></tr>
+        <tr class="strong"><td colspan="4">Surface de plancher SP <span class="mono small">11.00 × 10.00</span></td><td class="num">110.00</td><td colspan="2"></td></tr>
+      </tfoot>
+  </table></div>
+</section></div>
+  <footer class="run"><span>Estimé sur la maquette 3D, non contractuel. Les surfaces lues sur les plans sont indiquées à côté.</span><span class="mono">3/9</span></footer>
+</article>
+<article class="sheet" id="p4">
+  <header class="run"><span>housegen · Surfaces et volumes SIA 416</span><span>TestVillaGille · version 10</span></header><h2 class="page-title"><span class="page-no mono">4/9</span>Surfaces par niveau : 1er étage</h2>
+  <div class="grow"><section class="storey" aria-labelledby="st-first">
+  <div class="storey-head"><h3 id="st-first">1er étage</h3><p class="mono small">niveau +2.74 · hauteur libre 2.45 m</p></div>
+  <figure class="plan-fig plan-big"><svg class="plan" viewBox="-8.7 -7.4 15 14" role="img" aria-label="Plan schématique, 1er étage : locaux colorés par affectation SIA 416"><path class="pl-balc" d="M-8 -6.8 H0.1 V-5 H-5.5 V-0.8 H-8 Z"/><rect class="pl-balc" x="0.62" y="5" width="4.5" height="2.5"/><text class="pl-note" x="-7.75" y="-6.25">balcon (hors SP)</text><polygon class="pl-room pl-sup" points="-5.1,-3.5 -1.145,-3.5 -1.145,-0.05 -5.1,-0.05"/><polygon class="pl-room pl-sup" points="-5.1,-0.05 -1.145,-0.05 -1.145,0.445 -0.125,0.445 -0.125,1.5 -5.1,1.5"/><polygon class="pl-room pl-sup" points="-5.1,1.5 -0.125,1.5 -0.125,4.6 -5.1,4.6"/><polygon class="pl-room pl-sup" points="-5.1,-4.6 -2.175,-4.6 -2.175,-3.6 -5.1,-3.6"/><polygon class="pl-room pl-sd" points="-2.075,-4.6 -0.125,-4.6 -0.125,-3.6 -1.145,-3.6 -1.145,-3.5 -2.075,-3.5"/><polygon class="pl-room pl-sd" points="-1.025,-3.6 -0.125,-3.6 -0.125,0.385 -1.025,0.385"/><polygon class="pl-stair" points="-1.025,-3.6 -0.125,-3.6 -0.125,0.385 -1.025,0.385"/><polygon class="pl-room pl-sup" points="0.125,-4.6 2.62,-4.6 2.62,-0.5 0.125,-0.5"/><polygon class="pl-room pl-sup" points="2.72,-4.6 5.1,-4.6 5.1,-0.8 3.7,-0.8 3.7,-0.5 2.72,-0.5"/><polygon class="pl-room pl-sup" points="0.125,1.59 3.6,1.59 3.6,2.8 5.1,2.8 5.1,4.6 0.125,4.6"/><polygon class="pl-room pl-sup" points="3.7,-0.65 5.1,-0.65 5.1,2.69 3.7,2.69"/><polygon class="pl-room pl-sd" points="1.79,-0.4 3.6,-0.4 3.6,1.49 2.685,1.49 2.685,0.49 1.79,0.49"/><polygon class="pl-room pl-sd" points="0.125,-0.4 1.69,-0.4 1.69,0.59 2.585,0.59 2.585,1.49 0.125,1.49"/><polygon class="pl-stair" points="0.125,-0.4 1.69,-0.4 1.69,0.59 2.585,0.59 2.585,1.49 0.125,1.49"/><path class="pl-wall" fill-rule="evenodd" d="M-5.5 -5 H5.5 V5 H-5.5 Z M-5.1 -4.6 V4.6 H5.1 V-4.6 Z"/><rect class="pl-gap" x="3.6" y="-5" width="1.4" height="0.4"/><line class="pl-glass" x1="3.6" y1="-4.8" x2="5" y2="-4.8"/><rect class="pl-gap" x="1.22" y="-5" width="1.4" height="0.4"/><line class="pl-glass" x1="1.22" y1="-4.8" x2="2.62" y2="-4.8"/><rect class="pl-gap" x="-2" y="-5" width="0.9" height="0.4"/><line class="pl-glass" x1="-2" y1="-4.8" x2="-1.1" y2="-4.8"/><rect class="pl-gap" x="-4.6" y="-5" width="0.8" height="0.4"/><line class="pl-glass" x1="-4.6" y1="-4.8" x2="-3.8" y2="-4.8"/><rect class="pl-gap" x="5.1" y="-0.2" width="0.4" height="0.8"/><line class="pl-glass" x1="5.3" y1="-0.2" x2="5.3" y2="0.6"/><rect class="pl-gap" x="5.1" y="-2.8" width="0.4" height="1.4"/><line class="pl-glass" x1="5.3" y1="-2.8" x2="5.3" y2="-1.4"/><rect class="pl-gap" x="-4.115" y="4.6" width="3" height="0.4"/><line class="pl-glass" x1="-4.115" y1="4.8" x2="-1.115" y2="4.8"/><rect class="pl-gap" x="1.195" y="4.6" width="3" height="0.4"/><line class="pl-glass" x1="1.195" y1="4.8" x2="4.195" y2="4.8"/><rect class="pl-gap" x="-5.5" y="-2.9" width="0.4" height="1.8"/><line class="pl-glass" x1="-5.3" y1="-2.9" x2="-5.3" y2="-1.1"/><rect class="pl-gap" x="-5.5" y="-0.345" width="0.4" height="1.4"/><line class="pl-glass" x1="-5.3" y1="-0.345" x2="-5.3" y2="1.055"/><line class="pl-mass" stroke-width="0.25" x1="0" y1="-4.6" x2="0" y2="4.6"/><line class="pl-part" stroke-width="0.1" x1="-5.1" y1="-3.55" x2="-2.125" y2="-3.55"/><line class="pl-part" stroke-width="0.1" x1="-2.125" y1="-4.6" x2="-2.125" y2="-4.53"/><line class="pl-part" stroke-width="0.1" x1="-2.125" y1="-3.65" x2="-2.125" y2="-3.55"/><line class="pl-part" stroke-width="0.12" x1="-1.085" y1="-3.6" x2="-1.085" y2="0.385"/><line class="pl-part" stroke-width="0.1" x1="2.67" y1="-4.6" x2="2.67" y2="-0.45"/><line class="pl-part" stroke-width="0.1" x1="0.125" y1="-0.45" x2="1.725" y2="-0.45"/><line class="pl-part" stroke-width="0.1" x1="2.605" y1="-0.45" x2="2.67" y2="-0.45"/><line class="pl-part" stroke-width="0.1" x1="2.67" y1="-0.45" x2="2.73" y2="-0.45"/><line class="pl-part" stroke-width="0.1" x1="3.61" y1="-0.45" x2="3.65" y2="-0.45"/><line class="pl-mass" stroke-width="0.2" x1="3.65" y1="-0.75" x2="5.1" y2="-0.75"/><line class="pl-part" stroke-width="0.1" x1="3.65" y1="-0.65" x2="3.65" y2="0.38"/><line class="pl-part" stroke-width="0.1" x1="3.65" y1="1.26" x2="3.65" y2="2.745"/><line class="pl-part" stroke-width="0.11" x1="3.65" y1="2.745" x2="5.1" y2="2.745"/><line class="pl-part" stroke-width="0.1" x1="0.125" y1="1.54" x2="2.685" y2="1.54"/><line class="pl-part" stroke-width="0.1" x1="3.565" y1="1.54" x2="3.65" y2="1.54"/><line class="pl-part" stroke-width="0.1" x1="1.74" y1="-0.4" x2="1.74" y2="0.54"/><line class="pl-part" stroke-width="0.1" x1="1.74" y1="0.54" x2="2.635" y2="0.54"/><text class="pl-no" x="-3.35" y="-1.79">1.01</text><text class="pl-area" x="-3.35" y="-1.45">13.64</text><text class="pl-no" x="-4.3" y="0.66">1.02</text><text class="pl-area" x="-4.3" y="1">7.21</text><text class="pl-no" x="-3.5" y="3.01">1.03</text><text class="pl-area" x="-3.5" y="3.35">15.42</text><text class="pl-no" x="-4.6" y="-4.01">1.04</text><text class="pl-no" x="-1.525" y="-3.96">1.05</text><text class="pl-no" x="-0.575" y="-3.01">1.06</text><text class="pl-no" x="1.375" y="-3.39">1.07</text><text class="pl-area" x="1.375" y="-3.05">10.23</text><text class="pl-no" x="3.92" y="-3.44">1.08</text><text class="pl-area" x="3.92" y="-3.1">9.34</text><text class="pl-no" x="1.625" y="3.05">1.09</text><text class="pl-area" x="1.625" y="3.39">13.16</text><text class="pl-no" x="4.4" y="0.01">1.10</text><text class="pl-area" x="4.4" y="0.35">4.68</text><text class="pl-no" x="3.09" y="0.24">1.11</text><text class="pl-no" x="0.925" y="0.66">1.12</text><text class="pl-area" x="0.925" y="1">3.76</text><g transform="translate(4.9 -6.4)"><circle class="pl-ring" r="0.55"/><g transform="rotate(45)"><path class="pl-north" d="M0 -0.5 L0.17 0.18 L0 0.06 L-0.17 0.18 Z"/></g><text class="pl-n" x="0.62" y="-0.5">N</text></g><g transform="translate(-8.2 6.1)"><rect class="pl-bar" x="0" y="0" width="2.5" height="0.12"/><rect class="pl-bar2" x="2.5" y="0" width="2.5" height="0.12"/><text class="pl-scale" x="0" y="0.48">0</text><text class="pl-scale" x="5" y="0.48" text-anchor="end">5 m</text></g></svg><figcaption>Schéma SIA 416 · 1er étage · même échelle à chaque niveau</figcaption></figure>
+  <div class="tablewrap"><table class="rooms">
+      <thead><tr><th>N°</th><th>Local</th><th>SIA</th><th>Calcul</th><th class="num">SN m²</th><th class="num">Plan m²</th><th class="num">Écart</th></tr></thead>
+      <tbody><tr><td class="mono no">1.01</td><td>Cuisine<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">3.95 × 3.45</td><td class="num">13.64</td><td class="num muted">—</td><td class="num muted"></td></tr><tr><td class="mono no">1.02</td><td>Séjour<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">7.21</td><td class="num muted">—</td><td class="num muted"></td></tr><tr><td class="mono no">1.03</td><td>Salon<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">4.97 × 3.10</td><td class="num">15.42</td><td class="num muted">—</td><td class="num muted"></td></tr><tr class="flag"><td class="mono no">1.04</td><td>WC<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">2.92 × 1.00</td><td class="num">2.92</td><td class="num muted">2.70</td><td class="num warn">+8.3 %</td></tr><tr><td class="mono no">1.05</td><td>Circulation<span class="flatname">App. 2</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">2.04</td><td class="num muted">2.10</td><td class="num muted">−2.7 %</td></tr><tr><td class="mono no">1.06</td><td>Escalier étage<span class="flatname">App. 2</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">0.90 × 3.99</td><td class="num">3.59</td><td class="num muted">—</td><td class="num muted"></td></tr><tr><td class="mono no">1.07</td><td>Chambre 2<span class="flatname">App. 1</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">2.50 × 4.10</td><td class="num">10.23</td><td class="num muted">10.25</td><td class="num muted">−0.2 %</td></tr><tr><td class="mono no">1.08</td><td>Chambre 3<span class="flatname">App. 1</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">9.34</td><td class="num muted">9.30</td><td class="num muted">+0.4 %</td></tr><tr><td class="mono no">1.09</td><td>Chambre 4<span class="flatname">App. 1</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">13.16</td><td class="num muted">13.05</td><td class="num muted">+0.8 %</td></tr><tr><td class="mono no">1.10</td><td>SDB étage<span class="flatname">App. 1</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">1.40 × 3.34</td><td class="num">4.68</td><td class="num muted">4.50</td><td class="num muted">+3.9 %</td></tr><tr><td class="mono no">1.11</td><td>Circulation<span class="flatname">App. 1</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">2.53</td><td class="num muted">2.65</td><td class="num muted">−4.7 %</td></tr><tr><td class="mono no">1.12</td><td>Escalier étage<span class="flatname">App. 1</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">3.76</td><td class="num muted">—</td><td class="num muted"></td></tr></tbody>
+      <tfoot>
+        <tr><td colspan="4">Surface nette SN</td><td class="num">88.52</td><td colspan="2"></td></tr>
+        <tr><td colspan="4">Surface de construction SC = SP − SN</td><td class="num">21.48</td><td colspan="2"></td></tr>
+        <tr class="strong"><td colspan="4">Surface de plancher SP <span class="mono small">11.00 × 10.00</span></td><td class="num">110.00</td><td colspan="2"></td></tr>
+      </tfoot>
+  </table></div>
+</section></div>
+  <footer class="run"><span>Estimé sur la maquette 3D, non contractuel. Les surfaces lues sur les plans sont indiquées à côté.</span><span class="mono">4/9</span></footer>
+</article>
+<article class="sheet" id="p5">
+  <header class="run"><span>housegen · Surfaces et volumes SIA 416</span><span>TestVillaGille · version 10</span></header><h2 class="page-title"><span class="page-no mono">5/9</span>Surfaces par niveau : combles</h2>
+  <div class="grow"><section class="storey" aria-labelledby="st-attic">
+  <div class="storey-head"><h3 id="st-attic">Combles</h3><p class="mono small">niveau +5.48 · hauteur libre sous pente, 1.38 à 4.16 m</p></div>
+  <figure class="plan-fig plan-big"><svg class="plan" viewBox="-8.7 -7.4 15 14" role="img" aria-label="Plan schématique, Combles : locaux colorés par affectation SIA 416"><polygon class="pl-room pl-sup" points="-5.1,-4.6 -1.125,-4.6 -1.125,-0.75 -5.1,-0.75"/><polygon class="pl-room pl-sup" points="0.025,-4.6 5.1,-4.6 5.1,-0.71 0.925,-0.71 0.925,0.395 0.025,0.395"/><polygon class="pl-room pl-sup" points="-5.1,1.51 -0.075,1.51 -0.075,4.6 -5.1,4.6"/><polygon class="pl-room pl-sup" points="0.025,1.51 4.11,1.51 4.11,-0.4 5.1,-0.4 5.1,4.6 0.025,4.6"/><polygon class="pl-room pl-sup" points="-5.1,-0.63 -2.13,-0.63 -2.13,1.4 -5.1,1.4"/><polygon class="pl-room pl-sup" points="1.025,-0.59 4.015,-0.59 4.015,1.25 1.025,1.25"/><polygon class="pl-room pl-sd" points="-2.03,-0.65 -1.125,-0.65 -1.125,0.495 0.025,0.495 0.025,0.395 0.925,0.395 0.925,1.4 -2.03,1.4"/><polygon class="pl-room pl-sd" points="-1.025,-3.6 -0.125,-3.6 -0.125,0.385 -1.025,0.385"/><polygon class="pl-stair" points="-1.025,-3.6 -0.125,-3.6 -0.125,0.385 -1.025,0.385"/><path class="pl-wall" fill-rule="evenodd" d="M-5.5 -5 H5.5 V5 H-5.5 Z M-5.1 -4.6 V4.6 H5.1 V-4.6 Z"/><rect class="pl-gap" x="0.93" y="-5" width="2.3" height="0.4"/><line class="pl-glass" x1="0.93" y1="-4.8" x2="3.23" y2="-4.8"/><rect class="pl-gap" x="-2.9" y="-5" width="1.4" height="0.4"/><line class="pl-glass" x1="-2.9" y1="-4.8" x2="-1.5" y2="-4.8"/><rect class="pl-gap" x="-2.42" y="4.6" width="1.4" height="0.4"/><line class="pl-glass" x1="-2.42" y1="4.8" x2="-1.02" y2="4.8"/><rect class="pl-gap" x="1.09" y="4.6" width="1.4" height="0.4"/><line class="pl-glass" x1="1.09" y1="4.8" x2="2.49" y2="4.8"/><line class="pl-part" stroke-width="0.1" x1="-1.075" y1="-4.6" x2="-1.075" y2="0.445"/><line class="pl-part" stroke-width="0.1" x1="-0.075" y1="-4.6" x2="-0.075" y2="0.445"/><line class="pl-part" stroke-width="0.1" x1="-0.075" y1="0.445" x2="0.02" y2="0.445"/><line class="pl-part" stroke-width="0.1" x1="0.9" y1="0.445" x2="0.975" y2="0.445"/><line class="pl-part" stroke-width="0.1" x1="-1.075" y1="-3.65" x2="-0.075" y2="-3.65"/><line class="pl-part" stroke-width="0.12" x1="-5.1" y1="-0.69" x2="-2.01" y2="-0.69"/><line class="pl-part" stroke-width="0.12" x1="-1.13" y1="-0.69" x2="-1.075" y2="-0.69"/><line class="pl-part" stroke-width="0.1" x1="-2.08" y1="-0.69" x2="-2.08" y2="0.365"/><line class="pl-part" stroke-width="0.1" x1="-2.08" y1="1.245" x2="-2.08" y2="1.455"/><line class="pl-part" stroke-width="0.12" x1="0.975" y1="-0.65" x2="5.1" y2="-0.65"/><line class="pl-part" stroke-width="0.1" x1="0.975" y1="-0.65" x2="0.975" y2="-0.525"/><line class="pl-part" stroke-width="0.1" x1="0.975" y1="0.355" x2="0.975" y2="1.455"/><line class="pl-part" stroke-width="0.1" x1="4.065" y1="-0.59" x2="4.065" y2="1.455"/><line class="pl-part" stroke-width="0.12" x1="0.975" y1="1.31" x2="4.065" y2="1.31"/><line class="pl-part" stroke-width="0.11" x1="-5.1" y1="1.455" x2="-1.745" y2="1.455"/><line class="pl-part" stroke-width="0.11" x1="-0.865" y1="1.455" x2="-0.025" y2="1.455"/><line class="pl-part" stroke-width="0.11" x1="-0.025" y1="1.455" x2="0.07" y2="1.455"/><line class="pl-part" stroke-width="0.11" x1="0.95" y1="1.455" x2="5.1" y2="1.455"/><line class="pl-part" stroke-width="0.1" x1="-0.025" y1="1.455" x2="-0.025" y2="4.6"/><text class="pl-no" x="-3.15" y="-2.69">2.01</text><text class="pl-area" x="-3.15" y="-2.35">15.30</text><text class="pl-no" x="1.975" y="-2.69">2.02</text><text class="pl-area" x="1.975" y="-2.35">20.74</text><text class="pl-no" x="-3.55" y="3.02">2.03</text><text class="pl-area" x="-3.55" y="3.36">15.53</text><text class="pl-no" x="1.575" y="3.01">2.04</text><text class="pl-area" x="1.575" y="3.35">17.57</text><text class="pl-no" x="-4.05" y="0.33">2.05</text><text class="pl-area" x="-4.05" y="0.67">6.03</text><text class="pl-no" x="1.925" y="0.27">2.06</text><text class="pl-area" x="1.925" y="0.61">5.50</text><text class="pl-no" x="-1.48" y="0.94">2.07</text><text class="pl-no" x="-0.575" y="-3.01">2.08</text><g transform="translate(4.9 -6.4)"><circle class="pl-ring" r="0.55"/><g transform="rotate(45)"><path class="pl-north" d="M0 -0.5 L0.17 0.18 L0 0.06 L-0.17 0.18 Z"/></g><text class="pl-n" x="0.62" y="-0.5">N</text></g><g transform="translate(-8.2 6.1)"><rect class="pl-bar" x="0" y="0" width="2.5" height="0.12"/><rect class="pl-bar2" x="2.5" y="0" width="2.5" height="0.12"/><text class="pl-scale" x="0" y="0.48">0</text><text class="pl-scale" x="5" y="0.48" text-anchor="end">5 m</text></g></svg><figcaption>Schéma SIA 416 · Combles · même échelle à chaque niveau</figcaption></figure>
+  <div class="tablewrap"><table class="rooms">
+      <thead><tr><th>N°</th><th>Local</th><th>SIA</th><th>Calcul</th><th class="num">SN m²</th><th class="num">Plan m²</th><th class="num">Écart</th></tr></thead>
+      <tbody><tr class="flag"><td class="mono no">2.01</td><td>Chambre 1<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">3.97 × 3.85</td><td class="num">15.30</td><td class="num muted">14.05</td><td class="num warn">+8.9 %</td></tr><tr><td class="mono no">2.02</td><td>Chambre 2<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">20.74</td><td class="num muted">20.65</td><td class="num muted">+0.4 %</td></tr><tr class="flag"><td class="mono no">2.03</td><td>Chambre 3<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">5.02 × 3.09</td><td class="num">15.53</td><td class="num muted">14.20</td><td class="num warn">+9.3 %</td></tr><tr class="flag"><td class="mono no">2.04</td><td>Chambre 4<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">polygone, 6 sommets</td><td class="num">17.57</td><td class="num muted">14.45</td><td class="num warn">+21.6 %</td></tr><tr><td class="mono no">2.05</td><td>SDB ouest et rangement sous pente<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">2.97 × 2.03</td><td class="num">6.03</td><td class="num muted">—</td><td class="num muted"></td></tr><tr><td class="mono no">2.06</td><td>SDB est<span class="flatname">App. 2</span></td><td><span class="cls cls-sup">SUP</span></td><td class="mono formula">2.99 × 1.84</td><td class="num">5.50</td><td class="num muted">5.60</td><td class="num muted">−1.8 %</td></tr><tr><td class="mono no">2.07</td><td>Circulation combles<span class="flatname">App. 2</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">polygone, 8 sommets</td><td class="num">3.80</td><td class="num muted">4.00</td><td class="num muted">−5.0 %</td></tr><tr><td class="mono no">2.08</td><td>Escalier combles<span class="flatname">App. 2</span></td><td><span class="cls cls-sd">SD</span></td><td class="mono formula">0.90 × 3.99</td><td class="num">3.59</td><td class="num muted">—</td><td class="num muted"></td></tr></tbody>
+      <tfoot>
+        <tr><td colspan="4">Surface nette SN</td><td class="num">88.06</td><td colspan="2"></td></tr>
+        <tr><td colspan="4">Surface de construction SC = SP − SN</td><td class="num">21.94</td><td colspan="2"></td></tr>
+        <tr class="strong"><td colspan="4">Surface de plancher SP <span class="mono small">11.00 × 10.00</span></td><td class="num">110.00</td><td colspan="2"></td></tr>
+      </tfoot>
+  </table></div>
+</section></div>
+  <footer class="run"><span>Estimé sur la maquette 3D, non contractuel. Les surfaces lues sur les plans sont indiquées à côté.</span><span class="mono">5/9</span></footer>
+</article>
+
+<article class="sheet" id="p6">
+  <header class="run"><span>housegen · Surfaces et volumes SIA 416</span><span>TestVillaGille · version 10</span></header><h2 class="page-title"><span class="page-no mono">6/9</span>Volume bâti VB</h2>
+  <div class="grow">
+    <p class="lead">Volume réel délimité par les faces extérieures de l'enveloppe, du dessous du radier à la surface extérieure de la toiture, calculé niveau par niveau. Les dimensions horizontales sont les dimensions effectives ; la toiture est intégrée sous ses deux pans.</p>
+    <div class="vol">
+      <figure class="plan-fig"><svg class="section" viewBox="-13.4 -10.8 22.6 14.6" role="img" aria-label="Coupe schématique : volume bâti hors-sol et sous-sol"><rect class="sx-ground" x="-6.6" y="0" width="15.6" height="3.6"/><rect class="sx-under" x="-5.5" y="0" width="11" height="3.05"/><rect class="sx-above" x="-5.5" y="-2.74" width="11" height="2.74"/><rect class="sx-above" x="-5.5" y="-5.48" width="11" height="2.74"/><polygon class="sx-above sx-roof" points="-5.5,-5.48 5.5,-5.48 5.5,-6.997 0,-10 -5.5,-6.997"/><path class="sx-over" d="M5.5 -6.997 L6.3 -6.56 M-5.5 -6.997 L-6.3 -6.56"/><line class="sx-terrain" x1="-6.6" y1="0" x2="9" y2="0"/><line class="sx-slab" x1="-5.5" y1="-2.74" x2="5.5" y2="-2.74"/><line class="sx-slab" x1="-5.5" y1="-5.48" x2="5.5" y2="-5.48"/><line class="sx-tick" x1="-6.9" y1="-10" x2="-5.6" y2="-10"/><text class="sx-lv" x="-7.1" y="-9.83">+10.00 faîte</text><line class="sx-tick" x1="-6.9" y1="-5.48" x2="-5.6" y2="-5.48"/><text class="sx-lv" x="-7.1" y="-5.3100000000000005">+5.48</text><line class="sx-tick" x1="-6.9" y1="-2.74" x2="-5.6" y2="-2.74"/><text class="sx-lv" x="-7.1" y="-2.5700000000000003">+2.74</text><line class="sx-tick" x1="-6.9" y1="0" x2="-5.6" y2="0"/><text class="sx-lv" x="-7.1" y="0.17">±0.00 (667.60)</text><line class="sx-tick" x1="-6.9" y1="2.6" x2="-5.6" y2="2.6"/><text class="sx-lv" x="-7.1" y="2.77">−2.80</text><line class="sx-tick" x1="-6.9" y1="3.25" x2="-5.6" y2="3.25"/><text class="sx-lv" x="-7.1" y="3.42">−3.05 radier</text><text class="sx-v" x="0" y="1.7">335.50 m³</text><text class="sx-v" x="0" y="-1.1700000000000002">301.40 m³</text><text class="sx-v" x="0" y="-3.91">301.40 m³</text><text class="sx-v" x="0" y="-7">332.03 m³</text><text class="sx-cap" x="5.9" y="1.67">sous-sol</text><text class="sx-cap" x="6.5" y="-3.83">hors-sol</text></svg><figcaption>Coupe schématique perpendiculaire au faîte</figcaption></figure>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Niveau</th><th>Calcul</th><th class="num">m³</th></tr></thead>
+        <tbody><tr><td>Sous-sol</td><td class="mono formula">11.00 × 10.00 × (2.80 + 0.25 radier)</td><td class="num">335.50</td></tr><tr><td>Rez-de-chaussée</td><td class="mono formula">11.00 × 10.00 × 2.74</td><td class="num">301.40</td></tr><tr><td>1er étage</td><td class="mono formula">11.00 × 10.00 × 2.74</td><td class="num">301.40</td></tr><tr><td>Combles et toiture</td><td class="mono formula">10.00 × (11.00 × 4.52 − 0.546 × 5.50²)</td><td class="num">332.03</td></tr></tbody>
+        <tfoot>
+          <tr><td colspan="2">hors-sol</td><td class="num">934.84</td></tr>
+          <tr><td colspan="2">sous-sol</td><td class="num">335.50</td></tr>
+          <tr class="strong"><td colspan="2">VB objet 1 · Villa</td><td class="num">1'270.34</td></tr>
+          <tr><td>Objet 2 · Garage</td><td class="mono formula">6.00 × 5.50 × 2.45 + 5.50 × (6.00 × 1.08 − 0.30 × 3.00²)</td><td class="num">101.64</td></tr>
+        </tfoot>
+      </table></div>
+    </div>
+    <div class="rules">
+      <div><b>Compris</b><span>Tous les niveaux, sous-sol compris ; les combles et la toiture jusqu'à sa surface extérieure.</span></div>
+      <div><b>Non compris</b><span>Les balcons ouverts (25.08 m² et 11.25 m²), les débords de toiture (en pointillé sur la coupe), les fondations spéciales.</span></div>
+      <div><b>Hypothèse</b><span>Radier de 0.25 m sous le sous-sol : il n'est pas dans la maquette. À corriger d'après la coupe des plans.</span></div>
+      <div><b>Garage</b><span>Bâtiment non contigu (environ 2 m de la villa) : compté comme un objet à part, comme le demande la fiche L9.</span></div>
+    </div>
+  </div>
+  <footer class="run"><span>Estimé sur la maquette 3D, non contractuel. Les surfaces lues sur les plans sont indiquées à côté.</span><span class="mono">6/9</span></footer>
+</article>
+
+<article class="sheet" id="p7">
+  <header class="run"><span>housegen · Surfaces et volumes SIA 416</span><span>TestVillaGille · version 10</span></header><h2 class="page-title"><span class="page-no mono">7/9</span>Métré des finitions</h2>
+  <div class="grow">
+    <p class="lead">Quantités par élément du code des coûts eCCC-Bât (SN 506 511), avec le CFC correspondant. Chaque ligne donne son calcul, pour qu'elle puisse être vérifiée et reprise dans un devis. Les colonnes de prix sont à compléter.</p>
+    <div class="tablewrap"><table class="takeoff">
+      <thead><tr><th>eCCC</th><th>CFC</th><th>Désignation</th><th>Niveau / local</th><th>Calcul</th><th>Unité</th><th class="num">Quantité</th><th class="num">PU CHF</th><th class="num">Montant CHF</th></tr></thead>
+      <tbody><tr class="grp"><td colspan="9">C · Construction du bâtiment</td></tr><tr><td class="mono">C02</td><td class="mono">211</td><td>Parois porteuses intérieures, maçonnerie 25 cm</td><td>Sous-sol</td><td class="mono formula">Σ 18.17 m × 2.43 − 2 ouv. 3.59</td><td>m²</td><td class="num">40.56</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">C02</td><td class="mono">211</td><td>Parois porteuses intérieures, maçonnerie 25 cm</td><td>Rez-de-chaussée</td><td class="mono formula">Σ 15.38 m × 2.45</td><td>m²</td><td class="num">36.87</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">C02</td><td class="mono">211</td><td>Parois porteuses intérieures, maçonnerie 25 cm</td><td>1er étage</td><td class="mono formula">Σ 10.65 m × 2.45</td><td>m²</td><td class="num">26.09</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr class="grp"><td colspan="9">E · Revêtements de façades et de murs contre terre</td></tr><tr><td class="mono">E01</td><td class="mono">225</td><td>Étanchéité des murs contre terre</td><td>Sous-sol</td><td class="mono formula">42.00 × 2.80 · 4 soupiraux &lt; 1 m² non déduits</td><td>m²</td><td class="num">117.60</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">E02</td><td class="mono">226</td><td>Crépissage de façade</td><td>Façade NO</td><td class="mono formula">11.00 × 5.48 + pignon 29.24 − 7 ouv. 13.42 · 2 &lt; 1 m² non déd.</td><td>m²</td><td class="num">76.10</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">E02</td><td class="mono">226</td><td>Crépissage de façade</td><td>Façade NE</td><td class="mono formula">10.00 × 5.48 + mur sous pente 11.57 − 3 ouv. 6.54 · 1 &lt; 1 m² non déd.</td><td>m²</td><td class="num">59.83</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">E02</td><td class="mono">226</td><td>Crépissage de façade</td><td>Façade SE</td><td class="mono formula">11.00 × 5.48 + pignon 29.24 − 6 ouv. 26.76</td><td>m²</td><td class="num">62.76</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">E02</td><td class="mono">226</td><td>Crépissage de façade</td><td>Façade SO</td><td class="mono formula">10.00 × 5.48 + mur sous pente 11.57 − 3 ouv. 9.24</td><td>m²</td><td class="num">57.13</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">E03</td><td class="mono">221</td><td>Fenêtres et portes-fenêtres</td><td>Toutes façades</td><td class="mono formula">20 pces · Σ l × h</td><td>m²</td><td class="num">54.54</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">E03</td><td class="mono">221</td><td>Portes extérieures</td><td>Rez</td><td class="mono formula">2 pces · Σ l × h</td><td>m²</td><td class="num">4.30</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr class="grp"><td colspan="9">G · Aménagements intérieurs</td></tr><tr><td class="mono">G01</td><td class="mono">271</td><td>Cloisons légères 10–12 cm</td><td>Sous-sol</td><td class="mono formula">Σ 15.69 m × 2.43 − 2 portes 3.59</td><td>m²</td><td class="num">34.54</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G01</td><td class="mono">271</td><td>Cloisons légères 10–12 cm</td><td>Rez-de-chaussée</td><td class="mono formula">Σ 20.15 m × 2.45 − 5 portes 9.16</td><td>m²</td><td class="num">40.21</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G01</td><td class="mono">271</td><td>Cloisons légères 10–12 cm</td><td>1er étage</td><td class="mono formula">Σ 25.89 m × 2.45 − 5 portes 8.98</td><td>m²</td><td class="num">54.45</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G01</td><td class="mono">271</td><td>Cloisons légères 10–12 cm</td><td>Combles</td><td class="mono formula">Σ 43.02 m, hauteur sous pente − 6 portes 10.77</td><td>m²</td><td class="num">124.23</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G02</td><td class="mono">—</td><td>Sol béton brut, sans revêtement</td><td>Sous-sol</td><td class="mono formula">locaux -1.01, -1.02, -1.03, -1.04, -1.05</td><td>m²</td><td class="num">79.88</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G02</td><td class="mono">281</td><td>Revêtement de sol : parquet chêne clair</td><td>Sous-sol</td><td class="mono formula">Σ SN locaux -1.06, -1.07</td><td>m²</td><td class="num">8.49</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G02</td><td class="mono">281</td><td>Revêtement de sol : parquet chêne clair</td><td>Rez-de-chaussée</td><td class="mono formula">Σ SN locaux 0.01, 0.02, 0.05, 0.06, 0.07, 0.08, 0.09</td><td>m²</td><td class="num">82.81</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G02</td><td class="mono">281</td><td>Revêtement de sol : carrelage grès cérame</td><td>Rez-de-chaussée</td><td class="mono formula">Σ SN locaux 0.03, 0.04</td><td>m²</td><td class="num">6.75</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G02</td><td class="mono">281</td><td>Revêtement de sol : parquet chêne clair</td><td>1er étage</td><td class="mono formula">Σ SN locaux 1.01, 1.02, 1.03, 1.05, 1.06, 1.07, 1.08, 1.09, 1.11, 1.12</td><td>m²</td><td class="num">80.92</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G02</td><td class="mono">281</td><td>Revêtement de sol : carrelage grès cérame</td><td>1er étage</td><td class="mono formula">Σ SN locaux 1.04, 1.10</td><td>m²</td><td class="num">7.60</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G02</td><td class="mono">281</td><td>Revêtement de sol : parquet chêne clair</td><td>Combles</td><td class="mono formula">Σ SN locaux 2.01, 2.02, 2.03, 2.04, 2.07, 2.08</td><td>m²</td><td class="num">76.53</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G02</td><td class="mono">281</td><td>Revêtement de sol : carrelage grès cérame</td><td>Combles</td><td class="mono formula">Σ SN locaux 2.05, 2.06</td><td>m²</td><td class="num">11.53</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">282</td><td>Faïence murale</td><td>0.03 WC</td><td class="mono formula">périmètre × 1.20 − ouv. ≥ 1 m²</td><td>m²</td><td class="num">8.11</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">282</td><td>Faïence murale</td><td>0.04 SDB</td><td class="mono formula">périmètre × 1.20 (2.40 sur 1 mur) − ouv. ≥ 1 m²</td><td>m²</td><td class="num">12.54</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">282</td><td>Faïence murale</td><td>1.04 WC</td><td class="mono formula">périmètre × 1.20 − ouv. ≥ 1 m²</td><td>m²</td><td class="num">8.36</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">282</td><td>Faïence murale</td><td>1.10 SDB étage</td><td class="mono formula">périmètre × 1.20 (2.40 sur 3 murs) − ouv. ≥ 1 m²</td><td>m²</td><td class="num">19.28</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">282</td><td>Faïence murale</td><td>2.05 SDB ouest et rangement sous pente</td><td class="mono formula">périmètre × 1.20 (2.40 sur 2 murs), sous pente − ouv. ≥ 1 m²</td><td>m²</td><td class="num">15.24</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">282</td><td>Faïence murale</td><td>2.06 SDB est</td><td class="mono formula">périmètre × 1.20 (2.40 sur 1 mur), sous pente − ouv. ≥ 1 m²</td><td>m²</td><td class="num">11.95</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">271 / 285</td><td>Enduit plâtre et peinture des parois</td><td>Sous-sol</td><td class="mono formula">Σ parois 263.68 − ouv. 14.36</td><td>m²</td><td class="num">249.32</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">271 / 285</td><td>Enduit plâtre et peinture des parois</td><td>Rez-de-chaussée</td><td class="mono formula">Σ parois 298.21 − ouv. 43.62 − faïence 20.65</td><td>m²</td><td class="num">233.94</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">271 / 285</td><td>Enduit plâtre et peinture des parois</td><td>1er étage</td><td class="mono formula">Σ parois 331.80 − ouv. 40.81 − faïence 27.64</td><td>m²</td><td class="num">263.35</td><td class="num muted">—</td><td class="num muted">—</td></tr><tr><td class="mono">G03</td><td class="mono">271 / 285</td><td>Enduit plâtre et peinture des parois</td><td>Combles</td><td class="mono formula">Σ parois 315.19 − ouv. 29.34 − faïence 27.19</td><td>m²</td><td class="num">258.66</td><td class="num muted">—</td><td class="num muted">—</td></tr></tbody>
+    </table></div>
+    <div class="rules">
+      <div><b>Ouvertures</b><span>Déduites dès 1 m² (NPK 643/651) ; 11 ouvertures plus petites ne sont pas déduites.</span></div>
+      <div><b>Carrelage, petites surfaces</b><span>Aucune surface de moins de 2 m² par local : pas de majoration de 20 % (NPK 645).</span></div>
+      <div><b>Hauteurs</b><span>Parois : hauteur libre du niveau ; aux combles, hauteur sous pente au point près. Faïence : 1.20 m, 2.40 m aux murs de douche et de baignoire.</span></div>
+      <div><b>Pas encore compté</b><span>Embrasures et tablettes de fenêtres, plinthes, plafonds (G04) : à ajouter dans le rapport final.</span></div>
+    </div>
+  </div>
+  <footer class="run"><span>Estimé sur la maquette 3D, non contractuel. Les surfaces lues sur les plans sont indiquées à côté.</span><span class="mono">7/9</span></footer>
+</article>
+
+<article class="sheet" id="p8">
+  <header class="run"><span>housegen · Surfaces et volumes SIA 416</span><span>TestVillaGille · version 10</span></header><h2 class="page-title"><span class="page-no mono">8/9</span>Estimation des coûts et de la valeur</h2>
+  <div class="grow">
+    <p class="lead">Les quantités viennent de la maquette ; les prix se saisissent dans les champs et les montants se recalculent. Les coûts suivent les groupes principaux du CFC. Les prix proposés par défaut sont indicatifs : l'agence les remplace par ses propres références.</p>
+    <section class="est" aria-labelledby="est-a">
+      <div class="est-head"><h3 id="est-a">A · Bâtiment (CFC 2) par le volume SIA 416</h3>
+        <div class="presets" role="group" aria-label="Standard de construction de la villa"><button type="button" data-rate="675" aria-pressed="false">Simple</button><button type="button" data-rate="850" aria-pressed="true">Moyen</button><button type="button" data-rate="1075" aria-pressed="false">Élevé</button></div></div>
+      <div class="tablewrap"><table class="est-t">
+        <thead><tr><th>Objet</th><th>Volume bâti</th><th class="num">CHF/m³</th><th class="num">Montant CHF</th></tr></thead>
+        <tbody>
+          <tr><td>Villa</td><td class="mono">1'270.34 m³</td><td class="num"><input class="field" id="pu-villa" type="number" inputmode="decimal" min="0" step="5" value="850" aria-label="Prix au m³ de la villa"></td><td class="num amount" id="am-villa"></td></tr>
+          <tr><td>Garage</td><td class="mono">101.64 m³</td><td class="num"><input class="field" id="pu-garage" type="number" inputmode="decimal" min="0" step="5" value="600" aria-label="Prix au m³ du garage"></td><td class="num amount" id="am-garage"></td></tr>
+        </tbody>
+        <tfoot><tr class="total"><td colspan="3">Total CFC 2</td><td class="num" id="am-cfc2"></td></tr></tfoot>
+      </table></div>
+      <p class="small muted">Repères indicatifs d'un constructeur (neho.ch), CHF par m³ SIA 416 : simple 600–750, moyen 750–950, élevé 950–1'200. Vérifier si la référence comprend les honoraires (CFC 29). Indexer les références anciennes avec l'indice OFS des prix de la construction, région lémanique : 116.3 en octobre 2025 (octobre 2020 = 100).</p>
+    </section>
+    <section class="est" aria-labelledby="est-b">
+      <h3 id="est-b">B · Coût du projet par groupes CFC</h3>
+      <div class="tablewrap"><table class="est-t">
+        <thead><tr><th>CFC</th><th>Poste</th><th>Quantité de la maquette</th><th class="num">Prix unitaire</th><th class="num">Montant CHF</th></tr></thead>
+        <tbody>
+          <tr class="grp"><td colspan="5"><b>0 Terrain</b></td></tr>
+          <tr><td class="mono">0</td><td>Parcelle</td><td class="mono" data-q="998.76">998.76 m², tracée d'après les plans</td><td class="num"><input class="field" id="pu-0" type="number" inputmode="decimal" min="0" placeholder="CHF/m²" aria-label="Prix du terrain au m²"></td><td class="num amount" id="am-0"></td></tr>
+          <tr class="grp"><td colspan="5"><b>1 Travaux préparatoires</b></td></tr>
+          <tr><td class="mono">1</td><td>Fouille du sous-sol</td><td class="mono" data-q="335.50">335.50 m³, volume enterré sans surlargeur ni talus</td><td class="num"><input class="field" id="pu-1" type="number" inputmode="decimal" min="0" placeholder="CHF/m³" aria-label="Prix de la fouille au m³"></td><td class="num amount" id="am-1"></td></tr>
+          <tr class="grp"><td colspan="5"><b>2 Bâtiment</b></td></tr>
+          <tr><td class="mono">2</td><td>Villa et garage</td><td>selon A</td><td class="num muted">—</td><td class="num amount" id="am-2"></td></tr>
+          <tr class="grp"><td colspan="5"><b>4 Aménagements extérieurs</b></td></tr>
+          <tr><td class="mono">4</td><td>Piscines 6.00 × 3.00 × 1.50 m, une par appartement</td><td class="mono" data-q="2">2 pces</td><td class="num"><input class="field" id="pu-4a" type="number" inputmode="decimal" min="0" placeholder="CHF/pce" aria-label="Prix d'une piscine"></td><td class="num amount" id="am-4a"></td></tr>
+          <tr><td class="mono">4</td><td>Dallages et terrasses</td><td class="mono" data-q="96.91">96.91 m², 4 surfaces</td><td class="num"><input class="field" id="pu-4b" type="number" inputmode="decimal" min="0" placeholder="CHF/m²" aria-label="Prix du dallage au m²"></td><td class="num amount" id="am-4b"></td></tr>
+          <tr><td class="mono">4</td><td>Haie vive et clôture en limite de parcelle</td><td class="mono" data-q="112.79">112.79 m, dont 63.73 m en double rang</td><td class="num"><input class="field" id="pu-4c" type="number" inputmode="decimal" min="0" placeholder="CHF/m" aria-label="Prix de la haie et clôture au mètre"></td><td class="num amount" id="am-4c"></td></tr>
+          <tr><td class="mono">4</td><td>Haie basse entre les deux jardins</td><td class="mono" data-q="12.30">12.30 m</td><td class="num"><input class="field" id="pu-4d" type="number" inputmode="decimal" min="0" placeholder="CHF/m" aria-label="Prix de la haie basse au mètre"></td><td class="num amount" id="am-4d"></td></tr>
+          <tr><td class="mono">4</td><td>Arbres à planter</td><td class="mono" data-q="3">3 pces, 1 arbre existant conservé</td><td class="num"><input class="field" id="pu-4e" type="number" inputmode="decimal" min="0" placeholder="CHF/pce" aria-label="Prix d'un arbre"></td><td class="num amount" id="am-4e"></td></tr>
+          <tr class="grp"><td colspan="5"><b>5 Frais secondaires</b></td></tr>
+          <tr><td class="mono">5</td><td>Autorisations, taxes de raccordement, assurances, financement</td><td>en % du CFC 2</td><td class="num"><input class="field" id="pu-5" type="number" inputmode="decimal" min="0" max="100" step="0.5" placeholder="%" aria-label="Frais secondaires en pour cent du CFC 2"></td><td class="num amount" id="am-5"></td></tr>
+        </tbody>
+        <tfoot><tr class="total"><td colspan="4">Coût du projet <span class="small muted" id="cost-note"></span></td><td class="num" id="am-cost"></td></tr></tfoot>
+      </table></div>
+    </section>
+    <section class="est" aria-labelledby="est-c">
+      <h3 id="est-c">C · Valeur de vente</h3>
+      <div class="tablewrap"><table class="est-t">
+        <thead><tr><th>Logement</th><th>Surface pondérée (page 9)</th><th class="num">CHF/m²</th><th class="num">Valeur CHF</th></tr></thead>
+        <tbody><tr><td>App. 1</td><td class="mono">119.17 m²</td><td class="num"><input class="field" id="pu-v0" type="number" inputmode="decimal" min="0" step="50" placeholder="CHF/m²" aria-label="Prix de vente au m² pondéré, App. 1"></td><td class="num amount" id="am-v0"></td></tr><tr><td>App. 2</td><td class="mono">142.64 m²</td><td class="num"><input class="field" id="pu-v1" type="number" inputmode="decimal" min="0" step="50" placeholder="CHF/m²" aria-label="Prix de vente au m² pondéré, App. 2"></td><td class="num amount" id="am-v1"></td></tr></tbody>
+        <tfoot><tr class="total"><td colspan="3">Valeur de vente</td><td class="num" id="am-value"></td></tr></tfoot>
+      </table></div>
+      <div class="balance" aria-live="polite"><div><b id="b-value">—</b><span>valeur de vente</span></div><div><b id="b-cost">—</b><span>coût du projet</span></div><div><b id="b-margin">—</b><span>marge brute</span></div></div>
+      <p class="small muted">Le prix au m² vient de l'agence ou d'un outil d'estimation (Wüest Partner, IAZI, RealAdvisor, Fahrländer). Ces outils sont payants ; un accès de l'agence pourrait remplir ces champs.</p>
+    </section>
+  </div>
+  <footer class="run"><span>Estimé sur la maquette 3D, non contractuel. Les surfaces lues sur les plans sont indiquées à côté.</span><span class="mono">8/9</span></footer>
+</article>
+
+<article class="sheet" id="p9">
+  <header class="run"><span>housegen · Surfaces et volumes SIA 416</span><span>TestVillaGille · version 10</span></header><h2 class="page-title"><span class="page-no mono">9/9</span>Annexe : surface habitable et habitabilité</h2>
+  <div class="grow">
+    <p class="lead">Pour la vente : la surface habitable nette de chaque appartement (pièces et dégagements, sans les escaliers ni les annexes) et une surface pondérée. Il n'existe pas de norme nationale pour ce calcul : les règles ci-dessous sont celles de la pratique courante et se règlent par projet.</p>
+    <div class="flats"><div class="flat">
+  <h3>App. 1</h3>
+  <div class="tablewrap"><table class="rooms compact">
+    <thead><tr><th>N°</th><th>Local</th><th>Niveau</th><th class="num">m²</th></tr></thead>
+    <tbody><tr><td class="mono">0.01</td><td>Cuisine / Séjour</td><td>Rez-de-chaussée</td><td class="num">26.97</td></tr><tr><td class="mono">0.02</td><td>Salon</td><td>Rez-de-chaussée</td><td class="num">19.13</td></tr><tr><td class="mono">0.03</td><td>WC</td><td>Rez-de-chaussée</td><td class="num">2.23</td></tr><tr><td class="mono">0.04</td><td>SDB</td><td>Rez-de-chaussée</td><td class="num">4.52</td></tr><tr><td class="mono">0.05</td><td>Chambre 1</td><td>Rez-de-chaussée</td><td class="num">14.84</td></tr><tr><td class="mono">0.06</td><td>Hall</td><td>Rez-de-chaussée</td><td class="num">5.94</td></tr><tr><td class="mono">1.07</td><td>Chambre 2</td><td>1er étage</td><td class="num">10.23</td></tr><tr><td class="mono">1.08</td><td>Chambre 3</td><td>1er étage</td><td class="num">9.34</td></tr><tr><td class="mono">1.09</td><td>Chambre 4</td><td>1er étage</td><td class="num">13.16</td></tr><tr><td class="mono">1.10</td><td>SDB étage</td><td>1er étage</td><td class="num">4.68</td></tr><tr><td class="mono">1.11</td><td>Circulation</td><td>1er étage</td><td class="num">2.53</td></tr></tbody>
+    <tfoot>
+      <tr class="strong"><td colspan="3">Surface habitable nette</td><td class="num">113.55</td></tr>
+      <tr><td colspan="3">Balcon sud-est (1er étage, Chambre 4) <span class="mono small">11.25 × 50 %</span></td><td class="num">5.63</td></tr>
+      <tr class="strong"><td colspan="3">Surface pondérée</td><td class="num">119.17</td></tr>
+    </tfoot>
+  </table></div>
+  <p class="small muted">Non comptés : escaliers -1.07, 0.09, 1.12 (12.71 m²) ; annexes au sous-sol -1.04, -1.05 (30.35 m²).</p>
+</div><div class="flat">
+  <h3>App. 2</h3>
+  <div class="tablewrap"><table class="rooms compact">
+    <thead><tr><th>N°</th><th>Local</th><th>Niveau</th><th class="num">m²</th></tr></thead>
+    <tbody><tr><td class="mono">0.07</td><td>Hall</td><td>Rez-de-chaussée</td><td class="num">4.39</td></tr><tr><td class="mono">1.01</td><td>Cuisine</td><td>1er étage</td><td class="num">13.64</td></tr><tr><td class="mono">1.02</td><td>Séjour</td><td>1er étage</td><td class="num">7.21</td></tr><tr><td class="mono">1.03</td><td>Salon</td><td>1er étage</td><td class="num">15.42</td></tr><tr><td class="mono">1.04</td><td>WC</td><td>1er étage</td><td class="num">2.92</td></tr><tr><td class="mono">1.05</td><td>Circulation</td><td>1er étage</td><td class="num">2.04</td></tr><tr><td class="mono">2.01</td><td>Chambre 1</td><td>Combles</td><td class="num">15.30</td></tr><tr><td class="mono">2.02</td><td>Chambre 2</td><td>Combles</td><td class="num">20.74</td></tr><tr><td class="mono">2.03</td><td>Chambre 3</td><td>Combles</td><td class="num">15.53</td></tr><tr><td class="mono">2.04</td><td>Chambre 4</td><td>Combles</td><td class="num">17.57</td></tr><tr><td class="mono">2.05</td><td>SDB ouest et rangement sous pente</td><td>Combles</td><td class="num">6.03</td></tr><tr><td class="mono">2.06</td><td>SDB est</td><td>Combles</td><td class="num">5.50</td></tr><tr><td class="mono">2.07</td><td>Circulation combles</td><td>Combles</td><td class="num">3.80</td></tr></tbody>
+    <tfoot>
+      <tr class="strong"><td colspan="3">Surface habitable nette</td><td class="num">130.10</td></tr>
+      <tr><td colspan="3">Balcon en L, nord-ouest et sud-ouest (1er étage) <span class="mono small">25.08 × 50 %</span></td><td class="num">12.54</td></tr>
+      <tr class="strong"><td colspan="3">Surface pondérée</td><td class="num">142.64</td></tr>
+    </tfoot>
+  </table></div>
+  <p class="small muted">Non comptés : escaliers -1.06, 0.08, 1.06, 2.08 (18.27 m²) ; annexes au sous-sol -1.02, -1.03 (36.69 m²).</p>
+</div></div>
+    <div class="rules">
+      <div><b>Combles</b><span>Les surfaces de moins de 1.30 m de hauteur libre ne comptent pas (RLATC art. 27). Dans la maquette, la hauteur au pied des murs est de 1.38 m : rien n'est déduit.</span></div>
+      <div><b>Pondération</b><span>Balcons 50 %. Terrasses (33 %) et jardins privatifs (10 %) : à attribuer par logement selon la répartition PPE ; la maquette les mesure (page 8) mais ne sait pas à qui ils appartiennent.</span></div>
+    </div>
+    <h3>Habitabilité selon le RLATC vaudois</h3>
+    <p class="small muted">Art. 25 : volume d'au moins 20 m³. Art. 27 : hauteur d'au moins 2.40 m ; aux combles, sur au moins la moitié de la surface utilisable, comptée dès 1.30 m. Art. 28 : baies d'au moins 1/8 du plancher et 1 m² (1/15 et 0.80 m² pour les lucarnes et tabatières).</p>
+    <div class="tablewrap"><table class="rooms compact">
+      <thead><tr><th>N°</th><th>Local</th><th class="num">Utilisable m²</th><th>Hauteur, art. 27</th><th>Baies, art. 28</th><th class="num">Volume, art. 25</th><th>Résultat</th></tr></thead>
+      <tbody><tr><td class="mono no">0.01</td><td>Cuisine / Séjour<span class="flatname">App. 1</span></td><td class="num">27.14</td><td>2.45 m</td><td>10.20 m², 1/2.7</td><td class="num">66.50</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">0.02</td><td>Salon<span class="flatname">App. 1</span></td><td class="num">19.20</td><td>2.45 m</td><td>6.60 m², 1/2.9</td><td class="num">47.04</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">0.05</td><td>Chambre 1<span class="flatname">App. 1</span></td><td class="num">14.92</td><td>2.45 m</td><td>2.76 m², 1/5.4</td><td class="num">36.55</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">1.01</td><td>Cuisine<span class="flatname">App. 2</span></td><td class="num">13.63</td><td>2.45 m</td><td>3.96 m², 1/3.4</td><td class="num">33.39</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">1.02</td><td>Séjour<span class="flatname">App. 2</span></td><td class="num">7.23</td><td>2.45 m</td><td>1.68 m², 1/4.3</td><td class="num warn">17.70</td><td><span class="st st-ok">conforme</span> <span class="small muted">pièce ouverte sur 1.01 et 1.03 : 89.06 m³ ensemble</span></td></tr><tr><td class="mono no">1.03</td><td>Salon<span class="flatname">App. 2</span></td><td class="num">15.50</td><td>2.45 m</td><td>3.60 m², 1/4.3</td><td class="num">37.98</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">1.07</td><td>Chambre 2<span class="flatname">App. 1</span></td><td class="num">10.25</td><td>2.45 m</td><td>1.68 m², 1/6.1</td><td class="num">25.11</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">1.08</td><td>Chambre 3<span class="flatname">App. 1</span></td><td class="num">9.42</td><td>2.45 m</td><td>3.36 m², 1/2.8</td><td class="num">23.08</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">1.09</td><td>Chambre 4<span class="flatname">App. 1</span></td><td class="num">13.20</td><td>2.45 m</td><td>6.60 m², 1/2.0</td><td class="num">32.34</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">2.01</td><td>Chambre 1<span class="flatname">App. 2</span></td><td class="num">15.40</td><td>53 % à 2.40 m ou plus</td><td>2.99 m², 1/5.1 <span class="small muted">dont tabatières 1.31</span></td><td class="num">38.00</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">2.02</td><td>Chambre 2<span class="flatname">App. 2</span></td><td class="num">20.88</td><td>65 % à 2.40 m ou plus</td><td>4.07 m², 1/5.1 <span class="small muted">dont tabatières 1.31</span></td><td class="num">58.64</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">2.03</td><td>Chambre 3<span class="flatname">App. 2</span></td><td class="num">15.65</td><td>62 % à 2.40 m ou plus</td><td>2.99 m², 1/5.2 <span class="small muted">dont tabatières 1.31</span></td><td class="num">43.11</td><td><span class="st st-ok">conforme</span></td></tr><tr><td class="mono no">2.04</td><td>Chambre 4<span class="flatname">App. 2</span></td><td class="num">17.71</td><td>56 % à 2.40 m ou plus</td><td>2.99 m², 1/5.9 <span class="small muted">dont tabatières 1.31</span></td><td class="num">46.65</td><td><span class="st st-ok">conforme</span></td></tr></tbody>
+    </table></div>
+  </div>
+  <footer class="run"><span>Estimé sur la maquette 3D, non contractuel. Les surfaces lues sur les plans sont indiquées à côté.</span><span class="mono">9/9</span></footer>
+</article>
+
+<script>
+(() => {
+  const VB = 1270.3350, VG = 101.6400;
+  const $ = (id) => document.getElementById(id);
+  const chf = (v) => { const s = Math.round(Math.abs(v)).toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'"); return (v < 0 ? "−" : "") + s; };
+  const num = (id) => { const v = parseFloat($(id).value); return Number.isFinite(v) && v >= 0 ? v : null; };
+  const qty = (id) => parseFloat($(id).closest("tr").querySelector("[data-q]").dataset.q);
+  const put = (id, v) => { const el = $(id); el.textContent = v === null ? "à saisir" : chf(v); el.classList.toggle("empty", v === null); };
+  function update() {
+    const villa = num("pu-villa"), gar = num("pu-garage");
+    const aV = villa === null ? null : VB * villa, aG = gar === null ? null : VG * gar;
+    put("am-villa", aV); put("am-garage", aG);
+    const cfc2 = aV === null && aG === null ? null : (aV ?? 0) + (aG ?? 0);
+    $("am-cfc2").textContent = cfc2 === null ? "—" : chf(cfc2);
+    put("am-2", cfc2);
+    let cost = cfc2 ?? 0, open = cfc2 === null ? 1 : 0;
+    for (const k of ["0", "1", "4a", "4b", "4c", "4d", "4e"]) {
+      const p = num("pu-" + k), a = p === null ? null : p * qty("pu-" + k);
+      put("am-" + k, a); if (a === null) open++; else cost += a;
+    }
+    const pct = num("pu-5"), a5 = pct === null || cfc2 === null ? null : (cfc2 * pct) / 100;
+    put("am-5", a5); if (a5 === null) open++; else cost += a5;
+    $("am-cost").textContent = chf(cost);
+    $("cost-note").textContent = open ? "(" + open + " poste" + (open > 1 ? "s" : "") + " encore à saisir)" : "";
+    let value = 0, missing = 0;
+    for (let i = 0; i < 2; i++) {
+      const p = num("pu-v" + i), area = [119.17, 142.64][i], a = p === null ? null : p * area;
+      put("am-v" + i, a); if (a === null) missing++; else value += a;
+    }
+    $("am-value").textContent = missing === 2 ? "—" : chf(value);
+    $("b-value").textContent = missing === 2 ? "—" : "CHF " + chf(value);
+    $("b-cost").textContent = "CHF " + chf(cost);
+    $("b-margin").textContent = missing || open ? "—" : "CHF " + chf(value - cost);
+    for (const b of document.querySelectorAll(".presets button")) b.setAttribute("aria-pressed", String(+b.dataset.rate === villa));
+  }
+  for (const b of document.querySelectorAll(".presets button")) b.addEventListener("click", () => { $("pu-villa").value = b.dataset.rate; update(); });
+  for (const i of document.querySelectorAll(".est input")) i.addEventListener("input", update);
+  update();
+})();
+</script>
