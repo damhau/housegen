@@ -904,14 +904,16 @@ async def interior(ctx: JobContext) -> None:
 
     await ctx.emit("phase", name="builder", message="Building the interior")
     summary = await run.build(messages, system=INTERIOR_SYSTEM)
-    # the version pictures: the exterior views, the plan of each storey and the first rooms
+    # the version pictures: the exterior views, the plan of each storey and the first rooms, as a
+    # photographer frames them (photo-<n>: the room's viewpoint, 1.3 m, a 24 mm lens, level, #43);
+    # the builder's own checks above stay on the walk's room-<n> views
     probe = await renderer.render(run.scene_url, [], run.renders_dir, quality="low")
     report = probe.report or {}
     run.views = (
         list(run.views)
         + [s["view"] for s in report.get("planSections", [])]
         + [
-            f"room-{i}"
+            f"photo-{i}"
             for i in range(1, min(len(report.get("rooms", [])), INTERIOR_ROOM_VIEWS) + 1)
         ]
     )
