@@ -68,6 +68,45 @@ if (!q.get("exposure")) {
 const dbg = renderer.getContext().getExtension("WEBGL_debug_renderer_info");
 const gl = dbg ? renderer.getContext().getParameter(dbg.UNMASKED_RENDERER_WEBGL) : "?";
 window.__baked = { meshes, exposure, median: median(), gl };
+
+// ?free=1: look around by hand (drag to turn on the spot, wheel to step forward and back, right-drag
+// to move), the room links on the side jump to the walk's viewpoints
+if (q.get("free") === "1") {
+  const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+  const controls = new OrbitControls(camera, canvas);
+  const ahead = new THREE.Vector3(0, 0, -0.05).applyEuler(camera.rotation).add(camera.position);
+  controls.target.copy(ahead);
+  controls.rotateSpeed = -0.35; // dragging turns the view, as a walk does
+  controls.enableDamping = true;
+  controls.update();
+  addEventListener("resize", () => {
+    renderer.setSize(innerWidth, innerHeight, false);
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+  });
+  renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+  const views = JSON.parse(q.get("views") ?? "[]");
+  if (views.length) {
+    const nav = document.createElement("div");
+    nav.style.cssText = "position:fixed;left:10px;top:10px;display:flex;flex-direction:column;gap:4px;font:13px system-ui";
+    for (const [name, x, z, yaw] of views) {
+      const a = document.createElement("a");
+      const u = new URL(location.href);
+      u.searchParams.set("at", `${x},${z}`);
+      u.searchParams.set("yaw", yaw);
+      u.searchParams.set("exposure", exposure.toFixed(3));
+      a.href = u.href;
+      a.textContent = name;
+      a.style.cssText = "background:rgba(255,255,255,.85);padding:3px 8px;border-radius:6px;color:#222;text-decoration:none";
+      nav.append(a);
+    }
+    document.body.append(nav);
+  }
+  const tag = document.createElement("div");
+  tag.textContent = "baked light only (Cycles, 64 samples, denoised) · drag to look · wheel to move";
+  tag.style.cssText = "position:fixed;right:10px;bottom:10px;font:12px system-ui;background:rgba(0,0,0,.6);color:#fff;padding:3px 8px;border-radius:6px";
+  document.body.append(tag);
+}
 </script>
 </body>
 </html>
