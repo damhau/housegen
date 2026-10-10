@@ -7,6 +7,7 @@
   buildings.json  the neighbours: positions (local x, altitude, local z) and roof / wall triangles;
                   swissBUILDINGS3D's, then the newer ones the lidar has (source "lidar", geo/lidar.py)
   trees.json      the lidar's trees and bushes: [local x, foot altitude, local z, height, crown radius, kind]
+  cover.png       the ground by type near the house (geo/landcover.py): masks, R asphalt, G lawn, B paving, A gravel
 
 The local frame is the kit's: metres, x east, z south, around the anchor. The alignment says where
 the scene sits in it: the scene's origin at local (x, z), turned by `rotation` degrees (clockwise
@@ -26,9 +27,10 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import numpy as np
 from PIL import Image
 
-from housegen.geo import far, lidar, swiss
+from housegen.geo import far, landcover, lidar, swiss
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,10 @@ VERSION = 1
 PHOTO_PIXELS = 3600
 CREDITS = ["© swisstopo (swissALTI3D, SWISSIMAGE, swissBUILDINGS3D)"]
 LIDAR_CREDITS = ["© swisstopo (swissALTI3D, SWISSIMAGE, swissBUILDINGS3D, swissSURFACE3D)"]
+COVER_CREDIT = "mensuration officielle (geodienste.ch)"
+COVER_EXTENT = (
+    180  # metres around the searched point: the ground by type, for a 3D radius up to 165 m
+)
 
 
 def context_dir(project_root: Path) -> Path:
@@ -69,6 +75,9 @@ async def build(
         ground_task = asyncio.create_task(swiss.terrain(e0, n0, radius, client, step))
         photo_task = asyncio.create_task(swiss.aerial_photo(e0, n0, radius, client))
         cloud_task = asyncio.create_task(lidar.cloud(e0, n0, radius, client))
+        cover_task = asyncio.create_task(
+            landcover.surfaces(e0, n0, min(radius, COVER_EXTENT), client)
+        )
         ground = await ground_task
         buildings = await swiss.buildings(e0, n0, radius, client, ground, step)
         photo = await photo_task
@@ -87,6 +96,12 @@ async def build(
         except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
             logger.warning("geo.lidar_failed", extra={"error": str(e)})
         buildings = [*buildings, *newer]
+        # the ground by type near the house (#50): the cadastral survey's land cover. Optional
+        cover: list[landcover.Surface] = []
+        try:
+            cover = await cover_task
+        except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
+            logger.warning("geo.cover_failed", extra={"error": str(e)})
         # the far landscape (the horizon: the lake, the Alps, the Jura): optional, the rest stands without it
         try:
             far_heights = await far.heights(e0, n0, client, ground, radius, step)
@@ -108,6 +123,20 @@ async def build(
         json.dumps({"buildings": [b.__dict__ for b in buildings]}, separators=(",", ":")),
         encoding="utf-8",
     )
+    cover_meta: dict[str, Any] | None = None
+    if cover:
+        ext = min(radius, COVER_EXTENT)
+        m = landcover.masks(cover, ext)
+        (tmp / "cover.png").write_bytes(landcover.cover_png(m))
+        cover_meta = {
+            "file": "cover.png",
+            "extent": ext,
+            "cell": landcover.MASK_CELL,
+            "channels": list(landcover.NAMES),
+            # the photo's mean colour (sRGB) under each: the kit tints its finishes relative to it
+            "colours": landcover.class_colours(m, np.asarray(img), ext, radius),
+            "surfaces": len(cover),
+        }
     if trees:
         (tmp / "trees.json").write_text(
             json.dumps(
@@ -131,6 +160,8 @@ async def build(
         "lidar": {"year": cloud.year} if cloud is not None else None,
         # [local x, foot altitude, local z, height, crown radius, kind]
         "trees": {"file": "trees.json", "count": len(trees)} if trees else None,
+        # masks on a 0.25 m grid over ± extent (R asphalt, G lawn, B paving, A gravel)
+        "cover": cover_meta,
         # rings by azimuths, azimuth a at x = r cos a, z = r sin a; photos north up over ± their extent
         "far": {
             "file": "far.bin",
@@ -152,7 +183,10 @@ async def build(
             "ground": round(center, 2),
             "set": False,
         },
-        "credits": LIDAR_CREDITS if cloud is not None else CREDITS,
+        "credits": [
+            *(LIDAR_CREDITS if cloud is not None else CREDITS),
+            *([COVER_CREDIT] if cover else []),
+        ],
         "fetched_at": datetime.now(UTC).isoformat(),
     }
     (tmp / "context.json").write_text(json.dumps(ctx, indent=1), encoding="utf-8")

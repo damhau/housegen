@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from housegen.geo import context, far, lidar, swiss
+from housegen.geo import context, far, landcover, lidar, swiss
 
 GROUND = 500.0
 RADIUS = 40
@@ -134,13 +134,33 @@ async def test_the_surroundings_keep_the_newer_houses(
     monkeypatch.setattr(swiss, "terrain", terrain)
     monkeypatch.setattr(swiss, "aerial_photo", photo)
     monkeypatch.setattr(swiss, "buildings", buildings)
+
+    async def cover(*a: Any, **k: Any) -> list[landcover.Surface]:
+        return [
+            landcover.Surface(
+                "jardin", [[(-30.0, -30.0), (30.0, -30.0), (30.0, 30.0), (-30.0, 30.0)]]
+            ),
+            landcover.Surface(
+                "route_chemin", [[(-90.0, 40.0), (90.0, 40.0), (90.0, 46.0), (-90.0, 46.0)]]
+            ),
+        ]
+
     monkeypatch.setattr(lidar, "cloud", cloud)
+    monkeypatch.setattr(landcover, "surfaces", cover)
     monkeypatch.setattr(far, "heights", no_far)
     place = swiss.Place(label="Le Mont 3013", kind="parcel", e=2537559, n=1157053)
     ctx = await context.build(tmp_path, place, radius=100)
     assert ctx["buildings"] == {"file": "buildings.json", "count": 2, "lidar": 1}
     assert ctx["lidar"] == {"year": 2025}
     assert "swissSURFACE3D" in ctx["credits"][0]
+    assert ctx["cover"]["file"] == "cover.png"
+    assert ctx["cover"]["extent"] == 100
+    assert ctx["cover"]["channels"] == ["asphalt", "lawn", "paving", "gravel"]
+    m = np.asarray(Image.open(tmp_path / "context" / "cover.png"))
+    assert m.shape == (800, 800, 4)
+    assert m[400, 400, 1] == 255  # the garden: lawn at the centre
+    assert m[400 + 172, 400, 0] == 255  # the road, 43 m south
+    assert m[400 + 172, 400, 1] == 0
     saved = json.loads((tmp_path / "context" / "buildings.json").read_text())["buildings"]
     assert [b["source"] for b in saved] == ["swissbuildings3d", "lidar"]
 
@@ -166,6 +186,7 @@ async def test_without_the_lidar_the_surroundings_are_as_before(
     monkeypatch.setattr(swiss, "aerial_photo", photo)
     monkeypatch.setattr(swiss, "buildings", buildings)
     monkeypatch.setattr(lidar, "cloud", failing)
+    monkeypatch.setattr(landcover, "surfaces", failing)
     monkeypatch.setattr(far, "heights", failing)
     ctx = await context.build(
         tmp_path, swiss.Place(label="x", kind="parcel", e=2537559, n=1157053), radius=100
@@ -173,6 +194,7 @@ async def test_without_the_lidar_the_surroundings_are_as_before(
     assert ctx["lidar"] is None
     assert ctx["buildings"]["lidar"] == 0
     assert ctx["credits"] == context.CREDITS
+    assert ctx["cover"] is None
 
 
 def _crown(cx: float, cz: float, h: float, r: float) -> np.ndarray:
@@ -202,3 +224,25 @@ def test_the_trees_of_the_lidar_have_their_height_crown_and_kind() -> None:
     assert broad.ground == pytest.approx(GROUND)
     assert pine.height == pytest.approx(16.0, abs=0.3)
     assert bush.height == pytest.approx(2.0, abs=0.3)
+
+
+GML = """<msGMLOutput><LCSF_layer><LCSF_feature><msGeometry><gml:Polygon srsName="EPSG:2056">
+<gml:outerBoundaryIs><gml:LinearRing><gml:coordinates>2537500,1157000 2537520,1157000 2537520,1157020 2537500,1157020 2537500,1157000</gml:coordinates></gml:LinearRing></gml:outerBoundaryIs>
+<gml:innerBoundaryIs><gml:LinearRing><gml:coordinates>2537505,1157005 2537510,1157005 2537510,1157010 2537505,1157005</gml:coordinates></gml:LinearRing></gml:innerBoundaryIs>
+</gml:Polygon></msGeometry><NoOFS>5587</NoOFS><Genre>jardin</Genre><Canton>VD</Canton></LCSF_feature></LCSF_layer></msGMLOutput>"""
+
+
+def test_the_land_cover_answer_is_read_in_the_local_frame() -> None:
+    (s,) = landcover.parse_features(GML, 2537510, 1157010)
+    assert s.kind == "jardin"
+    assert s.rings[0][0] == (-10.0, 10.0)  # 10 m west, 10 m south
+    assert len(s.rings) == 2  # with its hole
+
+
+def test_a_point_inside_every_region_between_the_outlines() -> None:
+    img = np.full((40, 40), 255, dtype=np.uint8)
+    img[20, :] = 0  # a line across: two regions
+    img[:20, 20] = 0  # and the north half split: three
+    pts = landcover.regions(img)
+    assert len(pts) == 3
+    assert all(img[j, i] == 255 for i, j in pts)
