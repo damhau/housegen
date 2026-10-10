@@ -4,6 +4,7 @@ files land where the local renderer would have put them. Plus the token check an
 
 from __future__ import annotations
 
+import base64
 import io
 from pathlib import Path
 from typing import Any
@@ -160,3 +161,46 @@ async def test_no_service_url_renders_locally(
     client.remote = remote.RemoteRenderer(transport=httpx.MockTransport(never))
     res = await client.render("http://x", ["west-photo"], tmp_path)
     assert list(res.images) == ["west-photo"]
+
+
+async def test_a_long_render_follows_modals_redirects_instead_of_falling_back(
+    remote_setup: FakeBrowserRenderer, tmp_path: Path
+) -> None:
+    """Modal answers a request still running after 150 s with a 303 to a polling URL; the
+    client polls it (a GET, the token kept) until the pictures come, on the GPU."""
+    buf = io.BytesIO()
+    Image.new("RGB", (8, 8), (10, 20, 30)).save(buf, "JPEG")
+    body = {
+        "images": {"north": base64.b64encode(buf.getvalue()).decode()},
+        "errors": [],
+        "console": [],
+        "audit": [],
+        "duration_ms": 1,
+        "gl": "Tesla T4",
+    }
+    seen: list[tuple[str, str, str | None]] = []
+
+    def modal(request: httpx.Request) -> httpx.Response:
+        seen.append((request.method, str(request.url), request.headers.get("authorization")))
+        if request.method == "POST":
+            return httpx.Response(
+                303, headers={"location": "/render?__modal_function_call_id=fc-1"}
+            )
+        if len(seen) == 2:  # the first poll: still running
+            return httpx.Response(
+                303, headers={"location": "/render?__modal_function_call_id=fc-1"}
+            )
+        return httpx.Response(200, json=body)
+
+    client = remote.RenderClient()
+    client.remote = remote.RemoteRenderer(transport=httpx.MockTransport(modal))
+    local = FakeBrowserRenderer()
+    client.local = local  # type: ignore[assignment]
+    res = await client.render("http://x", ["north"], tmp_path)
+    assert list(res.images) == ["north"]
+    assert (tmp_path / "north.jpg").exists()
+    assert local.calls == []  # never fell back to this process's CPU
+    assert [m for m, _, _ in seen] == ["POST", "GET", "GET"]
+    assert all(u.startswith("http://render.test/render") for _, u, _ in seen)
+    assert all(a == "Bearer s3cret" for _, _, a in seen)
+    await client.close()

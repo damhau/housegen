@@ -33,11 +33,17 @@ class RemoteRenderer:
     def _http(self) -> httpx.AsyncClient:
         if self._client is None:
             s = get_settings()
+            # Modal answers a web request still running after 150 s with a 303 to a polling URL on
+            # the same host (a GET there waits up to another 150 s, then 303s again). Followed, a
+            # long or cold render waits for the GPU; not followed, it fell back to drawing on this
+            # pod's CPU (9 views of a furnished villa: 553 s instead of ~40 s)
             self._client = httpx.AsyncClient(
                 base_url=s.RENDER_SERVICE_URL.rstrip("/"),
                 headers={"Authorization": f"Bearer {s.RENDER_SERVICE_TOKEN}"},
                 timeout=httpx.Timeout(s.RENDER_SERVICE_TIMEOUT_S, connect=30.0),
                 transport=self._transport,
+                follow_redirects=True,
+                max_redirects=12,  # 12 x 150 s, past the service's own 600 s limit
             )
         return self._client
 
