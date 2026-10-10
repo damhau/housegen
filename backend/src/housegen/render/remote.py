@@ -21,6 +21,8 @@ from housegen.render.renderer import Renderer, RenderResult
 
 logger = logging.getLogger(__name__)
 
+MAX_VIEWS = 12  # what one call to the service may ask for (service.RenderRequest.views)
+
 
 class RemoteRenderer:
     """`POST {RENDER_SERVICE_URL}/render`; the JPEGs come back base64-encoded in the JSON body
@@ -54,6 +56,30 @@ class RemoteRenderer:
         out_dir: Path,
         quality: str = "high",
         camera: dict[str, float] | None = None,
+    ) -> RenderResult:
+        """The views in batches the service accepts (it refuses more than MAX_VIEWS with a 422:
+        a version's pictures of a house with several storeys are 20 views), merged into one
+        result. Shorter calls also stay further from Modal's 150 s."""
+        if len(views) <= MAX_VIEWS:
+            return await self._render(scene_url, views, out_dir, quality, camera)
+        merged = RenderResult()
+        for i in range(0, len(views), MAX_VIEWS):
+            part = await self._render(scene_url, views[i : i + MAX_VIEWS], out_dir, quality, camera)
+            merged.images.update(part.images)
+            merged.errors += part.errors
+            merged.console += part.console
+            merged.audit += part.audit
+            merged.report = merged.report or part.report
+            merged.duration_ms += part.duration_ms
+        return merged
+
+    async def _render(
+        self,
+        scene_url: str,
+        views: list[str],
+        out_dir: Path,
+        quality: str,
+        camera: dict[str, float] | None,
     ) -> RenderResult:
         s = get_settings()
         out_dir.mkdir(parents=True, exist_ok=True)  # noqa: ASYNC240 — tiny local mkdir

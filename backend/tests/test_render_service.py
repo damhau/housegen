@@ -204,3 +204,23 @@ async def test_a_long_render_follows_modals_redirects_instead_of_falling_back(
     assert all(u.startswith("http://render.test/render") for _, u, _ in seen)
     assert all(a == "Bearer s3cret" for _, _, a in seen)
     await client.close()
+
+
+async def test_more_views_than_one_call_takes_go_in_batches(
+    remote_setup: FakeBrowserRenderer, tmp_path: Path
+) -> None:
+    """A version's pictures of a house with five storeys are 20 views; the service takes at most
+    remote.MAX_VIEWS per call (more is a 422, which fell back to the CPU): two calls, one result."""
+    views = [f"v{i}" for i in range(20)]
+    client = client_to_service()
+    local = FakeBrowserRenderer()
+    client.local = local  # type: ignore[assignment]
+    res = await client.render("http://x", views, tmp_path)
+    assert sorted(res.images) == sorted(views)
+    assert [len(c["views"]) for c in remote_setup.calls] == [
+        remote.MAX_VIEWS,
+        20 - remote.MAX_VIEWS,
+    ]
+    assert local.calls == []
+    assert len(res.errors) == 2  # each call's findings kept
+    await client.close()

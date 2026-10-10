@@ -37,7 +37,9 @@ renderer = Renderer()  # this process's browser (the service never calls another
 
 class RenderIn(BaseModel):
     scene_url: str
-    views: list[str] = Field(default_factory=list, max_length=12)
+    views: list[str] = Field(
+        default_factory=list, max_length=12
+    )  # remote.MAX_VIEWS: the client batches
     quality: str = "high"
     camera: dict[str, float] = Field(default_factory=dict)
     width: int = Field(default=1280, ge=320, le=4096)
