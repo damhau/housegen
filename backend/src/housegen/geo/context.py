@@ -6,6 +6,7 @@
   photo.jpg       the aerial photo over the same square, north up
   buildings.json  the neighbours: positions (local x, altitude, local z) and roof / wall triangles;
                   swissBUILDINGS3D's, then the newer ones the lidar has (source "lidar", geo/lidar.py)
+  trees.json      the lidar's trees and bushes: [local x, foot altitude, local z, height, crown radius, kind]
 
 The local frame is the kit's: metres, x east, z south, around the anchor. The alignment says where
 the scene sits in it: the scene's origin at local (x, z), turned by `rotation` degrees (clockwise
@@ -74,12 +75,15 @@ async def build(
         # the newest lidar: the houses swissBUILDINGS3D does not have yet (#66). Optional
         cloud: lidar.Cloud | None = None
         newer: list[swiss.Building] = []
+        trees: list[lidar.Tree] = []
         try:
             cloud = await cloud_task
             if cloud is not None:
                 newer = await asyncio.to_thread(
                     lidar.new_buildings, cloud, buildings, ground, radius, step
                 )
+                # and its trees and bushes (#50)
+                trees = await asyncio.to_thread(lidar.trees, cloud, ground, radius, step)
         except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
             logger.warning("geo.lidar_failed", extra={"error": str(e)})
         buildings = [*buildings, *newer]
@@ -104,6 +108,14 @@ async def build(
         json.dumps({"buildings": [b.__dict__ for b in buildings]}, separators=(",", ":")),
         encoding="utf-8",
     )
+    if trees:
+        (tmp / "trees.json").write_text(
+            json.dumps(
+                {"trees": [[t.x, t.ground, t.z, t.height, t.radius, t.kind] for t in trees]},
+                separators=(",", ":"),
+            ),
+            encoding="utf-8",
+        )
     if far_heights is not None:
         (tmp / "far.bin").write_bytes(far_heights.astype("<f4").tobytes())
         (tmp / "far-mid.jpg").write_bytes(mid_photo)
@@ -117,6 +129,8 @@ async def build(
         "photo": {"file": "photo.jpg", "pixels": img.width},
         "buildings": {"file": "buildings.json", "count": len(buildings), "lidar": len(newer)},
         "lidar": {"year": cloud.year} if cloud is not None else None,
+        # [local x, foot altitude, local z, height, crown radius, kind]
+        "trees": {"file": "trees.json", "count": len(trees)} if trees else None,
         # rings by azimuths, azimuth a at x = r cos a, z = r sin a; photos north up over ± their extent
         "far": {
             "file": "far.bin",

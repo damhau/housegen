@@ -173,3 +173,32 @@ async def test_without_the_lidar_the_surroundings_are_as_before(
     assert ctx["lidar"] is None
     assert ctx["buildings"]["lidar"] == 0
     assert ctx["credits"] == context.CREDITS
+
+
+def _crown(cx: float, cz: float, h: float, r: float) -> np.ndarray:
+    """Vegetation points of a tree: a dome of radius r topping out at h."""
+    u, v = np.meshgrid(np.arange(-r, r, 0.25) + 0.125, np.arange(-r, r, 0.25) + 0.125)
+    d = np.hypot(u, v)
+    keep = d < r
+    top = h - (h * 0.4) * (d[keep] / r) ** 2
+    return np.c_[cx + u[keep], cz + v[keep], GROUND + top, np.full(keep.sum(), lidar.VEGETATION)]
+
+
+def test_the_trees_of_the_lidar_have_their_height_crown_and_kind() -> None:
+    cloud = _cloud(
+        _crown(-10, 5, 14.0, 4.0),  # a broad tree
+        _crown(12, -8, 16.0, 2.6),  # a narrow one: a conifer
+        _crown(0, -20, 2.0, 1.0),  # a bush
+        _crown(20, 20, 0.8, 1.0),  # grass: left out
+        _house(-20, -20, 8, 6),  # a house is not a tree
+    )
+    found = sorted(lidar.trees(cloud, _ground(), RADIUS), key=lambda t: -t.height)
+    assert [t.kind for t in found] == ["pine", "broadleaf", "bush"]
+    pine, broad, bush = found
+    assert broad.x == pytest.approx(-10, abs=0.5)
+    assert broad.z == pytest.approx(5, abs=0.5)
+    assert broad.height == pytest.approx(14.0, abs=0.3)
+    assert broad.radius == pytest.approx(4.0, abs=0.8)
+    assert broad.ground == pytest.approx(GROUND)
+    assert pine.height == pytest.approx(16.0, abs=0.3)
+    assert bush.height == pytest.approx(2.0, abs=0.3)

@@ -1,6 +1,6 @@
 {
   "pinned": "2026-09-12-baseline",
-  "viewer": "2026-10-11-v25",
+  "viewer": "2026-10-11-v26",
   "versions": [
     {
       "name": "2026-09-12-baseline",
@@ -131,6 +131,11 @@
       "name": "2026-10-11-v25",
       "date": "2026-10-11",
       "note": "v24 with the surroundings fixed (#65, #66): the builder's ground ends with its site (the house, the garden, its fences and hedges, plus 3 m), clipped there, and the real ground takes over beyond it, instead of a lawn drawn out to 85 m or a 350 m backdrop lying over the real land as a green square; the neighbours swissBUILDINGS3D lacks come from the newest lidar (geo/lidar.py, source \"lidar\" in buildings.json) and wear roof tiles or gravel, since the aerial photo shows a building site there. Interiors and the build path unchanged. The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-11-v26",
+      "date": "2026-10-11",
+      "note": "v25 with the trees and bushes of the newest lidar in the surroundings (#50, #39 step 3): trees.json (geo/lidar.py: canopy height, tops, crowns, kind) placed in context.js, none on the builder's site; the 30 nearest within 35 m of it made branch by branch (leafTree, leafBush), the others copies of a few kit trees fitted to each tree with a quarter of their leaf cards, an eighth beyond 70 m (house.treeStand, a few draws); they thin out from 120 m to 135 m from the house. The viewer's default. Not pinned."
     }
   ]
 }

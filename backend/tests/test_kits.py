@@ -14,8 +14,8 @@ from housegen.core.config import get_settings
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
-LATEST = "2026-10-11-v25"  # the newest snapshot
-VIEWER = "2026-10-11-v25"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
+LATEST = "2026-10-11-v26"  # the newest snapshot
+VIEWER = "2026-10-11-v26"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
 
 
 @pytest.fixture

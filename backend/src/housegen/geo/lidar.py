@@ -150,6 +150,10 @@ def new_buildings(
         m = labels[sl] == k
         if m.sum() * CELL * CELL < MIN_AREA:
             continue
+        # cut by the edge of the square: half a building (swissBUILDINGS3D's are kept by their centre)
+        edge = 4  # cells (2 m)
+        if min(sl[0].start, sl[1].start) < edge or max(sl[0].stop, sl[1].stop) > n - edge:
+            continue
         roof = np.where(m, top[sl], np.nan)
         # the cells inside the outline with no point (closing, a skylight): the nearest roof height
         missing = np.isnan(roof)
@@ -292,8 +296,8 @@ def _faceted(x: np.ndarray, z: np.ndarray, h: np.ndarray) -> Any:
     dz, dx = np.gradient(full, CELL)
     slope = np.hypot(dx, dz)
     kind = np.where(slope < 0.12, 8, np.round(np.arctan2(dz, dx) / (np.pi / 4)).astype(int) % 8)
-    planes = np.full((*grid.shape, 3), np.nan)
-    assigned = np.zeros(grid.shape, dtype=bool)
+    planes: list[np.ndarray] = []
+    label = np.full(grid.shape, -1)
     for k in range(9):
         labels, count = ndi.label((kind == k) & known)
         for seg in range(1, count + 1):
@@ -303,20 +307,26 @@ def _faceted(x: np.ndarray, z: np.ndarray, h: np.ndarray) -> Any:
             cj, ci = np.nonzero(cells)
             a = np.c_[np.ones(len(ci)), ci * CELL, cj * CELL]
             coef, *_ = np.linalg.lstsq(a, grid[cj, ci], rcond=None)
-            planes[cells] = coef
-            assigned |= cells
-    if not assigned.any():
-        planes[known] = np.c_[grid[known], np.zeros((known.sum(), 2))]
-        assigned = known
-    near = ndi.distance_transform_edt(~assigned, return_distances=False, return_indices=True)
-    planes = planes[tuple(near)]
+            label[cells] = len(planes)
+            planes.append(coef)
+    if not planes:
+        flat = float(np.median(h))
+        return lambda px, pz: flat
+    near = ndi.distance_transform_edt(label < 0, return_distances=False, return_indices=True)
+    label = label[tuple(near)]
     x0, z0 = float(x.min()), float(z.min())
 
     def at(px: float, pz: float) -> float:
+        # the planes of the cells within a metre: the one closest to the lidar's height here (by a
+        # ridge, the plane of the other side runs on above the roof; by a valley, below it)
         ci = int(np.clip(round((px - x0) / CELL), 0, grid.shape[1] - 1))
         cj = int(np.clip(round((pz - z0) / CELL), 0, grid.shape[0] - 1))
-        a0, b0, c0 = planes[cj, ci]
-        return float(a0 + b0 * (px - x0) + c0 * (pz - z0))
+        window = label[max(0, cj - 2) : cj + 3, max(0, ci - 2) : ci + 3]
+        heights = [
+            float(planes[q][0] + planes[q][1] * (px - x0) + planes[q][2] * (pz - z0))
+            for q in np.unique(window)
+        ]
+        return min(heights, key=lambda v: abs(v - float(full[cj, ci])))
 
     return at
 
@@ -399,3 +409,92 @@ def _mesh(
         quad = [v0, v0 + 1, v0 + 2, v0, v0 + 2, v0 + 3]
         wall_tris += quad if float(nrm @ out_dir) > 0 else [v0, v0 + 2, v0 + 1, v0, v0 + 3, v0 + 2]
     return positions, roof_tris, wall_tris
+
+
+@dataclass
+class Tree:
+    x: float  # local, metres east
+    z: float  # local, metres south
+    ground: float  # altitude of its foot
+    height: float  # metres above it
+    radius: float  # the crown's, metres
+    kind: str  # "broadleaf", "pine" (a conifer), "columnar", "bush" (under 3 m)
+
+
+MIN_TREE = 1.2  # m: lower is grass, a low wall's cap, noise
+
+
+def trees(c: Cloud, ground: np.ndarray, radius: int, step: float = 1.0) -> list[Tree]:
+    """The trees and bushes of the lidar's vegetation: the canopy height over the ground (0.5 m cells),
+    its tops (local maxima, kept apart by a distance that grows with the height), each top's crown
+    (the vegetation cells nearest to it), its kind from the crown's shape."""
+    from scipy import ndimage as ndi
+    from scipy.spatial import cKDTree
+
+    n, _ = _grid(radius)
+    sel = c.cls == VEGETATION
+    i = np.clip(((c.x[sel] + radius) / CELL).astype(int), 0, n - 1)
+    j = np.clip(((c.z[sel] + radius) / CELL).astype(int), 0, n - 1)
+    top = np.full((n, n), -np.inf)
+    np.maximum.at(top, (j, i), c.y[sel])
+    # the ground under each cell's centre (the terrain grid: `step` metres, the square ± radius)
+    centres = (np.arange(n) + 0.5) * CELL / step
+    gj, gi = np.meshgrid(centres, centres, indexing="ij")
+    under = ndi.map_coordinates(ground, [gj, gi], order=1, mode="nearest")
+    chm = np.where(np.isfinite(top), top - under, 0.0)
+    chm[chm < MIN_TREE] = 0.0
+    smooth = ndi.gaussian_filter(chm, 1.0)
+    peaks = (smooth == ndi.maximum_filter(smooth, size=5)) & (chm >= MIN_TREE)
+    pj, pi = np.nonzero(peaks)
+    if not len(pj):
+        return []
+    # each top's height: the highest cell within a metre of it
+    high = ndi.maximum_filter(chm, size=5)[pj, pi]
+    order = np.argsort(-high)
+    pj, pi, high = pj[order], pi[order], high[order]
+    xy = np.c_[(pi + 0.5) * CELL - radius, (pj + 0.5) * CELL - radius]
+    # a lower top too close to a higher one is the same crown
+    kd = cKDTree(xy)
+    kept = np.ones(len(xy), dtype=bool)
+    for k in range(len(xy)):
+        if not kept[k]:
+            continue
+        for o in kd.query_ball_point(xy[k], 1.0 + 0.15 * high[k]):
+            if o > k:
+                kept[o] = False
+    xy, high = xy[kept], high[kept]
+    # the crowns: every vegetation cell to its nearest top
+    vj, vi = np.nonzero(chm >= MIN_TREE)
+    cells = np.c_[(vi + 0.5) * CELL - radius, (vj + 0.5) * CELL - radius]
+    dist, owner = cKDTree(xy).query(cells)
+    near = dist < 0.6 * np.maximum(high[owner], 2.0)
+    area = np.bincount(owner[near], minlength=len(xy)) * CELL * CELL
+    size = ground.shape[0]
+    out: list[Tree] = []
+    for (x, z), h, a in zip(xy, high, area, strict=True):
+        r = float(np.clip(np.sqrt(a / np.pi), 0.6, max(1.0, 0.5 * h)))
+        if h < 3.0:
+            kind = "bush"
+        elif h > 8 and r / h < 0.13:
+            kind = "columnar"
+        elif h > 8 and r / h < 0.2:
+            kind = "pine"
+        else:
+            kind = "broadleaf"
+        g = float(
+            ground[
+                int(np.clip(round((z + radius) / step), 0, size - 1)),
+                int(np.clip(round((x + radius) / step), 0, size - 1)),
+            ]
+        )
+        out.append(
+            Tree(
+                x=round(float(x), 2),
+                z=round(float(z), 2),
+                ground=round(g, 2),
+                height=round(float(h), 2),
+                radius=round(r, 2),
+                kind=kind,
+            )
+        )
+    return out
