@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { Columns2, Footprints, Image as ImageIcon, LogOut, Map as MapIcon, Mountain, Pause, Play, Ruler, Sparkles, Trees } from "lucide-react"
+import { Columns2, Footprints, Image as ImageIcon, LogOut, Map as MapIcon, Mountain, Pause, Play, Ruler, Sparkles, Sun, Trees } from "lucide-react"
 import { useKits } from "@/api/endpoints/meta/meta"
 import { useGetSurroundings } from "@/api/endpoints/surroundings/surroundings"
 import type { KitInfo } from "@/api/model"
 import { FloorPlanDialog, type PlanReply } from "@/components/FloorPlanDialog"
 import { SurfacesDialog } from "@/components/SurfacesDialog"
 import type { QuantitiesReply } from "@/components/report/types"
+import { SunPanel } from "@/components/SunPanel"
 import { SurroundingsDialog, type SceneOutline } from "@/components/SurroundingsDialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -146,6 +147,11 @@ export function SceneViewer({
   // alone; null when the page has no 3D part to switch (older renderer, older surroundings)
   const [surroundingsMode, setSurroundingsMode] = useState<"3d" | "photo" | null>(null)
   const wantedSurroundings = useRef<"3d" | "photo">("3d")
+  // the sun study (#49): offered once the surroundings say where north is (house:ready { sun })
+  const [sunAvailable, setSunAvailable] = useState(false)
+  const [sunOpen, setSunOpen] = useState(false)
+  const [sunHoursProgress, setSunHoursProgress] = useState<{ done: number; total: number } | null>(null)
+  const [readyCount, setReadyCount] = useState(0)
   // the real surroundings (#39): drawn by the scene page in the Final and Ultra looks only
   const surroundings = useGetSurroundings(projectId ?? "", { query: { enabled: Boolean(projectId) } })
   const ctx = projectId ? (surroundings.data?.exists ? surroundings.data : null) : null
@@ -193,6 +199,7 @@ export function SceneViewer({
     setSurfacesOpen(false)
     setMeasurable(false)
     setSurroundingsMode(null)
+    setSunAvailable(false)
     setSurroundingsOpen(false)
     frameReady.current = false
     if (src === null) return
@@ -212,6 +219,8 @@ export function SceneViewer({
         tour?: boolean
         quantities?: boolean
         surroundings?: "3d" | "photo" | null
+        sun?: boolean
+        progress?: { done: number; total: number }
         storeys?: { index: number; y: number; rooms: number }[]
         phase?: string
         loaded?: number
@@ -226,6 +235,8 @@ export function SceneViewer({
         setTourable(d.tour === true)
         setMeasurable(d.quantities === true)
         setStoreys(Array.isArray(d.storeys) ? d.storeys : [])
+        setSunAvailable(d.sun === true)
+        setReadyCount((n) => n + 1)
         const switchable = d.surroundings === "3d" || d.surroundings === "photo"
         setSurroundingsMode(switchable ? wantedSurroundings.current : null)
         // a page loaded again (another look, another version) keeps the switch where the viewer left it
@@ -244,7 +255,12 @@ export function SceneViewer({
         setTour({ on: !!d.on, room: d.room ?? null, index: d.index ?? 0, total: d.total ?? 0 })
         if (d.room) setRoom(d.room)
       }
-      if ((d?.type === "house:plan2d" || d?.type === "house:outline" || d?.type === "house:quantities") && typeof d.id === "number") {
+      if (d?.type === "house:sunHours" && d.progress) setSunHoursProgress(d.progress)
+      if (
+        (d?.type === "house:plan2d" || d?.type === "house:outline" || d?.type === "house:quantities" || d?.type === "house:sun" ||
+          (d?.type === "house:sunHours" && !d.progress)) &&
+        typeof d.id === "number"
+      ) {
         planWaiting.current.get(d.id)?.(d as never)
         planWaiting.current.delete(d.id)
       }
@@ -271,6 +287,7 @@ export function SceneViewer({
       }, timeoutMs)
     })
   }, [])
+  const postToScene = useCallback((message: Record<string, unknown>) => ref.current?.contentWindow?.postMessage(message, "*"), [])
   const requestPlan = useCallback((index: number, furnished: boolean) => ask<PlanReply>("house:plan2d", { index, furnished }), [ask])
   const requestOutline = useCallback(() => ask<SceneOutline>("house:outline"), [ask])
   // the measures draw height maps: a minute on a machine without a GPU
@@ -370,6 +387,9 @@ export function SceneViewer({
           )}
           {frameChip(kitA, setKit)}
         </>
+      )}
+      {sunOpen && sunAvailable && !srcB && (
+        <SunPanel ask={ask} post={postToScene} progress={sunHoursProgress} readyKey={String(readyCount)} onClose={() => setSunOpen(false)} />
       )}
       {live && (
         <div className="absolute left-3 top-3 flex items-center gap-1 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
@@ -518,6 +538,18 @@ export function SceneViewer({
                 </Button>
               )}
             </>
+          )}
+          {ready && !compare && look !== "fast" && sunAvailable && (
+            <Button
+              size="sm"
+              variant={sunOpen ? "secondary" : "ghost"}
+              className="h-7 px-2"
+              title="The real sun over the plot: any day and hour, its shadows, the hours of sun of a day or a season"
+              onClick={() => setSunOpen((v) => !v)}
+            >
+              <Sun className="size-3.5" />
+              Sun
+            </Button>
           )}
           {ready && !compare && look !== "fast" && surroundingsMode && (
             <Button

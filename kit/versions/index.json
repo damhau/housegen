@@ -1,6 +1,6 @@
 {
   "pinned": "2026-09-12-baseline",
-  "viewer": "2026-10-11-v28",
+  "viewer": "2026-10-11-v29",
   "versions": [
     {
       "name": "2026-09-12-baseline",
@@ -146,6 +146,11 @@
       "name": "2026-10-11-v28",
       "date": "2026-10-11",
       "note": "v27 with the 3D radius per project and the surroundings' switch (#51, #50): the trees and the ground by type stop at the owner's radius around the house (alignment.near, 30 to 165 m, 120 by default), fading into the photo over 15 m; house:surroundings { mode: \"3d\" | \"photo\" } (the viewer's switch, also ?surroundings=photo and __house.setSurroundings) shows the aerial photo alone, the neighbours in 3D as before. The viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-11-v29",
+      "date": "2026-10-11",
+      "note": "v28 with the sun study (#49) on presentation pages whose surroundings are aligned: sun.js (NOAA's solar position with SPA's refraction: within 0.005° and 2 s of NREL's SPA at Lausanne; Swiss time with summer time; LV95 to WGS84; the horizon profile of the far landscape), sunstudy.js (house:sun: the real sun for a Swiss date and hour, the shadow map over the 3D radius at 4096 px, the far relief as a horizon mask, the analytic sky baked again as the sun moves, the page's own sun back when it ends; house:sunHours: the hours of direct sun a day over the plot, for a day every 10 minutes or a season of 13 days a week apart every 20 minutes, accumulated on the GPU from the sun's own shadow map onto the surfaces seen from above, shown as a coloured map with hour lines). The viewer's default. Not pinned."
     }
   ]
 }
