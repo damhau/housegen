@@ -1,6 +1,6 @@
 {
   "pinned": "2026-09-12-baseline",
-  "viewer": "2026-10-10-v23",
+  "viewer": "2026-10-10-v24",
   "versions": [
     {
       "name": "2026-09-12-baseline",
@@ -121,6 +121,11 @@
       "name": "2026-10-10-v23",
       "date": "2026-10-10",
       "note": "v22 with the SIA 416 quantities (#47, #48): kit/quantities.js reads the built scene (floor plans, exterior walls also when their kind was removed, window and door units, slabs, balconies, wall tiles, exterior works) and measures what is not tagged: a building's top seen from above and the underside of a roof seen from below (height maps drawn on the GPU, small parts left out, roof-window holes and the ridge joint closed by the roof's planes), the façades from the envelope's faces in their plane. The runtime answers house:quantities and __house.quantities() for the viewer's \"Surfaces et volumes\" dialog. Floor plans record each room's floor finish and whether the storey has a ceiling, wall tiles their bands, hedges, fences, pathways and ground patches their geometry; new room uses cellar, laundry, garage, attic, technical. Pictures unchanged. The viewer's default since 2026-10-10. Not pinned."
+    },
+    {
+      "name": "2026-10-10-v24",
+      "date": "2026-10-10",
+      "note": "v23 with the interior measured for the builder (#67, #68, #70): kit/layout.js checks every furniture piece of the floor plans and the rooms against the areas printed on the plan (more than 5 % and 0.5 m² off, with the likely cause; rooms with no plan area), windows blocked inside and outside, sizes unusual for a piece or its room, passages (80 cm between a room's doors, 60 cm beside a bed and in front of a sofa, 90 cm in front of a wardrobe, a kitchen run or an appliance, door swings), and supports (rays against the meshes: floating or sunk by more than 1 cm, overhanging, overlapping, wall-hung pieces more than 5 cm off the wall, through a wall or in no room). Its lines lead the scene audit (an interior's before the exterior's); __house.report() carries the full table for the builder's measure tool. Pictures unchanged. The viewer's default (the Furnish job draws with it). Not pinned."
     }
   ]
 }
