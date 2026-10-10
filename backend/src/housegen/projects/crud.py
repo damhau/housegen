@@ -170,6 +170,15 @@ async def set_project_settings(
     return project
 
 
+async def set_report_settings(
+    session: AsyncSession, project_id: str, settings: dict[str, Any] | None
+) -> Project:
+    project = await get_project(session, project_id)
+    project.report_json = json.dumps(settings) if settings else None
+    await session.flush()
+    return project
+
+
 async def set_intake(
     session: AsyncSession, project_id: str, intake: dict[str, Any] | None
 ) -> Project:

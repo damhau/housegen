@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { Columns2, Footprints, LogOut, Map as MapIcon, Mountain, Pause, Play, Sparkles } from "lucide-react"
+import { Columns2, Footprints, LogOut, Map as MapIcon, Mountain, Pause, Play, Ruler, Sparkles } from "lucide-react"
 import { useKits } from "@/api/endpoints/meta/meta"
 import { useGetSurroundings } from "@/api/endpoints/surroundings/surroundings"
 import type { KitInfo } from "@/api/model"
 import { FloorPlanDialog, type PlanReply } from "@/components/FloorPlanDialog"
+import { SurfacesDialog } from "@/components/SurfacesDialog"
+import type { QuantitiesReply } from "@/components/report/types"
 import { SurroundingsDialog, type SceneOutline } from "@/components/SurroundingsDialog"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
@@ -87,6 +89,7 @@ export function SceneViewer({
   contextUrl,
   autoTour = false,
   coverUrl = null,
+  versionNumber = null,
 }: {
   sceneUrl: string | null
   reloadKey?: string | number
@@ -106,6 +109,8 @@ export function SceneViewer({
   autoTour?: boolean
   /** a picture of the version shown while the scene loads (its render) */
   coverUrl?: string | null
+  /** the version on screen (the surfaces report names it) */
+  versionNumber?: number | null
 }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const refB = useRef<HTMLIFrameElement>(null)
@@ -134,6 +139,8 @@ export function SceneViewer({
   const [kit, setKit] = useState<string | null>(null)
   const [compare, setCompare] = useState<string | null>(null)
   const [planOpen, setPlanOpen] = useState(false)
+  const [surfacesOpen, setSurfacesOpen] = useState(false)
+  const [measurable, setMeasurable] = useState(false) // the renderer answers house:quantities (older ones do not)
   const [surroundingsOpen, setSurroundingsOpen] = useState(false)
   // the real surroundings (#39): drawn by the scene page in the Final and Ultra looks only
   const surroundings = useGetSurroundings(projectId ?? "", { query: { enabled: Boolean(projectId) } })
@@ -177,6 +184,8 @@ export function SceneViewer({
     setDollhouse(null)
     setLoading(null)
     setPlanOpen(false)
+    setSurfacesOpen(false)
+    setMeasurable(false)
     setSurroundingsOpen(false)
     frameReady.current = false
     if (src === null) return
@@ -194,6 +203,7 @@ export function SceneViewer({
         rooms?: Room[]
         credits?: string[]
         tour?: boolean
+        quantities?: boolean
         storeys?: { index: number; y: number; rooms: number }[]
         phase?: string
         loaded?: number
@@ -206,6 +216,7 @@ export function SceneViewer({
         setRooms(Array.isArray(d.rooms) ? d.rooms : [])
         setCredits(Array.isArray(d.credits) ? d.credits : [])
         setTourable(d.tour === true)
+        setMeasurable(d.quantities === true)
         setStoreys(Array.isArray(d.storeys) ? d.storeys : [])
         if (autoTour && d.tour === true && !autoTourDone.current && Array.isArray(d.rooms) && d.rooms.length > 0) {
           autoTourDone.current = true
@@ -219,7 +230,7 @@ export function SceneViewer({
         setTour({ on: !!d.on, room: d.room ?? null, index: d.index ?? 0, total: d.total ?? 0 })
         if (d.room) setRoom(d.room)
       }
-      if ((d?.type === "house:plan2d" || d?.type === "house:outline") && typeof d.id === "number") {
+      if ((d?.type === "house:plan2d" || d?.type === "house:outline" || d?.type === "house:quantities") && typeof d.id === "number") {
         planWaiting.current.get(d.id)?.(d as never)
         planWaiting.current.delete(d.id)
       }
@@ -233,7 +244,7 @@ export function SceneViewer({
     return () => window.removeEventListener("message", onMsg)
   }, [src, autoTour])
 
-  const ask = useCallback(async <T,>(type: string, payload: Record<string, unknown> = {}) => {
+  const ask = useCallback(async <T,>(type: string, payload: Record<string, unknown> = {}, timeoutMs = 20000) => {
     if (!frameReady.current) await new Promise<void>((r) => readyWaiters.current.push(r))
     const frame = ref.current?.contentWindow
     if (!frame) throw new Error("The scene is not loaded")
@@ -243,11 +254,13 @@ export function SceneViewer({
       frame.postMessage({ type, id, ...payload }, "*")
       setTimeout(() => {
         if (planWaiting.current.delete(id)) reject(new Error("The scene did not answer: reload it and try again"))
-      }, 20000)
+      }, timeoutMs)
     })
   }, [])
   const requestPlan = useCallback((index: number, furnished: boolean) => ask<PlanReply>("house:plan2d", { index, furnished }), [ask])
   const requestOutline = useCallback(() => ask<SceneOutline>("house:outline"), [ask])
+  // the measures draw height maps: a minute on a machine without a GPU
+  const requestQuantities = useCallback(() => ask<QuantitiesReply>("house:quantities", {}, 120000), [ask])
 
   function setView(view: string) {
     for (const frame of [ref, refB]) frame.current?.contentWindow?.postMessage({ type: "house:setView", view }, "*")
@@ -459,6 +472,18 @@ export function SceneViewer({
                   Plan
                 </Button>
               )}
+              {projectId && measurable && !compare && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2"
+                  title="Surfaces et volumes SIA 416: the areas, volumes, finishes take-off and estimate of this version, to download as PDF or CSV"
+                  onClick={() => setSurfacesOpen(true)}
+                >
+                  <Ruler className="size-3.5" />
+                  Surfaces
+                </Button>
+              )}
               {projectId && ready && !compare && (
                 <Button
                   size="sm"
@@ -527,6 +552,9 @@ export function SceneViewer({
         </div>
       </div>
       {planOpen && <FloorPlanDialog request={requestPlan} fileBase={planName} onClose={() => setPlanOpen(false)} />}
+      {surfacesOpen && projectId && (
+        <SurfacesDialog request={requestQuantities} projectId={projectId} projectName={planName} version={versionNumber} onClose={() => setSurfacesOpen(false)} />
+      )}
       {surroundingsOpen && projectId && (
         <SurroundingsDialog
           projectId={projectId}

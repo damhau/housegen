@@ -168,6 +168,27 @@ class Renderer:
             self._contexts[key] = ctx
         return ctx
 
+    async def pdf(self, html: str) -> bytes:
+        """A self-contained page (styles, fonts and pictures inline) printed to PDF, its page size
+        from its own @page rule. No script runs and nothing is fetched: the page is the owner's."""
+        async with self._lock:
+            browser = await self._ensure_browser()
+            context = await browser.new_context(java_script_enabled=False)
+            try:
+                await context.route(
+                    "**/*",
+                    lambda route: (
+                        route.continue_()
+                        if route.request.url.startswith("data:")
+                        else route.abort()
+                    ),
+                )
+                page = await context.new_page()
+                await page.set_content(html, wait_until="load", timeout=60_000)
+                return await page.pdf(print_background=True, prefer_css_page_size=True)
+            finally:
+                await context.close()
+
     async def close(self) -> None:
         self._contexts.clear()
         if self._browser is not None:

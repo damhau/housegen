@@ -14,10 +14,12 @@ from housegen.projects.router import router as projects_router
 from housegen.projects.schemas import SharedProjectOut
 from housegen.projects.storage import ProjectStorage
 from housegen.render.kits import KitsOut, list_kits
+from housegen.report.router import router as report_router
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(projects_router)
 router.include_router(geo_router)
+router.include_router(report_router)
 
 
 @router.get("/shared/{token}", tags=["shared"])

@@ -40,6 +40,8 @@ class Project(Base):
     # version (null = the current one)
     share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     share_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # the surfaces and volumes report's settings (#47, #48): report.schemas.ReportSettings
+    report_json: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     @property
     def settings(self) -> dict[str, Any] | None:

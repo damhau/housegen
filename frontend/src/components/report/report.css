@@ -1,0 +1,137 @@
+/* The surfaces and volumes report (#47, #48): the mockup's sheets (spikes/sia416/mockup.html), scoped to
+   .sia-report. The same text is inlined into the page printed to PDF. */
+.sia-report {
+  --desk: #e6e9e6; --desk-ink: #26302d; --desk-muted: #5c6763; --desk-line: #c9cfcb;
+  --paper: #ffffff; --ink: #1d2422; --muted: #5f6966; --rule: #d9dedb; --rule-strong: #1d2422;
+  --accent: #1f5f7a; --warn: #a2471a; --warn-bg: #fbeee6; --ok: #2d6a45; --ok-bg: #e6f1ea; --field: #eef5f7;
+  --sup: #f1dfb5; --sus: #d2dce6; --sd: #e5e3dc; --si: #e9c9bd; --balc: #f3f4f1;
+  --font-body: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  background: var(--desk); color: var(--desk-ink); font-family: var(--font-body); font-size: 14px; line-height: 1.45;
+  padding-inline: 16px; padding-block: 28px 56px;
+}
+.sia-report * { box-sizing: border-box; }
+.sia-report .mono { font-family: var(--font-mono); }
+.sia-report .small { font-size: 11.5px; }
+.sia-report .sheet { background: var(--paper); color: var(--ink); max-width: 860px; margin: 0 auto 26px; padding: 34px 44px 26px; box-shadow: 0 1px 2px rgb(0 0 0 / .12), 0 8px 28px rgb(0 0 0 / .10); display: flex; flex-direction: column; gap: 18px; min-height: 1100px; }
+.sia-report .sheet > .grow { flex: 1; display: flex; flex-direction: column; gap: 18px; }
+.sia-report .run { display: flex; justify-content: space-between; gap: 12px; font-size: 10.5px; color: var(--muted); letter-spacing: .02em; flex-wrap: wrap; }
+.sia-report header.run { border-bottom: 1px solid var(--rule); padding-bottom: 8px; text-transform: uppercase; letter-spacing: .08em; }
+.sia-report footer.run { border-top: 1px solid var(--rule); padding-top: 8px; }
+.sia-report .page-title { font-size: 21px; font-weight: 700; margin: 0; display: flex; align-items: baseline; gap: 12px; text-wrap: balance; line-height: 1.2; }
+.sia-report .page-no { font-size: 12px; color: var(--muted); font-weight: 500; }
+.sia-report h3 { font-size: 15px; font-weight: 700; margin: 0; }
+.sia-report p { margin: 0; }
+.sia-report .lead { max-width: 68ch; color: var(--muted); }
+.sia-report .cover { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; align-items: start; }
+.sia-report .cover dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0; font-size: 13px; }
+.sia-report .cover dt { color: var(--muted); }
+.sia-report .cover dd { margin: 0; }
+.sia-report .big { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 2px solid var(--rule-strong); border-bottom: 1px solid var(--rule); }
+.sia-report .big div { padding: 10px 12px 10px 0; display: grid; gap: 2px; }
+.sia-report .big div + div { padding-left: 14px; border-left: 1px solid var(--rule); }
+.sia-report .big b { font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.sia-report .big span { font-size: 11.5px; color: var(--muted); }
+.sia-report .tablewrap { overflow-x: auto; min-width: 0; }
+.sia-report table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.sia-report th, .sia-report td { text-align: left; padding: 5px 8px 5px 0; vertical-align: top; }
+.sia-report thead th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--rule-strong); white-space: nowrap; }
+.sia-report tbody td { border-bottom: 1px solid var(--rule); }
+.sia-report tfoot td { padding-top: 6px; }
+.sia-report tr.strong td { font-weight: 700; border-top: 1px solid var(--rule-strong); }
+.sia-report .num { text-align: right; white-space: nowrap; }
+.sia-report td.num:last-child, .sia-report th.num:last-child { padding-right: 0; }
+.sia-report .muted { color: var(--muted); }
+.sia-report .warn { color: var(--warn); font-weight: 600; }
+.sia-report tr.flag td { background: var(--warn-bg); }
+.sia-report .formula { font-size: 11.5px; color: var(--muted); }
+.sia-report table.quant td:first-child { width: 46%; }
+.sia-report table.quant .sub td:first-child { padding-left: 16px; color: var(--muted); }
+.sia-report table.quant .code { font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+.sia-report .cls { display: inline-block; font-family: var(--font-mono); font-size: 10.5px; padding: 0 5px; border-radius: 2px; color: var(--ink); }
+.sia-report .cls-sup { background: var(--sup); } .sia-report .cls-sus { background: var(--sus); } .sia-report .cls-sd { background: var(--sd); } .sia-report .cls-si { background: var(--si); }
+.sia-report .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--muted); }
+.sia-report .legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sia-report .legend i { width: 14px; height: 10px; display: inline-block; border: 1px solid rgb(0 0 0 / .12); }
+.sia-report .note { border-left: 3px solid var(--accent); padding: 8px 12px; background: #f4f8f9; font-size: 12.5px; display: grid; gap: 4px; }
+.sia-report .note.warnbox { border-color: var(--warn); background: var(--warn-bg); }
+.sia-report .note b { font-weight: 600; }
+.sia-report .storey { display: grid; gap: 10px; }
+.sia-report .storey-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sia-report .plan-big { max-width: 560px; width: 100%; justify-self: center; }
+.sia-report table.rooms td.no { font-size: 12px; white-space: nowrap; }
+.sia-report .flatname { display: block; font-size: 11.5px; color: var(--muted); }
+.sia-report .plan-fig { margin: 0; display: grid; gap: 4px; }
+.sia-report .plan-fig figcaption { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+.sia-report svg.plan { width: 100%; height: auto; display: block; font-family: var(--font-body); }
+.sia-report .pl-room { stroke: none; } .sia-report .pl-sup { fill: var(--sup); } .sia-report .pl-sus { fill: var(--sus); } .sia-report .pl-sd { fill: var(--sd); } .sia-report .pl-si { fill: var(--si); }
+.sia-report .pl-balc { fill: var(--balc); stroke: var(--muted); stroke-width: 0.03; stroke-dasharray: 0.15 0.1; }
+.sia-report .pl-wall { fill: var(--ink); }
+.sia-report .pl-gap { fill: var(--paper); }
+.sia-report .pl-glass { stroke: var(--ink); stroke-width: 0.035; }
+.sia-report .pl-mass { stroke: var(--ink); } .sia-report .pl-part { stroke: #4a5350; }
+.sia-report .pl-no { font-size: 0.34px; font-weight: 700; fill: var(--ink); text-anchor: middle; }
+.sia-report .pl-area { font-size: 0.28px; fill: var(--muted); text-anchor: middle; font-variant-numeric: tabular-nums; }
+.sia-report .pl-note { font-size: 0.32px; fill: var(--muted); }
+.sia-report .pl-ring { fill: none; stroke: var(--muted); stroke-width: 0.03; } .sia-report .pl-north { fill: var(--ink); } .sia-report .pl-n { font-size: 0.38px; font-weight: 700; fill: var(--ink); }
+.sia-report .pl-bar { fill: var(--ink); } .sia-report .pl-bar2 { fill: none; stroke: var(--ink); stroke-width: 0.03; } .sia-report .pl-scale { font-size: 0.32px; fill: var(--muted); }
+.sia-report table.rooms td:nth-child(2) { min-width: 9em; }
+.sia-report table.compact td, .sia-report table.compact th { padding-block: 4px; }
+.sia-report .vol { display: grid; grid-template-columns: 1.15fr 1fr; gap: 22px; align-items: start; }
+.sia-report .vol > * { min-width: 0; }
+.sia-report svg.section { width: 100%; height: auto; display: block; font-family: var(--font-body); }
+.sia-report .sx-ground { fill: #efeee8; } .sia-report .sx-under { fill: var(--sus); stroke: var(--ink); stroke-width: 0.06; } .sia-report .sx-above { fill: var(--sup); stroke: var(--ink); stroke-width: 0.06; }
+.sia-report .sx-over { stroke: var(--muted); stroke-width: 0.06; stroke-dasharray: 0.2 0.14; fill: none; }
+.sia-report .sx-terrain { stroke: var(--ink); stroke-width: 0.09; } .sia-report .sx-slab { stroke: var(--ink); stroke-width: 0.05; }
+.sia-report .sx-tick { stroke: var(--muted); stroke-width: 0.03; } .sia-report .sx-lv { font-size: 0.5px; fill: var(--muted); text-anchor: end; font-family: var(--font-mono); }
+.sia-report .sx-v { font-size: 0.6px; font-weight: 700; fill: var(--ink); text-anchor: middle; } .sia-report .sx-cap { font-size: 0.5px; fill: var(--muted); }
+.sia-report table.takeoff td:nth-child(1), .sia-report table.takeoff td:nth-child(2) { white-space: nowrap; font-size: 12px; } .sia-report table.takeoff td:nth-child(3) { min-width: 12em; } .sia-report table.takeoff td:nth-child(5) { min-width: 16em; }
+.sia-report table.takeoff tr.grp td { padding-top: 12px; font-weight: 700; font-size: 12px; border-bottom: 1px solid var(--rule-strong); }
+.sia-report .rules { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 22px; font-size: 12.5px; }
+.sia-report .rules > div { display: grid; gap: 2px; min-width: 0; }
+.sia-report .rules b { font-weight: 600; }
+.sia-report .flats { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.sia-report .flats > * { min-width: 0; }
+.sia-report .flat { display: grid; gap: 8px; align-content: start; }
+.sia-report .est { display: grid; gap: 8px; }
+.sia-report .est + .est { border-top: 1px solid var(--rule); padding-top: 16px; }
+.sia-report .est-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sia-report .field { width: 7.5em; font: inherit; font-variant-numeric: tabular-nums; color: var(--ink); background: var(--field); border: 0; border-bottom: 1.5px solid var(--accent); border-radius: 2px 2px 0 0; padding: 3px 6px; text-align: right; }
+.sia-report .field::placeholder { color: var(--muted); opacity: .8; }
+.sia-report .field:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sia-report .presets { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.sia-report .presets button { font: inherit; font-size: 12px; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 3px; padding: 3px 9px; cursor: pointer; }
+.sia-report .presets button[aria-pressed="true"] { border-color: var(--accent); background: var(--field); color: var(--accent); font-weight: 600; }
+.sia-report .presets button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.sia-report td.amount { font-weight: 600; }
+.sia-report td.amount.empty { color: var(--muted); font-weight: 400; }
+.sia-report table.est-t td:nth-child(2) { min-width: 13em; }
+.sia-report table.est-t tr.grp td { padding-top: 10px; font-size: 12px; border-bottom: 1px solid var(--rule-strong); }
+.sia-report table.est-t td .field { margin-block: -3px; }
+.sia-report tr.total td { font-weight: 700; border-top: 1.5px solid var(--rule-strong); }
+.sia-report .balance { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 2px solid var(--rule-strong); border-bottom: 1px solid var(--rule); }
+.sia-report .balance div { padding: 10px 12px 10px 0; display: grid; gap: 2px; }
+.sia-report .balance div + div { padding-left: 14px; border-left: 1px solid var(--rule); }
+.sia-report .balance b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.sia-report .balance span { font-size: 11.5px; color: var(--muted); }
+.sia-report .st { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 2px; white-space: nowrap; }
+.sia-report .st-ok { color: var(--ok); background: var(--ok-bg); } .sia-report .st-warn { color: var(--warn); background: var(--warn-bg); }
+.sia-report .printed { font-variant-numeric: tabular-nums; }
+@media (max-width: 760px) {
+  .sia-report .balance { grid-template-columns: 1fr; } .sia-report .balance div + div { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); }
+  .sia-report .sheet { padding: 20px 16px 16px; min-height: 0; }
+  .sia-report .cover, .sia-report .vol, .sia-report .rules, .sia-report .flats { grid-template-columns: 1fr; }
+  .sia-report .big { grid-template-columns: 1fr; } .sia-report .big div + div { border-left: 0; padding-left: 0; border-top: 1px solid var(--rule); }
+}
+
+/* the PDF: one A4 sheet per page, the desk and the shadows gone */
+@page { size: A4; margin: 0; }
+@media print {
+  html, body { margin: 0; padding: 0; background: #ffffff; }
+  .sia-report { background: #ffffff; padding: 0; }
+  /* the screen's 860 px sheet scaled (--z, set per sheet when the PDF is made) to fit one A4 page,
+     210 × 297 mm = 794 × 1122 px */
+  .sia-report .sheet { box-shadow: none; margin: 0; max-width: none; width: 860px; min-height: 0; height: calc(1122px / var(--z, 0.9233)); zoom: var(--z, 0.9233); overflow: hidden; break-after: page; }
+  .sia-report .sheet:last-child { break-after: auto; }
+  .sia-report .tablewrap { overflow: visible; }
+}

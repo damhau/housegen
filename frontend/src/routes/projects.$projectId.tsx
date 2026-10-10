@@ -364,6 +364,7 @@ function ProjectPage() {
           planName={p.name}
           projectId={projectId}
           coverUrl={version ? (version.render_urls.southeast ?? Object.values(version.render_urls)[0] ?? null) : null}
+          versionNumber={version?.number ?? null}
           placeholder={
             <BuildingPlaceholder
               running={Boolean(activeJob)}
