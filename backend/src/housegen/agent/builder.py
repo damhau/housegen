@@ -93,10 +93,31 @@ class BuilderRun:
     # from `finish`: optional additions left out on purpose, and questions for the owner
     suggestions: list[str] = field(default_factory=list)
     questions: list[str] = field(default_factory=list)
+    # the questions with what was assumed and the options (#35): what the version keeps
+    question_details: list[dict[str, Any]] = field(default_factory=list)
     # how the turn ended: "finish", an `end_tools` name (the chat's hand_over…), "reply" (a
     # plain answer the loop accepted), "" (the step budget ran out); the ending tool's input
     ended_by: str = ""
     end_input: dict[str, Any] = field(default_factory=dict)
+
+
+def question_list(value: Any, limit: int = 4) -> list[dict[str, Any]]:
+    """`finish` questions as objects (question, what was assumed, the options, #35); a plain
+    string (an older model's habit) is a question without either."""
+    if not isinstance(value, list):
+        return []
+    out: list[dict[str, Any]] = []
+    for v in value:
+        if isinstance(v, dict):
+            q = str(v.get("question") or "").strip()
+            if q:
+                assumed = str(v.get("assumed") or "").strip()
+                out.append(
+                    {"question": q, "assumed": assumed, "options": _str_list(v.get("options"), 4)}
+                )
+        elif str(v).strip():
+            out.append({"question": str(v).strip(), "assumed": "", "options": []})
+    return out[:limit]
 
 
 def _str_list(value: Any, limit: int) -> list[str]:
@@ -338,7 +359,8 @@ async def run_builder(
                     continue
                 run.summary = str(call.input.get("summary", "")).strip() or text
                 run.suggestions = _str_list(call.input.get("suggestions"), 8)
-                run.questions = _str_list(call.input.get("questions"), 4)
+                run.question_details = question_list(call.input.get("questions"))
+                run.questions = [q["question"] for q in run.question_details]
                 run.finished = True
                 run.ended_by = "finish"
                 turn.tool_calls.append(

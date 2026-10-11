@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { AlertTriangle, ChevronDown, ChevronRight, Clock, Crosshair, Hammer, ImagePlus, Loader2, MessageCircleQuestion, Play, ScanSearch, Send, Sparkles, Square, Wrench, X } from "lucide-react"
 import { useJobEvents } from "@/api/endpoints/projects/projects"
-import type { ChatMessageOut, IntakeAnswer, IntakeOut, JobOut, PointOut, SceneVersionOut } from "@/api/model"
+import type { ChatMessageOut, IntakeAnswer, IntakeOut, JobOut, PointOut, QuestionOut, SceneVersionOut } from "@/api/model"
 import { JobTimeline, ScoreBadge } from "@/components/JobTimeline"
 import { Markdown } from "@/components/Markdown"
 import { Button } from "@/components/ui/button"
@@ -175,7 +175,11 @@ export function ConversationPanel({
             <ContinueForm
               key={current.number}
               suggestions={current.suggestions ?? []}
-              questions={current.questions ?? []}
+              questions={
+                (current.question_details ?? []).length > 0
+                  ? (current.question_details ?? [])
+                  : (current.questions ?? []).map((q) => ({ question: q, assumed: "", options: [] }))
+              }
               review={currentIssues > 0 ? { version: current.number, issues: currentIssues } : null}
               onSend={(txt, applyReviewOf) => void send(txt, applyReviewOf)}
             />
@@ -554,7 +558,8 @@ function ContinueForm({
   onSend,
 }: {
   suggestions: string[]
-  questions: string[]
+  /** the builder's questions, with what it assumed and the answers it sees (#35) */
+  questions: QuestionOut[]
   /** the current version's review with findings, or null */
   review: { version: number; issues: number } | null
   onSend: (text: string, applyReviewOf?: number) => void
@@ -571,7 +576,8 @@ function ContinueForm({
       else next.add(s)
       return next
     })
-  const answered = questions.map((q, i) => [q, (answers[i] ?? "").trim()] as const).filter(([, a]) => a)
+  const answered = questions.map((q, i) => [q.question, (answers[i] ?? "").trim()] as const).filter(([, a]) => a)
+  const setAnswer = (i: number, a: string) => setAnswers((prev) => prev.map((x, j) => (j === i ? a : x)))
   const withReview = applyReview && review !== null
   const parts = [
     withReview && `the review's ${review.issues} finding${review.issues > 1 ? "s" : ""}`,
@@ -600,12 +606,31 @@ function ContinueForm({
             <MessageCircleQuestion className="size-3.5" /> The builder asks
           </div>
           {questions.map((q, i) => (
-            <div key={q} className="space-y-0.5">
-              <div className="text-amber-900 dark:text-amber-100">{q}</div>
+            <div key={q.question} className="space-y-0.5">
+              <div className="text-amber-900 dark:text-amber-100">{q.question}</div>
+              {q.assumed && <div className="text-muted-foreground">Meanwhile: {q.assumed}</div>}
+              {(q.options ?? []).length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {(q.options ?? []).map((o) => {
+                    const on = answers[i] === o
+                    return (
+                      <button
+                        key={o}
+                        type="button"
+                        aria-pressed={on}
+                        className={cn("rounded-full border px-2 py-0.5 hover:bg-accent", on && "border-primary bg-primary/10 text-primary")}
+                        onClick={() => setAnswer(i, on ? "" : o)}
+                      >
+                        {o}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
               <input
                 value={answers[i] ?? ""}
-                onChange={(e) => setAnswers((prev) => prev.map((a, j) => (j === i ? e.target.value : a)))}
-                placeholder="your answer (optional)"
+                onChange={(e) => setAnswer(i, e.target.value)}
+                placeholder={(q.options ?? []).length > 0 ? "or your own answer" : "your answer (optional)"}
                 className="h-7 w-full rounded-md border bg-background px-2 text-xs"
               />
             </div>

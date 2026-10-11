@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any, Literal
 
@@ -41,6 +42,29 @@ def standard_views(has_photos: bool) -> list[str]:
     return list(STANDARD_VIEWS if has_photos else PLAN_ONLY_VIEWS)
 
 
+class QuestionOut(BaseModel):
+    """One of the builder's questions (#35): what it assumed meanwhile, the answers it sees."""
+
+    question: str
+    assumed: str = ""
+    options: list[str] = []
+
+    def as_text(self) -> str:
+        assumed = f" (assumed meanwhile: {self.assumed})" if self.assumed else ""
+        options = f" Options: {' / '.join(self.options)}." if self.options else ""
+        return f"- {self.question}{assumed}{options}"
+
+
+def questions_of(raw: str | None) -> list[QuestionOut]:
+    """A version's stored questions: objects, or plain strings before #35."""
+    items = json.loads(raw) if raw else []
+    return [
+        QuestionOut.model_validate(q) if isinstance(q, dict) else QuestionOut(question=str(q))
+        for q in items
+        if q
+    ]
+
+
 class PhotoOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -74,6 +98,8 @@ class SceneVersionOut(BaseModel):
     # the builder's optional additions and questions for the owner (from `finish`)
     suggestions: list[str] = []
     questions: list[str] = []
+    # the questions with what the builder assumed and the answers it sees (#35)
+    question_details: list[QuestionOut] = []
     created_at: datetime
     scene_url: str
     render_urls: dict[str, str]

@@ -6,6 +6,7 @@
  */
 import type { SceneVersionOutCriticScore } from './sceneVersionOutCriticScore';
 import type { SceneVersionOutCritique } from './sceneVersionOutCritique';
+import type { QuestionOut } from './questionOut';
 import type { SceneVersionOutRenderUrls } from './sceneVersionOutRenderUrls';
 import type { SceneVersionOutKit } from './sceneVersionOutKit';
 
@@ -19,6 +20,7 @@ export interface SceneVersionOut {
   critique: SceneVersionOutCritique;
   suggestions?: string[];
   questions?: string[];
+  question_details?: QuestionOut[];
   created_at: string;
   scene_url: string;
   render_urls: SceneVersionOutRenderUrls;

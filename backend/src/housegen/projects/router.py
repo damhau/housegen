@@ -43,6 +43,7 @@ from housegen.projects.schemas import (
     SceneVersionOut,
     ShareOut,
     ShareRequest,
+    questions_of,
 )
 from housegen.projects.storage import ProjectStorage
 
@@ -113,7 +114,8 @@ def _project_out(project: Project) -> ProjectOut:
                 critic_score=v.critic_score,
                 critique=Critique.model_validate_json(v.critique_json) if v.critique_json else None,
                 suggestions=json.loads(v.suggestions_json) if v.suggestions_json else [],
-                questions=json.loads(v.questions_json) if v.questions_json else [],
+                questions=[q.question for q in questions_of(v.questions_json)],
+                question_details=questions_of(v.questions_json),
                 created_at=v.created_at,
                 scene_url=st.scene_url(v.number),
                 render_urls=st.render_urls(v.number),

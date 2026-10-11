@@ -56,7 +56,7 @@ from housegen.jobs.manager import JobContext, JobManager
 from housegen.llm import Completion, ImagePart, Message, Usage, get_provider
 from housegen.projects import crud
 from housegen.projects.models import Job
-from housegen.projects.schemas import standard_views
+from housegen.projects.schemas import questions_of, standard_views
 from housegen.projects.storage import PlanSheet, ProjectStorage
 from housegen.render import renderer
 from housegen.render.kits import kit_dir, kit_with, pinned_kit
@@ -378,7 +378,7 @@ class _Run:
                 summary,
                 score,
                 suggestions=last.suggestions if last else None,
-                questions=last.questions if last else None,
+                questions=last.question_details if last else None,
             )
             await crud.update_job(session, self.ctx.job_id, result_version=n)
         await self.ctx.emit(
@@ -1410,9 +1410,9 @@ def _version_text(version: Any) -> list[str]:
         return ["## The current version\nNone yet: the scene has not been built."]
     out = [f"## The current version: {version.number} ({version.kind}), {version.label}\n"
            f"{version.summary}"]  # fmt: skip
-    questions = json.loads(version.questions_json) if version.questions_json else []
+    questions = questions_of(version.questions_json)
     if questions:
-        out.append("## The builder's open questions\n" + "\n".join(f"- {q}" for q in questions))
+        out.append("## The builder's open questions\n" + "\n".join(q.as_text() for q in questions))
     left = json.loads(version.suggestions_json) if version.suggestions_json else []
     if left:
         out.append(

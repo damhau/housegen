@@ -197,7 +197,7 @@ async def add_version(
     summary: str = "",
     critic_score: int | None = None,
     suggestions: list[str] | None = None,
-    questions: list[str] | None = None,
+    questions: list[str] | list[dict[str, Any]] | None = None,
 ) -> SceneVersion:
     project = await get_project(session, project_id)
     v = SceneVersion(

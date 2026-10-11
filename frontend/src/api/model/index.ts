@@ -82,6 +82,7 @@ export * from './projectOutShare';
 export * from './projectSummaryOut';
 export * from './projectSummaryOutJob';
 export * from './projectSummaryOutThumbnailUrl';
+export * from './questionOut';
 export * from './reportDefaults';
 export * from './reportDefaultsDatum';
 export * from './reportDefaultsNorth';

@@ -89,3 +89,32 @@ def test_run_summary_totals_and_cost(monkeypatch) -> None:  # type: ignore[no-un
     m2.add(TurnMetric(step=1, role="builder", model="x", input_tokens=10))
     assert m2.summary().cost_usd is None
     assert Settings().price_for("claude-opus-5-20991231") is not None  # prefix match
+
+
+def test_finish_questions_carry_what_was_assumed_and_the_options() -> None:
+    """#35: the owner answers a question with one click on an option."""
+    from housegen.agent.builder import question_list
+    from housegen.projects.schemas import questions_of
+
+    raw = [
+        {"question": "Garage floor: sheet 3 or sheet 1?", "assumed": "+667.76 (sheet 3)",
+         "options": ["+667.76 (sheet 3)", "+668.40 (sheet 1)", " "]},
+        "Is the roof tiled?",
+        {"assumed": "no question"},
+    ]  # fmt: skip
+    got = question_list(raw)
+    assert got == [
+        {"question": "Garage floor: sheet 3 or sheet 1?", "assumed": "+667.76 (sheet 3)",
+         "options": ["+667.76 (sheet 3)", "+668.40 (sheet 1)"]},
+        {"question": "Is the roof tiled?", "assumed": "", "options": []},
+    ]  # fmt: skip
+    import json
+
+    stored = questions_of(json.dumps(got))
+    assert stored[0].as_text() == (
+        "- Garage floor: sheet 3 or sheet 1? (assumed meanwhile: +667.76 (sheet 3)) "
+        "Options: +667.76 (sheet 3) / +668.40 (sheet 1)."
+    )
+    # a version saved before #35 kept plain strings
+    assert [q.question for q in questions_of(json.dumps(["Which sheet?"]))] == ["Which sheet?"]
+    assert questions_of(None) == []

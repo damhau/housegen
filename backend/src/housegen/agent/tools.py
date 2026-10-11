@@ -223,12 +223,33 @@ TOOL_SPECS: list[ToolSpec] = [
                 },
                 "questions": {
                     "type": "array",
-                    "items": {"type": "string"},
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "question": {"type": "string"},
+                            "assumed": {
+                                "type": "string",
+                                "description": "what you built meanwhile",
+                            },
+                            "options": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "maxItems": 4,
+                                "description": (
+                                    "the two to four answers you see, a few words each: the "
+                                    "owner picks one with a click"
+                                ),
+                            },
+                        },
+                        "required": ["question"],
+                        "additionalProperties": False,
+                    },
                     "maxItems": 4,
                     "description": (
                         "Questions for the owner where the plans and photos left you guessing "
-                        "('the north and south photo labels disagree with the plan; which is right?'). "
-                        "Say what you assumed meanwhile."
+                        "('the north and south photo labels disagree with the plan; which is "
+                        "right?'), one thing each, with what you assumed meanwhile and the "
+                        "answers you see."
                     ),
                 },
             },

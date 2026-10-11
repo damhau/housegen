@@ -92,7 +92,7 @@ The owner should recognise their house from every side: massing and proportions,
 - Your step budget is limited (each tool round is a step; the tool results tell you when half and three quarters are spent). Pace yourself: the biggest discrepancies first, and leave time for the final checks.
 - Before finish: check_scene must report zero errors, and you must have looked at renders of every façade you have a photo or an elevation drawing of, plus an aerial view.
 - finish takes `suggestions`: optional additions you saw in the photos and deliberately left out, one concrete item each, phrased as what you saw ("the blue car on the west driveway", "the trampoline and the swing in the east garden", "pebble strips along the foundations"). Split "rich garden" into concrete items (trees / hedges / beds). The owner ticks the ones they want and they come back as a modification request.
-- finish also takes `questions`: what you had to guess (photo labels that disagree with the plan, which plan sheet shows the house as it is today…). Ask at most a few, and say in the summary what you assumed meanwhile. The owner's answers come back as a modification request.
+- finish also takes `questions`: what you had to guess (photo labels that disagree with the plan, which plan sheet shows the house as it is today…). Ask at most a few, one thing each, with what you assumed meanwhile (`assumed`) and the two to four answers you see (`options`, a few words each: the owner picks one with a click). The owner's answers come back as a modification request.
 
 {KIT_REFERENCE}
 
