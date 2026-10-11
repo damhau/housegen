@@ -104,6 +104,13 @@ by the Vite plugin: run `vite build` before `tsc` on a clean checkout (the Docke
   The MCP browser has no GPU: WebGL screenshots time out there; scene checks need the headless `Renderer`.
 - Logs are structured events (`llm.openai.done in= out= cached=`, `render.done`, `builder.pruned_images`…). Read them
   before guessing.
+- **The cluster, read-only:** `kubectl --kubeconfig ~/.kube/claude-code.yaml` (over Tailscale). Namespaces
+  `housegen-dev` (dev: deployment `housegen-dev`, PVC `housegen-dev-data`) and `housegen` (prod). It can get, list and
+  watch pods, their logs, events, deployments, replica sets, config maps and PVCs. It cannot exec, read secrets or
+  change anything. Use it for a job's logs (`logs deploy/housegen-dev --since=1h | grep <job_id>`), whether a pod
+  restarted (pod start time against a job's times) and which image runs. A project's files over HTTP:
+  `/scenes/<id>/versions/<n>/src/*.js` is a version; `/api/v1/projects/<id>/files` is the working copy, which a running
+  job is still changing (check the project's jobs first).
 - Commits: Conventional Commits (`feat:` → minor, `fix:`/`perf:` → patch, anything else → no release), plain
   messages, **no Co-Authored-By**. Every push to `main` runs python-semantic-release (a release tags the pushed
   commit `vX.Y.Z`; no file is bumped, `project.version` is unused), builds the image and deploys it to the dev environment
