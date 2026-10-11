@@ -31,6 +31,16 @@ class Critique(BaseModel):
         return "\n".join(lines)
 
 
+class Verification(Critique):
+    """The modification verifier's verdict: a critique, and whether its pictures show the change
+    at all (an interior change seen only from outside is not scored, #35)."""
+
+    visible: bool = Field(
+        default=True,
+        description="false when no AFTER picture shows the part of the house the request is about",
+    )
+
+
 # ---- intake: what the plan set says, and what it cannot say (asked to the owner) ----
 
 SheetKind = Literal[

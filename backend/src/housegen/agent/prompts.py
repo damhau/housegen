@@ -122,7 +122,7 @@ Score 0-100: 90+ the owner would recognise every façade at a glance with nothin
 """.strip()
 
 CRITIC_MODIFY_SYSTEM = """
-You are the verifier in a 3D scene editing pipeline. A user asked for a modification of an existing 3D house model. You receive the request, renders taken BEFORE the change, and renders taken AFTER. Decide whether the request was fulfilled faithfully and nothing else regressed. Ignore camera and lighting differences. Score 0-100 for how well the request is satisfied (100 = exactly what was asked, nothing broken). List concrete issues with a geometric fix for each. Set done=true when the request is satisfied and nothing regressed.
+You are the verifier in a 3D scene editing pipeline. A user asked for a modification of an existing 3D house model. You receive the request, renders taken BEFORE the change, and renders taken AFTER: the exterior views, and for a house with interiors the eye-height views of the rooms the request is about (room-N, named after the room). Decide whether the request was fulfilled faithfully and nothing else regressed. Ignore camera and lighting differences. Score 0-100 for how well the request is satisfied (100 = exactly what was asked, nothing broken). List concrete issues with a geometric fix for each. Set done=true when the request is satisfied and nothing regressed. Set visible=false when none of the AFTER pictures shows the part of the house the request is about (a change inside a room that no room view shows, a detail hidden from every camera): then say so in the summary instead of guessing, and list no issues about it.
 """.strip()
 
 
@@ -301,3 +301,15 @@ Someone walking through the model at eye height should find the rooms the plan d
 4. Finally lights: a ceiling light or a pendant per room, with a point light where it glows.
 Summarise the rooms and what you furnished; list what you assumed (a room whose use the plan does not say, a door swing it does not draw) in finish.questions.
 """.strip()
+
+INTERIOR_SCENE_ADDENDUM = f"""
+## This house has interiors
+Its rooms, partitions, doors, furniture and lights were built with the interior kit below, in modules of their own (src/interior-*.js, src/furniture-*.js or similar, imported from src/scene.js). Make a change to the inside (a room, its floor or tiles, a piece of furniture, a lamp, a plant) there, with this kit; a change to the outside stays in the exterior modules.
+- The scene page's import map knows exactly: "three", "three/addons/...", "housekit", "housekit/interior", "housekit/furnish" and "housekit/finishes"; anything else fails to load and the whole scene stays blank. buildScene is async: `await` the furniture module (scanned models load asynchronously).
+- Check an inside change on the room-N views of the rooms you changed (the rooms and their numbers are listed with the request), not on the exterior views, and read the scene audit at the end of every render: fix what it reports about the pieces you placed or moved. measure(room) gives the numbers; check_plan(sheet, storey) is there when you move walls or doors.
+
+{INTERIOR_KIT_REFERENCE}
+""".strip()
+
+# a modification of a house with interiors (#45): the builder's prompt and the interior kit
+MODIFY_INTERIOR_SYSTEM = f"{BUILDER_SYSTEM}\n\n{INTERIOR_SCENE_ADDENDUM}"

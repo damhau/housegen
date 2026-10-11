@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from housegen.agent.prompts import CRITIC_MODIFY_SYSTEM, CRITIC_PLAN_SYSTEM, CRITIC_SYSTEM
-from housegen.agent.schemas import Critique
+from housegen.agent.schemas import Critique, Verification
 from housegen.core.exceptions import LLMError
 from housegen.llm import Completion, ImagePart, Message, ProgressCallback, Provider
 
@@ -161,7 +161,11 @@ async def verify_modification(
     on_progress: ProgressCallback | None = None,
     effort: str | None = None,
     attachments: list[Path] | None = None,
-) -> tuple[Critique, Completion]:
+    rooms: dict[str, str] | None = None,
+) -> tuple[Verification, Completion]:
+    """Before/after pictures of a modification: the critic's exterior set, and the room views
+    (`rooms`: view → the room's name, #45) of a house with interiors."""
+    rooms = rooms or {}
     parts: list[ImagePart | str] = [f"User request:\n{request}"]
     if attachments:
         parts.append(
@@ -169,23 +173,35 @@ async def verify_modification(
         )
         for i, p in enumerate(attachments, 1):
             parts.append(ImagePart.from_file(p, label=f"ATTACHED photograph {i}"))
+
+    def label(view: str) -> str:
+        return f"view {view} ({rooms[view]})" if view in rooms else f"view {view}"
+
+    def shown(renders: dict[str, Path]) -> dict[str, Path]:
+        return {
+            **_critic_views({v: p for v, p in renders.items() if v not in rooms}),
+            **{v: p for v, p in renders.items() if v in rooms},
+        }
+
     parts.append("Renders BEFORE the change:")
-    for view, p in _critic_views(before).items():
-        parts.append(ImagePart.from_file(p, label=f"BEFORE — view {view}"))
+    for view, p in shown(before).items():
+        parts.append(ImagePart.from_file(p, label=f"BEFORE — {label(view)}"))
     parts.append("Renders AFTER the change:")
-    for view, p in _critic_views(after).items():
-        parts.append(ImagePart.from_file(p, label=f"AFTER — view {view}"))
+    for view, p in shown(after).items():
+        parts.append(ImagePart.from_file(p, label=f"AFTER — {label(view)}"))
     parts.append("Return the verdict as JSON matching the schema (threshold 85).")
     completion = await provider.complete(
         model=model,
         system=CRITIC_MODIFY_SYSTEM,
         messages=[Message.user(*parts)],
-        response_schema=Critique.model_json_schema(),
+        response_schema=Verification.model_json_schema(),
         max_tokens=max_tokens,
         on_progress=on_progress,
         effort=effort,
     )
-    return _parse(completion.message.text), completion
+    c = _parse(completion.message.text, Verification)
+    assert isinstance(c, Verification)
+    return c, completion
 
 
 def _overview_renders(renders: dict[str, Path]) -> list[ImagePart]:
@@ -208,12 +224,12 @@ def _critic_views(renders: dict[str, Path]) -> dict[str, Path]:
     return photo
 
 
-def _parse(text: str) -> Critique:
+def _parse(text: str, schema: type[Critique] = Critique) -> Critique:
     text = text.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1].rsplit("```", 1)[0]
     try:
-        c = Critique.model_validate(json.loads(text))
+        c = schema.model_validate(json.loads(text))
     except (json.JSONDecodeError, ValidationError) as e:
         logger.exception("critic.parse_failed")
         raise LLMError(f"critic returned invalid JSON: {e}") from e

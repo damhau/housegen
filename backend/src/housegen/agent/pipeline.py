@@ -15,6 +15,7 @@ import json
 import logging
 import re
 import shutil
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -29,11 +30,12 @@ from housegen.agent.prompts import (
     FIRST_RUN_ADDENDUM,
     INTERIOR_SYSTEM,
     MODIFY_ADDENDUM,
+    MODIFY_INTERIOR_SYSTEM,
     PLAN_ONLY_ADDENDUM,
     RESUME_ADDENDUM,
 )
 from housegen.agent.run_settings import ResolvedRunSettings, resolve
-from housegen.agent.schemas import Critique, Intake
+from housegen.agent.schemas import Critique, Intake, Verification
 from housegen.agent.tools import (
     CHECK_PLAN_SPEC,
     MEASURE_SPEC,
@@ -125,6 +127,14 @@ class _Run:
             None  # the most recent builder pass (suggestions, questions)
         )
         self.last_render_errors: list[str] = []  # from the most recent version render
+        self.last_report: dict[str, Any] | None = None  # the scene report of that render
+        # the builder's system prompt for this job (a house with interiors: the interior kit too)
+        self.system = BUILDER_SYSTEM
+        # a house with interiors (#45): its rooms as the scene reports them, room-N order
+        self.interior = False
+        self.rooms: list[dict[str, Any]] = []
+        # the version the working copy was at the start, unedited: what "before" can be drawn from
+        self.base_version: int | None = None
         self.usage = Usage()  # everything, builder + critic
         self.critic_usage = Usage()  # the critic's share, reported separately in the usage event
         self.metrics = RunMetrics(self.settings)  # time and tokens per turn (#13)
@@ -267,15 +277,66 @@ class _Run:
                 self.scene_url, self.views, self.renders_dir, quality="medium"
             )
         self.last_render_errors = res.errors
+        self.last_report = res.report
         await self._on_render(res.images, res.errors)
         return res.images
 
+    async def render_views(self, views: list[str]) -> dict[str, Path]:
+        """Some views of the working copy at the version pictures' quality, shown in the timeline."""
+        if not views:
+            return {}
+        res = await renderer.render(self.scene_url, views, self.renders_dir, quality="high")
+        await self._on_render(res.images, res.errors)
+        return res.images
+
+    async def scene_report(self) -> dict[str, Any] | None:
+        """What the runtime reports about the working copy (its rooms, its storeys' plan views),
+        from a picture-less load."""
+        res = await renderer.render(self.scene_url, [], self.renders_dir, quality="low")
+        return res.report
+
+    def unchanged_since(self, version: int) -> bool:
+        """The working copy is that saved version, file for file (no job left edits since)."""
+        vdir = self.storage.versions_dir / str(version)
+        if version <= 0 or not vdir.exists():
+            return False
+        page, saved = self.storage.scene_dir / "index.html", vdir / "index.html"
+        return (
+            page.exists()
+            and saved.exists()
+            and page.read_bytes() == saved.read_bytes()
+            and self.storage.scene_files() == self.storage.scene_files(version)
+        )
+
+    async def before_renders(self, version: int) -> dict[str, Path]:
+        """The pictures of the scene as a modification starts: the current version's own when the
+        working copy is that version and they were drawn with this job's renderer (#35: a render
+        of the whole set took up to 98 s), the views it lacks rendered; else a render."""
+        vdir = self.storage.versions_dir / str(version) / "renders"
+        saved = {v: vdir / f"{v}.jpg" for v in self.views if (vdir / f"{v}.jpg").exists()}
+        if (
+            saved
+            and self.storage.version_kit(version) == self.kit
+            and self.unchanged_since(version)
+        ):
+            self.renders_dir.mkdir(parents=True, exist_ok=True)
+            images = {v: Path(shutil.copy2(p, self.renders_dir / p.name)) for v, p in saved.items()}
+            await self.ctx.emit(
+                "phase", name="render", message=f"The current state: version {version}'s pictures"
+            )
+            await self._on_render(images, [])
+            missing = [v for v in self.views if v not in images]
+            return images | await self.render_views(missing)
+        await self.ctx.emit("phase", name="render", message="Rendering the current state")
+        return await self.render_standard()
+
     async def build_and_render(
-        self, messages: list[Message], system: str = BUILDER_SYSTEM
+        self, messages: list[Message], system: str | None = None
     ) -> tuple[str, dict[str, Path]]:
         """A builder pass followed by the version render. When the render produces no image at
         any quality, the builder hears why and gets one more pass before the version is saved
         (an empty version would otherwise go to the critic as a 0/100 placeholder)."""
+        system = system or self.system
         summary = await self.build(messages, system)
         renders = await self.render_standard()
         if not renders:
@@ -323,12 +384,12 @@ class _Run:
         return n
 
     async def build(
-        self, messages: list[Message], system: str = BUILDER_SYSTEM, max_steps: int | None = None
+        self, messages: list[Message], system: str | None = None, max_steps: int | None = None
     ) -> str:
         run = await run_builder(
             self.provider,
             self.rs.model,
-            system,
+            system or self.system,
             messages,
             self.tools,
             max_steps=max_steps or self.rs.max_steps,
@@ -351,11 +412,27 @@ class _Run:
         )
         return run.summary
 
-    async def set_version_critique(self, version: int, verdict: Critique) -> None:
+    async def set_version_critique(
+        self, version: int, verdict: Critique, scored: bool = True
+    ) -> None:
+        """Store a review on a version, with its score unless `scored` is false (a verifier that
+        could not see the change)."""
         async with session_factory()() as session, session.begin():
             await crud.set_version_critique(
-                session, self.ctx.project_id, version, verdict.overall_score, verdict.model_dump()
+                session,
+                self.ctx.project_id,
+                version,
+                verdict.overall_score if scored else None,
+                verdict.model_dump(),
             )
+
+    async def prepare_interior(self, inp: _Inputs) -> None:
+        """A house with interiors (#45): the interior tools and audit, its rooms, and the views of
+        its storeys and rooms in the version pictures, as the interior job saves them."""
+        _interior_tools(self, inp)
+        report = await self.scene_report()
+        self.rooms = list((report or {}).get("rooms") or [])
+        self.views = list(self.views) + _interior_views(report)
 
     def finish_extras(self) -> dict[str, Any]:
         last = self.last_run
@@ -717,20 +794,37 @@ async def _emit_critic(ctx: JobContext, iteration: int, verdict: Critique) -> No
 
 
 async def modify(ctx: JobContext) -> None:
-    run = await _Run.create(ctx)
+    run = await _modify_run(ctx)
     async with session_factory()() as session:
         job = await crud.get_job(session, ctx.job_id)
         request = job.request_text
         history = await crud.list_chat(session, ctx.project_id)
+        base = (await crud.get_project(session, ctx.project_id)).current_version
     inp = await run.inputs()
+    if run.interior:
+        await run.prepare_interior(inp)
+    run.base_version = base if run.unchanged_since(base) else None
 
-    await ctx.emit("phase", name="render", message="Rendering the current state")
-    before = await run.render_standard()
+    before = await run.before_renders(base)
+    # a house with interiors: the rooms the request names, seen before the change (#45)
+    before |= await run.render_views(room_views(touched_rooms(request, run.rooms)))
     before_copy = _keep_before_renders(run, before)
 
-    parts = _modify_message(request, history, inp, before)
+    thread = [m for m in history if m.job_id != ctx.job_id]
+    parts = _modify_message(request, thread, inp, before, rooms=run.rooms)
     messages = [Message.user(*parts)]
     await _modify_apply(run, inp, request, messages, before_copy)
+
+
+async def _modify_run(ctx: JobContext) -> _Run:
+    """A modification's run: a house with interiors draws with a renderer that has the interior
+    modules and its builder knows the interior kit (#45); an exterior keeps the pinned one."""
+    interior = has_interior(ProjectStorage(ctx.project_id).scene_dir)
+    run = await _Run.create(ctx, kit=kit_with("interior.js") if interior else None)
+    if interior:
+        run.interior = True
+        run.system = MODIFY_INTERIOR_SYSTEM
+    return run
 
 
 def _keep_before_renders(run: _Run, before: dict[str, Path]) -> dict[str, Path]:
@@ -742,12 +836,47 @@ def _keep_before_renders(run: _Run, before: dict[str, Path]) -> dict[str, Path]:
     return {v: Path(shutil.copy2(p, keep / p.name)) for v, p in before.items()}
 
 
+THREAD_MESSAGES = 10  # the conversation the builder of a modification is given (#35)
+THREAD_REPLY_CHARS = 700  # an answer longer than this is cut: the builder needs its gist
+
+
+def thread_text(history: list[Any]) -> str | None:
+    """The conversation so far, the owner's requests and what was done in reply, oldest first:
+    "make it bigger" and "the other table" need it (#35)."""
+    lines = []
+    for m in history[-THREAD_MESSAGES:]:
+        text = " ".join(str(m.content).split())
+        if m.role == "user":
+            lines.append(f"- Owner: {text}")
+        else:
+            if len(text) > THREAD_REPLY_CHARS:
+                text = text[:THREAD_REPLY_CHARS].rsplit(" ", 1)[0] + " …"
+            where = f" (version {m.version_number})" if m.version_number else ""
+            lines.append(f"- You{where}: {text}")
+    if not lines:
+        return None
+    return "## The conversation so far (already applied)\n" + "\n".join(lines)
+
+
+def rooms_text(rooms: list[dict[str, Any]]) -> str | None:
+    """A house with interiors: its rooms with the number of their room-N view."""
+    if not rooms:
+        return None
+    lines = []
+    for i, r in enumerate(rooms, 1):
+        area = f", {r['area']:g} m²" if isinstance(r.get("area"), int | float) else ""
+        floor = f", floor at y={r['y']:.2f}" if isinstance(r.get("y"), int | float) else ""
+        lines.append(f"{i}. {r.get('name') or '?'} ({r.get('use') or 'room'}{area}{floor})")
+    return '## The rooms (render_views(["room-N"]) shows room N at eye height)\n' + "\n".join(lines)
+
+
 def _modify_message(
     request: str,
     history: list[Any],
     inp: _Inputs,
     renders: dict[str, Path],
     resume: bool = False,
+    rooms: list[dict[str, Any]] | None = None,
 ) -> list[ImagePart | str]:
     parts: list[ImagePart | str] = [MODIFY_ADDENDUM]
     if resume:
@@ -760,12 +889,12 @@ def _modify_message(
         )
         for i, p in enumerate(inp.attachments, 1):
             parts.append(ImagePart.from_file(p, label=f"Attached photograph {i}"))
-    recent = [m for m in history if m.role == "user"][-6:-1]
-    if recent:
-        parts.append(
-            "## Earlier requests on this scene (already applied)\n"
-            + "\n".join(f"- {m.content}" for m in recent)
-        )
+    thread = thread_text(history)
+    if thread:
+        parts.append(thread)
+    listed = rooms_text(rooms or [])
+    if listed:
+        parts.append(listed)
     if inp.brief:
         parts.append(f"{BRIEF_HEADING}\n{inp.brief}")
     for side, p in inp.photos.items():
@@ -774,9 +903,12 @@ def _modify_message(
         parts.append(ImagePart.from_file(p, label=f"Additional photograph {i} (reference)"))
     if not inp.has_photos:
         parts.extend(_elevation_sheets(inp.intake, inp.pages))
+    names = {f"room-{i}": r.get("name") or "" for i, r in enumerate(rooms or [], 1)}
     for view, p in renders.items():
         if view in ("aerial", "south", "north"):
             parts.append(ImagePart.from_file(p, label=f"Current render — {view}"))
+        elif view in names:
+            parts.append(ImagePart.from_file(p, label=f"Current render — {view} ({names[view]})"))
     return parts
 
 
@@ -802,6 +934,8 @@ async def _modify_verify(
     ctx, rs = run.ctx, run.rs
     if rs.critic_rounds > 0:
         await ctx.emit("phase", name="critic", message="Verifying the modification")
+        before, after = dict(before), dict(after)
+        rooms = await _room_pictures(run, before, after)
         async with LiveProgress(ctx, "critic", show_text=False) as live:
             verdict, completion = await critic.verify_modification(
                 run.provider,
@@ -813,6 +947,7 @@ async def _modify_verify(
                 on_progress=live.on_event,
                 effort=rs.critic_effort,
                 attachments=inp.attachments,
+                rooms=rooms,
             )
         await run.add_call("critic", completion)
         await _emit_critic(ctx, 1, verdict)
@@ -821,14 +956,51 @@ async def _modify_verify(
     await _modify_finish(run, version, summary, None)
 
 
+ROOM_VIEW = re.compile(r"^room-(\d+)$")
+VERIFY_ROOMS = 4  # room views the verifier compares at most
+
+
+async def _room_pictures(
+    run: _Run, before: dict[str, Path], after: dict[str, Path]
+) -> dict[str, str]:
+    """A house with interiors (#45): the room views its modification is checked on, added to
+    `before` and `after`; returns view → the room's name. The rooms the request names (seen
+    before the build) and the rooms the builder looked at; AFTER from the working copy, BEFORE
+    from the version the job started from when the start did not draw it."""
+    if not run.rooms:
+        return {}
+    seen = sorted(v for v in run.tools.rendered_views if ROOM_VIEW.match(v))
+    views = [v for v in before if ROOM_VIEW.match(v)] + [v for v in seen if v not in before]
+    names = {
+        v: str(run.rooms[int(m.group(1)) - 1].get("name") or v)
+        for v in views[:VERIFY_ROOMS]
+        if (m := ROOM_VIEW.match(v)) and 0 < int(m.group(1)) <= len(run.rooms)
+    }
+    if not names:
+        return {}
+    res = await renderer.render(run.scene_url, list(names), run.renders_dir, quality="high")
+    after.update(res.images)
+    missing = [v for v in names if v not in before]
+    if missing and run.base_version:
+        page = run.storage.scene_url(run.base_version)
+        url = f"{run.settings.render_base_url}{page}?kit={run.kit}"
+        res = await renderer.render(
+            url, missing, run.storage.scene_dir / "renders_before", quality="high"
+        )
+        before.update(res.images)
+    return {v: n for v, n in names.items() if v in after}
+
+
 async def _modify_after_verdict(run: _Run, verdict: Critique, version: int, summary: str) -> None:
     """The verifier's findings are a proposition, not an order (2026-09-13): they are stored on
     the version like a critic review, where the owner reads them and applies them with one
     request ("Apply the review's findings") if they deserve a pass. Until then a fix pass ran
     unasked on findings nobody had read, a full builder pass, and its version was saved under
-    the score of the version the verifier had inspected."""
-    await run.set_version_critique(version, verdict)
-    await _modify_finish(run, version, summary, verdict.overall_score)
+    the score of the version the verifier had inspected. A verifier whose pictures do not show
+    the change gives no score (#35: beds judged from outside got 50/100)."""
+    scored = not (isinstance(verdict, Verification) and not verdict.visible)
+    await run.set_version_critique(version, verdict, scored=scored)
+    await _modify_finish(run, version, summary, verdict.overall_score if scored else None)
 
 
 async def _modify_finish(run: _Run, version: int, summary: str, score: int | None) -> None:
@@ -853,6 +1025,130 @@ INTERIOR_IMPORTS = {
 }
 # eye-height views of the first rooms, in the version pictures
 INTERIOR_ROOM_VIEWS = 6
+_INTERIOR_IMPORT = re.compile(r"""from\s*["']housekit/(?:interior|furnish|finishes)["']""")
+
+
+def has_interior(scene_dir: Path) -> bool:
+    """The scene's modules import the interior kit: the interior job built rooms in it (#45)."""
+    src = scene_dir / "src"
+    return src.is_dir() and any(
+        _INTERIOR_IMPORT.search(p.read_text(encoding="utf-8", errors="replace"))
+        for p in src.rglob("*.js")
+    )
+
+
+def _interior_tools(run: _Run, inp: _Inputs) -> None:
+    """The interior's tools: the plan check and measure, the scene audit after every render
+    (#67, #70), the sheets' labels for the plan check's scale."""
+    run.tools.specs = [*TOOL_SPECS, CHECK_PLAN_SPEC, MEASURE_SPEC]
+    run.tools.show_audit = True
+    run.tools.sheet_labels = {sh.page: sh.label for sh in (inp.intake.sheets if inp.intake else [])}
+
+
+def _interior_views(report: dict[str, Any] | None) -> list[str]:
+    """The version pictures of an interior beyond the exterior views: the plan of each storey and
+    the first rooms, as a photographer frames them (photo-<n>: the room's viewpoint, 1.3 m, a
+    24 mm lens, level, #43); the builder's own checks stay on the walk's room-<n> views."""
+    report = report or {}
+    rooms = report.get("rooms") or []
+    return [str(s["view"]) for s in report.get("planSections") or []] + [
+        f"photo-{i}" for i in range(1, min(len(rooms), INTERIOR_ROOM_VIEWS) + 1)
+    ]
+
+
+def _plain(text: str) -> str:
+    """Lower case without accents: "Séjour" and "sejour" match."""
+    norm = unicodedata.normalize("NFKD", text.lower())
+    return "".join(c for c in norm if not unicodedata.combining(c))
+
+
+# words of a request (English and French) → the room uses they name: the room views a
+# modification of a house with interiors is checked on (#45)
+_USE_WORDS: dict[str, tuple[str, ...]] = {
+    "bath": ("bathroom", "bath", "shower", "salle de bain", "salle d'eau", "douche", "baignoire"),
+    "wc": ("wc", "toilet", "toilette", "toilettes"),
+    "bedroom": ("bedroom", "bed", "beds", "chambre", "lit", "lits"),
+    "kitchen": ("kitchen", "cuisine"),
+    "living": ("living", "lounge", "salon", "sejour", "sofa", "canape"),
+    "dining": ("dining", "salle a manger"),
+    "hall": ("hall", "hallway", "entrance", "entree", "corridor", "couloir"),
+    "office": ("office", "study", "bureau"),
+    "laundry": ("laundry", "buanderie", "washer", "lave-linge"),
+    "stair": ("stair", "stairs", "staircase", "escalier"),
+    "cellar": ("cellar", "cave"),
+    "garage": ("garage",),
+    "storage": ("storage", "rangement", "debarras"),
+}
+_STOREY_WORDS = {
+    "top": ("attic", "combles", "top floor", "upstairs", "dernier etage"),
+    "ground": ("ground floor", "rez", "rdc", "rez-de-chaussee"),
+    "first": ("first floor", "1st floor", "premier etage", "1er etage"),
+    "basement": ("basement", "sous-sol"),
+}
+_SIDE_WORDS = {
+    "north": ("north", "nord"),
+    "south": ("south", "sud"),
+    "east": ("east",),
+    "west": ("west", "ouest"),
+}
+
+
+def _says(text: str, words: tuple[str, ...]) -> bool:
+    return any(re.search(rf"(?<![a-z]){re.escape(w)}(?:e?s)?(?![a-z])", text) for w in words)
+
+
+def touched_rooms(
+    request: str, rooms: list[dict[str, Any]], limit: int = VERIFY_ROOMS
+) -> list[int]:
+    """The rooms (0-based, room-N order) a request is about: by name ("Chambre 2", "Salon") when
+    it names any, else by use ("the bathroom", "every bed"), narrowed by the storey ("attic",
+    "ground floor") and the side ("west") it names. At most `limit`."""
+    text = _plain(request)
+    named = [
+        i
+        for i, r in enumerate(rooms)
+        if len(name := _plain(str(r.get("name") or "")).strip()) >= 3 and _says(text, (name,))
+    ]
+    if named:
+        return named[:limit]
+    uses = {u for u, words in _USE_WORDS.items() if _says(text, words)}
+    found = [
+        i for i, r in enumerate(rooms) if any(u in str(r.get("use") or "").split("-") for u in uses)
+    ]
+    levels = sorted({round(float(r.get("y") or 0), 1) for r in rooms})
+    above = [y for y in levels if y > -0.5] or levels
+    pick = {
+        "top": levels[-1:] if levels else [],
+        "ground": above[:1],
+        "first": above[1:2],
+        "basement": [y for y in levels if y <= -0.5][:1],
+    }
+    wanted = {y for k, words in _STOREY_WORDS.items() if _says(text, words) for y in pick[k]}
+    if wanted:
+        found = [i for i in found if round(float(rooms[i].get("y") or 0), 1) in wanted] or found
+    sides = [k for k, words in _SIDE_WORDS.items() if _says(text, words)]
+    if sides and len(found) > 1:
+
+        def centre(i: int) -> tuple[float, float]:
+            poly = rooms[i].get("polygon") or [[0, 0]]
+            return (
+                sum(float(p[0]) for p in poly) / len(poly),
+                sum(float(p[1]) for p in poly) / len(poly),
+            )
+
+        # +x east, +z south: the room farthest toward the side named
+        far = {
+            "north": lambda i: -centre(i)[1],
+            "south": lambda i: centre(i)[1],
+            "east": lambda i: centre(i)[0],
+            "west": lambda i: -centre(i)[0],
+        }[sides[0]]
+        found = [max(found, key=far)]
+    return found[:limit]
+
+
+def room_views(indices: list[int]) -> list[str]:
+    return [f"room-{i + 1}" for i in indices]
 
 
 def ensure_interior_imports(index_html: Path) -> bool:
@@ -908,17 +1204,15 @@ def _plan_gate_text(gaps: list[str], audit: list[str]) -> str:
 
 async def interior(ctx: JobContext) -> None:
     run = await _Run.create(ctx, kit=kit_with("interior.js"))
-    run.tools.specs = [*TOOL_SPECS, CHECK_PLAN_SPEC, MEASURE_SPEC]
-    run.tools.show_audit = True  # the plan check and the layout audit after every render (#67, #70)
     async with session_factory()() as session:
         job = await crud.get_job(session, ctx.job_id)
         request = job.request_text
     inp = await run.inputs()
+    _interior_tools(run, inp)
     ensure_interior_imports(run.storage.scene_dir / "index.html")
     floor_plans = [
         sh for sh in (inp.intake.sheets if inp.intake else []) if sh.kind == "floor_plan"
     ]
-    run.tools.sheet_labels = {sh.page: sh.label for sh in (inp.intake.sheets if inp.intake else [])}
 
     await ctx.emit("phase", name="render", message="Rendering the current state")
     before = await run.render_standard()
@@ -965,18 +1259,8 @@ async def interior(ctx: JobContext) -> None:
             messages, system=INTERIOR_SYSTEM, max_steps=min(run.rs.max_steps, PLAN_GATE_STEPS)
         )
         probe = await renderer.render(run.scene_url, [], run.renders_dir, quality="low")
-    # the version pictures: the exterior views, the plan of each storey and the first rooms, as a
-    # photographer frames them (photo-<n>: the room's viewpoint, 1.3 m, a 24 mm lens, level, #43);
-    # the builder's own checks above stay on the walk's room-<n> views
-    report = probe.report or {}
-    run.views = (
-        list(run.views)
-        + [s["view"] for s in report.get("planSections", [])]
-        + [
-            f"photo-{i}"
-            for i in range(1, min(len(report.get("rooms", [])), INTERIOR_ROOM_VIEWS) + 1)
-        ]
-    )
+    # the version pictures: the exterior views, the plan of each storey and the first rooms
+    run.views = list(run.views) + _interior_views(probe.report)
     renders = await run.render_standard()
     label = ("Interior: " + request.strip())[:80] if request.strip() else "Interior"
     version = await run.snapshot("interior", label, summary, None, renders)
@@ -1141,11 +1425,13 @@ async def _resume_generate(ctx: JobContext, progress: _Progress) -> None:
 
 
 async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None:
-    run = await _Run.create(ctx)
+    run = await _modify_run(ctx)
     request = job.request_text
     async with session_factory()() as session:
-        history = await crud.list_chat(session, ctx.project_id)
+        history = [m for m in await crud.list_chat(session, ctx.project_id) if m.job_id != job.id]
     inp = await run.inputs()
+    if run.interior:
+        await run.prepare_interior(inp)
 
     # the "before" renders were copied aside before the builder started; when they are not
     # there the builder had not started either, so the working copy still is the "before"
@@ -1154,8 +1440,9 @@ async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None
     if progress.last_phase in (None, "render") or not kept:
         await ctx.emit("phase", name="render", message="Rendering the current state")
         before = await run.render_standard()
+        before |= await run.render_views(room_views(touched_rooms(request, run.rooms)))
         before_copy = _keep_before_renders(run, before)
-        messages = [Message.user(*_modify_message(request, history, inp, before))]
+        messages = [Message.user(*_modify_message(request, history, inp, before, rooms=run.rooms))]
         await _modify_apply(run, inp, request, messages, before_copy)
         return
 
@@ -1171,9 +1458,15 @@ async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None
         if verdict is not None:
             await _modify_after_verdict(run, verdict, version, summary)
         else:
-            messages = [Message.user(*_modify_message(request, history, inp, after, resume=True))]
+            messages = [
+                Message.user(
+                    *_modify_message(request, history, inp, after, resume=True, rooms=run.rooms)
+                )
+            ]
             await _modify_verify(run, inp, request, messages, kept, after, version, summary)
         return
 
-    messages = [Message.user(*_modify_message(request, history, inp, after, resume=True))]
+    messages = [
+        Message.user(*_modify_message(request, history, inp, after, resume=True, rooms=run.rooms))
+    ]
     await _modify_apply(run, inp, request, messages, kept)

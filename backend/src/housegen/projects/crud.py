@@ -232,7 +232,11 @@ async def get_version(session: AsyncSession, project_id: str, number: int) -> Sc
 
 
 async def set_version_critique(
-    session: AsyncSession, project_id: str, number: int, score: int, critique: dict[str, Any]
+    session: AsyncSession,
+    project_id: str,
+    number: int,
+    score: int | None,
+    critique: dict[str, Any],
 ) -> SceneVersion:
     v = await get_version(session, project_id, number)
     v.critic_score = score
