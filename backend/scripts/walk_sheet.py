@@ -325,6 +325,23 @@ async def serve_local_kit(page: Page, kit: Path, local_assets: bool) -> None:
     await page.route(re.compile(r"/kit/"), handle)
 
 
+async def serve_local_src(page: Page, src: Path) -> None:
+    """The scene's own modules (`.../src/<name>.js`) from `src` where it has them."""
+
+    async def handle(route: Route) -> None:
+        local = src / Path(urlsplit(route.request.url).path).name
+        if local.is_file():
+            await route.fulfill(
+                path=str(local),
+                content_type="application/javascript",
+                headers={"Cache-Control": "no-store"},
+            )
+        else:
+            await route.continue_()
+
+    await page.route(re.compile(r"/scenes/[^/]+/(scene|versions/\d+)/src/[^/]+\.js"), handle)
+
+
 async def measure_kit(
     browser: Browser, url: str, kit_name: str, args: argparse.Namespace, out: Path
 ) -> dict[str, Any]:
@@ -340,6 +357,8 @@ async def measure_kit(
         ),
     )
     await serve_local_kit(page, kit_files(kit_name), args.local_assets)
+    if args.src:
+        await serve_local_src(page, args.src)
     cdp = await page.context.new_cdp_session(page)
     await cdp.send("Network.enable")
     urls: dict[str, str] = {}
@@ -595,6 +614,11 @@ def main() -> None:
         "--local-assets",
         action="store_true",
         help="also serve the kit's non-module files from this checkout",
+    )
+    ap.add_argument(
+        "--src",
+        type=Path,
+        help="serve the scene's modules (src/<name>.js) from this directory where it has them",
     )
     ap.add_argument(
         "--chrome",
