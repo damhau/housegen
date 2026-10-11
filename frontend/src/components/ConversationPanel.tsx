@@ -470,7 +470,8 @@ function JobBlock({
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {(assistantMsg?.pictures ?? []).map((url) => (
                   <a key={url} href={url} target="_blank" rel="noreferrer">
-                    <img src={url} alt="the change" className="max-h-40 rounded border object-cover" />
+                    {/* a fixed height: the picture loading later must not push the end out of view */}
+                    <img src={url} alt="the change" className="h-40 max-w-full rounded border object-cover" />
                   </a>
                 ))}
               </div>
