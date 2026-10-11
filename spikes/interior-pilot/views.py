@@ -84,4 +84,5 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    with ws.gpu_lock():
+        asyncio.run(main())

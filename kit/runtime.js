@@ -1498,9 +1498,10 @@ function framingBounds(root) {
  * glowing shades stay as they are.
  * Which lamps: indoors, those of the rooms in view (the camera's room and the rooms open to it, less
  * for a room seen through a door: a lamp behind a wall or on another storey lights nothing in view,
- * however close), ranked by intensity, by distance and by being in front of the camera; outdoors,
- * every lamp that way. A lamp fades in or out as it gains or loses its stand-in (a dimmer, not a
- * switch) and keeps it until another one is clearly ahead (no flicker between two alike).
+ * however close), ranked by flux (a lamp's intensity, a cone's over its spread), by distance and by
+ * being in front of the camera; outdoors, every lamp that way. A lamp fades in or out as it gains or
+ * loses its stand-in (a dimmer, not a switch) and keeps it until another one is clearly ahead (no
+ * flicker between two alike).
  * The others are not dark: the room probes are captured with each room's own lamps on (aimLamps),
  * so their light off the walls is in the room's environment; a stand-in adds the direct light (the
  * pool on the table, the glow on the ceiling) of the lamps that matter for the view.
@@ -1550,9 +1551,10 @@ function lampSpots(L) {
   return (L.spots = L.lamps.map((l) => {
     const p = l.getWorldPosition(new THREE.Vector3());
     const room = roomOf([p.x, p.z], p.y, rooms);
-    // a cone also keeps where it points
+    // a cone also keeps where it points; it ranks by its flux, not its peak (a narrow beam's peak is high)
     const t = l.isSpotLight ? l.target.getWorldPosition(new THREE.Vector3()) : null;
-    return { l, p, t, key: room ? `${room.name}@${room.y}` : null, slot: null };
+    const flux = l.isSpotLight ? (l.intensity * (1 - Math.cos(l.angle))) / 2 : l.intensity;
+    return { l, p, t, flux, key: room ? `${room.name}@${room.y}` : null, slot: null };
   }));
 }
 
@@ -1603,7 +1605,7 @@ function lampScore(spot, from, inView, frustum, sphere) {
   if (!k) return 0;
   const ahead = !frustum || frustum.intersectsSphere(sphere.set(spot.p, 1.5)) ? 1 : 0.3;
   const d = spot.p.distanceTo(from) / LAMPS.reach;
-  return (k * ahead * spot.l.intensity) / (1 + d * d);
+  return (k * ahead * spot.flux) / (1 + d * d);
 }
 
 /** A stand-in on a lamp at `w` of its fade, `scale` of the lamp's own strength (setLampScale's by default). */

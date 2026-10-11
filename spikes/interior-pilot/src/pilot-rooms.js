@@ -168,7 +168,7 @@ export async function pilotBedroom(t, r) {
   t.put(layeredBed({ width: 1.6, length: 2.0 }), 3.64, -3.46);
   for (const x of [2.5, 4.78]) {
     const ns = await t.model('nightstand-round-black', x, -4.3, 0, { width: 0.42, length: 0.42, height: 0.5 });
-    t.put(globeLamp(), x, -4.3, 0, ns.userData.height ?? 0.5);
+    t.put(fx.fixture('globeTableLamp', { finish: 'black' }), x, -4.3, 0, ns.userData.height ?? 0.5);
   }
   // photographs on the ledge (leaning) and a large one on the west wall of the bed's bay
   const ledge = 1.25 + 0.03;
@@ -189,7 +189,8 @@ export async function pilotBedroom(t, r) {
   // their chevron print is off the palette: plain olive, keeping the fabric's relief
   tp.traverse((m) => { if (m.isMesh) { m.material = m.material.clone(); m.material.map = null; m.material.color.set('#6c6c4c'); } });
   t.put(tp, 3.64, -4.0, 0, 0.6);
-  await t.model('pendant-globe', 3.64, -2.85, 0, {}, 2.45 + 0.28);
+  // the benchmark's faceted cluster (images/7.png); a ceiling fixture: off by day
+  t.put(fx.fixture('facetedCluster', { drop: 0.85 }), 3.64, -2.75, 0, fx.lighting.ceilingUnderside(0, 2.45) - t.Y);
 }
 
 
@@ -305,6 +306,9 @@ export async function pilotBath(t, r) {
   t.put(mixer, wall + 0.135 - 0.024, basinAt, pi2, 0.85 + 0.004);
   const mirror = new THREE.Group(); box(mirror, [0.6, 0.75, 0.012], [0, 0, 0.006], fx.finish.mirror()); tag(mirror, 'mirror', [0.6, 0.012], { height: 0.75 });
   t.put(mirror, wall, basinAt, pi2, 1.05);
+  // an LED bar over the mirror (accent: lit by day) and a recessed downlight (ceiling: off by day)
+  t.put(fx.fixture('mirrorBar', { w: 0.6 }), wall, basinAt, pi2, 1.86);
+  t.put(fx.fixture('downlight', { mount: 'recessed', finish: 'white' }), 1.07, -3.35, 0, fx.lighting.ceilingUnderside(0, 2.45) - t.Y);
   // a marble-clad pre-wall with the Geberit Sigma20 plate (matte black), the Geberit iCon WC in front
   const wcAt = -2.74, pre = new THREE.Group(); box(pre, [0.6, 1.12, 0.18], [0, 0, 0.09], marble); tag(pre, 'WC pre-wall', [0.6, 0.18], { height: 1.12 });
   t.put(pre, wall, wcAt, pi2);
