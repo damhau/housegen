@@ -660,6 +660,8 @@ class BuilderTools:
         )
         self.last_render_errors = res.errors
         self.render_ms_total += res.duration_ms
+        # a render that loaded the scene without an error checks it as check_scene does
+        self.last_check_ok = bool(res.images) and not res.errors
         self.rendered_views.update(res.images)
         if res.images:
             self.last_rendered = list(res.images)
@@ -717,7 +719,7 @@ class BuilderTools:
         out = []
         if not self.last_check_ok:
             out.append(
-                "run check_scene (it must report zero errors) after your last edit, then call "
+                "after your last edit, run check_scene or render a view (zero errors), then call "
                 "finish again."
             )
         low = [

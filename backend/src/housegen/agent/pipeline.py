@@ -11,12 +11,13 @@ generate and modify are written as stages (build → critic rounds, apply → ve
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
 import shutil
 import unicodedata
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -362,6 +363,10 @@ class _Run:
         dst = self.storage.snapshot(n, kit=self.kit)
         for view, p in renders.items():
             shutil.copy2(p, dst / "renders" / f"{view}.jpg")
+        if renders and self.last_report is not None:
+            # the rooms and storeys the runtime reported for these pictures, kept with the version
+            # so the next job knows them without loading the scene (a heavy interior: 15-30 s)
+            _write_report(dst, self.last_report)
         last = self.last_run
         async with session_factory()() as session, session.begin():
             await crud.add_version(
@@ -443,11 +448,19 @@ class _Run:
                 verdict.model_dump(),
             )
 
-    async def prepare_interior(self, inp: _Inputs) -> None:
+    async def prepare_interior(self, inp: _Inputs, version: int | None = None) -> None:
         """A house with interiors (#45): the interior tools and audit, its rooms, and the views of
-        its storeys and rooms in the version pictures, as the interior job saves them."""
+        its storeys and rooms in the version pictures, as the interior job saves them. The rooms
+        come from the scene report kept with `version` when the working copy is that version,
+        else from a load of the scene (then kept with the version for the next job)."""
         _interior_tools(self, inp)
-        report = await self.scene_report()
+        same = version is not None and self.unchanged_since(version)
+        vdir = self.storage.versions_dir / str(version or 0)
+        report = _read_report(vdir) if same else None
+        if report is None:
+            report = await self.scene_report()
+            if same and report is not None:
+                _write_report(vdir, report)
         self.rooms = list((report or {}).get("rooms") or [])
         self.views = list(self.views) + _interior_views(report)
 
@@ -821,7 +834,7 @@ async def modify(ctx: JobContext) -> None:
         base = (await crud.get_project(session, ctx.project_id)).current_version
     inp = await run.inputs()
     if run.interior:
-        await run.prepare_interior(inp)
+        await run.prepare_interior(inp, base)
     run.base_version = base if run.unchanged_since(base) else None
 
     before = await run.before_renders(base)
@@ -1054,6 +1067,20 @@ def has_interior(scene_dir: Path) -> bool:
         _INTERIOR_IMPORT.search(p.read_text(encoding="utf-8", errors="replace"))
         for p in src.rglob("*.js")
     )
+
+
+def _write_report(version_dir: Path, report: dict[str, Any]) -> None:
+    """Keep the runtime's scene report (rooms, plan sections) with a version: report.json."""
+    kept = {k: report.get(k) for k in ("rooms", "planSections")}
+    (version_dir / "report.json").write_text(json.dumps(kept), encoding="utf-8")
+
+
+def _read_report(version_dir: Path) -> dict[str, Any] | None:
+    p = version_dir / "report.json"
+    try:
+        return dict(json.loads(p.read_text(encoding="utf-8"))) if p.exists() else None
+    except (OSError, ValueError):
+        return None
 
 
 def _interior_tools(run: _Run, inp: _Inputs) -> None:
@@ -1351,6 +1378,31 @@ def point_text(point: dict[str, Any] | None) -> str | None:
     return "## The owner pointed at this in the viewer\n" + "\n".join(lines)
 
 
+POINTED_MODULE_LINES = 300  # a module longer than this is only named, not shown
+
+
+def pointed_module(scene_dir: Path, point: dict[str, Any] | None) -> str | None:
+    """The module that builds what the owner pointed at (its name appears in it), shown in full
+    when it is not long: one read fewer before the change."""
+    name = str((point or {}).get("object") or "").strip()
+    if len(name) < 3:
+        return None
+    found = [
+        p
+        for p in sorted((scene_dir / "src").rglob("*.js"))
+        if name in p.read_text(encoding="utf-8", errors="replace")
+    ]
+    if not found:
+        return None
+    rel = found[0].relative_to(scene_dir)
+    text = found[0].read_text(encoding="utf-8", errors="replace")
+    others = ", ".join(str(p.relative_to(scene_dir)) for p in found[1:4])
+    also = f" (also named in {others})" if others else ""
+    if len(text.splitlines()) > POINTED_MODULE_LINES:
+        return f"## Where it is built\n'{name}' appears in {rel}{also}."
+    return f"## Where it is built: {rel}{also}\n```js\n{text}\n```"
+
+
 def _version_text(version: Any) -> list[str]:
     """The current version: what it is, the builder's open questions and left-out additions,
     the review's findings."""
@@ -1389,7 +1441,13 @@ def _chat_message(
     if busy:
         parts.append(CHAT_BUSY_NOTE)
     parts.extend(_version_text(version))
-    for text in (thread_text(history), file_map(scene_dir), rooms_text(rooms), point_text(point)):
+    for text in (
+        thread_text(history),
+        file_map(scene_dir),
+        rooms_text(rooms),
+        point_text(point),
+        pointed_module(scene_dir, point),
+    ):
         if text:
             parts.append(text)
     for view, p in pictures.items():
@@ -1420,7 +1478,7 @@ async def chat(ctx: JobContext) -> None:
     version = next((v for v in project.versions if v.number == base), None)
     inp = await run.inputs()
     if interior and not busy:
-        await run.prepare_interior(inp)
+        await run.prepare_interior(inp, base)
     run.tools.specs = chat_specs(can_change=not busy and base > 0, interior=interior)
     run.system = CHAT_INTERIOR_SYSTEM if interior else CHAT_SYSTEM
     run.base_version = base if run.unchanged_since(base) else None
@@ -1470,7 +1528,8 @@ async def _chat_answer(
 
 async def _chat_save(run: _Run, message: str, summary: str) -> None:
     """A small change made in the turn: a version at once, with the view that shows the change
-    in the answer; its pictures from every view follow (the answer does not wait for them)."""
+    in the answer; the turn ends there (the owner can write again) and the version's pictures
+    are drawn from its own page afterwards."""
     shown = {
         v: run.renders_dir / f"{v}.jpg"
         for v in run.tools.last_rendered
@@ -1485,12 +1544,36 @@ async def _chat_save(run: _Run, message: str, summary: str) -> None:
             pictures=pictures,
         )  # fmt: skip
     await run.ctx.emit("answer", text=summary, version=n, pictures=pictures)
-    renders = await run.render_standard()
-    dst = run.storage.versions_dir / str(n) / "renders"
-    for view, p in renders.items():
-        shutil.copy2(p, dst / f"{view}.jpg")
     await run.emit_usage()
     await run.ctx.emit("done", version=n, summary=summary, kind="edit")
+    _in_background(_version_pictures(run, n), f"pictures-{run.ctx.project_id}-{n}")
+
+
+_BACKGROUND: set[asyncio.Task[None]] = set()
+
+
+def _in_background(work: Coroutine[Any, Any, None], name: str) -> None:
+    """Work that outlives its job (a version's pictures): kept referenced until it ends."""
+    task = asyncio.create_task(work, name=name)
+    _BACKGROUND.add(task)
+    task.add_done_callback(_BACKGROUND.discard)
+
+
+async def _version_pictures(run: _Run, n: int) -> None:
+    """A version's pictures from every view, drawn from its own page (a later turn may already
+    be editing the working copy), with the scene report kept next to them."""
+    vdir = run.storage.versions_dir / str(n)
+    url = f"{run.settings.render_base_url}{run.storage.scene_url(n)}?kit={run.kit}"
+    try:
+        res = await renderer.render(url, list(run.views), vdir / "renders", quality="high")
+        if res.report is not None:
+            _write_report(vdir, res.report)
+        logger.info(
+            "chat.version_pictures",
+            extra={"project_id": run.ctx.project_id, "version": n, "views": len(res.images)},
+        )
+    except Exception:
+        logger.exception("chat.version_pictures_failed", extra={"version": n})
 
 
 def _revert_to(run: _Run, version: int | None) -> None:

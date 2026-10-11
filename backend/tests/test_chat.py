@@ -4,6 +4,7 @@ sent while the builder works, one answer at a time."""
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 from pathlib import Path
@@ -239,6 +240,7 @@ async def test_a_small_change_is_made_in_the_turn_and_saved_as_a_version(
             [ToolCallPart(id="4", name="finish", input={"summary": "Put a flower on the table."})],
         ],
     )  # fmt: skip
+    await asyncio.gather(*pipeline._BACKGROUND)  # the version's pictures, drawn after the turn
     async with session_factory()() as s:
         project = await crud.get_project(s, pid)
         assert project.current_version == 2
@@ -383,3 +385,59 @@ def test_what_the_turn_is_told_about_the_scene_and_the_point(tmp_path: Path) -> 
     assert p is not None
     assert "- object: wall" in p
     assert "x=1.00, y=2.00, z=3.00" in p
+
+
+def test_the_module_that_builds_what_was_pointed_at_is_shown(tmp_path: Path) -> None:
+    from housegen.agent.pipeline import pointed_module
+
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "furniture-first.js").write_text(
+        'const table = await fx.model("dining-table-white", { width: 1.9 });\n'
+    )
+    (tmp_path / "src" / "roof.js").write_text("export const roof = 1;\n")
+    text = pointed_module(tmp_path, {"position": [0, 0, 0], "object": "dining-table-white"})
+    assert text is not None
+    assert text.startswith("## Where it is built: src/furniture-first.js\n```js\n")
+    assert 'fx.model("dining-table-white"' in text
+    assert pointed_module(tmp_path, {"position": [0, 0, 0], "object": "sofa"}) is None
+    assert pointed_module(tmp_path, None) is None
+
+
+async def test_a_clean_render_checks_the_scene_like_check_scene(tmp_path: Path) -> None:
+    from housegen.agent.tools import BuilderTools
+    from housegen.agent.workspace import Workspace
+
+    ws = Workspace(tmp_path)
+    ws.write("src/scene.js", "export async function buildScene() {}\n")
+    tools = BuilderTools(ws, FakeRenderer(), "http://x/index.html", tmp_path / "renders")  # type: ignore[arg-type]
+    await tools.call("write_file", {"path": "src/a.js", "content": "export const a = 1;\n"})
+    assert tools.finish_blockers()
+    await tools.call("render_views", {"views": ["south-photo"]})
+    assert not tools.finish_blockers()
+    assert tools.edits == 1
+
+
+async def test_the_rooms_come_from_the_report_kept_with_the_version(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid = await _project(client)
+    st = ProjectStorage(pid)
+    rooms = [
+        {"name": "Salon", "use": "living", "area": 20, "y": 0, "polygon": [[0, 0], [4, 0], [4, 5]]}
+    ]
+    (st.versions_dir / "1" / "report.json").write_text(
+        json.dumps({"rooms": rooms, "planSections": []})
+    )
+    async with session_factory()() as s, s.begin():
+        job = await crud.create_job(s, pid, "chat", "hello")
+    renderer = FakeRenderer()
+    monkeypatch.setattr(pipeline, "renderer", renderer)
+    run = pipeline._Run(JobContext(Manager(), job.id, pid))
+    inp = await run.inputs()
+    await run.prepare_interior(inp, 1)
+    assert [r["name"] for r in run.rooms] == ["Salon"]
+    assert renderer.calls == []  # no load of the scene for its rooms
+    # the working copy changed since: the scene is loaded, and nothing is kept
+    (st.scene_dir / "src" / "garden.js").write_text("export function garden() { /* changed */ }\n")
+    await run.prepare_interior(inp, 1)
+    assert renderer.calls == [[]]

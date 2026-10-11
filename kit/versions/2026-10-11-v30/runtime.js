@@ -702,7 +702,7 @@ export async function boot(buildScene) {
   // Render on demand: only when the camera moves (or something asks for a frame). An idle page
   // costs nothing, and machines without a GPU stay responsive.
   state.needsRender = true;
-  controls.addEventListener("change", () => { state.needsRender = true; state.accumulate?.reset(); reportCamera(); });
+  controls.addEventListener("change", () => { state.needsRender = true; state.accumulate?.reset(); });
   // frame-time guard: if the first frames with effects are slow (no GPU, weak laptop),
   // drop the post-processing rather than freeze the page. Ultra is an explicit choice and
   // keeps going: it only converges more slowly.
@@ -711,7 +711,7 @@ export async function boot(buildScene) {
   renderer.setAnimationLoop((now) => {
     const u0 = FRAME_LOG ? performance.now() : 0;
     const moved = state.walk ? state.walk.update() : controls.update();
-    if (moved) reportCamera();
+    if (cameraMoved()) reportCamera();
     const updateMs = FRAME_LOG ? performance.now() - u0 : 0;
     if (moved) state.accumulate?.reset();
     // anything new on screen starts the frame at rest again from the frame itself
@@ -2869,12 +2869,13 @@ function pickAt(clientX, clientY) {
   const shown = (o) => { for (let a = o; a; a = a.parent) if (!a.visible) return false; return true; };
   const hit = ray.intersectObject(state.houseGroup, true).find((h) => h.object.isMesh && shown(h.object));
   if (!hit) return null;
+  // the piece as the scene tagged it (userData.kind and name on its root, as the kit does): a
+  // model's own mesh names ("dinnerTable_0") say nothing to the builder
   let name = null, kind = null;
   for (let o = hit.object; o && o !== state.houseGroup; o = o.parent) {
-    name ??= o.userData?.name ?? null;
-    kind ??= o.userData?.kind ?? null;
+    if (o.userData?.kind) { kind = o.userData.kind; name = o.userData.name ?? null; break; }
   }
-  name ??= hit.object.name || null;
+  if (!name) for (let o = hit.object; o && o !== state.houseGroup && !name; o = o.parent) name = o.userData?.name || o.name || null;
   const p = hit.point, rooms = sceneRooms();
   let room = null, index = null;
   rooms.forEach((r, i) => {
@@ -2926,19 +2927,34 @@ function endPick(point) {
   try { source?.postMessage({ type: "house:picked", point }, "*"); } catch { /* noop */ }
 }
 
-let cameraTimer = 0;
+let cameraTimer = 0, cameraSent = 0;
+const lastPose = { p: new THREE.Vector3(Infinity, 0, 0), q: new THREE.Quaternion() };
 
-/** The camera, once it rests, to the viewer: it gives it back to the next page it loads. */
+/** Has the camera moved or turned since the last frame (an orbit, a glide, a jump into a room)? */
+function cameraMoved() {
+  const c = state.camera;
+  if (c.position.distanceToSquared(lastPose.p) < 1e-6 && Math.abs(c.quaternion.dot(lastPose.q)) > 1 - 1e-8) return false;
+  lastPose.p.copy(c.position);
+  lastPose.q.copy(c.quaternion);
+  return true;
+}
+
+/** The camera to the viewer, which gives it back to the next page it loads: at most every half
+ * second while it moves (the walk eases on for a while: a wait for rest alone never came), and
+ * once more when it stops. */
 function reportCamera() {
   if (HEADLESS) return;
-  clearTimeout(cameraTimer);
-  cameraTimer = setTimeout(() => {
+  const send = () => {
+    cameraSent = performance.now();
     const c = state.camera, w = state.walk, r3 = (v) => Math.round(v * 1000) / 1000;
     const camera = w
       ? { walk: true, position: c.position.toArray().map(r3), yaw: r3(w.yaw) }
       : { walk: false, position: c.position.toArray().map(r3), target: state.controls.target.toArray().map(r3) };
     try { parent.postMessage({ type: "house:camera", camera }, "*"); } catch { /* noop */ }
-  }, 400);
+  };
+  clearTimeout(cameraTimer);
+  if (performance.now() - cameraSent > 500) send();
+  else cameraTimer = setTimeout(send, 400);
 }
 
 /** Back where the viewer was: walking in the same room, at the same spot and heading, or orbiting
@@ -2947,8 +2963,13 @@ async function restoreCamera(c) {
   const pos = Array.isArray(c.position) && c.position.length === 3 ? c.position : null;
   if (!pos) return;
   if (c.walk) {
-    const room = sceneRooms().filter((r) => pos[1] >= r.y && pos[1] <= r.y + (r.height ?? 2.6) + 0.5 && insidePolygon([pos[0], pos[2]], r.polygon))
-      .sort((a, b) => b.y - a.y)[0];
+    // the room the walker stood in, or at the door of (a viewpoint is often on the threshold)
+    const at2 = [pos[0], pos[2]];
+    const room = sceneRooms()
+      .filter((r) => pos[1] >= r.y && pos[1] <= r.y + (r.height ?? 2.6) + 0.5)
+      .map((r) => ({ r, d: insidePolygon(at2, r.polygon) ? 0 : distanceToPolygon(at2, r.polygon) }))
+      .filter((x) => x.d < 1.5)
+      .sort((a, b) => a.d - b.d)[0]?.r;
     if (!room) return;
     const yaw = Number(c.yaw) || 0, at = [pos[0], pos[2]];
     await startWalk(room.name, { at, look: [at[0] - Math.sin(yaw) * 2, at[1] - Math.cos(yaw) * 2] });
