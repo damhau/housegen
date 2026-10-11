@@ -325,6 +325,73 @@ MEASURE_SPEC = ToolSpec(
 )
 MEASURE_MAX_PIECES = 120  # a whole furnished house is longer: the tool says to narrow it
 
+# ---- the conversation's turn (#35): its own finish, and the two ways it ends without one ----
+
+CHAT_FINISH_SPEC = ToolSpec(
+    name="finish",
+    description=(
+        "End a small change you made yourself, once check_scene reports zero errors: a version "
+        "is saved. summary is your answer to the owner: one or two sentences, in their language, "
+        "saying what you changed (not how)."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {"summary": {"type": "string"}},
+        "required": ["summary"],
+        "additionalProperties": False,
+    },
+)
+HAND_OVER_SPEC = ToolSpec(
+    name="hand_over",
+    description=(
+        "Give a change to the builder, who has the plans, the photographs and a few minutes: "
+        "anything bigger than a small local change. request is what it gets and what the owner "
+        "sees as 'Applying: …': one precise sentence or a short paragraph, in the owner's "
+        "language, with what the conversation clarified. While another job runs, the change "
+        "waits for it to end. kind 'interior' furnishes the house from the floor plans again "
+        "(rooms, partitions, furniture): only when the owner asks to furnish or redo the whole "
+        "interior; every other change is 'modify'."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "request": {"type": "string"},
+            "kind": {"type": "string", "enum": ["modify", "interior"]},
+            "reply": {
+                "type": "string",
+                "description": "one short line to the owner before the work starts (optional)",
+            },
+        },
+        "required": ["request"],
+        "additionalProperties": False,
+    },
+)
+RESTORE_SPEC = ToolSpec(
+    name="restore_version",
+    description=(
+        "Go back to a saved version ('undo', 'go back to version 4'): its files become the "
+        "scene again and a new version records it. 'Undo' is the version before the current one."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {"number": {"type": "integer", "minimum": 1}},
+        "required": ["number"],
+        "additionalProperties": False,
+    },
+)
+_WORKSPACE_READ = ("list_files", "read_file", "inspect_image")
+
+
+def chat_specs(can_change: bool, interior: bool) -> list[ToolSpec]:
+    """The chat turn's tools: reading, and with `can_change` (no other job running) editing,
+    rendering, finishing a small change and going back to a version; handing over always."""
+    if not can_change:
+        return [t for t in TOOL_SPECS if t.name in _WORKSPACE_READ] + [HAND_OVER_SPEC]
+    specs = [t for t in TOOL_SPECS if t.name != "finish"]
+    if interior:
+        specs += [CHECK_PLAN_SPEC, MEASURE_SPEC]
+    return [*specs, CHAT_FINISH_SPEC, HAND_OVER_SPEC, RESTORE_SPEC]
+
 
 def format_measure(layout: dict[str, Any] | None, room: str | None, storey: int | None) -> str:
     """The measure tool's text from the scene's layout report (kit/layout.js layoutReport)."""
@@ -502,7 +569,9 @@ class BuilderTools:
         self.on_render = on_render
         self.last_render_errors: list[str] = []
         self.rendered_views: set[str] = set()
+        self.last_rendered: list[str] = []  # the views of the latest render_views call
         self.last_check_ok = False
+        self.edits = 0  # workspace changes made through these tools
         self.render_ms_total = 0  # every render this instance ran (per-turn deltas, #13)
         self.default_quality = "medium"  # in-loop renders when the model gives no quality (#18)
         self.sheet_labels: dict[int, str] = {}  # plan sheet number → the intake's label (its scale)
@@ -559,20 +628,24 @@ class BuilderTools:
 
     async def write_file(self, a: dict[str, Any]) -> ToolOutput:
         self.last_check_ok = False
+        self.edits += 1
         return [TextPart(text=self.ws.write(str(a["path"]), str(a["content"])))], False
 
     async def edit_file(self, a: dict[str, Any]) -> ToolOutput:
         self.last_check_ok = False
+        self.edits += 1
         return [
             TextPart(text=self.ws.edit(str(a["path"]), str(a["old_string"]), str(a["new_string"])))
         ], False
 
     async def apply_patch(self, a: dict[str, Any]) -> ToolOutput:
         self.last_check_ok = False
+        self.edits += 1
         return [TextPart(text=self.ws.apply_patch(str(a["patch"])))], False
 
     async def delete_file(self, a: dict[str, Any]) -> ToolOutput:
         self.last_check_ok = False
+        self.edits += 1
         return [TextPart(text=self.ws.delete(str(a["path"])))], False
 
     async def render_views(self, a: dict[str, Any]) -> ToolOutput:
@@ -588,6 +661,8 @@ class BuilderTools:
         self.last_render_errors = res.errors
         self.render_ms_total += res.duration_ms
         self.rendered_views.update(res.images)
+        if res.images:
+            self.last_rendered = list(res.images)
         if self.on_render:
             await self.on_render(res.images, res.errors)
         content: list[TextPart | ImagePart] = []

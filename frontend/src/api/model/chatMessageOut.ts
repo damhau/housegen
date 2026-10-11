@@ -6,6 +6,7 @@
  */
 import type { ChatMessageOutJobId } from './chatMessageOutJobId';
 import type { ChatMessageOutVersionNumber } from './chatMessageOutVersionNumber';
+import type { ChatMessageOutPoint } from './chatMessageOutPoint';
 
 export interface ChatMessageOut {
   id: string;
@@ -14,5 +15,7 @@ export interface ChatMessageOut {
   job_id: ChatMessageOutJobId;
   version_number: ChatMessageOutVersionNumber;
   attachments?: string[];
+  point?: ChatMessageOutPoint;
+  pictures?: string[];
   created_at: string;
 }

@@ -25,6 +25,7 @@ import type {
 
 import type {
   BodyAddPlanDocument,
+  BodyChatTurn,
   BodyCreateProject,
   BodyInterior,
   BodyModify,
@@ -1158,6 +1159,196 @@ export const useModify = <TError = HTTPValidationError,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * One message of the conversation (#35): the assistant answers, asks back, makes a small
+change itself, or hands a bigger one to the builder (now, or once the running job ends).
+It may be sent while the builder works; one answer at a time.
+ * @summary Chat Turn
+ */
+export const getChatTurnUrl = (projectId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/chat`
+}
+
+export const chatTurn = async (projectId: string,
+    bodyChatTurn: BodyChatTurn, options?: RequestInit): Promise<JobOut> => {
+    const formData = new FormData();
+if(bodyChatTurn.message !== undefined) {
+ formData.append(`message`, bodyChatTurn.message)
+ }
+if(bodyChatTurn.photos !== undefined) {
+ bodyChatTurn.photos.forEach(value => formData.append(`photos`, value));
+ }
+if(bodyChatTurn.keep !== undefined) {
+ formData.append(`keep`, bodyChatTurn.keep.toString())
+ }
+if(bodyChatTurn.apply_review_of !== undefined && bodyChatTurn.apply_review_of !== null) {
+ formData.append(`apply_review_of`, bodyChatTurn.apply_review_of.toString())
+ }
+if(bodyChatTurn.point !== undefined && bodyChatTurn.point !== null) {
+ formData.append(`point`, bodyChatTurn.point)
+ }
+
+  return httpClient<JobOut>(getChatTurnUrl(projectId),
+  {      
+    ...options,
+    method: 'POST'
+    ,
+    body: 
+      formData,
+  }
+);}
+
+
+
+
+export const getChatTurnMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatTurn>>, TError,{projectId: string;data: BodyChatTurn}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof chatTurn>>, TError,{projectId: string;data: BodyChatTurn}, TContext> => {
+
+const mutationKey = ['chatTurn'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof chatTurn>>, {projectId: string;data: BodyChatTurn}> = (props) => {
+          const {projectId,data} = props ?? {};
+
+          return  chatTurn(projectId,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChatTurnMutationResult = NonNullable<Awaited<ReturnType<typeof chatTurn>>>
+    export type ChatTurnMutationBody = BodyChatTurn
+    export type ChatTurnMutationError = HTTPValidationError
+
+    /**
+ * @summary Chat Turn
+ */
+export const useChatTurn = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatTurn>>, TError,{projectId: string;data: BodyChatTurn}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof chatTurn>>,
+        TError,
+        {projectId: string;data: BodyChatTurn},
+        TContext
+      > => {
+
+      const mutationOptions = getChatTurnMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * @summary Chat History
+ */
+export const getChatHistoryUrl = (projectId: string,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/chat`
+}
+
+export const chatHistory = async (projectId: string, options?: RequestInit): Promise<ChatMessageOut[]> => {
+  
+  return httpClient<ChatMessageOut[]>(getChatHistoryUrl(projectId),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getChatHistoryQueryKey = (projectId?: string,) => {
+    return [
+    `/api/v1/projects/${projectId}/chat`
+    ] as const;
+    }
+
+    
+export const getChatHistoryQueryOptions = <TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getChatHistoryQueryKey(projectId);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof chatHistory>>> = ({ signal }) => chatHistory(projectId, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(projectId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type ChatHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof chatHistory>>>
+export type ChatHistoryQueryError = HTTPValidationError
+
+
+export function useChatHistory<TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(
+ projectId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof chatHistory>>,
+          TError,
+          Awaited<ReturnType<typeof chatHistory>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useChatHistory<TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(
+ projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof chatHistory>>,
+          TError,
+          Awaited<ReturnType<typeof chatHistory>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useChatHistory<TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(
+ projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Chat History
+ */
+
+export function useChatHistory<TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(
+ projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getChatHistoryQueryOptions(projectId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+/**
  * Build the interior of the current scene from the floor plans: rooms, partitions, doors,
 furniture and lights, checked against the plan sheets (#33).
  * @summary Interior
@@ -1700,105 +1891,6 @@ export function useJobEvents<TData = Awaited<ReturnType<typeof jobEvents>>, TErr
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getJobEventsQueryOptions(projectId,jobId,params,options)
-
-  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
-
-  query.queryKey = queryOptions.queryKey ;
-
-  return query;
-}
-
-
-
-/**
- * @summary Chat History
- */
-export const getChatHistoryUrl = (projectId: string,) => {
-
-
-  
-
-  return `/api/v1/projects/${projectId}/chat`
-}
-
-export const chatHistory = async (projectId: string, options?: RequestInit): Promise<ChatMessageOut[]> => {
-  
-  return httpClient<ChatMessageOut[]>(getChatHistoryUrl(projectId),
-  {      
-    ...options,
-    method: 'GET'
-    
-    
-  }
-);}
-
-
-
-
-
-export const getChatHistoryQueryKey = (projectId?: string,) => {
-    return [
-    `/api/v1/projects/${projectId}/chat`
-    ] as const;
-    }
-
-    
-export const getChatHistoryQueryOptions = <TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getChatHistoryQueryKey(projectId);
-
-  
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof chatHistory>>> = ({ signal }) => chatHistory(projectId, { signal, ...requestOptions });
-
-      
-
-      
-
-   return  { queryKey, queryFn, enabled: !!(projectId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
-}
-
-export type ChatHistoryQueryResult = NonNullable<Awaited<ReturnType<typeof chatHistory>>>
-export type ChatHistoryQueryError = HTTPValidationError
-
-
-export function useChatHistory<TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(
- projectId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>> & Pick<
-        DefinedInitialDataOptions<
-          Awaited<ReturnType<typeof chatHistory>>,
-          TError,
-          Awaited<ReturnType<typeof chatHistory>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof httpClient>}
- , queryClient?: QueryClient
-  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useChatHistory<TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(
- projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>> & Pick<
-        UndefinedInitialDataOptions<
-          Awaited<ReturnType<typeof chatHistory>>,
-          TError,
-          Awaited<ReturnType<typeof chatHistory>>
-        > , 'initialData'
-      >, request?: SecondParameter<typeof httpClient>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-export function useChatHistory<TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(
- projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
- , queryClient?: QueryClient
-  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
-/**
- * @summary Chat History
- */
-
-export function useChatHistory<TData = Awaited<ReturnType<typeof chatHistory>>, TError = HTTPValidationError>(
- projectId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof chatHistory>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
- , queryClient?: QueryClient 
- ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
-
-  const queryOptions = getChatHistoryQueryOptions(projectId,options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

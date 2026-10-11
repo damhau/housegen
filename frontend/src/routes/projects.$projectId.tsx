@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
 import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Sofa, Square, Trash2 } from "lucide-react"
@@ -9,20 +9,20 @@ import {
   getListProjectsQueryKey,
   useCancelJob,
   useChatHistory,
+  useChatTurn,
   useDeleteProject,
   useGenerate,
   useInterior,
   useGetProject,
   useIntake,
   useListJobs,
-  useModify,
   useRestoreVersion,
   useFixVersion,
   useRunEstimate,
   useShareProject,
   useRevokeShare,
 } from "@/api/endpoints/projects/projects"
-import type { IntakeAnswer } from "@/api/model"
+import type { IntakeAnswer, PointOut } from "@/api/model"
 import { BuildingPlaceholder } from "@/components/BuildingPlaceholder"
 import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
@@ -81,7 +81,7 @@ function ProjectPage() {
   const generate = useGenerate()
   const intake = useIntake()
   const cancel = useCancelJob()
-  const modify = useModify()
+  const chatTurn = useChatTurn()
   const furnish = useInterior()
   const restore = useRestoreVersion()
   const fix = useFixVersion()
@@ -95,6 +95,8 @@ function ProjectPage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [furnishOpen, setFurnishOpen] = useState(false)
+  // what the owner pointed at in the viewer, sent with the next message (#35)
+  const [point, setPoint] = useState<PointOut | null>(null)
 
   // the job to follow: the most recent one that is still running (or interrupted by a server
   // restart: it resumes with the same id), else the most recent one at all
@@ -104,13 +106,22 @@ function ProjectPage() {
   )
   const latestJob = jobs.data?.[0] ?? null
   const followed = activeJob ?? latestJob
+  // the conversation goes on while the builder works (#35): only a turn waiting for its answer
+  // holds the composer
+  const isRunning = (s: string) => s === "running" || s === "queued" || s === "interrupted"
+  const chatRunning = jobs.data?.some((j) => j.kind === "chat" && isRunning(j.status)) ?? false
+  const building = jobs.data?.some((j) => j.kind !== "chat" && isRunning(j.status)) ?? false
 
+  // a conversation's turn reloads the viewer only when it saved a version (its `version` event
+  // does that): an answer leaves the scene, and the owner's view of it, alone (#35)
+  const followedKind = useRef<string | null>(null)
+  followedKind.current = followed?.kind ?? null
   const refreshAll = () => {
     void qc.invalidateQueries({ queryKey: getGetProjectQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getListProjectsQueryKey() })
-    setReloadKey((k) => k + 1)
+    if (followedKind.current !== "chat") setReloadKey((k) => k + 1)
   }
   const idle = activeJob === null
   const genEstimate = useRunEstimate(projectId, { kind: "generate" }, { query: { enabled: idle, staleTime: 60_000 } })
@@ -156,7 +167,7 @@ function ProjectPage() {
   if (project.error || !project.data)
     return <div className="p-6 text-sm text-destructive">{project.error ? errorMessage(project.error) : "not found"}</div>
   const p = project.data
-  const busy = Boolean(activeJob) || generate.isPending || intake.isPending || modify.isPending
+  const busy = Boolean(activeJob) || generate.isPending || intake.isPending || chatTurn.isPending
   const hasPhotos = p.photos.length > 0
   // no photos: the plans are read first (intake job); the build starts from the answers
   const needsIntake = !hasPhotos && p.intake === null
@@ -174,15 +185,28 @@ function ProjectPage() {
   const genTitle = genEstimate.data ? `${genEstimate.data.basis === "history" ? `from ${genEstimate.data.samples} previous run(s)` : "typical run"} · ${genEstimate.data.model}` : undefined
 
   async function onSend(text: string, photos: File[] = [], keep = true, applyReviewOf?: number) {
-    // OpenAPI describes file fields as `string` (format: binary); the generated call builds
-    // a FormData, so File objects are what actually goes over the wire
-    await modify.mutateAsync({
+    // every message goes to the conversation's turn (#35): it answers, asks back, makes a small
+    // change itself or hands a bigger one to the builder. OpenAPI describes file fields as
+    // `string` (format: binary); the generated call builds a FormData, so File objects are what
+    // actually goes over the wire
+    await chatTurn.mutateAsync({
       projectId,
-      data: { message: text, photos: photos as unknown as string[], keep, apply_review_of: applyReviewOf ?? null },
+      data: {
+        message: text,
+        photos: photos as unknown as string[],
+        keep,
+        apply_review_of: applyReviewOf ?? null,
+        point: point ? JSON.stringify(point) : null,
+      },
     })
+    setPoint(null)
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
+  }
+  async function onCancelJob(jobId: string) {
+    await cancel.mutateAsync({ projectId, jobId })
+    void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
   }
   async function onStop() {
     if (!activeJob) return
@@ -365,6 +389,15 @@ function ProjectPage() {
           projectId={projectId}
           coverUrl={version ? (version.render_urls.southeast ?? Object.values(version.render_urls)[0] ?? null) : null}
           versionNumber={version?.number ?? null}
+          onPoint={
+            p.current_version > 0
+              ? (picked) => {
+                  if (!picked) return
+                  setPoint(picked)
+                  setTab("conversation")
+                }
+              : undefined
+          }
           placeholder={
             <BuildingPlaceholder
               running={Boolean(activeJob)}
@@ -404,9 +437,13 @@ function ProjectPage() {
                 hasPhotos={hasPhotos}
                 intake={p.intake}
                 liveJob={{ jobId: followed?.id ?? null, events, live, progress, liveText, liveThought, elapsed }}
-                busy={busy}
+                busy={chatRunning || chatTurn.isPending || generate.isPending || intake.isPending}
+                working={building}
                 disabled={p.current_version === 0}
                 estimate={p.current_version > 0 && idle ? estimateText(modEstimate.data) : null}
+                point={point}
+                onClearPoint={() => setPoint(null)}
+                onCancelJob={(id) => void onCancelJob(id)}
                 onSend={onSend}
                 onAnswer={onAnswer}
               />

@@ -11,7 +11,7 @@ from starlette.responses import Response
 from starlette.staticfiles import PathLike
 from starlette.types import Scope
 
-from housegen.agent.pipeline import resume_interrupted_jobs
+from housegen.agent.pipeline import resume_interrupted_jobs, start_all_waiting, start_waiting
 from housegen.api.v1 import router as api_router
 from housegen.core.config import get_settings
 from housegen.core.db import dispose_db, init_db
@@ -64,6 +64,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     resumed = await resume_interrupted_jobs(job_manager)
     if resumed:
         logger.info("app.resumed_jobs", extra={"count": resumed})
+    # a change asked in the chat while a job ran starts when the project's jobs end (#35)
+    job_manager.on_finished = lambda project_id: start_waiting(job_manager, project_id)
+    await start_all_waiting(job_manager)
     yield
     await job_manager.shutdown()
     await renderer.close()

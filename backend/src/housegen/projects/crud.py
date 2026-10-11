@@ -254,12 +254,14 @@ async def create_job(
     kind: str,
     request_text: str = "",
     settings: dict[str, Any] | None = None,
+    status: str = "queued",
 ) -> Job:
     job = Job(
         project_id=project_id,
         kind=kind,
         request_text=request_text,
         settings_json=json.dumps(settings) if settings else None,
+        status=status,
     )
     session.add(job)
     await session.flush()
@@ -286,11 +288,25 @@ async def list_jobs(session: AsyncSession, project_id: str) -> list[Job]:
 UNFINISHED = ("queued", "running", "interrupted")
 
 
-async def active_job(session: AsyncSession, project_id: str) -> Job | None:
-    res = await session.execute(
-        select(Job).where(Job.project_id == project_id, Job.status.in_(UNFINISHED))
-    )
+async def active_job(
+    session: AsyncSession, project_id: str, kinds: tuple[str, ...] | None = None
+) -> Job | None:
+    """The project's job that is not over (of `kinds` when given), if any."""
+    query = select(Job).where(Job.project_id == project_id, Job.status.in_(UNFINISHED))
+    if kinds is not None:
+        query = query.where(Job.kind.in_(kinds))
+    res = await session.execute(query)
     return res.scalars().first()
+
+
+async def waiting_jobs(session: AsyncSession, project_id: str | None = None) -> list[Job]:
+    """The changes waiting for a running job to end (#35), oldest first; of every project
+    without `project_id`."""
+    query = select(Job).where(Job.status == "waiting")
+    if project_id is not None:
+        query = query.where(Job.project_id == project_id)
+    res = await session.execute(query.order_by(Job.created_at))
+    return list(res.scalars().all())
 
 
 async def list_unfinished_jobs(session: AsyncSession) -> list[Job]:
@@ -375,6 +391,8 @@ async def add_chat_message(
     job_id: str | None = None,
     version_number: int | None = None,
     attachments: list[str] | None = None,
+    point: dict[str, Any] | None = None,
+    pictures: list[str] | None = None,
 ) -> ChatMessage:
     m = ChatMessage(
         project_id=project_id,
@@ -383,6 +401,8 @@ async def add_chat_message(
         job_id=job_id,
         version_number=version_number,
         attachments_json=json.dumps(attachments) if attachments else None,
+        point_json=json.dumps(point, ensure_ascii=False) if point else None,
+        pictures_json=json.dumps(pictures) if pictures else None,
     )
     session.add(m)
     await session.flush()

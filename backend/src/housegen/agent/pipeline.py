@@ -16,6 +16,7 @@ import logging
 import re
 import shutil
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,9 @@ from housegen.agent.metrics import Role, RunMetrics, TurnMetric
 from housegen.agent.progress import LiveProgress
 from housegen.agent.prompts import (
     BUILDER_SYSTEM,
+    CHAT_BUSY_NOTE,
+    CHAT_INTERIOR_SYSTEM,
+    CHAT_SYSTEM,
     FIRST_RUN_ADDENDUM,
     INTERIOR_SYSTEM,
     MODIFY_ADDENDUM,
@@ -34,7 +38,7 @@ from housegen.agent.prompts import (
     PLAN_ONLY_ADDENDUM,
     RESUME_ADDENDUM,
 )
-from housegen.agent.run_settings import ResolvedRunSettings, resolve
+from housegen.agent.run_settings import ResolvedRunSettings, RunSettings, resolve
 from housegen.agent.schemas import Critique, Intake, Verification
 from housegen.agent.tools import (
     CHECK_PLAN_SPEC,
@@ -42,6 +46,7 @@ from housegen.agent.tools import (
     TOOL_SPECS,
     BuilderTools,
     ImageSources,
+    chat_specs,
 )
 from housegen.agent.workspace import Workspace
 from housegen.core.config import Settings, get_settings
@@ -384,8 +389,18 @@ class _Run:
         return n
 
     async def build(
-        self, messages: list[Message], system: str | None = None, max_steps: int | None = None
+        self,
+        messages: list[Message],
+        system: str | None = None,
+        max_steps: int | None = None,
+        *,
+        effort: str | None = None,
+        cache_key: str | None = None,
+        end_tools: frozenset[str] = frozenset(),
+        reply_ok: Callable[[], bool] | None = None,
     ) -> str:
+        """A builder pass; the chat turn (#35) runs the same loop with its own effort, cache key
+        (the project's: one conversation), ending tools and plain answers."""
         run = await run_builder(
             self.provider,
             self.rs.model,
@@ -394,11 +409,13 @@ class _Run:
             self.tools,
             max_steps=max_steps or self.rs.max_steps,
             max_tokens=self.rs.max_tokens,
-            effort=self.rs.builder_effort,
-            cache_key=self.ctx.job_id,
+            effort=effort or self.rs.builder_effort,
+            cache_key=cache_key or self.ctx.job_id,
             prune_above_tokens=self.settings.BUILDER_PRUNE_ABOVE_TOKENS,
             on_step=self.on_step,
             progress=lambda step: LiveProgress(self.ctx, "builder", step=step, show_text=True),
+            end_tools=end_tools,
+            reply_ok=reply_ok,
         )
         self.usage = self.usage + run.usage
         self.last_run = run
@@ -778,13 +795,15 @@ def _elevation_sheets(intake: Intake | None, pages: list[Path], limit: int = 4) 
 
 
 async def _emit_critic(ctx: JobContext, iteration: int, verdict: Critique) -> None:
+    seen = not (isinstance(verdict, Verification) and not verdict.visible)
     await ctx.emit(
         "critic",
         iteration=iteration,
-        score=verdict.overall_score,
+        score=verdict.overall_score if seen else None,
         done=verdict.done,
         summary=verdict.summary,
         issues=[i.model_dump() for i in verdict.issues],
+        **({} if seen else {"visible": False}),
     )
 
 
@@ -1065,7 +1084,16 @@ def _plain(text: str) -> str:
 # words of a request (English and French) → the room uses they name: the room views a
 # modification of a house with interiors is checked on (#45)
 _USE_WORDS: dict[str, tuple[str, ...]] = {
-    "bath": ("bathroom", "bath", "shower", "salle de bain", "salle d'eau", "douche", "baignoire"),
+    "bath": (
+        "bathroom",
+        "bath",
+        "shower",
+        "salle de bain",
+        "salle d'eau",
+        "sdb",
+        "douche",
+        "baignoire",
+    ),
     "wc": ("wc", "toilet", "toilette", "toilettes"),
     "bedroom": ("bedroom", "bed", "beds", "chambre", "lit", "lits"),
     "kitchen": ("kitchen", "cuisine"),
@@ -1268,6 +1296,306 @@ async def interior(ctx: JobContext) -> None:
 
 
 # --------------------------------------------------------------------------
+# chat (#35): the conversation's turn: answer, ask back, make a small change itself, hand a big
+# one to the builder, go back to a version
+# --------------------------------------------------------------------------
+
+# the jobs that change the scene: while one runs, the chat only reads, and a change waits for it
+BUILD_KINDS = ("intake", "generate", "modify", "interior")
+CHAT_END_TOOLS = frozenset({"hand_over", "restore_version"})
+CHAT_PICTURES = ("aerial", "south-photo", "south")  # the current version's, two at most
+
+
+def _module_gist(text: str) -> str:
+    """What a module is about: its first comment line, else what it exports."""
+    for line in text.splitlines()[:6]:
+        t = line.strip()
+        if t.startswith("//"):
+            return t.lstrip("/").strip()[:120]
+        if t.startswith("/*"):
+            return t.strip("/*").strip()[:120]
+    names = re.findall(r"export\s+(?:async\s+)?(?:function|const|let|class)\s+(\w+)", text)
+    return f"exports {', '.join(names[:8])}" if names else ""
+
+
+def file_map(scene_dir: Path) -> str:
+    """The scene's modules, each with its size and what it is about: where to look first."""
+    lines = []
+    for p in sorted((scene_dir / "src").rglob("*.js")):
+        text = p.read_text(encoding="utf-8", errors="replace")
+        gist = _module_gist(text)
+        lines.append(
+            f"- {p.relative_to(scene_dir)} ({len(text.splitlines())} lines)"
+            + (f": {gist}" if gist else "")
+        )
+    return "## The scene's modules\n" + ("\n".join(lines) or "(none)")
+
+
+def point_text(point: dict[str, Any] | None) -> str | None:
+    """What the owner pointed at in the viewer with this message."""
+    if not point:
+        return None
+    pos = point.get("position") or []
+    lines = []
+    if point.get("room"):
+        n = point.get("room_index")
+        lines.append(f"- room: {point['room']}" + (f" (view room-{n})" if n else ""))
+    if point.get("object") or point.get("kind"):
+        what = point.get("object") or point.get("kind")
+        kind = f" ({point['kind']})" if point.get("kind") and point.get("object") else ""
+        lines.append(f"- object: {what}{kind}")
+    if len(pos) == 3:
+        lines.append(
+            f"- the spot: x={pos[0]:.2f}, y={pos[1]:.2f}, z={pos[2]:.2f} (scene metres; y up)"
+        )
+    return "## The owner pointed at this in the viewer\n" + "\n".join(lines)
+
+
+def _version_text(version: Any) -> list[str]:
+    """The current version: what it is, the builder's open questions and left-out additions,
+    the review's findings."""
+    if version is None:
+        return ["## The current version\nNone yet: the scene has not been built."]
+    out = [f"## The current version: {version.number} ({version.kind}), {version.label}\n"
+           f"{version.summary}"]  # fmt: skip
+    questions = json.loads(version.questions_json) if version.questions_json else []
+    if questions:
+        out.append("## The builder's open questions\n" + "\n".join(f"- {q}" for q in questions))
+    left = json.loads(version.suggestions_json) if version.suggestions_json else []
+    if left:
+        out.append(
+            "## What the builder left out on purpose (the owner may ask for it)\n"
+            + "\n".join(f"- {x}" for x in left)
+        )
+    if version.critique_json:
+        review = Critique.model_validate_json(version.critique_json)
+        if review.issues:
+            out.append(f"## The review of version {version.number}\n{review.as_builder_feedback()}")
+    return out
+
+
+def _chat_message(
+    message: str,
+    busy: bool,
+    version: Any,
+    history: list[Any],
+    scene_dir: Path,
+    rooms: list[dict[str, Any]],
+    point: dict[str, Any] | None,
+    pictures: dict[str, Path],
+    attachments: list[Path],
+) -> list[ImagePart | str]:
+    parts: list[ImagePart | str] = []
+    if busy:
+        parts.append(CHAT_BUSY_NOTE)
+    parts.extend(_version_text(version))
+    for text in (thread_text(history), file_map(scene_dir), rooms_text(rooms), point_text(point)):
+        if text:
+            parts.append(text)
+    for view, p in pictures.items():
+        parts.append(ImagePart.from_file(p, label=f"The current version — {view}"))
+    for i, p in enumerate(attachments, 1):
+        parts.append(ImagePart.from_file(p, label=f"Photograph the owner attached {i}"))
+    parts.append(f"## The owner's message\n{message}")
+    return parts
+
+
+async def chat(ctx: JobContext) -> None:
+    """The conversation's turn (#35): one call with the thread; it answers, asks back, makes a
+    small change itself (a version, its view of the change in the answer), hands a bigger one
+    to the builder (now, or once the running job ends) or restores a version."""
+    storage = ProjectStorage(ctx.project_id)
+    interior = has_interior(storage.scene_dir)
+    run = await _Run.create(ctx, kit=kit_with("interior.js") if interior else None)
+    run.interior = interior
+    async with session_factory()() as session:
+        job = await crud.get_job(session, ctx.job_id)
+        project = await crud.get_project(session, ctx.project_id)
+        history = await crud.list_chat(session, ctx.project_id)
+        busy = await crud.active_job(session, ctx.project_id, BUILD_KINDS) is not None
+    message = job.request_text
+    own = [m for m in history if m.job_id == ctx.job_id and m.role == "user"]
+    point = own[-1].point if own else None
+    base = project.current_version
+    version = next((v for v in project.versions if v.number == base), None)
+    inp = await run.inputs()
+    if interior and not busy:
+        await run.prepare_interior(inp)
+    run.tools.specs = chat_specs(can_change=not busy and base > 0, interior=interior)
+    run.system = CHAT_INTERIOR_SYSTEM if interior else CHAT_SYSTEM
+    run.base_version = base if run.unchanged_since(base) else None
+    vdir = storage.versions_dir / str(base) / "renders"
+    pictures = {v: vdir / f"{v}.jpg" for v in CHAT_PICTURES if (vdir / f"{v}.jpg").exists()}
+    pictures = dict(list(pictures.items())[:2])
+    thread = [m for m in history if m.job_id != ctx.job_id]
+    parts = _chat_message(
+        message, busy, version, thread, storage.scene_dir, run.rooms, point, pictures,
+        inp.attachments,
+    )  # fmt: skip
+    await ctx.emit("phase", name="chat", message="Reading your message")
+    await run.build(
+        [Message.user(*parts)],
+        max_steps=run.settings.CHAT_MAX_STEPS,
+        effort=run.rs.chat_effort,
+        cache_key=f"chat-{ctx.project_id}",
+        end_tools=CHAT_END_TOOLS,
+        reply_ok=lambda: run.tools.edits == 0,
+    )
+    last = run.last_run
+    assert last is not None
+    if last.ended_by == "hand_over":
+        await _chat_hand_over(run, last.end_input, last.summary, busy, message)
+    elif last.ended_by == "restore_version":
+        await _chat_restore(run, int(last.end_input.get("number") or 0), last.summary)
+    elif last.ended_by == "finish" or (run.tools.edits and run.tools.last_check_ok):
+        await _chat_save(run, message, last.summary)
+    elif run.tools.edits:
+        # a change it could not finish in its steps: the builder does it from the saved version
+        await _chat_hand_over(run, {"request": message}, "", busy, message)
+    else:
+        await _chat_answer(run, last.summary or "Sorry, I could not answer that. Try again?")
+
+
+async def _chat_answer(
+    run: _Run, text: str, version: int | None = None, pictures: list[str] | None = None, **done: Any
+) -> None:
+    async with session_factory()() as session, session.begin():
+        await crud.add_chat_message(
+            session, run.ctx.project_id, "assistant", text, run.ctx.job_id, version,
+            pictures=pictures,
+        )  # fmt: skip
+    await run.emit_usage()
+    await run.ctx.emit("done", version=version, summary=text, **done)
+
+
+async def _chat_save(run: _Run, message: str, summary: str) -> None:
+    """A small change made in the turn: a version at once, with the view that shows the change
+    in the answer; its pictures from every view follow (the answer does not wait for them)."""
+    shown = {
+        v: run.renders_dir / f"{v}.jpg"
+        for v in run.tools.last_rendered
+        if (run.renders_dir / f"{v}.jpg").exists()
+    }
+    label = " ".join(message.split())[:80] or "Small change"
+    n = await run.snapshot("edit", label, summary, None, shown)
+    pictures = [f"{run.storage.scene_url(n).rsplit('/', 1)[0]}/renders/{v}.jpg" for v in shown]
+    async with session_factory()() as session, session.begin():
+        await crud.add_chat_message(
+            session, run.ctx.project_id, "assistant", summary, run.ctx.job_id, n,
+            pictures=pictures,
+        )  # fmt: skip
+    await run.ctx.emit("answer", text=summary, version=n, pictures=pictures)
+    renders = await run.render_standard()
+    dst = run.storage.versions_dir / str(n) / "renders"
+    for view, p in renders.items():
+        shutil.copy2(p, dst / f"{view}.jpg")
+    await run.emit_usage()
+    await run.ctx.emit("done", version=n, summary=summary, kind="edit")
+
+
+def _revert_to(run: _Run, version: int | None) -> None:
+    """Put the working copy back to the saved version the turn started from (its own edits go)."""
+    if version and run.tools.edits:
+        run.storage.restore(version)
+
+
+async def _chat_hand_over(
+    run: _Run, end: dict[str, Any], reply: str, busy: bool, message: str
+) -> None:
+    """A change for the builder: a modification (or the interior job) with the turn's request,
+    started now, or waiting for the running job to end."""
+    request = str(end.get("request") or "").strip() or message
+    kind = "interior" if end.get("kind") == "interior" else "modify"
+    _revert_to(run, run.base_version)
+    async with session_factory()() as session, session.begin():
+        project = await crud.get_project(session, run.ctx.project_id)
+        stored = RunSettings.model_validate(project.settings) if project.settings else RunSettings()
+        new = await crud.create_job(
+            session,
+            run.ctx.project_id,
+            kind,
+            request,
+            settings=resolve(get_settings(), stored).model_dump(),
+            status="waiting" if busy else "queued",
+        )
+    if not busy:
+        run.ctx.manager.submit(new.id, run.ctx.project_id, JOB_BODIES[kind])
+    text = str(end.get("reply") or reply or "").strip() or (
+        "I'll do that as soon as the current job ends."
+        if busy
+        else "This needs the builder: it takes a few minutes."
+    )
+    await _chat_answer(run, text, handed_over=new.id, waiting=busy)
+
+
+async def restore_to(session: Any, project_id: str, number: int) -> int:
+    """Make a saved version the scene again, recorded as a new version (its pictures copied);
+    returns the new version's number."""
+    await crud.get_version(session, project_id, number)
+    st = ProjectStorage(project_id)
+    st.restore(number)
+    n = st.next_version_number()
+    dst = st.snapshot(n, kit=st.version_kit(number))
+    src_renders = st.versions_dir / str(number) / "renders"
+    if src_renders.exists():
+        shutil.copytree(src_renders, dst / "renders", dirs_exist_ok=True)
+    await crud.add_version(
+        session, project_id, n, "restore", f"Restored version {number}",
+        f"Restored from version {number}.",
+    )  # fmt: skip
+    return n
+
+
+async def _chat_restore(run: _Run, number: int, reply: str) -> None:
+    async with session_factory()() as session, session.begin():
+        project = await crud.get_project(session, run.ctx.project_id)
+        if number not in {v.number for v in project.versions}:
+            known = ", ".join(str(v.number) for v in project.versions[-5:])
+            text = f"There is no version {number}" + (f" (the latest: {known})." if known else ".")
+            await crud.add_chat_message(
+                session, run.ctx.project_id, "assistant", text, run.ctx.job_id
+            )
+            n = None
+        else:
+            n = await restore_to(session, run.ctx.project_id, number)
+            await crud.update_job(session, run.ctx.job_id, result_version=n)
+            text = reply.strip() or f"Back to version {number}, saved as version {n}."
+            await crud.add_chat_message(
+                session, run.ctx.project_id, "assistant", text, run.ctx.job_id, n
+            )
+    if n is not None:
+        await run.ctx.emit(
+            "version", number=n, kind="restore", label=f"Restored version {number}", summary=text,
+            critic_score=None, scene_url=run.storage.scene_url(n),
+            render_urls=run.storage.render_urls(n),
+        )  # fmt: skip
+    await run.emit_usage()
+    await run.ctx.emit("done", version=n, summary=text)
+
+
+async def start_waiting(manager: JobManager, project_id: str) -> str | None:
+    """When a project's job ends: its oldest waiting change starts (#35). Returns its id."""
+    async with session_factory()() as session, session.begin():
+        if await crud.active_job(session, project_id, BUILD_KINDS):
+            return None
+        waiting = await crud.waiting_jobs(session, project_id)
+        if not waiting:
+            return None
+        job = waiting[0]
+        await crud.update_job(session, job.id, status="queued")
+    manager.submit(job.id, project_id, JOB_BODIES[job.kind])
+    logger.info("job.waiting_started", extra={"job_id": job.id, "project_id": project_id})
+    return job.id
+
+
+async def start_all_waiting(manager: JobManager) -> int:
+    """At startup: the waiting changes of projects with nothing running start. How many."""
+    async with session_factory()() as session:
+        projects = {j.project_id for j in await crud.waiting_jobs(session)}
+    return sum([await start_waiting(manager, pid) is not None for pid in sorted(projects)])
+
+
+# --------------------------------------------------------------------------
 # resume (#7): continue an interrupted job from its files after a server restart
 # --------------------------------------------------------------------------
 
@@ -1379,8 +1707,31 @@ async def resume(ctx: JobContext) -> None:
         await interior(ctx)
     elif job.kind == "generate":
         await _resume_generate(ctx, progress)
+    elif job.kind == "chat":
+        await _resume_chat(ctx, progress)
     else:
         await _resume_modify(ctx, job, progress)
+
+
+async def _resume_chat(ctx: JobContext, progress: _Progress) -> None:
+    """A turn is short: it starts again from the message, its unfinished edits undone (the
+    working copy back to the current version). A turn that had saved its version is over."""
+    if progress.versions:
+        await ctx.emit("done", version=progress.versions[-1], summary=progress.builder_summary)
+        return
+    async with session_factory()() as session:
+        project = await crud.get_project(session, ctx.project_id)
+        events = await crud.list_job_events(session, ctx.job_id)
+    edited = any(
+        e.type == "builder_step" and json.loads(e.payload_json).get("tool") in _WRITE_TOOLS
+        for e in events
+    )
+    if edited and project.current_version > 0:
+        ProjectStorage(ctx.project_id).restore(project.current_version)
+    await chat(ctx)
+
+
+_WRITE_TOOLS = ("write_file", "edit_file", "apply_patch", "delete_file")
 
 
 async def _resume_generate(ctx: JobContext, progress: _Progress) -> None:
@@ -1470,3 +1821,13 @@ async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None
         Message.user(*_modify_message(request, history, inp, after, resume=True, rooms=run.rooms))
     ]
     await _modify_apply(run, inp, request, messages, kept)
+
+
+# what each kind of job runs (the router starts them; a chat turn hands over to them)
+JOB_BODIES = {
+    "intake": intake,
+    "generate": generate,
+    "modify": modify,
+    "interior": interior,
+    "chat": chat,
+}

@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # cap and tried to measure renders). OpenAI: none…xhigh; Anthropic: low…max.
     BUILDER_EFFORT: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = "xhigh"
     CRITIC_EFFORT: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = "medium"
+    # the conversation's turn (#35): answers, asks back, makes a small change itself or hands a
+    # big one to the builder; seconds per answer, a small change in well under a minute
+    CHAT_EFFORT: Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"] = "medium"
     LLM_TIMEOUT_S: float = 600.0
     # USD per million tokens, by model: input (uncached), cached input (cache read), output;
     # optional cache_write. Seeded from public list prices (#13); override in .env with a JSON
@@ -61,6 +64,9 @@ class Settings(BaseSettings):
 
     # agent loop
     BUILDER_MAX_STEPS: int = 60
+    # a chat turn's steps at most: a small change is a read, a patch, a render, a check (#35);
+    # one that needs more is handed to the builder
+    CHAT_MAX_STEPS: int = 14
     # Old render screenshots are dropped from the builder's history only once a turn's prompt
     # exceeds this many tokens (0 = never). Rewriting history costs a prompt-cache miss on the
     # whole prefix (a full-price turn, often two), which outweighs the images it saves by an

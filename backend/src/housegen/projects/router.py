@@ -35,6 +35,7 @@ from housegen.projects.schemas import (
     JobOut,
     PhotoOut,
     PlanDocumentOut,
+    PointOut,
     ProjectOut,
     ProjectSummaryOut,
     SceneFileOut,
@@ -297,14 +298,6 @@ async def delete_project(session: DbSession, project_id: str) -> None:
     shutil.rmtree(ProjectStorage(project_id).root, ignore_errors=True)
 
 
-_PIPELINES = {
-    "intake": pipeline.intake,
-    "generate": pipeline.generate,
-    "modify": pipeline.modify,
-    "interior": pipeline.interior,
-}
-
-
 async def _start_job(
     session: DbSession,
     project_id: str,
@@ -312,9 +305,14 @@ async def _start_job(
     request_text: str = "",
     photos: list[UploadFile] | None = None,
     keep_photos: bool = True,
+    point: dict[str, object] | None = None,
 ) -> Job:
     project = await crud.get_project(session, project_id)
-    if await crud.active_job(session, project_id):
+    if kind == "chat":
+        # the conversation goes on while the builder works (#35): one answer at a time
+        if await crud.active_job(session, project_id, ("chat",)):
+            raise ConflictError("wait for the answer to your last message")
+    elif await crud.active_job(session, project_id):
         raise ConflictError("a job is already running for this project")
     # the job runs with a snapshot of the project's settings taken now (#18)
     resolved = resolve(get_settings(), _run_settings(project))
@@ -345,10 +343,10 @@ async def _start_job(
         # the request is the user's turn of the conversation (a modification, or the answers
         # to the intake's questions that start a build)
         await crud.add_chat_message(
-            session, project_id, "user", request_text, job.id, attachments=attachments
+            session, project_id, "user", request_text, job.id, attachments=attachments, point=point
         )
     await session.commit()
-    job_manager.submit(job.id, project_id, _PIPELINES[kind])
+    job_manager.submit(job.id, project_id, pipeline.JOB_BODIES[kind])
     logger.info(
         "jobs.started", extra={"job_id": job.id, "kind": kind, "attachments": len(attachments)}
     )
@@ -479,6 +477,53 @@ async def modify(
     )
 
 
+@router.post("/{project_id}/chat", status_code=202)
+async def chat_turn(
+    session: DbSession,
+    project_id: str,
+    message: Annotated[str, Form(max_length=4000)] = "",
+    photos: Annotated[
+        list[UploadFile],
+        File(description="photos of the detail to change or ask about (optional)"),
+    ] = [],  # noqa: B006
+    keep: Annotated[
+        bool,
+        Form(description="also keep the attached photos as reference photos of the project"),
+    ] = True,
+    apply_review_of: Annotated[
+        int | None,
+        Form(description="also apply the stored review findings of this version (the current one)"),
+    ] = None,
+    point: Annotated[
+        str | None,
+        Form(description="what the owner pointed at in the viewer: PointOut as JSON (optional)"),
+    ] = None,
+) -> JobOut:
+    """One message of the conversation (#35): the assistant answers, asks back, makes a small
+    change itself, or hands a bigger one to the builder (now, or once the running job ends).
+    It may be sent while the builder works; one answer at a time."""
+    project = await crud.get_project(session, project_id)
+    if project.current_version == 0:
+        raise ConflictError("generate the scene before talking about it")
+    if len(photos) > 12:
+        raise InvalidInputError("at most 12 photos per message")
+    text = message.strip()
+    if apply_review_of is not None:
+        review = await _review_request(session, project, apply_review_of)
+        text = f"{review}\n\nAlso:\n{text}" if text else review
+    if not text:
+        raise InvalidInputError("say something, or apply a review")
+    pointed = None
+    if point:
+        try:
+            pointed = PointOut.model_validate_json(point).model_dump(exclude_none=True)
+        except ValueError as e:
+            raise InvalidInputError(f"invalid point: {e}") from e
+    return JobOut.model_validate(
+        await _start_job(session, project_id, "chat", text, photos, keep, point=pointed)
+    )
+
+
 @router.post("/{project_id}/interior", status_code=202)
 async def interior(
     session: DbSession,
@@ -547,6 +592,12 @@ async def cancel_job(session: DbSession, project_id: str, job_id: str) -> JobOut
     job = await crud.get_job(session, job_id)
     if job.project_id != project_id:
         raise NotFoundError("job not found")
+    if job.status == "waiting":
+        # a change asked while another job ran (#35): it never starts
+        await crud.update_job(session, job_id, status="cancelled")
+        await session.commit()
+        await session.refresh(job)
+        return JobOut.model_validate(job)
     if not job_manager.cancel(job_id):
         raise ConflictError("the job is not running")
     logger.info("jobs.cancel", extra={"job_id": job_id, "project_id": project_id})
@@ -603,6 +654,8 @@ def _chat_out(m: ChatMessage, st: ProjectStorage) -> ChatMessageOut:
         job_id=m.job_id,
         version_number=m.version_number,
         attachments=[st.photo_url(f) for f in m.attachments],
+        point=PointOut.model_validate(m.point) if m.point else None,
+        pictures=m.pictures,
         created_at=m.created_at,
     )
 
@@ -619,22 +672,7 @@ async def restore_version(session: DbSession, project_id: str, number: int) -> P
     project = await crud.get_project(session, project_id)
     if await crud.active_job(session, project_id):
         raise ConflictError("a job is running for this project")
-    await crud.get_version(session, project_id, number)
-    st = ProjectStorage(project_id)
-    st.restore(number)
-    n = st.next_version_number()
-    dst = st.snapshot(n, kit=st.version_kit(number))
-    src_renders = st.versions_dir / str(number) / "renders"
-    if src_renders.exists():
-        shutil.copytree(src_renders, dst / "renders", dirs_exist_ok=True)
-    await crud.add_version(
-        session,
-        project_id,
-        n,
-        "restore",
-        f"Restored version {number}",
-        f"Restored from version {number}.",
-    )
+    n = await pipeline.restore_to(session, project_id, number)
     await session.commit()
     await session.refresh(project)
     logger.info("versions.restored", extra={"project_id": project_id, "from": number, "to": n})

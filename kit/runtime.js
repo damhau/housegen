@@ -630,6 +630,10 @@ export async function boot(buildScene) {
     if (d.type === "house:tour") (d.on ? startTour() : Promise.resolve(stopTour())).catch((err) => recordError(err?.message ?? err));
     if (d.type === "house:dollhouse") (typeof d.index === "number" && d.index >= 0 ? showDollhouse(d.index) : endDollhouse());
     if (d.type === "house:surroundings") setSurroundings(d.mode);
+    // the viewer's Point button (#35): the next click names what it is on, for the chat
+    if (d.type === "house:pick") (d.on ? startPick(e.source) : endPick(null));
+    // a page loaded again (a new version, another look) where the viewer was (#35)
+    if (d.type === "house:camera" && d.camera) restoreCamera(d.camera).catch((err) => recordError(err?.message ?? err));
     if (d.type === "house:sun") {
       // the viewer's Sun panel (#49): the real sun for a day and an hour, or the page's own again
       const study = sunStudy();
@@ -689,12 +693,16 @@ export async function boot(buildScene) {
       sun: Boolean(PRESENTATION && state.context?.aligned && state.context?.place),
       // the storeys with a floor plan, for the dollhouse view (house:dollhouse { index })
       storeys: storeys().map((st, index) => ({ index, y: st.y, rooms: st.plan.userData.rooms.length })),
+      // this renderer names what a click is on (house:pick → house:picked) and reports its camera
+      // (house:camera), which the viewer gives back to the next page it loads (#35)
+      pick: true,
+      camera: true,
     }, "*");
   } catch { /* noop */ }
   // Render on demand: only when the camera moves (or something asks for a frame). An idle page
   // costs nothing, and machines without a GPU stay responsive.
   state.needsRender = true;
-  controls.addEventListener("change", () => { state.needsRender = true; state.accumulate?.reset(); });
+  controls.addEventListener("change", () => { state.needsRender = true; state.accumulate?.reset(); reportCamera(); });
   // frame-time guard: if the first frames with effects are slow (no GPU, weak laptop),
   // drop the post-processing rather than freeze the page. Ultra is an explicit choice and
   // keeps going: it only converges more slowly.
@@ -703,6 +711,7 @@ export async function boot(buildScene) {
   renderer.setAnimationLoop((now) => {
     const u0 = FRAME_LOG ? performance.now() : 0;
     const moved = state.walk ? state.walk.update() : controls.update();
+    if (moved) reportCamera();
     const updateMs = FRAME_LOG ? performance.now() - u0 : 0;
     if (moved) state.accumulate?.reset();
     // anything new on screen starts the frame at rest again from the frame itself
@@ -2847,7 +2856,111 @@ function sceneRooms() {
  * First-person walk (kit/walk.js): into `roomName`, else a hall, else the largest room; with no floor
  * plan, from where the camera stands. Already walking: jump to that room.
  */
-async function startWalk(roomName) {
+// ---- the chat's view of the scene (#35): what the owner points at, where the camera is ----
+
+/** What is under a canvas point: the spot (scene metres), the object (its name, else its kind),
+ * the room it is in (its room-N number) and the storey; null on the sky. */
+function pickAt(clientX, clientY) {
+  if (!state.houseGroup) return null;
+  const canvas = state.renderer.domElement, rect = canvas.getBoundingClientRect();
+  const ray = new THREE.Raycaster();
+  ray.layers.enable(MERGED_LAYER); // the walk draws merged copies: the originals keep the names
+  ray.setFromCamera(new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1), state.camera);
+  const shown = (o) => { for (let a = o; a; a = a.parent) if (!a.visible) return false; return true; };
+  const hit = ray.intersectObject(state.houseGroup, true).find((h) => h.object.isMesh && shown(h.object));
+  if (!hit) return null;
+  let name = null, kind = null;
+  for (let o = hit.object; o && o !== state.houseGroup; o = o.parent) {
+    name ??= o.userData?.name ?? null;
+    kind ??= o.userData?.kind ?? null;
+  }
+  name ??= hit.object.name || null;
+  const p = hit.point, rooms = sceneRooms();
+  let room = null, index = null;
+  rooms.forEach((r, i) => {
+    if (p.y < r.y - 0.05 || p.y > r.y + (r.height ?? 2.6) + 0.4 || !insidePolygon([p.x, p.z], r.polygon)) return;
+    if (!room || r.y > room.y) { room = r; index = i + 1; }
+  });
+  const storey = room ? storeys().findIndex((s) => Math.abs(s.y - room.y) < 0.01) + 1 : 0;
+  const r2 = (v) => Math.round(v * 100) / 100;
+  return { position: [r2(p.x), r2(p.y), r2(p.z)], object: name, kind, room: room?.name ?? null, room_index: index, storey: storey || null };
+}
+
+let picking = null;
+
+function startPick(source) {
+  endPick(null);
+  const canvas = state.renderer.domElement;
+  let down = null;
+  // ahead of the orbit, the walk and the dollhouse: this click is the owner's answer, not a move
+  const onDown = (e) => { down = [e.clientX, e.clientY]; e.stopImmediatePropagation(); };
+  const onUp = (e) => {
+    e.stopImmediatePropagation();
+    if (!down || Math.hypot(e.clientX - down[0], e.clientY - down[1]) > 6) { down = null; return; }
+    const rect = canvas.getBoundingClientRect();
+    const locked = document.pointerLockElement === canvas; // the walk's crosshair
+    endPick(locked ? pickAt(rect.left + rect.width / 2, rect.top + rect.height / 2) : pickAt(e.clientX, e.clientY));
+  };
+  const onKey = (e) => { if (e.key === "Escape") endPick(null); };
+  canvas.addEventListener("pointerdown", onDown, true);
+  canvas.addEventListener("pointerup", onUp, true);
+  window.addEventListener("keydown", onKey, true);
+  const cursor = canvas.style.cursor;
+  canvas.style.cursor = "crosshair";
+  picking = {
+    source,
+    off: () => {
+      canvas.removeEventListener("pointerdown", onDown, true);
+      canvas.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("keydown", onKey, true);
+      canvas.style.cursor = cursor;
+    },
+  };
+}
+
+function endPick(point) {
+  if (!picking) return;
+  const { source, off } = picking;
+  picking = null;
+  off();
+  try { source?.postMessage({ type: "house:picked", point }, "*"); } catch { /* noop */ }
+}
+
+let cameraTimer = 0;
+
+/** The camera, once it rests, to the viewer: it gives it back to the next page it loads. */
+function reportCamera() {
+  if (HEADLESS) return;
+  clearTimeout(cameraTimer);
+  cameraTimer = setTimeout(() => {
+    const c = state.camera, w = state.walk, r3 = (v) => Math.round(v * 1000) / 1000;
+    const camera = w
+      ? { walk: true, position: c.position.toArray().map(r3), yaw: r3(w.yaw) }
+      : { walk: false, position: c.position.toArray().map(r3), target: state.controls.target.toArray().map(r3) };
+    try { parent.postMessage({ type: "house:camera", camera }, "*"); } catch { /* noop */ }
+  }, 400);
+}
+
+/** Back where the viewer was: walking in the same room, at the same spot and heading, or orbiting
+ * from the same point around the same target. */
+async function restoreCamera(c) {
+  const pos = Array.isArray(c.position) && c.position.length === 3 ? c.position : null;
+  if (!pos) return;
+  if (c.walk) {
+    const room = sceneRooms().filter((r) => pos[1] >= r.y && pos[1] <= r.y + (r.height ?? 2.6) + 0.5 && insidePolygon([pos[0], pos[2]], r.polygon))
+      .sort((a, b) => b.y - a.y)[0];
+    if (!room) return;
+    const yaw = Number(c.yaw) || 0, at = [pos[0], pos[2]];
+    await startWalk(room.name, { at, look: [at[0] - Math.sin(yaw) * 2, at[1] - Math.cos(yaw) * 2] });
+    return;
+  }
+  if (!Array.isArray(c.target) || c.target.length !== 3) return;
+  stopWalk();
+  state.views.custom = { pos, target: new THREE.Vector3(...c.target) };
+  await setView("custom");
+}
+
+async function startWalk(roomName, given = null) {
   endDollhouse();
   const rooms = sceneRooms();
   const room = rooms.find((r) => r.name === roomName)
@@ -2861,7 +2974,7 @@ async function startWalk(roomName) {
     state.walk.sync();
   }
   if (state.walk) {
-    if (room) state.walk.jumpTo(room, givenView(room));
+    if (room) state.walk.jumpTo(room, given ?? givenView(room));
     return;
   }
   const { Walk } = await import("./walk.js");
@@ -2882,7 +2995,7 @@ async function startWalk(roomName) {
     state.controls.enabled = false;
     state.walk = new Walk({ camera, canvas: state.renderer.domElement, root: state.houseGroup, renderer: state.renderer,
       onChange: () => { state.needsRender = true; } });
-    if (room) state.walk.jumpTo(room, givenView(room));
+    if (room) state.walk.jumpTo(room, given ?? givenView(room));
     window.__walk = state.walk; // debugging
     if (!HEADLESS) {
       mergeHouse();

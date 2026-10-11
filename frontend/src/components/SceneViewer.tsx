@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { Columns2, Footprints, Image as ImageIcon, LogOut, Map as MapIcon, Mountain, Pause, Play, Ruler, Sparkles, Sun, Trees } from "lucide-react"
+import { Columns2, Crosshair, Footprints, Image as ImageIcon, LogOut, Map as MapIcon, Mountain, Pause, Play, Ruler, Sparkles, Sun, Trees } from "lucide-react"
 import { useKits } from "@/api/endpoints/meta/meta"
 import { useGetSurroundings } from "@/api/endpoints/surroundings/surroundings"
-import type { KitInfo } from "@/api/model"
+import type { KitInfo, PointOut } from "@/api/model"
 import { FloorPlanDialog, type PlanReply } from "@/components/FloorPlanDialog"
 import { SurfacesDialog } from "@/components/SurfacesDialog"
 import type { QuantitiesReply } from "@/components/report/types"
@@ -35,6 +35,9 @@ const CHROME = "relative overflow-hidden rounded-xl border bg-[#d9e0e4]"
 
 /** A room of the scene's floor plans, as the scene page announces it (walk mode). */
 type Room = { name: string; use?: string; area?: number }
+
+/** Where the camera is, as the scene page reports it once it rests (#35): given back to the next page. */
+type SceneCamera = { walk: boolean; position: number[]; target?: number[]; yaw?: number }
 
 const TOUCH = typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches
 
@@ -91,6 +94,7 @@ export function SceneViewer({
   autoTour = false,
   coverUrl = null,
   versionNumber = null,
+  onPoint,
 }: {
   sceneUrl: string | null
   reloadKey?: string | number
@@ -112,6 +116,8 @@ export function SceneViewer({
   coverUrl?: string | null
   /** the version on screen (the surfaces report names it) */
   versionNumber?: number | null
+  /** the Point button (#35): what the owner clicked in the scene, for the chat (null: cancelled) */
+  onPoint?: (point: PointOut | null) => void
 }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const refB = useRef<HTMLIFrameElement>(null)
@@ -152,6 +158,13 @@ export function SceneViewer({
   const [sunOpen, setSunOpen] = useState(false)
   const [sunHoursProgress, setSunHoursProgress] = useState<{ done: number; total: number } | null>(null)
   const [readyCount, setReadyCount] = useState(0)
+  // the chat's view of the scene (#35): the renderer names what a click is on; the camera the last
+  // page reported, given back to the next page loaded (a new version, another look)
+  const [pickable, setPickable] = useState(false)
+  const [picking, setPicking] = useState(false)
+  const lastCamera = useRef<SceneCamera | null>(null)
+  const onPointRef = useRef(onPoint)
+  onPointRef.current = onPoint
   // the real surroundings (#39): drawn by the scene page in the Final and Ultra looks only
   const surroundings = useGetSurroundings(projectId ?? "", { query: { enabled: Boolean(projectId) } })
   const ctx = projectId ? (surroundings.data?.exists ? surroundings.data : null) : null
@@ -201,6 +214,8 @@ export function SceneViewer({
     setSurroundingsMode(null)
     setSunAvailable(false)
     setSurroundingsOpen(false)
+    setPickable(false)
+    setPicking(false)
     frameReady.current = false
     if (src === null) return
     const onMsg = (e: MessageEvent) => {
@@ -225,6 +240,9 @@ export function SceneViewer({
         phase?: string
         loaded?: number
         id?: number
+        pick?: boolean
+        camera?: boolean | SceneCamera
+        point?: PointOut | null
       }
       if (d?.type === "house:ready") {
         setReady(true)
@@ -236,7 +254,12 @@ export function SceneViewer({
         setMeasurable(d.quantities === true)
         setStoreys(Array.isArray(d.storeys) ? d.storeys : [])
         setSunAvailable(d.sun === true)
+        setPickable(d.pick === true)
         setReadyCount((n) => n + 1)
+        // back where the owner was on the page before (a new version, another look)
+        if (d.camera === true && lastCamera.current) {
+          ref.current?.contentWindow?.postMessage({ type: "house:camera", camera: lastCamera.current }, "*")
+        }
         const switchable = d.surroundings === "3d" || d.surroundings === "photo"
         setSurroundingsMode(switchable ? wantedSurroundings.current : null)
         // a page loaded again (another look, another version) keeps the switch where the viewer left it
@@ -247,6 +270,11 @@ export function SceneViewer({
           autoTourDone.current = true
           ref.current?.contentWindow?.postMessage({ type: "house:tour", on: true }, "*")
         }
+      }
+      if (d?.type === "house:camera" && d.camera && typeof d.camera === "object") lastCamera.current = d.camera
+      if (d?.type === "house:picked") {
+        setPicking(false)
+        onPointRef.current?.(d.point ?? null)
       }
       if (d?.type === "house:walking") setWalking(!!d.on)
       if (d?.type === "house:dollhouse") setDollhouse(typeof d.index === "number" ? d.index : null)
@@ -306,6 +334,12 @@ export function SceneViewer({
     ref.current?.contentWindow?.postMessage({ type: "house:dollhouse", index }, "*")
   }
 
+  function pick(on: boolean) {
+    setPicking(on)
+    ref.current?.contentWindow?.postMessage({ type: "house:pick", on }, "*")
+    if (on) ref.current?.focus() // Esc in the scene cancels
+  }
+
   function playTour(on: boolean) {
     ref.current?.contentWindow?.postMessage({ type: "house:tour", on }, "*")
     if (on) ref.current?.focus() // a key pressed in the scene then stops it
@@ -338,6 +372,8 @@ export function SceneViewer({
       : loading?.total
         ? `loading… ${Math.min(loading.loaded ?? 0, loading.total)}/${loading.total}`
         : "loading…"
+  ) : picking ? (
+    "click what you mean · Esc cancels"
   ) : progress ? (
     `refining ${progress.count}/${progress.total}`
   ) : tour?.on ? (
@@ -538,6 +574,18 @@ export function SceneViewer({
                 </Button>
               )}
             </>
+          )}
+          {ready && !compare && pickable && onPoint && (
+            <Button
+              size="sm"
+              variant={picking ? "secondary" : "ghost"}
+              className="h-7 px-2"
+              title="Point at something in the scene for your next message: the chat then knows what “this” or “here” means"
+              onClick={() => pick(!picking)}
+            >
+              <Crosshair className="size-3.5" />
+              Point
+            </Button>
           )}
           {ready && !compare && look !== "fast" && sunAvailable && (
             <Button

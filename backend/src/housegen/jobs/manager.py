@@ -63,6 +63,9 @@ class JobManager:
         self._subscribers: dict[str, list[asyncio.Queue[Event | None]]] = {}
         self._shutting_down = False
         self._stopped: set[str] = set()  # jobs the owner asked to stop (vs a deploy)
+        # called with the project's id when one of its jobs ends (not at shutdown): the chat's
+        # waiting changes start then (#35)
+        self.on_finished: Callable[[str], Awaitable[object]] | None = None
 
     def submit(self, job_id: str, project_id: str, body: JobBody) -> None:
         """Run `body` for the job. The same job id may be submitted again after a restart:
@@ -109,6 +112,11 @@ class JobManager:
             self._fanout(job_id, None)
             self._tasks.pop(job_id, None)
             self._stopped.discard(job_id)
+            if self.on_finished is not None and not self._shutting_down:
+                try:
+                    await self.on_finished(ctx.project_id)
+                except Exception:
+                    logger.exception("job.on_finished_failed", extra={"job_id": job_id})
 
     def cancel(self, job_id: str) -> bool:
         """Stop a running job now at the owner's request: it ends `cancelled`, is never resumed,

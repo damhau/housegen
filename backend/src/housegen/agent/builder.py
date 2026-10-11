@@ -93,6 +93,10 @@ class BuilderRun:
     # from `finish`: optional additions left out on purpose, and questions for the owner
     suggestions: list[str] = field(default_factory=list)
     questions: list[str] = field(default_factory=list)
+    # how the turn ended: "finish", an `end_tools` name (the chat's hand_over…), "reply" (a
+    # plain answer the loop accepted), "" (the step budget ran out); the ending tool's input
+    ended_by: str = ""
+    end_input: dict[str, Any] = field(default_factory=dict)
 
 
 def _str_list(value: Any, limit: int) -> list[str]:
@@ -133,6 +137,8 @@ def _arg_preview(name: str, args: dict[str, Any]) -> str:
         return ", ".join(f.strip() for f in files)[:200]
     if name == "finish":
         return str(args.get("summary", ""))[:200]
+    if name == "hand_over":
+        return str(args.get("request", ""))[:200]
     return json.dumps(args)[:120]
 
 
@@ -151,6 +157,8 @@ async def run_builder(
     effort: str | None = None,
     cache_key: str | None = None,
     prune_above_tokens: int = 200_000,
+    end_tools: frozenset[str] = frozenset(),
+    reply_ok: Callable[[], bool] | None = None,
 ) -> BuilderRun:
     """Drive the tool loop until `finish` is called or the step budget is spent.
 
@@ -158,6 +166,10 @@ async def run_builder(
     (e.g. feed critic feedback) in a later call. `progress(step)` returns a LiveProgress
     scope used to stream the model's progress for that step. Old render screenshots are dropped
     from `messages` only once a turn's prompt exceeds `prune_above_tokens` (0 = never).
+
+    The conversation's turn (#35) ends in more ways: a call of one of `end_tools` ends the loop
+    like `finish` (its input in `end_input`), and a message without tool calls is the answer
+    itself when `reply_ok()` says so (nothing was changed).
     """
     run = BuilderRun(messages=messages)
     nudges = 0
@@ -272,6 +284,11 @@ async def run_builder(
         if not calls:
             # no tool call: the model thinks it is done. Insist on the finish protocol, then accept.
             await emit_turn(turn)
+            if completion.stop_reason != "max_tokens" and reply_ok is not None and reply_ok():
+                run.summary = text
+                run.finished = True
+                run.ended_by = "reply"
+                break
             if completion.stop_reason == "max_tokens":
                 messages.append(
                     Message.user(
@@ -323,6 +340,7 @@ async def run_builder(
                 run.suggestions = _str_list(call.input.get("suggestions"), 8)
                 run.questions = _str_list(call.input.get("questions"), 4)
                 run.finished = True
+                run.ended_by = "finish"
                 turn.tool_calls.append(
                     ToolCallMetric(name="finish", args=_arg_preview("finish", call.input))
                 )
@@ -334,6 +352,27 @@ async def run_builder(
                             "tool": "finish",
                             "args": _arg_preview("finish", call.input),
                             "result": "finished",
+                            "step": run.steps,
+                        }
+                    )
+                continue
+
+            if call.name in end_tools:
+                run.summary = run.summary or text
+                run.finished = True
+                run.ended_by = call.name
+                run.end_input = dict(call.input)
+                turn.tool_calls.append(
+                    ToolCallMetric(name=call.name, args=_arg_preview(call.name, call.input))
+                )
+                results.append(ToolResultPart(tool_call_id=call.id, content=[TextPart(text="ok")]))
+                if on_step:
+                    await on_step(
+                        {
+                            "kind": "tool",
+                            "tool": call.name,
+                            "args": _arg_preview(call.name, call.input),
+                            "result": "ok",
                             "step": run.steps,
                         }
                     )

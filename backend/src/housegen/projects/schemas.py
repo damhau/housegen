@@ -199,6 +199,17 @@ class GenerateRequest(BaseModel):
         return "\n\n".join(lines)
 
 
+class PointOut(BaseModel):
+    """What the owner pointed at in the 3D viewer (#35): the spot, the object, its room."""
+
+    position: list[float] = Field(description="[x, y, z] in scene metres")
+    object: str | None = Field(default=None, description="what the object is, e.g. 'sofa'")
+    kind: str | None = Field(default=None, description="its userData.kind: furniture, wall…")
+    room: str | None = None
+    room_index: int | None = Field(default=None, description="1-based: the room-N view")
+    storey: int | None = None
+
+
 class ChatMessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -208,6 +219,10 @@ class ChatMessageOut(BaseModel):
     version_number: int | None
     # photos attached to a modification request (#8), as URLs
     attachments: list[str] = []
+    # what the owner pointed at in the viewer with this message (#35)
+    point: PointOut | None = None
+    # an answer's pictures: a quick edit's view of the change (#35), as URLs
+    pictures: list[str] = []
     created_at: datetime
 
 

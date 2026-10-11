@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, ChevronDown, ChevronRight, Hammer, ImagePlus, Loader2, MessageCircleQuestion, Play, ScanSearch, Send, Square, Wrench, X } from "lucide-react"
+import { AlertTriangle, ChevronDown, ChevronRight, Clock, Crosshair, Hammer, ImagePlus, Loader2, MessageCircleQuestion, Play, ScanSearch, Send, Sparkles, Square, Wrench, X } from "lucide-react"
 import { useJobEvents } from "@/api/endpoints/projects/projects"
-import type { ChatMessageOut, IntakeAnswer, IntakeOut, JobOut, SceneVersionOut } from "@/api/model"
+import type { ChatMessageOut, IntakeAnswer, IntakeOut, JobOut, PointOut, SceneVersionOut } from "@/api/model"
 import { JobTimeline, ScoreBadge } from "@/components/JobTimeline"
 import { Markdown } from "@/components/Markdown"
 import { Button } from "@/components/ui/button"
@@ -44,8 +44,12 @@ export function ConversationPanel({
   intake,
   liveJob,
   busy,
+  working = false,
   disabled,
   estimate = null,
+  point = null,
+  onClearPoint,
+  onCancelJob,
   onSend,
   onAnswer,
 }: {
@@ -58,9 +62,17 @@ export function ConversationPanel({
   /** the intake's reading of the plans (projects without photos), with its questions */
   intake: IntakeOut | null
   liveJob: LiveJob
+  /** the composer waits: an answer is on its way (or a build is being started) */
   busy: boolean
+  /** the builder is at work: messages still go (answers now, changes after it, #35) */
+  working?: boolean
   /** no version yet: nothing to modify */
   disabled: boolean
+  /** what the owner pointed at in the viewer, sent with the next message (#35) */
+  point?: PointOut | null
+  onClearPoint?: () => void
+  /** stop a change that waits for the running job */
+  onCancelJob?: (jobId: string) => void
   /** "~8 min · ~$2": what the next modification would roughly cost (#18) */
   estimate?: string | null
   /** a modification request, with optional photos of the detail to change (#8) and, with
@@ -91,8 +103,12 @@ export function ConversationPanel({
   }, [jobs, messages, versions])
   // messages that belong to no job (none today; kept so nothing in the history is ever hidden)
   const orphans = useMemo(() => messages.filter((m) => !m.job_id || !jobs.some((j) => j.id === m.job_id)), [messages, jobs])
-  const lastAssistantTurn = [...turns].reverse().find((t) => t.assistantMsg || t.version)
   const lastJob = turns[turns.length - 1]?.job
+  // what is open on the current version (the builder's questions and left-out additions, the
+  // review's findings), at the end of the conversation whatever was said since (#35)
+  const current = versions.find((v) => v.number === currentVersion)
+  const currentIssues = current?.critique?.issues.length ?? 0
+  const lastSettled = lastJob === undefined || !["running", "queued", "interrupted"].includes(lastJob.status)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" })
@@ -116,10 +132,14 @@ export function ConversationPanel({
   const placeholder = disabled
     ? "Generate the scene first"
     : busy
-      ? "The agent is working… you can write when it is done"
+      ? "Answering…"
       : files.length > 0
         ? "What should change, as the photos show it?"
-        : "Ask for a change… (drop or paste a photo of the detail to change)"
+        : point
+          ? "What about it? (“put a vase on this”, “why is it so low?”)"
+          : working
+            ? "Ask a question, or for a change: it waits for the builder to finish"
+            : "Ask a question or for a change… (drop a photo, or Point at something in the scene)"
 
   return (
     <div className="flex h-full flex-col">
@@ -142,18 +162,24 @@ export function ConversationPanel({
               projectId={projectId}
               turn={t}
               liveJob={liveJob}
-              isLastAnswer={t === lastAssistantTurn}
-              currentVersion={currentVersion}
               hasPhotos={hasPhotos}
               // the intake's questions are answered on its own turn, only while nothing came after it
               intakeToAnswer={t.job.kind === "intake" && t.job.status === "done" && t.job === lastJob && intake?.job_id === t.job.id ? intake : null}
               // chips need a version to modify (busy || disabled); the intake form only needs no job running
-              anyJobRunning={busy}
-              busy={busy || disabled}
-              onSend={(txt, applyReviewOf) => void send(txt, applyReviewOf)}
+              anyJobRunning={busy || working}
               onAnswer={onAnswer}
+              onCancel={onCancelJob}
             />
           ))}
+          {current && lastSettled && !busy && !working && !disabled && (
+            <ContinueForm
+              key={current.number}
+              suggestions={current.suggestions ?? []}
+              questions={current.questions ?? []}
+              review={currentIssues > 0 ? { version: current.number, issues: currentIssues } : null}
+              onSend={(txt, applyReviewOf) => void send(txt, applyReviewOf)}
+            />
+          )}
         </div>
         <div ref={bottomRef} />
       </div>
@@ -168,6 +194,14 @@ export function ConversationPanel({
           addFiles(e.dataTransfer.files)
         }}
       >
+        {point && (
+          <div className="mb-2 flex items-center gap-1.5 text-xs">
+            <PointChip point={point} />
+            <button type="button" aria-label="Forget what was pointed at" className="rounded-full p-0.5 text-muted-foreground hover:bg-accent" onClick={onClearPoint}>
+              <X className="size-3" />
+            </button>
+          </div>
+        )}
         {files.length > 0 && (
           <div className="mb-2 flex flex-wrap items-center gap-1.5">
             {files.map((f, i) => (
@@ -227,7 +261,11 @@ export function ConversationPanel({
             </label>
           </div>
         </div>
-        {estimate && !disabled && !busy && <div className="mt-1 text-[11px] text-muted-foreground">A modification takes {estimate}</div>}
+        {estimate && !disabled && !busy && (
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            Questions and small changes are answered here in seconds; a bigger change goes to the builder ({estimate})
+          </div>
+        )}
       </div>
     </div>
   )
@@ -255,61 +293,74 @@ function duration(job: JobOut): string | null {
   return s < 90 ? `${s} s` : `${Math.round(s / 60)} min`
 }
 
-const KIND_LABEL: Record<string, string> = { intake: "Reading the plans", generate: "Generation", modify: "Modification" }
+const KIND_LABEL: Record<string, string> = { intake: "Reading the plans", generate: "Generation", modify: "Modification", interior: "Interior", chat: "Small change" }
+
+/** What the owner pointed at in the viewer (#35): its room and the object. */
+function PointChip({ point, className }: { point: PointOut; className?: string }) {
+  const what = [point.object ?? point.kind, point.room].filter(Boolean).join(" · ")
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5", className)} title={`x ${point.position[0]} · y ${point.position[1]} · z ${point.position[2]}`}>
+      <Crosshair className="size-3" /> {what || "a spot in the scene"}
+    </span>
+  )
+}
 
 function JobBlock({
   projectId,
   turn,
   liveJob,
-  isLastAnswer,
-  currentVersion,
   hasPhotos,
   intakeToAnswer,
   anyJobRunning,
-  busy,
-  onSend,
   onAnswer,
+  onCancel,
 }: {
   projectId: string
   turn: Turn
   liveJob: LiveJob
-  isLastAnswer: boolean
-  currentVersion: number
   hasPhotos: boolean
   intakeToAnswer: IntakeOut | null
   /** some job is running or being started (this block's own state is `running` below) */
   anyJobRunning: boolean
-  /** no interaction possible: a job is running, or there is no version to modify yet */
-  busy: boolean
-  onSend: (text: string, applyReviewOf?: number) => void
   onAnswer: (answers: IntakeAnswer[], notes: string) => Promise<void>
+  onCancel?: (jobId: string) => void
 }) {
   const { job, userMsg, assistantMsg, version } = turn
   const followed = liveJob.jobId === job.id
   // interrupted = the server is restarting and will resume it with the same id: still in progress
   const running = job.status === "running" || job.status === "queued" || job.status === "interrupted"
-  const [open, setOpen] = useState(followed)
+  const chat = job.kind === "chat"
+  const waiting = job.status === "waiting"
+  // a turn of the conversation (#35) shows its work only when it changed the scene
+  const edited = chat && (job.result_version != null || (followed && liveJob.events.some((e) => e.type === "builder_step" && isEdit(e.payload))))
+  const [open, setOpen] = useState(followed && !chat)
   useEffect(() => {
-    if (followed && running) setOpen(true)
-  }, [followed, running])
+    if (followed && running && !chat) setOpen(true)
+  }, [followed, running, chat])
   // older jobs: persisted events, fetched only when the block is opened
   const stored = useJobEvents(projectId, job.id, undefined, { query: { enabled: open && !followed } })
   const events = followed ? liveJob.events : (stored.data ?? [])
 
   const requestLabel =
-    job.kind === "generate" ? `Build the house from the plans${hasPhotos ? " and photos" : ""}` : job.kind === "intake" ? "Read the plans" : job.request_text
+    job.kind === "generate"
+      ? `Build the house from the plans${hasPhotos ? " and photos" : ""}`
+      : job.kind === "intake"
+        ? "Read the plans"
+        : job.kind === "interior" && !job.request_text.trim()
+          ? "Furnish the interior from the plans"
+          : `Applying: ${job.request_text}`
   // the answer is the assistant's chat message; older runs stored none, the version summary says the same
   const answer = assistantMsg?.content ?? version?.summary
   const answerVersion = assistantMsg?.version_number ?? version?.number
-  const issues = version?.critique?.issues.length ?? 0
-  // the review's findings can be applied while this version is the current scene
-  const review = version !== undefined && issues > 0 && version.number === currentVersion ? { version: version.number, issues } : null
+  // a turn's answer streams in while it is written
+  const typing = chat && running && followed && answer === undefined
 
   return (
     <div className="space-y-2">
       {userMsg ? (
         <Bubble role="user">
           {userMsg.content}
+          {userMsg.point && <PointChip point={userMsg.point} className="mt-1.5 border-primary-foreground/40 text-[11px]" />}
           {(userMsg.attachments ?? []).length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {(userMsg.attachments ?? []).map((url) => (
@@ -322,82 +373,116 @@ function JobBlock({
         </Bubble>
       ) : (
         <div className="flex justify-end">
-          <span className="rounded-lg bg-primary/10 px-3 py-1.5 text-xs text-primary">{requestLabel}</span>
+          <span className="max-w-[85%] rounded-lg bg-primary/10 px-3 py-1.5 text-xs text-primary">{requestLabel}</span>
         </div>
       )}
 
-      <div className="rounded-lg border">
-        <button
-          type="button"
-          className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent/40"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-        >
-          {open ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronRight className="size-3.5 shrink-0" />}
-          {job.status === "interrupted" ? (
-            <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
-          ) : running ? (
-            <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
-          ) : job.status === "failed" ? (
-            <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
-          ) : job.status === "cancelled" ? (
-            <Square className="size-3.5 shrink-0 text-muted-foreground" />
-          ) : job.kind === "intake" ? (
-            <ScanSearch className="size-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <Hammer className="size-3.5 shrink-0 text-muted-foreground" />
+      {waiting ? (
+        <div className="flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-xs text-muted-foreground">
+          <Clock className="size-3.5 shrink-0" />
+          <span className="flex-1">Waits for the running job to end, then starts on its own</span>
+          {onCancel && (
+            <Button size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => onCancel(job.id)}>
+              Cancel
+            </Button>
           )}
-          <span className="font-medium">
-            {KIND_LABEL[job.kind] ?? job.kind}
-            {job.status === "interrupted" ? " waiting for the server" : running ? " in progress" : job.status === "failed" ? " failed" : job.status === "cancelled" ? " stopped" : ""}
-          </span>
-          <span className="text-muted-foreground">
-            {running && followed && liveJob.elapsed ? <span className="font-mono tabular-nums">{liveJob.elapsed}</span> : duration(job)}
-            {!running && ` · ${relTime(job.created_at)}`}
-            {version && ` · v${version.number}`}
-          </span>
-          {version?.critic_score != null && <ScoreBadge score={version.critic_score} />}
-          {version?.render_urls.aerial && !open && <img src={version.render_urls.aerial} alt="" className="ml-auto h-7 w-11 rounded border object-cover" />}
-        </button>
-        {open && (
-          <div className="border-t">
-            {!followed && stored.isPending ? (
-              <p className="p-3 text-xs text-muted-foreground">Loading…</p>
-            ) : (
-              <JobTimeline
-                events={events}
-                live={followed && liveJob.live}
-                progress={followed ? liveJob.progress : null}
-                liveText={followed ? liveJob.liveText : ""}
-                liveThought={followed ? liveJob.liveThought : ""}
-              />
+        </div>
+      ) : (
+        (!chat || edited || job.status === "failed" || job.status === "cancelled") && (
+          <div className="rounded-lg border">
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent/40"
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={open}
+            >
+              {open ? <ChevronDown className="size-3.5 shrink-0" /> : <ChevronRight className="size-3.5 shrink-0" />}
+              {job.status === "interrupted" ? (
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+              ) : running ? (
+                <Loader2 className="size-3.5 shrink-0 animate-spin text-primary" />
+              ) : job.status === "failed" ? (
+                <AlertTriangle className="size-3.5 shrink-0 text-destructive" />
+              ) : job.status === "cancelled" ? (
+                <Square className="size-3.5 shrink-0 text-muted-foreground" />
+              ) : job.kind === "intake" ? (
+                <ScanSearch className="size-3.5 shrink-0 text-muted-foreground" />
+              ) : chat ? (
+                <Sparkles className="size-3.5 shrink-0 text-muted-foreground" />
+              ) : (
+                <Hammer className="size-3.5 shrink-0 text-muted-foreground" />
+              )}
+              <span className="font-medium">
+                {KIND_LABEL[job.kind] ?? job.kind}
+                {job.status === "interrupted" ? " waiting for the server" : running ? " in progress" : job.status === "failed" ? " failed" : job.status === "cancelled" ? " stopped" : ""}
+              </span>
+              <span className="text-muted-foreground">
+                {running && followed && liveJob.elapsed ? <span className="font-mono tabular-nums">{liveJob.elapsed}</span> : duration(job)}
+                {!running && ` · ${relTime(job.created_at)}`}
+                {version && ` · v${version.number}`}
+              </span>
+              {version?.critic_score != null && <ScoreBadge score={version.critic_score} />}
+              {version?.render_urls.aerial && !open && !chat && <img src={version.render_urls.aerial} alt="" className="ml-auto h-7 w-11 rounded border object-cover" />}
+            </button>
+            {open && (
+              <div className="border-t">
+                {!followed && stored.isPending ? (
+                  <p className="p-3 text-xs text-muted-foreground">Loading…</p>
+                ) : (
+                  <JobTimeline
+                    events={events}
+                    live={followed && liveJob.live}
+                    progress={followed ? liveJob.progress : null}
+                    liveText={followed ? liveJob.liveText : ""}
+                    liveThought={followed ? liveJob.liveThought : ""}
+                  />
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
+        )
+      )}
 
       {job.status === "failed" && job.error && !open && <div className="text-xs text-destructive">{job.error}</div>}
+
+      {typing && (
+        <Bubble role="assistant">
+          {liveJob.liveText ? (
+            <Markdown text={liveJob.liveText} />
+          ) : (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" /> {edited ? "Making the change…" : "Thinking…"}
+            </span>
+          )}
+        </Bubble>
+      )}
 
       {answer !== undefined && (
         <div className="flex flex-col items-start">
           <Bubble role="assistant">
             <Markdown text={answer} />
+            {(assistantMsg?.pictures ?? []).length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {(assistantMsg?.pictures ?? []).map((url) => (
+                  <a key={url} href={url} target="_blank" rel="noreferrer">
+                    <img src={url} alt="the change" className="max-h-40 rounded border object-cover" />
+                  </a>
+                ))}
+              </div>
+            )}
             {answerVersion != null && <div className="mt-1 text-[11px] opacity-70">→ version {answerVersion}</div>}
           </Bubble>
           {intakeToAnswer && !anyJobRunning && <IntakeForm intake={intakeToAnswer} onSubmit={onAnswer} />}
-          {isLastAnswer && !busy && (
-            <ContinueForm
-              key={version?.number ?? job.id}
-              suggestions={version?.suggestions ?? []}
-              questions={version?.questions ?? []}
-              review={review}
-              onSend={onSend}
-            />
-          )}
         </div>
       )}
     </div>
   )
+}
+
+/** A builder_step that wrote to the scene. */
+function isEdit(payload: unknown): boolean {
+  const tool = (payload as { tool?: string } | null)?.tool
+  return tool === "write_file" || tool === "edit_file" || tool === "apply_patch" || tool === "delete_file"
 }
 
 /**

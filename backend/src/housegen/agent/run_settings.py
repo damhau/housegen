@@ -67,6 +67,8 @@ class ResolvedRunSettings(BaseModel):
     max_steps: int
     render_quality: Quality
     max_tokens: int
+    # the conversation's turn (#35); jobs from before it ran without one
+    chat_effort: Effort = "medium"
     preset: Preset = "custom"
     # how values were mapped onto the provider ("max is not available on OpenAI: using xhigh")
     notes: list[str] = Field(default_factory=list)
@@ -97,6 +99,7 @@ def resolve(env: Settings, overrides: RunSettings | None = None) -> ResolvedRunS
     for role, wanted in (
         ("builder", o.builder_effort or env.BUILDER_EFFORT),
         ("critic", o.critic_effort or env.CRITIC_EFFORT),
+        ("chat", env.CHAT_EFFORT),
     ):
         got = nearest_effort(wanted, provider)
         if got != wanted:
@@ -108,6 +111,7 @@ def resolve(env: Settings, overrides: RunSettings | None = None) -> ResolvedRunS
         critic_model=critic_model,
         builder_effort=efforts["builder"],
         critic_effort=efforts["critic"],
+        chat_effort=efforts["chat"],
         critic_rounds=o.critic_rounds if o.critic_rounds is not None else env.CRITIC_MAX_ITERATIONS,
         max_steps=o.max_steps if o.max_steps is not None else env.BUILDER_MAX_STEPS,
         render_quality=o.render_quality or env.RENDER_QUALITY,

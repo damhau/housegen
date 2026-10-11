@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, Camera, CheckCircle2, ChevronDown, ChevronRight, Eye, FileCode2, Hammer, Loader2, RefreshCw, ScanSearch, Sparkles, Square } from "lucide-react"
+import { AlertTriangle, Camera, CheckCircle2, ChevronDown, ChevronRight, Eye, FileCode2, Hammer, Loader2, MessageSquare, RefreshCw, ScanSearch, Sparkles, Square } from "lucide-react"
 import type { RunSummary } from "@/api/model"
 import type { JobEvent, LlmProgress } from "@/hooks/useJobStream"
 import { LiveStatus } from "@/components/LiveStatus"
@@ -233,11 +233,17 @@ function Row({ ev }: { ev: JobEvent }) {
     }
     case "critic": {
       const issues = (p.issues as { severity: string; view: string; description: string }[] | undefined) ?? []
-      const score = num(p.score) ?? 0
+      const score = num(p.score)
       return (
         <li className="ml-6 rounded-md border bg-muted/40 p-2">
           <div className="flex items-start gap-2">
-            <ScoreBadge score={score} />
+            {score !== undefined ? (
+              <ScoreBadge score={score} />
+            ) : (
+              <span className="shrink-0 rounded border px-1.5 text-[11px] text-muted-foreground" title="None of the pictures shows the change: no score">
+                not seen
+              </span>
+            )}
             <Markdown text={str(p.summary)} className="min-w-0" />
           </div>
           {issues.length > 0 && (
@@ -320,6 +326,7 @@ function PhaseIcon({ name }: { name: string }) {
   if (name === "analyst" || name === "intake") return <ScanSearch className={cls} />
   if (name === "builder") return <Hammer className={cls} />
   if (name === "critic") return <Eye className={cls} />
+  if (name === "chat") return <MessageSquare className={cls} />
   return <Camera className={cls} />
 }
 

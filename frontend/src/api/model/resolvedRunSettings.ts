@@ -8,6 +8,7 @@ import type { ResolvedRunSettingsProvider } from './resolvedRunSettingsProvider'
 import type { ResolvedRunSettingsBuilderEffort } from './resolvedRunSettingsBuilderEffort';
 import type { ResolvedRunSettingsCriticEffort } from './resolvedRunSettingsCriticEffort';
 import type { ResolvedRunSettingsRenderQuality } from './resolvedRunSettingsRenderQuality';
+import type { ResolvedRunSettingsChatEffort } from './resolvedRunSettingsChatEffort';
 import type { ResolvedRunSettingsPreset } from './resolvedRunSettingsPreset';
 
 /**
@@ -23,6 +24,7 @@ export interface ResolvedRunSettings {
   max_steps: number;
   render_quality: ResolvedRunSettingsRenderQuality;
   max_tokens: number;
+  chat_effort?: ResolvedRunSettingsChatEffort;
   preset?: ResolvedRunSettingsPreset;
   notes?: string[];
 }

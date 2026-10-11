@@ -127,9 +127,10 @@ class Job(Base):
     project_id: Mapped[str] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), index=True
     )
-    kind: Mapped[str] = mapped_column(String(20))  # intake|generate|modify
+    kind: Mapped[str] = mapped_column(String(20))  # intake|generate|modify|interior|chat
     # queued|running|done|failed|interrupted (a server restart: resumed at the next startup, #7)
-    # |cancelled (stopped by the owner: never resumed)
+    # |cancelled (stopped by the owner: never resumed)|waiting (a change asked in the chat while
+    # another job ran: it starts when that one ends, #35)
     status: Mapped[str] = mapped_column(String(20), default="queued")
     request_text: Mapped[str] = mapped_column(Text, default="")
     # photos attached to a modification request (#8): file names under photos/, JSON list
@@ -180,8 +181,20 @@ class ChatMessage(Base):
     version_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # photos the user attached to this message (#8): file names under photos/, JSON list
     attachments_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # what the owner pointed at in the viewer with this message (#35): room, object, point
+    point_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # an answer's pictures (a quick edit's view of the change, #35): URLs, JSON list
+    pictures_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
 
     @property
     def attachments(self) -> list[str]:
         return list(json.loads(self.attachments_json)) if self.attachments_json else []
+
+    @property
+    def point(self) -> dict[str, Any] | None:
+        return dict(json.loads(self.point_json)) if self.point_json else None
+
+    @property
+    def pictures(self) -> list[str]:
+        return list(json.loads(self.pictures_json)) if self.pictures_json else []
