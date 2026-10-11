@@ -112,7 +112,7 @@ export function ConversationPanel({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" })
-  }, [turns.length, liveJob.jobId, messages.length])
+  }, [turns.length, liveJob.jobId, messages.length, versions.length])
 
   function addFiles(list: FileList | File[] | null) {
     if (!list) return
@@ -336,7 +336,8 @@ function JobBlock({
   const chat = job.kind === "chat"
   const waiting = job.status === "waiting"
   // a turn of the conversation (#35) shows its work only when it changed the scene
-  const edited = chat && (job.result_version != null || (followed && liveJob.events.some((e) => e.type === "builder_step" && isEdit(e.payload))))
+  const edited =
+    chat && (version?.kind === "edit" || (running && followed && liveJob.events.some((e) => e.type === "builder_step" && isEdit(e.payload))))
   const [open, setOpen] = useState(followed && !chat)
   useEffect(() => {
     if (followed && running && !chat) setOpen(true)
