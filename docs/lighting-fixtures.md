@@ -26,13 +26,14 @@ starting with `familyName(` and listing the parameters with their defaults.
 
 ## The contract (the test checks every point)
 
-- **Tag:** `tagFixture(g, { name, family, role, finish, footprint, height, hang })`. The name must
+- **Tag:** `tagFixture(g, { name, family, role, finish, footprint, height, hang, wall })`. The name must
   read as a lamp to the layout audit (it contains lamp, light, pendant, sconce, chandelier or
   luminaire).
 - **Frame:** metres.
   - Ceiling fixtures: origin at the fixing point, everything below it (y ≤ 0). They are placed at
     `ceilingUnderside(storeyY, height)`.
-  - Wall fixtures: origin at the centre of the back plate, facing +z, nothing behind z = 0.
+  - Wall fixtures: origin at the centre of the back plate, facing +z, nothing behind z = 0. Tag them
+    `wall: true` (a cove strip too): `fx.onWall` then puts them flat on the wall.
   - Standing lamps: origin at the bottom centre of the base.
 - **Role:** `"ceiling"` is general light, off by day. `"accent"` is bedside, table, floor and wall
   lights, a pendant over a table or an island, strips: on by day. Give a pendant an `over` parameter

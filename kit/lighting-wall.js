@@ -293,10 +293,10 @@ export const WALL = {
   globeSconce: { make: globeSconce, kind: "wall",
     doc: "globeSconce({ d=0.15, arm=0.2, finish='brass' }) opal globe in a cup on a short arm, round back plate: a soft glow; bedside, hall, bathroom" },
   swingArm: { make: swingArm, kind: "wall",
-    doc: "swingArm({ arm=0.5, aim=0.45, finish='black' }) articulated reading light, conical shade aimed down/forward: beside a bed or an armchair, at about 1.1–1.3 m" },
+    doc: "swingArm({ arm=0.5, aim=0.45, finish='black' }) articulated reading light, conical shade aimed down/forward: beside a bed or an armchair, at about 1.1-1.3 m" },
   pictureLight: { make: pictureLight, kind: "wall",
-    doc: "pictureLight({ w=0.5, out=0.17, finish='brass' }) slim bar on a curved arm, lights the wall below it: fix it 5–10 cm above a picture's top" },
+    doc: "pictureLight({ w=0.5, out=0.17, finish='brass' }) slim bar on a curved arm, lights the wall below it: fix it 5-10 cm above a picture's top" },
   mirrorBar: { make: mirrorBar, kind: "wall",
-    doc: "mirrorBar({ w=0.6, finish='aluminium', light='neutral' }) slim LED bar with an opal underside over a bathroom or WC mirror (w 0.4–1.2): its top edge at the mirror's" },
+    doc: "mirrorBar({ w=0.6, finish='aluminium', light='neutral' }) slim LED bar with an opal underside over a bathroom or WC mirror (w 0.4-1.2): its top edge at the mirror's" },
 };
 // every family also takes lm (flux), light: 'warm'|'neutral' and role ('accent' by default)

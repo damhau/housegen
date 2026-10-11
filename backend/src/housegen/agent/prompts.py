@@ -185,7 +185,8 @@ tileWalls(ctx.group, room, { y (the storey's floor + 0.015), height=1.2, full:[e
 ### Furniture — import fx from "housekit/furnish"   (every piece: origin at its bottom centre, FACING +z)
 Place: fx.onWall(room.polygon, edgeIndex, at, piece, { y, gap=0.02, out=0 })  back against edge i (polygon[i]→polygon[i+1]),
        its centre `at` metres along that edge, facing into the room · fx.place(piece, [x, z], rotationY, y)
-       y = the storey's floor level + 0.015 (the floor finish). Add each piece to ctx.group.
+       y = the storey's floor level + 0.015 (the floor finish); what hangs from the ceiling is placed at its underside,
+       ceilingY = fx.lighting.ceilingUnderside(storey floor level, height) (the floorPlan's y and height). Add each piece to ctx.group.
 Parametric (size to the room): sofa({ width=2.2, depth=0.92, color }) · bed({ width=1.6, length=2.05 }) · nightstand() ·
   chair() · diningSet({ length=1.8, width=0.9, seats=6, ends=false }) · wardrobe({ width, depth=0.6, height=2.3 }) ·
   kitchenRun({ length, depth=0.62, tall:[{ at, width, oven }], sink (centre from the left end), hob, upper=true,
@@ -203,7 +204,6 @@ Parametric (size to the room): sofa({ width=2.2, depth=0.92, color }) · bed({ w
   box at y = floor + 1.1, on a shelf or a vanity) · towelStack({ colors }) (folded towels, on a shelf or a bench) ·
   laundryBasket({ diameter=0.38, height=0.55 }) ·
   rug({ width, depth, color }) ·
-  ceilingLight() (flush, origin on the ceiling: fx.place(fx.ceilingLight(), [x, z], 0, ceilingY)) ·
   a mirror of your own: a thin plate with fx.finish.mirror() (it reflects the room in the walk, as the basin's mirror
   and "mirror-round" do)
 Models (await fx.model(name, { width, length, height })): real furniture, far more convincing than the parametric pieces;
@@ -217,8 +217,7 @@ Models (await fx.model(name, { width, length, height })): real furniture, far mo
   "desk-trestle-white" (2.13 x 0.72) · "desk-chair-leather" · "step-stool-black" · "rug-grey-pattern" (3.06 x 2.18) ·
   "curtain-grey" (one panel 0.75 wide, 3.92 high: give { height } = floor to ceiling) · "curtain-grey-wide" (1.27) ·
   "radiator-white" (2.0 long, 0.6 high) · "wall-art-gallery" (seven frames, 2.65 x 2.18: onWall with { y } = floor + 0.9) ·
-  "mirror-round" (1.2, on a wall) · "floor-lamp-black" (1.98 high) · "pendant-cluster" (nine bulbs, hangs 1.84 m) ·
-  "pendant-drum" (hangs 1.44 m) · plants: "plant-ficus" (0.54 high) · "plant-leafy-white-pot" · "plant-ivy" · "planter-herbs" ·
+  "mirror-round" (1.2, on a wall) · plants: "plant-ficus" (0.54 high) · "plant-leafy-white-pot" · "plant-ivy" · "planter-herbs" ·
   decor: "vase-dry-branches" (0.81 high) · "candle-holder-brass" · "clock-black" · "photo-frame" · "book-open" ·
   "teapot" · "plate" · "wine-glass" · "cup" · "bowls-black" · "toaster" · "bottle-oil" ·
   kitchen: "coffee-machine-black" (0.31 x 0.46) · "fridge-black-glass" (0.7 x 0.7 x 1.82, free-standing) ·
@@ -227,27 +226,78 @@ Models (await fx.model(name, { width, length, height })): real furniture, far mo
   "sofa-grey-cushions" (2.0 x 0.78) · "sofa-modular-l" (L, 2.9 x 1.95) ·
   "bed-messy-grey" (with a 2.74 m wall headboard and bedside shelves) · "bed-soho-white" (1.8 x 2.25) ·
   "armchair-oak-leather" · "side-table-oak" · "cube-shelf-oak" (1.08 wide) · "coffee-table-oak" · "sideboard-walnut" (2.44) ·
-  "plant-large" · "plant-small" · "vase-white" · "pendant-globe" (hangs 0.95 m: fx.place(p, [x, z], 0, ceilingY + 0.28))
-  pendant-cluster, pendant-drum and plant-hanging have their top on their origin: fx.place(p, [x, z], 0, ceilingY). Put small decor on a
-  surface with fx.place(p, [x, z], rot, surfaceY). A lamp is not a light: add a THREE.PointLight("#ffd9a8", 2, 7, 2)
-  where each lamp glows.
+  "plant-large" · "plant-small" · "vase-white"
+  Put small decor on a surface with fx.place(p, [x, z], rot, surfaceY).
+
+### Light — fx.fixture(name, params): light fixtures that carry their own light
+A fixture is a design piece with its light inside it (a cone where a shade, a reflector or a lens throws light, a glow
+where opal glass or a bare bulb shines). It is the only way to light a room: no THREE.PointLight or SpotLight of your
+own, no lamp next to a light. Every fixture takes finish: "brass"|"black"|"white"|"chrome"|"bronze".
+Day and evening: the viewer shows a home for sale by day, the general light off and only the accents lit.
+  "ceiling" (off by day, seen as objects): pendants without `over`, flushCeiling, downlight, track.
+  "accent" (lit by day): table, floor, desk and wall lights, coveStrip, underCabinet, stepLight, and a pendant with
+  over: true (above a dining table, an island or a bar).
+Place: ceiling fixtures fx.place(f, [x, z], rot, ceilingY): a pendant hangs f.userData.height below it (its bottom
+  0.7-0.8 m above a table, at least 2.0 m above a floor you walk on: set `drop`). Wall lights and coveStrip have their
+  origin on their back plate: fx.onWall(room, edge, at, f, { y }) puts them flat on the wall, y = the height of the
+  plate's centre (bedside sconces about floor + 1.2, hall and bath ones floor + 1.8; a cove at ceilingY). Table lamps on
+  their surface, floor lamps on the floor: fx.place(f, [x, z], rot, surfaceY), or fx.onWall with the out option.
+Pendants and ceiling lights:
+- globePendant({ d=0.3, drop=0.7, glass:'opal'|'clear', finish, over=false }) opal or clear glass globe on a cable; over: true above a table or island
+- facetedCluster({ n=11, size=0.25, spread=1.0, drop=0.95, finish='black', inside='brass', bulbs=n, seed=7, over=false }) faceted metal shells open on one face, brass inside, each on its own cable at staggered heights with a bare bulb: a statement over a bed, a stairwell, a table (over: true)
+- discArms({ arms=3, span=1.2, d=0.24, drop=0.75, finish='black', rim='brass', over=false }) black rods and crossing arms ending in round LED discs (brass rim, opal underside): bedrooms, living rooms, over a table (over: true)
+- frameGlobes({ length=1.2, depth=0.4, drop=0.8, globes=4, d=0.13, finish='brass', over=false }) interlocking rectangles of square brass bar carrying opal globes: bedrooms, dining (over: true above the table)
+- ledRing({ d=0.9, drop=0.8, finish='black', over=false }) a thin LED ring (d 0.6-1.2) on three cables, opal underneath: living rooms, over a dining table (over: true)
+- barCluster({ n=3, canopy:'round'|'linear', drop=0.8, shape:'cylinder'|'cone'|'mix', d=0.11, finish='brass', light:'warm'|'neutral', over=false }) small metal pendants at staggered heights from one canopy: over a bar or a kitchen island (over: true)
+- linearPendant({ length=1.2, drop=0.8, finish='black', light:'warm'|'neutral', over=false }) a slim bar (length 0.9-2) on two cables, opal underneath: over an island or a dining table (over: true)
+- domePendant({ shape:'dome'|'cone'|'drum', d=0.4, drop=0.7, finish='black', light:'warm'|'neutral', over=false }) a metal shade, white inside, the bulb hidden: kitchens, dining, over a table or an island (over: true)
+- downlight({ d=0.09, mount:'surface'|'recessed', shape:'round'|'square', finish:'black'|'white'|…, beam=0.55, lm=450, gimbal=false, tilt=0.35, yaw=0, tone:'warm'|'neutral' }) a cone straight down (gimbal: an adjustable head tilted toward -z): halls, kitchens, baths
+- track({ length=1.2, heads=3 (2-4), finish:'black'|'white'|…, tilt=0.6, yaw=0 (or one per head), fan=0.3, beam=0.32, lm=180 per head, tone }) surface track along x with spots tilted toward -z: over a worktop, a picture wall
+- flushCeiling({ d=0.35 (0.3-0.5), shape:'round'|'square', finish='white', lm≈1400·(d/0.35)², beam=1.3, tone }) flush opal ceiling light, light down in a wide cone: halls, baths, small rooms (replaces fx.ceilingLight)
+- coveStrip({ length=2, depth=0.18, drop=0.12, gap=0.05, lmPerM=300, tone }) accent: LED strip in a gypsum trough along a wall (x along it, back z=0 against it, -z to the wall), washes the ceiling and the wall's top: bedrooms, living rooms
+- underCabinet({ length=0.9, finish='alu'|…, tilt=0.2, lmPerM=350, tone }) accent: LED profile under kitchen wall units (origin at its top, x along the run, -z to the wall), light down onto the worktop
+Wall lights:
+- hexSconce({ d=0.17, finish='black', inner='brass' }) faceted hexagonal sconce, open top and bottom, brass inside: a scallop up and down the wall; bedside, hall
+- upDown({ d=0.07, h=0.16, beam=0.36, finish='black' }) cylinder washing the wall up and down (beam: the cones' half-angle); halls, stairs, beside a door, outside a bedroom
+- globeSconce({ d=0.15, arm=0.2, finish='brass' }) opal globe in a cup on a short arm, round back plate: a soft glow; bedside, hall, bathroom
+- swingArm({ arm=0.5, aim=0.45, finish='black' }) articulated reading light, conical shade aimed down/forward: beside a bed or an armchair, at about 1.1-1.3 m
+- pictureLight({ w=0.5, out=0.17, finish='brass' }) slim bar on a curved arm, lights the wall below it: fix it 5-10 cm above a picture's top
+- mirrorBar({ w=0.6, finish='aluminium', light='neutral' }) slim LED bar with an opal underside over a bathroom or WC mirror (w 0.4-1.2): its top edge at the mirror's
+- stepLight({ w=0.12, h=0.075, style:'louvre'|'slot', finish='white'|…, lm=30, tone }) accent: small plate in the wall about 0.3 m up, light down onto steps or a corridor floor
+Table, desk and floor lamps:
+- globeTableLamp({ d=0.2, finish }) opal globe on a small base: bedside, sideboard
+- mushroomLamp({ d=0.32, height=0.42, shade:'opal'|'metal', finish='brass' }) Scandinavian dome shade on a trumpet foot (opal glows, metal throws light down): sideboard, bedside
+- drumTableLamp({ shape:'drum'|'cone', shadeD=0.38, shade='linen'|'white'|'grey'|'sand'|'charcoal'|'sage'|'#hex', base:'ceramic'|'metal', glaze='white'|'sage'|'clay'|'charcoal'|'sand'|'blue'|'#hex', finish='brass' }) fabric shade on a ceramic gourd or a metal column, 0.59 m: living room, bedside
+- deskLamp({ finish='black', arm=0.36, shadeD=0.15, tilt=12, turn=30 }) articulated twin-rod arms swivelled `turn` degrees from +z toward +x, conical metal shade aimed down: desk, bedside
+- globeFloorLamp({ height=1.5, d=0.2, arm=0.2, turn=35, finish='brass' }) slim stem, opal globe on a short arm swung `turn` degrees from +z toward +x: reading corner, beside a sofa or an armchair
+- arcFloorLamp({ reach=1.6, height=2.1, shadeD=0.4, base:'marble'|'metal', finish='black' }) arched tube from a heavy base, dome shade `reach` m toward +z, ~1.6 m up: over a sofa or a coffee table
+- tripodFloorLamp({ height=1.55, shadeD=0.45, shade='linen'|'white'|'grey'|'sand'|'charcoal'|'sage'|'#hex', legs:'oak'|'walnut'|'metal', finish='black' }) three splayed legs, fabric drum shade: living-room corner, beside a sofa
+Light each flat the way a photographed home for sale is lit: one finish for its fixtures (brass or black, the built-in
+ones white), the general light of every room (a pendant or a flushCeiling in the living rooms and bedrooms, downlights
+in the hall, the kitchen and the baths) and, lit by day, the accents that make the rooms warm: a lamp on each nightstand
+or a sconce on each side of the bed, a floor lamp by the sofa or the armchair and a table lamp on the sideboard, a
+pendant with over: true above the dining table and the island, underCabinet under the kitchen's wall units, a mirrorBar
+over each bath and WC mirror, a deskLamp on a desk. Vary the families from room to room, one statement piece (a
+facetedCluster, discArms, frameGlobes, a ledRing) in the living room and the main bedroom.
 
 ### What each room gets
 - Bath / shower room: tiles (tileWalls, tiles on the fronts), WC, basin with mirror, the bath and/or shower the plan draws,
   a towel rail with towels, bathAccessories on the WC's box, a bath mat (rug 0.8 x 0.5) in front of the bath or shower,
-  a laundry basket or a towel stack, a small plant, a flush ceiling light.
-- WC: tiles to 1.2 m, WC, a small basin (vanity:false), a towel on a rail.
+  a laundry basket or a towel stack, a small plant, a flushCeiling or downlights and a mirrorBar over the mirror.
+- WC: tiles to 1.2 m, WC, a small basin (vanity:false), a towel on a rail, a downlight and a mirrorBar over the mirror.
 - Entrance / hall: "shoe-cabinet-white" or a bench, coatHooks, "mirror-round" ({ width: 0.6, height: 0.6 }, on a wall at
   y = floor + 1.15), keeping every door clear.
 - Laundry / technical room: washer({ dryer: true }), the heat pump or boiler the plan draws, shelves.
-- Child's room: "bed-oak-linen" at the plan's size (often 0.9 x 2.0), a desk and chair, a rug, a lamp.
+- Child's room: "bed-oak-linen" at the plan's size (often 0.9 x 2.0), a desk and chair with a deskLamp, a rug, a lamp on the nightstand.
 - Kitchen: the run the plan draws (kitchenRun: tall units with the oven and the fridge, sink, hob, hood, splashback),
   an island when drawn (upper:false, splash:null), and on the worktop a few things in use: "coffee-machine-black",
-  "planter-herbs", "bottle-oil", "bowls-black", "toaster", on a surface at y = floor + 0.9.
+  "planter-herbs", "bottle-oil", "bowls-black", "toaster", on a surface at y = floor + 0.9; underCabinet under each
+  span of wall units (their underside is 1.5 m above the run's y, 0.35 m deep: fx.onWall(room, edge, at, f,
+  { y: run's y + 1.5, out: 0.27 })), downlights or a track over the run, a pendant with over: true above the island.
 - Staged, the way a photographer finds a home for sale: curtains to the floor on each side of every living-room and
   bedroom window ("curtain-grey", { height } = floor to ceiling), something on the wall above the sofa and above the
-  bed ("wall-art-gallery", frames), a plant in most rooms, a pendant over the dining table and over the island, the
-  dining table laid, a fruit bowl or a vase on the island, a few books and small objects on shelves and sideboards.
+  bed ("wall-art-gallery", frames), a plant in most rooms, the accent lights (above), the dining table laid, a fruit
+  bowl or a vase on the island, a few books and small objects on shelves and sideboards.
 - Skirting, the inner window sills and the curtain rails over curtained windows are added by the kit to every room of
   a floor plan (no skirting in tiled rooms), and the ceiling cornice when the floor plan asks for one: do not build them.
 
@@ -298,7 +348,7 @@ Someone walking through the model at eye height should find the rooms the plan d
 1. Fix the frame: the exterior model's coordinates (read its dimensions module) and where the outer walls fall on the floor-plan sheet. The inside faces of the exterior walls bound the rooms.
 2. Rooms and partitions first, from the chained dimensions: partition centre lines and thicknesses, door openings with their widths and swings, room polygons on the clear faces. Then check_plan: every red wall on a drawn wall, every drawn wall under red. Correct and check again until it matches; this is what the whole interior stands on. First make sure the overlay sits on the right drawing: on a photographed sheet, or a sheet that holds several drawings, pass region (that drawing's box on the sheet) and dimension (one dimension line: its metres and its length in pixels); a wrong registration makes right walls look wrong.
 3. Then the furniture, room by room: the kitchen run and the bathroom fittings where the plan draws them, then beds, sofas, tables, wardrobes. Read the audit after each render and run measure on a room you doubt: nothing floating or overlapping, no blocked door or window, the passages kept.
-4. Finally lights: a ceiling light or a pendant per room, with a point light where it glows.
+4. Finally the light fixtures, room by room (Light, above): the general light, then the accents lit by day.
 Summarise the rooms and what you furnished; list what you assumed (a room whose use the plan does not say, a door swing it does not draw) in finish.questions.
 """.strip()
 

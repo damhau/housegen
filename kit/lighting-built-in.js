@@ -278,7 +278,7 @@ function coveStrip({ length = 2, depth = 0.18, drop = 0.12, gap = 0.05, finish =
     const x = ((i + 0.5) / n - 0.5) * length;
     addCone(g, [x, -hs, -0.01], [0, Math.sin(axis), Math.cos(axis)], lm, { angle: back - axis, penumbra: 1, color, reach: 5 });
   }
-  return tagFixture(g, { name: "cove light strip", family: "coveStrip", role: "accent", finish, footprint: [length, depth], height: drop, hang: true });
+  return tagFixture(g, { name: "cove light strip", family: "coveStrip", role: "accent", finish, footprint: [length, depth], height: drop, hang: true, wall: true });
 }
 
 // ---------------------------------------------------------------- under-cabinet strip

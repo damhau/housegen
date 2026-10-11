@@ -1,6 +1,7 @@
 // housekit/lighting: every registered fixture family follows the contract (tags, frame, its own
 // light, a web budget, every finish), and the daytime rule switches the right ones. No renderer.
 import { test } from "node:test";
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import { FIXTURES, FINISHES, fixture, applyLampMode, fixtureReference, isOn } from "../lighting.js";
@@ -113,4 +114,9 @@ test("the daytime rule: by day only the accents shine, all lights everything, of
 test("the builder's reference names every family", () => {
   const ref = fixtureReference();
   for (const name of Object.keys(FIXTURES)) assert.ok(ref.includes(`${name}(`), name);
+});
+
+test("the interior builder's prompt (agent/prompts.py) carries every family's line as the kit has it", () => {
+  const prompts = readFileSync(new URL("../../backend/src/housegen/agent/prompts.py", import.meta.url), "utf8");
+  for (const [name, spec] of Object.entries(FIXTURES)) assert.ok(prompts.includes(`- ${spec.doc}\n`), `${name}: copy its doc line into INTERIOR_KIT_REFERENCE`);
 });

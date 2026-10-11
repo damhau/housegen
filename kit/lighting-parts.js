@@ -97,7 +97,10 @@ export function addCone(g, at, dir, lm, { angle = 0.6, penumbra = 0.6, color = W
   return l;
 }
 
-/** Tag a fixture: a piece the audit knows (a "lamp" by its name) with its family, role and finish. */
+/**
+ * Tag a fixture: a piece the audit knows (a "lamp" by its name) with its family, role and finish.
+ * `wall`: its origin is on its back, fixed to a wall (fx.onWall puts it flat against it).
+ */
 export function tagFixture(g, { name, family, role, finish, footprint, height, hang = false, wall = false }) {
   g.userData = { kind: "furniture", name, footprint, height, hang, fixture: { family, role, finish, wall } };
   return g;

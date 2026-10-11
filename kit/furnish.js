@@ -810,9 +810,11 @@ export function place(p, [x, z], rotationY = 0, y = 0) {
 /**
  * Put a piece with its back against edge `edge` of a room polygon (from polygon[edge] to the next
  * point), its centre `at` metres along the edge from its first point, facing into the room.
- * `gap` leaves room behind it (skirting), `out` pushes it further into the room.
+ * `gap` leaves room behind it (skirting), `out` pushes it further into the room. A light fixed to
+ * the wall (lighting.js: a wall light, a cove strip) has its origin on its back plate: it goes flat
+ * against the wall (no gap unless one is given).
  */
-export function onWall(room, edge, at, p, { y = 0, gap = 0.02, out = 0 } = {}) {
+export function onWall(room, edge, at, p, { y = 0, gap, out = 0 } = {}) {
   const poly = room.polygon ?? room;
   const a = poly[edge], b = poly[(edge + 1) % poly.length];
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -825,7 +827,8 @@ export function onWall(room, edge, at, p, { y = 0, gap = 0.02, out = 0 } = {}) {
   // inward normal: left of the edge direction when the polygon turns that way
   const s = area > 0 ? 1 : -1;
   const nx = -uz * s, nz = ux * s;
-  const d = (p.userData.footprint?.[1] ?? 0) / 2 + gap + out;
+  const back = !!p.userData.fixture?.wall;
+  const d = (back ? 0 : (p.userData.footprint?.[1] ?? 0) / 2) + (gap ?? (back ? 0 : 0.02)) + out;
   p.position.set(a[0] + ux * at + nx * d, y, a[1] + uz * at + nz * d);
   p.rotation.y = Math.atan2(nx, nz);
   return p;
