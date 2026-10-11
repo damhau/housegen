@@ -335,10 +335,14 @@ async def test_undo_restores_the_version_before(
     st.snapshot(2, kit="k1")
     async with session_factory()() as s, s.begin():
         await crud.add_version(s, pid, 2, "edit", "a flower")
-    await _turn(
+    provider, _, _, _ = await _turn(
         client, monkeypatch, pid, "undo that",
         [[ToolCallPart(id="1", name="restore_version", input={"number": 1})]],
     )  # fmt: skip
+    # the turn sees the versions by number, the current one marked (a restore made outside
+    # the conversation included)
+    text = provider.calls[0][2][0].text
+    assert "- 2 (edit): a flower  ← current\n- 1 (generation): Initial build" in text
     async with session_factory()() as s:
         project = await crud.get_project(s, pid)
         assert project.current_version == 3

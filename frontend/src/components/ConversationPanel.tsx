@@ -112,7 +112,7 @@ export function ConversationPanel({
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" })
-  }, [turns.length, liveJob.jobId])
+  }, [turns.length, liveJob.jobId, messages.length])
 
   function addFiles(list: FileList | File[] | null) {
     if (!list) return

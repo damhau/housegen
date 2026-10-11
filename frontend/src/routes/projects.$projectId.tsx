@@ -156,7 +156,8 @@ function ProjectPage() {
     return seq
   }, [events])
   useEffect(() => {
-    if (lastGoodRender > 0 && autoReload && Boolean(activeJob)) setReloadKey((k) => k + 1)
+    // a conversation's small change shows when its version lands (once, not after its check too)
+    if (lastGoodRender > 0 && autoReload && Boolean(activeJob) && activeJob?.kind !== "chat") setReloadKey((k) => k + 1)
   }, [lastGoodRender, autoReload]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

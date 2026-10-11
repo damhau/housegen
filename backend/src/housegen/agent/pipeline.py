@@ -1426,6 +1426,24 @@ def _version_text(version: Any) -> list[str]:
     return out
 
 
+RECENT_VERSIONS = 6  # the versions a turn sees by number: "undo" is the one before the current
+
+
+def versions_text(versions: list[Any], current: int) -> str | None:
+    """The latest versions, newest first, the current one marked: what "undo" and "go back to
+    version 4" refer to, including those made outside the conversation (a restore, a build)."""
+    recent = sorted(versions, key=lambda v: v.number, reverse=True)[:RECENT_VERSIONS]
+    if not recent:
+        return None
+    lines = [
+        f"- {v.number} ({v.kind}): {v.label}" + ("  ← current" if v.number == current else "")
+        for v in recent
+    ]
+    return '## The latest versions ("undo" goes back to the one before the current)\n' + "\n".join(
+        lines
+    )
+
+
 def _chat_message(
     message: str,
     busy: bool,
@@ -1436,12 +1454,14 @@ def _chat_message(
     point: dict[str, Any] | None,
     pictures: dict[str, Path],
     attachments: list[Path],
+    versions: list[Any] | None = None,
 ) -> list[ImagePart | str]:
     parts: list[ImagePart | str] = []
     if busy:
         parts.append(CHAT_BUSY_NOTE)
     parts.extend(_version_text(version))
     for text in (
+        versions_text(versions or [], version.number if version else 0),
         thread_text(history),
         file_map(scene_dir),
         rooms_text(rooms),
@@ -1488,7 +1508,7 @@ async def chat(ctx: JobContext) -> None:
     thread = [m for m in history if m.job_id != ctx.job_id]
     parts = _chat_message(
         message, busy, version, thread, storage.scene_dir, run.rooms, point, pictures,
-        inp.attachments,
+        inp.attachments, versions=list(project.versions),
     )  # fmt: skip
     await ctx.emit("phase", name="chat", message="Reading your message")
     await run.build(
