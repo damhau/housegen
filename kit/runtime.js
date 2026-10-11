@@ -34,6 +34,8 @@
 //   ?in_meter=0.5&in_expo=1&in_fill=0.45&in_lamps=0.35&in_ao=0.35&in_bounces=3&in_probe=1   the indoor light (#41), camera in a room
 //   ?live_lamps=6                                  how many lamps light at once (the scene's point lights above it share stand-ins)
 //                                                  calibration overrides of the presentation look (tuning only)
+//   ?live_spots=6                                  the same for the fixtures' cones (spot lights)
+//   ?lamps=day|all|off                             which fixtures are lit (lighting.js): by day the accents only (default)
 //   ?p_contrast=1.08&p_sat=1.06&p_vignette=0.28&p_meadow=0.78
 //                                                  the grade (contrast about mid grey, saturation, vignette) and
 //                                                  how much darker than the lawn the land beyond the plot is
@@ -58,6 +60,7 @@ import { planData, planStoreys, planSVG } from "./plan2d.js";
 import { loadContext } from "./context.js";
 import { createSunStudy } from "./sunstudy.js";
 import { isMirror, Mirrors } from "./mirror.js";
+import { applyLampMode } from "./lighting.js";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
@@ -251,6 +254,13 @@ window.__house = {
     const r = (v) => Math.round(v * 100) / 100;
     return L && { total: L.lamps.length, live: L.slots.map((s) => s.spot && { room: s.spot.key, at: s.spot.p.toArray().map(r), w: r(s.w), intensity: r(s.light.intensity) }) };
   },
+  // the same for the fixtures' cones (spot lights), and which fixtures the daytime rule lit
+  get spotLamps() {
+    const L = state.spotLamps;
+    const r = (v) => Math.round(v * 100) / 100;
+    return L && { total: L.lamps.length, live: L.slots.map((s) => s.spot && { room: s.spot.key, at: s.spot.p.toArray().map(r), w: r(s.w), intensity: r(s.light.intensity) }) };
+  },
+  get lampMode() { return { mode: LAMP_MODE, ...state.lampMode }; },
   // debugging: the presentation look in force on this page (after the calibration overrides)
   get look() { return PRESENTATION ? JSON.parse(JSON.stringify(PRESENTATION_LOOK)) : null; },
   // debugging: progress of the ultra accumulation, null on other pages
@@ -535,7 +545,9 @@ export async function boot(buildScene) {
     }
     metricUVs(houseGroup);
     await finishesReady(); // only the texture sets the scene uses were fetched
-    capPointLights(houseGroup, scene);
+    // which fixtures are lit (lighting.js): by day the accents only (?lamps=day|all|off)
+    state.lampMode = applyLampMode(houseGroup, LAMP_MODE);
+    capLights(houseGroup, scene);
   } catch (err) {
     recordError(`buildScene failed: ${err?.stack ?? err}`);
   }
@@ -1494,6 +1506,10 @@ function framingBounds(root) {
  * pool on the table, the glow on the ceiling) of the lamps that matter for the view.
  */
 const LIGHT_BUDGET = Math.max(1, Math.round(Number(params.get("live_lamps")) || 6)); // ?live_lamps=6
+// the fixtures' cones (spot lights: a downlight's pool, a shade's light down) have their own budget
+const SPOT_BUDGET = Math.max(1, Math.round(Number(params.get("live_spots")) || 6)); // ?live_spots=6
+// the property-photo rule (lighting.js): by day only the accent fixtures are lit; ?lamps=all|off
+const LAMP_MODE = ["day", "all", "off"].includes(params.get("lamps")) ? params.get("lamps") : "day";
 const FRAME_LOG = params.get("framelog") === "1" ? [] : null; // ?framelog=1: __house.frameLog
 // a clean frame at rest (#56): once the camera stops, this many frames averaged (?rest=0: off)
 const REST = { samples: Math.max(2, Number(params.get("rest_samples")) || 8), on: params.get("rest") !== "0" };
@@ -1502,21 +1518,29 @@ const REST = { samples: Math.max(2, Number(params.get("rest_samples")) || 8), on
 // with a stand-in has over one without; reach: metres at which a lamp counts half (distance)
 const LAMPS = { fadeIn: 0.4, fadeOut: 0.25, throughDoor: 0.35, roomless: 0.2, keep: 1.3, reach: 4 };
 
-function capPointLights(root, scene) {
+function capLights(root, scene) {
+  state.lamps = capPool(root, scene, false, LIGHT_BUDGET);
+  state.spotLamps = capPool(root, scene, true, SPOT_BUDGET);
+}
+
+/** The point lights (or the spot lights) of the scene above `budget`: hidden, `budget` stand-ins instead. */
+function capPool(root, scene, spots, budget) {
   const lamps = [];
-  root.traverse((o) => { if (o.isPointLight && o.visible && !o.castShadow) lamps.push(o); });
-  if (lamps.length <= LIGHT_BUDGET) return;
+  root.traverse((o) => { if ((spots ? o.isSpotLight : o.isPointLight) && o.visible && !o.castShadow) lamps.push(o); });
+  if (lamps.length <= budget) return null;
   for (const l of lamps) l.visible = false;
   const slots = [];
-  for (let i = 0; i < LIGHT_BUDGET; i++) {
-    const light = new THREE.PointLight("#ffffff", 0, 1, 2);
+  for (let i = 0; i < budget; i++) {
+    const light = spots ? new THREE.SpotLight("#ffffff", 0, 1, 0.6, 0.5, 2) : new THREE.PointLight("#ffffff", 0, 1, 2);
     light.name = "lamp-stand-in";
     scene.add(light);
+    if (spots) scene.add(light.target);
     slots.push({ light, spot: null, w: 0, target: 0 });
   }
-  state.lamps = { lamps, slots, spots: null, at: null, from: new THREE.Vector3(), frustum: new THREE.Frustum(),
+  return { lamps, slots, spots: null, at: null, from: new THREE.Vector3(), frustum: new THREE.Frustum(),
     m: new THREE.Matrix4(), sphere: new THREE.Sphere() };
 }
+const lampPools = () => [state.lamps, state.spotLamps].filter(Boolean);
 
 /** The lamps where they hang and the room each lights (worked out at the first frame, the scene being complete). */
 function lampSpots(L) {
@@ -1526,7 +1550,9 @@ function lampSpots(L) {
   return (L.spots = L.lamps.map((l) => {
     const p = l.getWorldPosition(new THREE.Vector3());
     const room = roomOf([p.x, p.z], p.y, rooms);
-    return { l, p, key: room ? `${room.name}@${room.y}` : null, slot: null };
+    // a cone also keeps where it points
+    const t = l.isSpotLight ? l.target.getWorldPosition(new THREE.Vector3()) : null;
+    return { l, p, t, key: room ? `${room.name}@${room.y}` : null, slot: null };
   }));
 }
 
@@ -1589,12 +1615,20 @@ function setStandIn(light, spot, w, scale = state.lampScale ?? 1) {
   light.intensity = (l.userData.baseIntensity ?? l.intensity) * scale * w * w * (3 - 2 * w); // smoothstep: a dimmer's ease
   light.distance = l.distance;
   light.decay = l.decay;
+  if (light.isSpotLight) {
+    light.angle = l.angle;
+    light.penumbra = l.penumbra;
+    light.target.position.copy(spot.t);
+    light.target.updateMatrixWorld();
+  }
 }
 
 /** Before each frame: the stand-ins on the lamps that light the view, fading toward their new lamp. */
 function placeLampStandIns(camera) {
-  const L = state.lamps;
-  if (!L) return;
+  for (const L of lampPools()) placeStandIns(L, camera);
+}
+
+function placeStandIns(L, camera) {
   const spots = lampSpots(L);
   camera.updateMatrixWorld();
   camera.getWorldPosition(L.from);
@@ -1642,14 +1676,14 @@ function placeLampStandIns(camera) {
  * from `at` (its own and those of the rooms open to it). The next frame puts them back.
  */
 function aimLamps(room, at, scale = state.lampScale ?? 1) {
-  const L = state.lamps;
-  if (!L) return;
   const inView = roomsInView(room);
-  const best = lampSpots(L)
-    .map((s) => ({ s, v: lampScore(s, at, inView, null, L.sphere) }))
-    .filter(({ v }) => v > 0)
-    .sort((a, b) => b.v - a.v);
-  L.slots.forEach((slot, i) => setStandIn(slot.light, best[i]?.s, 1, scale));
+  for (const L of lampPools()) {
+    const best = lampSpots(L)
+      .map((s) => ({ s, v: lampScore(s, at, inView, null, L.sphere) }))
+      .filter(({ v }) => v > 0)
+      .sort((a, b) => b.v - a.v);
+    L.slots.forEach((slot, i) => setStandIn(slot.light, best[i]?.s, 1, scale));
+  }
 }
 
 // ---- indoors (#41): a room lit by its own light, not by the outdoor sky ----
@@ -1754,7 +1788,7 @@ function roomProbe(room) {
   // light (the pool under a lamp) stays as it is in the frame
   const lampScale = state.lampScale ?? 1;
   aimLamps(room, cube.position, lampScale * INDOOR.probeLamps);
-  if (!state.lamps) setLampScale(lampScale * INDOOR.probeLamps); // few lamps: the scene's own
+  if (!state.lamps || !state.spotLamps) setLampScale(lampScale * INDOOR.probeLamps); // few lamps: the scene's own
   // The photographed sky's dome, the real surroundings, the clear colour and the fog are drawn in
   // colours pre-compensated for the tone mapping (right on screen, many times too bright as light):
   // in the capture the windows see the sky light that lights the façades instead, the outdoor
@@ -1782,7 +1816,7 @@ function roomProbe(room) {
     scene.environmentIntensity = 1;
   }
   if (hemi) hemi.intensity = fill;
-  if (!state.lamps) setLampScale(lampScale);
+  if (!state.lamps || !state.spotLamps) setLampScale(lampScale);
   const { luminance, balance } = meterRoom(cube.position);
   // the room's box and where it was captured from: glossy surfaces project their reflections on it (#59)
   const xs = room.polygon.map((q) => q[0]), zs = room.polygon.map((q) => q[1]);
@@ -1836,7 +1870,7 @@ function meterRoom(position) {
 function setLampScale(k) {
   state.lampScale = k;
   state.houseGroup?.traverse((o) => {
-    if (!o.isPointLight || o.name === "lamp-stand-in") return;
+    if (!(o.isPointLight || o.isSpotLight) || o.name === "lamp-stand-in") return;
     o.userData.baseIntensity ??= o.intensity;
     o.intensity = o.userData.baseIntensity * k;
   });
@@ -3303,7 +3337,7 @@ async function fadeThrough(change) {
   const settle = () => {
     if (state.exposureTarget !== undefined) applyExposure(state.exposureTarget);
     if (state.balancePass && state.balanceTarget) state.balancePass.uniforms.gain.value.copy(state.balanceTarget);
-    if (state.lamps) state.lamps.at = null; // the next frame places the lamps at once
+    for (const L of lampPools()) L.at = null; // the next frame places the lamps at once
   };
   if (HEADLESS) {
     await change();

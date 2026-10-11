@@ -13,6 +13,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { finishMaterial, metricUV, tileMaterial } from "./finishes.js";
+import * as lighting from "./lighting.js";
 
 // --------------------------------------------------------------------------
 // Materials
@@ -834,4 +835,6 @@ export default {
   finish, sofa, bed, nightstand, chair, diningSet, wardrobe, kitchenRun, wc, basin, bathtub, shower, towelRail,
   coatHooks, bench, washer, bathAccessories, towelStack, laundryBasket, rug, ceilingLight,
   MODELS, model, credits, place, onWall,
+  // light fixtures that carry their own light (lighting.js): fx.fixture("downlight", { mount: "recessed" })
+  fixture: lighting.fixture, FIXTURES: lighting.FIXTURES, lighting,
 };

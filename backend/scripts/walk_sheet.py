@@ -33,6 +33,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
+import fcntl
 import json
 import math
 import os
@@ -40,6 +42,7 @@ import re
 import statistics
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -65,6 +68,19 @@ GPU_ARGS = [
     "--ignore-gpu-blocklist",
 ]
 KIT_MODULE = re.compile(r"^/kit/([A-Za-z0-9_-]+\.js)$")
+GPU_LOCK = Path("/tmp/housegen-gpu.lock")
+
+
+@contextlib.contextmanager
+def gpu_lock() -> Iterator[None]:
+    """The GPU one render at a time: parallel sessions and agents queue on /tmp/housegen-gpu.lock."""
+    with GPU_LOCK.open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(f"waiting for the GPU ({GPU_LOCK} is held by another render)...", flush=True)
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
 
 
 def kit_files(name: str) -> Path:
@@ -679,7 +695,8 @@ def main() -> None:
                 await browser.close()
 
     t0 = time.monotonic()
-    results = asyncio.run(run())
+    with gpu_lock():
+        results = asyncio.run(run())
     report = {
         "url": url,
         "when": time.strftime("%Y-%m-%d %H:%M"),
