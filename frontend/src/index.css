@@ -80,6 +80,46 @@
   --font-mono: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
 }
 
+/* The scene viewer's loading card (SceneLoader in components/SceneViewer.tsx): the house drawn
+   then undrawn (paths with pathLength=1), a bar sliding while its length is unknown, the card
+   easing in after a short delay so a quick load does not flash it. */
+@theme {
+  --animate-house-draw: house-draw 2.8s ease-in-out infinite;
+  --animate-bar-slide: bar-slide 1.4s ease-in-out infinite;
+  --animate-loader-in: loader-in 0.35s ease-out 0.15s both;
+
+  @keyframes house-draw {
+    0% {
+      stroke-dashoffset: 1;
+    }
+    40%,
+    60% {
+      stroke-dashoffset: 0;
+    }
+    100% {
+      stroke-dashoffset: -1;
+    }
+  }
+  @keyframes bar-slide {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
+  }
+  @keyframes loader-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

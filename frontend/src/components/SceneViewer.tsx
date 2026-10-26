@@ -75,6 +75,94 @@ function KitSelect({
   )
 }
 
+/** A thin progress bar: `value` from 0 to 1, or null while its length is unknown (a bar sliding through). */
+function LoaderBar({ value, className }: { value: number | null; className?: string }) {
+  return (
+    <div className={cn("relative h-1.5 overflow-hidden rounded-full bg-foreground/10", className)}>
+      {value === null ? (
+        <div className="absolute inset-y-0 left-0 w-2/5 animate-bar-slide rounded-full bg-primary motion-reduce:animate-pulse" />
+      ) : (
+        <div className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out" style={{ width: `${value * 100}%` }} />
+      )}
+    </div>
+  )
+}
+
+/** The house drawn line by line, then undrawn, while the scene loads. */
+const HOUSE_STROKES = [
+  { d: "M8 54 H56", delay: 0, muted: true }, // ground
+  { d: "M16 54 V32 M48 32 V54", delay: 0.15 }, // walls
+  { d: "M10 36 L32 15 L54 36", delay: 0.3 }, // roof
+  { d: "M41 23 V14 H47 V29", delay: 0.45 }, // chimney
+  { d: "M27 54 V42 H37 V54", delay: 0.55 }, // door
+  { d: "M21 36 H27 V41 H21 Z M37 36 H43 V41 H37 Z", delay: 0.65 }, // windows
+]
+
+/**
+ * The card in the middle of the viewer while the scene page loads (#60): the files three's
+ * loaders fetch, then the first frame (shaders compiled, textures uploaded), with an error the
+ * page reported meanwhile. It fades out once the scene is ready.
+ */
+function SceneLoader({
+  loading,
+  error,
+  visible,
+}: {
+  loading: { phase: string; loaded?: number; total?: number } | null
+  error: string | null
+  visible: boolean
+}) {
+  const drawing = loading?.phase === "drawing"
+  const total = loading?.total ?? 0
+  const loaded = Math.min(loading?.loaded ?? 0, total)
+  const detail = drawing
+    ? "Compiling shaders and uploading textures"
+    : total
+      ? `${loaded} of ${total} models and textures`
+      : "Starting the 3D viewer"
+  return (
+    <div
+      aria-hidden={!visible}
+      className={cn(
+        "pointer-events-none absolute inset-0 grid place-items-center bg-[radial-gradient(ellipse_at_center,rgb(0_0_0/0.18),transparent_70%)] p-4 transition-opacity duration-500",
+        visible ? "opacity-100" : "opacity-0",
+      )}
+    >
+      <div
+        role="status"
+        aria-live="polite"
+        className="w-full max-w-xs animate-loader-in rounded-2xl border border-white/40 bg-background/80 px-6 py-5 text-center shadow-2xl shadow-black/15 backdrop-blur-xl motion-reduce:animate-none dark:border-white/10"
+      >
+        <div className="mx-auto grid size-16 place-items-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
+          <svg viewBox="0 0 64 64" className="size-12" fill="none" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5}>
+            {HOUSE_STROKES.map((s) => (
+              <path
+                key={s.d}
+                d={s.d}
+                pathLength={1}
+                strokeDasharray={1}
+                className={cn("animate-house-draw motion-reduce:animate-none", s.muted ? "stroke-muted-foreground/60" : "stroke-primary")}
+                style={{ animationDelay: `${s.delay}s` }}
+              />
+            ))}
+          </svg>
+        </div>
+        <p className="mt-4 text-base font-semibold tracking-tight">{drawing ? "Preparing the first picture" : "Loading the scene"}</p>
+        <p className="mt-1 text-xs tabular-nums text-muted-foreground">{detail}</p>
+        <div className="mt-5 flex gap-1.5">
+          <LoaderBar className="flex-[3]" value={drawing ? 1 : total ? loaded / total : null} />
+          <LoaderBar className="flex-1" value={drawing ? null : 0} />
+        </div>
+        <div className="mt-1.5 flex gap-1.5 text-left text-[10px] font-medium uppercase tracking-wider">
+          <span className={cn("flex-[3]", drawing ? "text-muted-foreground" : "text-foreground")}>Files</span>
+          <span className={cn("flex-1", drawing ? "text-foreground" : "text-muted-foreground")}>Picture</span>
+        </div>
+        {error && <p className="mt-4 line-clamp-2 text-left text-[11px] text-destructive" title={error}>Scene error: {error}</p>}
+      </div>
+    </div>
+  )
+}
+
 /**
  * The interactive three.js scene in an iframe. With `sceneUrl === null` nothing is
  * loaded and `placeholder` is shown on the same chrome instead (project has no
@@ -364,14 +452,9 @@ export function SceneViewer({
 
   if (sceneUrl === null) return <div className={cn(CHROME, className)}>{placeholder}</div>
 
-  const status = error ? (
+  // while the scene loads, the card in the middle says where it is (SceneLoader)
+  const status = !ready ? null : error ? (
     <span className="text-destructive">scene error: {error}</span>
-  ) : !ready ? (
-    loading?.phase === "drawing"
-      ? "preparing the first picture…"
-      : loading?.total
-        ? `loading… ${Math.min(loading.loaded ?? 0, loading.total)}/${loading.total}`
-        : "loading…"
   ) : picking ? (
     "click what you mean · Esc cancels"
   ) : progress ? (
@@ -401,6 +484,7 @@ export function SceneViewer({
         <div className="grid size-full grid-cols-2 gap-0.5">
           <div className="relative">
             {src && <iframe ref={ref} key={src} src={src} title="3D scene" className="size-full border-0" />}
+            <SceneLoader loading={loading} error={error} visible={!ready} />
             {frameChip(kitA, setKit)}
           </div>
           <div className="relative">
@@ -421,6 +505,7 @@ export function SceneViewer({
               )}
             />
           )}
+          <SceneLoader loading={loading} error={error} visible={!ready} />
           {frameChip(kitA, setKit)}
         </>
       )}
@@ -663,7 +748,7 @@ export function SceneViewer({
               Models: {credits.join(" · ")}
             </span>
           )}
-          <span className="rounded-md bg-background/85 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">{status}</span>
+          {status && <span className="rounded-md bg-background/85 px-2 py-1 text-[11px] text-muted-foreground backdrop-blur">{status}</span>}
         </div>
       </div>
       {planOpen && <FloorPlanDialog request={requestPlan} fileBase={planName} onClose={() => setPlanOpen(false)} />}
