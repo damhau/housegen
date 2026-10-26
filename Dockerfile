@@ -75,6 +75,8 @@ COPY kit/*.js ./kit/
 COPY --from=web /kit/assets ./kit/assets
 # bought furniture (kit/scripts/licensed/pack.mjs): its license allows it in a private image only
 COPY kit/assets/licensed ./kit/assets/licensed
+# real sanitary ware (kit/scripts/sanitary.mjs: simplified from manufacturers' CAD files) for wc() and basin()
+COPY kit/assets/sanitary ./kit/assets/sanitary
 COPY kit/template ./kit/template
 # the presentation look's photographed sky (scripts/make_sky.py, Poly Haven CC0)
 COPY kit/sky ./kit/sky

@@ -4,7 +4,7 @@
 //
 //   await loadFinishes()          once, before building: which sets exist (their images load on first use)
 //   finishMaterial(name, opts)    the material, or null when that finish is not available
-//   await finishesReady()         after building: every material used has its images
+//   await finishesReady()         after building: every material used has its images (and what track() was given)
 //
 // Textures are fetched with kit/scripts/fetch_models.mjs into kit/assets/polyhaven/textures/<id>/.
 // The runtime loads them before buildScene (house.js mat.* then return textured materials) and runs
@@ -150,9 +150,20 @@ export async function loadFinishes(names = Object.keys(TEXTURES)) {
   }));
 }
 
-/** Resolves when every textured material handed out so far has its images. */
+/** Resolves when every textured material handed out so far has its images (and every piece its model, see track). */
 export async function finishesReady() {
   while (_pending.size) await Promise.all([..._pending]);
+}
+
+/**
+ * Something a piece still has to load before the first picture (furnish.js: the real sanitary ware
+ * that replaces a parametric WC or basin): finishesReady() waits for it too. A failure is the
+ * caller's (the piece keeps its parametric shape); here it only stops being pending.
+ */
+export function track(promise) {
+  const p = Promise.resolve(promise).catch(() => {}).finally(() => _pending.delete(p));
+  _pending.add(p);
+  return promise;
 }
 
 /**
@@ -316,4 +327,4 @@ export function metricUV(geo) {
   return geo;
 }
 
-export default { TEXTURES, loadFinishes, finishesReady, finishMaterial, metricUV, metricUVs };
+export default { TEXTURES, loadFinishes, finishesReady, track, finishMaterial, metricUV, metricUVs };

@@ -161,6 +161,11 @@
       "name": "2026-10-11-v31",
       "date": "2026-10-11",
       "note": "v30 with light fixtures that carry their own light (lighting.js, #41 point 3): 27 families (pendants, wall lights, table, desk and floor lamps, downlights, a track, a flush ceiling light, an LED cove, under-cabinet and step lights), each a design piece with its cones (spot lights) and glows (point lights) inside it, no shadows; the property-photo rule (?lamps=day by default: the general light off and its glowing parts dark, only the accents lit; ?lamps=all, ?lamps=off); the cones get their own live budget (?live_spots=6) next to the points', ranked by flux; fx.fixture(name, params), fx.onWall puts a wall light flat on its wall. Scenes without fixtures draw as with v30. The viewer's default (the Furnish job draws with it). Not pinned."
+    },
+    {
+      "name": "2026-10-11-v32",
+      "date": "2026-10-11",
+      "note": "v31 with real sanitary ware and kitchen fittings, the demo's quality pass: wc() is a real wall-hung WC with a closed seat and lid and a white flush plate with round chrome buttons, basin() a real 60 x 46 basin (stretched from 50 to 75 cm wide) with a real chrome mixer, every smaller basin the real mixer (kit/assets/sanitary, simplified from manufacturers' CAD files by kit/scripts/sanitary.mjs, 3-10k triangles each, loaded once and swapped in for the parametric shapes before the first picture: finishes.js track); the bath a round wall mixer with a curved spout; the shower a thermostatic bar mixer, a slide rail and a hand shower on its hose, a round arm to the rain head; kitchenRun's sink an undermount brushed-steel bowl in a one-piece worktop over a lowered cabinet, with an arched single-lever mixer. Waiting for review: not the viewer's default. Not pinned."
     }
   ]
 }

@@ -12,7 +12,7 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
-import { finishMaterial, metricUV, tileMaterial } from "./finishes.js";
+import { finishMaterial, metricUV, tileMaterial, track } from "./finishes.js";
 import * as lighting from "./lighting.js";
 
 // --------------------------------------------------------------------------
@@ -230,9 +230,32 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
     s = t.at + t.width / 2;
   }
   if (length > s + 0.05) spans.push([s, length]);
+  // the sink: an undermount steel bowl in a hole of the worktop (when the span leaves room for it)
+  const SINK = { w: 0.54, d: 0.4, z: 0.02 };
+  const sinkIn = (a, b) => sink !== null && sink - SINK.w / 2 >= a + 0.02 && sink + SINK.w / 2 <= b - 0.02;
+  let sinkCut = false;
   for (const [a, b] of spans) {
-    block(g, [b - a, 0.76, depth - 0.02], [x0 + (a + b) / 2, 0.1, -0.01], white, 0.003);
-    block(g, [b - a + 0.004, 0.04, depth + 0.02], [x0 + (a + b) / 2, 0.86, 0.01], top, 0.004);
+    if (sinkIn(a, b)) {
+      // the carcass stops under the bowl (0.68) between the sink's sides, a front strip keeps the doors
+      const l = sink - SINK.w / 2, r = sink + SINK.w / 2;
+      block(g, [l - a, 0.76, depth - 0.02], [x0 + (a + l) / 2, 0.1, -0.01], white, 0.003);
+      block(g, [b - r, 0.76, depth - 0.02], [x0 + (r + b) / 2, 0.1, -0.01], white, 0.003);
+      block(g, [SINK.w, 0.58, depth - 0.02], [x0 + sink, 0.1, -0.01], white, 0.003);
+      block(g, [SINK.w, 0.18, 0.02], [x0 + sink, 0.68, depth / 2 - 0.03], white, 0.003);
+    } else block(g, [b - a, 0.76, depth - 0.02], [x0 + (a + b) / 2, 0.1, -0.01], white, 0.003);
+    if (sinkIn(a, b)) {
+      // the worktop in one piece with the sink's hole (its grain runs through): an outline in x / z
+      // (a shape's y is -z once turned up), 4 cm thick, its UVs in metres like the boxes'
+      const X0 = x0 + a - 0.002, X1 = x0 + b + 0.002, Z0 = -depth / 2, Z1 = depth / 2 + 0.02;
+      const l = x0 + sink - SINK.w / 2, r = x0 + sink + SINK.w / 2, h0 = SINK.z - SINK.d / 2, h1 = SINK.z + SINK.d / 2;
+      const outline = new THREE.Shape([[X0, -Z1], [X1, -Z1], [X1, -Z0], [X0, -Z0]].map(([x, y]) => new THREE.Vector2(x, y)));
+      outline.holes.push(new THREE.Path([[l, -h1], [l, -h0], [r, -h0], [r, -h1]].map(([x, y]) => new THREE.Vector2(x, y))));
+      const slab = shade(new THREE.Mesh(new THREE.ExtrudeGeometry(outline, { depth: 0.04, bevelEnabled: false }), top));
+      slab.geometry.rotateX(-Math.PI / 2);
+      slab.position.y = 0.86;
+      g.add(slab);
+      sinkCut = true;
+    } else block(g, [b - a + 0.004, 0.04, depth + 0.02], [x0 + (a + b) / 2, 0.86, 0.01], top, 0.004);
     const n = Math.max(1, Math.round((b - a) / 0.6));
     for (let i = 1; i < n; i++) block(g, [0.006, 0.74, 0.004], [x0 + a + ((b - a) / n) * i, 0.11, depth / 2 - 0.01], gap);
     block(g, [b - a, 0.004, 0.004], [x0 + (a + b) / 2, 0.66, depth / 2 - 0.01], gap);
@@ -251,12 +274,16 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
     }
   }
   if (sink !== null && !inTall(sink)) {
-    block(g, [0.6, 0.012, 0.44], [x0 + sink, 0.9, 0.02], finish.steel(), 0.01);
-    const tap = shade(new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.012, 8, 16, Math.PI), finish.steel()));
-    tap.position.set(x0 + sink, 0.98, -depth / 2 + 0.1);
-    tap.rotation.y = Math.PI / 2;
-    g.add(tap);
-    leg(g, x0 + sink, -depth / 2 + 0.1, 0.98, finish.steel(), 0.012);
+    if (sinkCut) {
+      const bowl = new THREE.Group(); // sunkenBowl draws around x = 0
+      // brushed steel, rougher than the taps': a polished bowl mirrors the bright room and reads white
+      const brushed = m("sink-steel", () => new THREE.MeshStandardMaterial({ color: "#878a8c", roughness: 0.55, metalness: 0.55 }));
+      sunkenBowl(bowl, SINK.w, SINK.d, 0.9, 0.2, 0.008, brushed, SINK.z);
+      bowl.position.x = x0 + sink;
+      g.add(bowl);
+    }
+    else block(g, [0.6, 0.012, 0.44], [x0 + sink, 0.9, 0.02], finish.steel(), 0.01);
+    kitchenMixer(g, x0 + sink, 0.9, SINK.z - SINK.d / 2 - 0.045);
   }
   if (hob !== null && !inTall(hob)) {
     block(g, [0.6, 0.008, 0.52], [x0 + hob, 0.9, 0.02], finish.black());
@@ -339,6 +366,91 @@ function sunkenBowl(g, w, d, top, depth, rim, material, z = 0) {
   g.add(drain);
 }
 
+// ---------------------------------------------------------------- real sanitary ware
+// kit/assets/sanitary (scripts/sanitary.mjs: manufacturers' CAD files, simplified to 3-9k triangles):
+// a wall-hung WC, its flush plate, a 60 x 46 basin and its mixer, each loaded once. wc() and basin()
+// build their parametric shape at once and swap it for these when they arrive; finishesReady() waits
+// for them, so a page's first picture has them. A file that does not load leaves the parametric shape.
+const _sanitary = new Map();
+function sanitary(name) {
+  if (!_sanitary.has(name)) {
+    const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+    _sanitary.set(name, loader.loadAsync(new URL(`sanitary/${name}.glb`, ASSETS).href).then((gl) => gl.scene));
+  }
+  return _sanitary.get(name);
+}
+
+/** A copy of a sanitary model, a material per part ({ body, plate, buttons }), at `at`, scaled by `scale`. */
+function sanitaryCopy(scene, materials, at, scale = [1, 1, 1]) {
+  const c = scene.clone(true);
+  c.traverse((o) => {
+    if (!o.isMesh) return;
+    o.material = materials[o.material.name] ?? materials.body;
+    o.castShadow = o.receiveShadow = true;
+  });
+  c.position.set(...at);
+  c.scale.set(...scale);
+  return c;
+}
+
+/** Once the models `names` have loaded: `placeholder` (meshes of g) out, what `make(models)` returns in. */
+function upgrade(g, names, placeholder, make) {
+  if (typeof window === "undefined") return; // Node (the kit's tests): the parametric shapes
+  track(Promise.all(names.map(sanitary)).then(
+    (models) => {
+      for (const o of placeholder) g.remove(o);
+      g.add(...[make(models)].flat());
+    },
+    (err) => console.warn(`housekit: sanitary ware not loaded (${err?.message ?? err}): the parametric shape stays`),
+  ));
+}
+
+/**
+ * A single-lever kitchen mixer on the worktop at (x, y, z): a round body, a high arched spout over the
+ * sink (toward +z), the lever on its side. Brushed steel.
+ */
+function kitchenMixer(g, x, y, z) {
+  const steel = finish.steel();
+  const body = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.026, 0.1, 24), steel));
+  body.position.set(x, y + 0.05, z);
+  const spout = new THREE.CatmullRomCurve3([
+    [0, 0.09, 0], [0, 0.26, 0], [0, 0.33, 0.06], [0, 0.32, 0.17], [0, 0.26, 0.21],
+  ].map(([a, b, c]) => new THREE.Vector3(x + a, y + b, z + c)));
+  const tube = shade(new THREE.Mesh(new THREE.TubeGeometry(spout, 48, 0.0115, 12), steel));
+  const nozzle = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.013, 0.03, 16), steel));
+  nozzle.position.set(x, y + 0.245, z + 0.21);
+  const lever = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.008, 0.08, 12), steel));
+  lever.rotation.z = Math.PI / 2 - 0.35;
+  lever.position.set(x + 0.055, y + 0.085, z);
+  g.add(body, tube, nozzle, lever);
+}
+
+/** A chrome cylinder of g: radii r0 (top) / r1, height h, centred at `at`, turned by `rot` (Euler). */
+function rod(g, r0, r1, h, at, rot = null, material = finish.chrome()) {
+  const mesh = shade(new THREE.Mesh(new THREE.CylinderGeometry(r0, r1, h, 24), material));
+  mesh.position.set(...at);
+  if (rot) mesh.rotation.set(...rot);
+  g.add(mesh);
+  return mesh;
+}
+const ALONG_Z = [Math.PI / 2, 0, 0], ALONG_X = [0, 0, Math.PI / 2];
+
+/** A tube of g along the points (a curve through them), radius r. */
+function hose(g, points, r, material = finish.chrome()) {
+  const curve = new THREE.CatmullRomCurve3(points.map((q) => new THREE.Vector3(...q)));
+  const mesh = shade(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, r, 10), material));
+  g.add(mesh);
+  return mesh;
+}
+
+/** A wall-mounted bath mixer on the wall z at (x, y), toward +z: rosette, round body, lever, spout. */
+function bathMixer(g, x, y, z) {
+  rod(g, 0.032, 0.032, 0.012, [x, y, z + 0.006], ALONG_Z); // rosette
+  rod(g, 0.025, 0.025, 0.07, [x, y, z + 0.045], ALONG_Z); // body
+  rod(g, 0.006, 0.008, 0.07, [x, y + 0.045, z + 0.055], [-0.35, 0, 0]); // lever
+  hose(g, [[x, y - 0.012, z + 0.06], [x, y - 0.018, z + 0.13], [x, y - 0.045, z + 0.19]], 0.013); // spout
+}
+
 /** A mixer tap on the wall or the deck: body, spout reaching `reach` forward. */
 function tap(g, x, y, z, reach = 0.14) {
   const c = finish.chrome();
@@ -355,16 +467,24 @@ function tap(g, x, y, z, reach = 0.14) {
 export function wc({ boxWidth = 0.5, boxHeight = 1.1, tiles } = {}) {
   const g = new THREE.Group();
   const c = finish.ceramic();
+  const placeholder = [];
   if (boxWidth > 0) {
     const box = block(g, [boxWidth, boxHeight, 0.18], [0, 0, -0.26], tiles ? tileMaterial(tiles) : finish.lacquer("#f4f3f0"), 0.004);
     if (tiles) metricUV(box.geometry);
-    block(g, [0.24, 0.16, 0.012], [0, boxHeight - 0.28, -0.166], finish.chrome(), 0.004);
+    placeholder.push(block(g, [0.24, 0.16, 0.012], [0, boxHeight - 0.28, -0.166], finish.chrome(), 0.004));
   }
   // bowl: 36 x 54, hung 40 cm above the floor, narrower at the front
-  const bowl = roundedSolid(g, 0.36, 0.52, 0.32, 0.16, 0.08, 0.05, c, 0.02);
-  bowl.scale.set(1, 1, 1);
-  roundedSolid(g, 0.37, 0.5, 0.025, 0.17, 0.4, 0.06, c, 0.008); // seat
-  roundedSolid(g, 0.36, 0.48, 0.02, 0.17, 0.425, 0.055, finish.ceramic(), 0.008); // lid
+  placeholder.push(
+    roundedSolid(g, 0.36, 0.52, 0.32, 0.16, 0.08, 0.05, c, 0.02),
+    roundedSolid(g, 0.37, 0.5, 0.025, 0.17, 0.4, 0.06, c, 0.008), // seat
+    roundedSolid(g, 0.36, 0.48, 0.02, 0.17, 0.425, 0.055, c, 0.008), // lid
+  );
+  // the real ones: the WC's back on the box (z = -0.17), at the height it is drawn at; the flush
+  // plate (white, chrome buttons) centred where the parametric one was
+  upgrade(g, boxWidth > 0 ? ["wc-wall-hung", "flush-plate"] : ["wc-wall-hung"], placeholder, ([bowl, plate]) => [
+    sanitaryCopy(bowl, { body: c, seat: finish.lacquer("#f7f6f3"), lid: finish.lacquer("#f7f6f3") }, [0, 0, -0.17]),
+    ...(plate ? [sanitaryCopy(plate, { plate: finish.lacquer("#f4f3f0"), buttons: finish.chrome() }, [0, boxHeight - 0.2, -0.17])] : []),
+  ]);
   return piece(g, "wc", Math.max(0.37, boxWidth), 0.7);
 }
 
@@ -374,16 +494,36 @@ export function wc({ boxWidth = 0.5, boxHeight = 1.1, tiles } = {}) {
  */
 export function basin({ width = 0.6, depth = 0.46, vanity = true, mirror = true, mirrorHeight = 0.7 } = {}) {
   const g = new THREE.Group();
+  const placeholder = [];
+  const added = (f) => { const n = g.children.length; f(); placeholder.push(...g.children.slice(n)); };
+  // the real basin (60 x 46) fits from 50 to 75 cm wide and 38 to 55 cm deep, stretched; outside
+  // that, the parametric bowl stays and only its tap becomes the real mixer
+  const real = width >= 0.5 && width <= 0.75 && depth >= 0.38 && depth <= 0.55;
+  let vanityBox = null;
   if (vanity) {
     // under the bowl (its floor at 0.74)
-    block(g, [width - 0.01, 0.28, depth - 0.03], [0, 0.46, -0.015], finish.oak(), 0.006);
+    vanityBox = block(g, [width - 0.01, 0.28, depth - 0.03], [0, 0.46, -0.015], finish.oak(), 0.006);
     block(g, [width - 0.06, 0.004, 0.004], [0, 0.62, depth / 2 - 0.03], finish.black()); // grip line
   }
-  sunkenBowl(g, width, depth, 0.86, 0.12, 0.05, finish.ceramic());
-  tap(g, 0, 0.86, -depth / 2 + 0.06, Math.min(0.13, depth * 0.3));
+  added(() => sunkenBowl(g, width, depth, 0.86, 0.12, 0.05, finish.ceramic()));
+  if (!real) placeholder.length = 0;
+  added(() => tap(g, 0, 0.86, -depth / 2 + 0.06, Math.min(0.13, depth * 0.3)));
   if (mirror) {
     block(g, [width, mirrorHeight, 0.012], [0, 1.05, -depth / 2 - 0.006], finish.mirror(), 0.004);
   }
+  const sx = width / 0.6, sz = depth / 0.46;
+  if (real && vanityBox) placeholder.push(vanityBox);
+  upgrade(g, real ? ["basin-60", "basin-mixer"] : ["basin-mixer"], placeholder, (models) => {
+    const mixer = models[models.length - 1];
+    if (!real) return sanitaryCopy(mixer, { body: finish.chrome() }, [0, 0.86, -depth / 2 + 0.06]);
+    // the basin's top at 0.86, its back on the wall; the mixer in its tap hole (11 cm from the back);
+    // a vanity stops under the basin (16 cm deep)
+    return [
+      sanitaryCopy(models[0], { body: finish.ceramic() }, [0, 0.86, -depth / 2], [sx, 1, sz]),
+      sanitaryCopy(mixer, { body: finish.chrome() }, [0, 0.864, -depth / 2 + 0.111 * sz]),
+      ...(vanityBox ? [block(new THREE.Group(), [width - 0.01, 0.235, depth - 0.03], [0, 0.46, -0.015], finish.oak(), 0.006)] : []),
+    ];
+  });
   return piece(g, "basin", width, depth);
 }
 
@@ -396,7 +536,7 @@ export function bathtub({ length = 1.7, width = 0.75, tiles } = {}) {
   sunkenBowl(g, length, width - 0.02, 0.56, 0.42, 0.06, finish.ceramic(), -0.01);
   const apron = block(g, [length, 0.51, 0.012], [0, 0, width / 2 - 0.006], front, 0.002);
   if (tiles) metricUV(apron.geometry);
-  tap(g, -length / 2 + 0.3, 0.72, -width / 2 + 0.02, 0.16);
+  bathMixer(g, -length / 2 + 0.3, 0.72, -width / 2);
   return piece(g, "bathtub", length, width);
 }
 
@@ -425,16 +565,27 @@ export function shower({ width = 1.2, depth = 0.9, panel = 0.8, side = null, flo
   } else {
     block(g, [0.012, 0.012, depth - 0.02], [edge - s * (p - 0.02), 1.95, 0], black); // bar to the back wall
   }
-  const c = finish.chrome();
-  // rain head on an arm from the back wall
-  block(g, [0.02, 0.02, 0.35], [0, 2.1, -depth / 2 + 0.175], c, 0.006);
-  const head = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.012, 40), c));
-  head.position.set(0, 2.08, -depth / 2 + 0.33);
+  const c = finish.chrome(), back = -depth / 2;
+  // rain head on a round arm from the back wall
+  rod(g, 0.03, 0.03, 0.012, [0, 2.11, back + 0.006], ALONG_Z, c); // rosette
+  rod(g, 0.01, 0.01, 0.33, [0, 2.11, back + 0.165], ALONG_Z, c);
+  rod(g, 0.012, 0.012, 0.05, [0, 2.09, back + 0.33], null, c);
+  const head = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.012, 48), c));
+  head.position.set(0, 2.06, back + 0.33);
   g.add(head);
-  // mixer and hand shower on a rail
-  block(g, [0.16, 0.08, 0.05], [width / 2 - 0.3, 1.05, -depth / 2 + 0.025], c, 0.01);
-  block(g, [0.02, 0.8, 0.02], [width / 2 - 0.14, 1.1, -depth / 2 + 0.03], c, 0.008);
-  block(g, [0.05, 0.2, 0.05], [width / 2 - 0.14, 1.6, -depth / 2 + 0.07], c, 0.02);
+  // a thermostatic bar mixer: the bar on two wall brackets, a knob at each end
+  const mx = width / 2 - 0.32, my = 1.1, mz = back + 0.055;
+  rod(g, 0.026, 0.026, 0.28, [mx, my, mz], ALONG_X, c);
+  for (const dx of [-0.165, 0.165]) rod(g, 0.031, 0.031, 0.04, [mx + dx, my, mz], ALONG_X, c);
+  for (const dx of [-0.09, 0.09]) rod(g, 0.018, 0.018, 0.04, [mx + dx, my, back + 0.02], ALONG_Z, c);
+  // the hand shower on its rail, its hose looping down from the mixer
+  const rx = width / 2 - 0.13, rz = back + 0.04;
+  rod(g, 0.011, 0.011, 0.8, [rx, 1.5, rz], null, c);
+  for (const y of [1.11, 1.89]) rod(g, 0.013, 0.013, 0.04, [rx, y, back + 0.02], ALONG_Z, c);
+  rod(g, 0.018, 0.018, 0.05, [rx, 1.66, rz + 0.025], ALONG_Z, c); // holder
+  rod(g, 0.016, 0.012, 0.2, [rx, 1.6, rz + 0.055], [0.12, 0, 0], c); // handle
+  rod(g, 0.045, 0.045, 0.022, [rx, 1.71, rz + 0.07], [0.5, 0, 0], c); // head, tilted forward
+  hose(g, [[mx, my - 0.03, mz], [mx + 0.05, 0.75, mz + 0.03], [rx - 0.02, 0.7, rz + 0.06], [rx, 1.0, rz + 0.07], [rx, 1.5, rz + 0.06]], 0.007, c);
   return piece(g, "shower", width, depth);
 }
 
