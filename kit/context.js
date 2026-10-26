@@ -11,7 +11,7 @@
 // ground; beyond it the real ground takes over: the builder's ground is clipped there (a lawn drawn out
 // to 85 m or a 350 m backdrop would otherwise lie over the real land as a green square, #65), the real
 // ground is sunk under the site and blended into its rim over a ring, and it fades into the meadow at
-// the rim of the disc.
+// the rim of the disc
 
 import * as THREE from "three";
 import { finishMaterial, finishesReady, loadTexture, metricUV } from "./finishes.js";
