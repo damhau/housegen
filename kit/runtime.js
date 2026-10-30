@@ -56,7 +56,7 @@ import { Sky } from "three/addons/objects/Sky.js";
 import { HDRLoader } from "three/addons/loaders/HDRLoader.js";
 import * as house from "housekit";
 import { finishesReady, loadFinishes, loadTexture, metricUVs } from "./finishes.js";
-import { planData, planStoreys, planSVG } from "./plan2d.js";
+import { planData, planStoreys, planSVG, roomNameParts } from "./plan2d.js";
 import { loadContext } from "./context.js";
 import { createSunStudy } from "./sunstudy.js";
 import { isMirror, Mirrors } from "./mirror.js";
@@ -3226,13 +3226,13 @@ function endDollhouse() {
 const TOUR = { pause: 3, skip: new Set(["storage", "stair", "technical", "garage"]) };
 
 /**
- * The rooms the tour visits, in order: one flat after the other (the part of a room's name after its
- * last dash: "Salon — Appartement 1"), storey by storey from the lowest; on each storey the hall and
- * the day rooms first (hall, living, dining, kitchen), then the others nearest first.
+ * The rooms the tour visits, in order: one flat after the other (the flat in a room's name, after or
+ * before its dash: "Salon — Appartement 1", "App. 1 — Salon"), storey by storey from the lowest; on
+ * each storey the hall and the day rooms first (hall, living, dining, kitchen), then the others nearest first.
  */
 function tourStops() {
   const rooms = sceneRooms().filter((r) => !TOUR.skip.has(r.use ?? ""));
-  const flatOf = (r) => /\s[—–-]\s([^—–]+)$/.exec(r.name)?.[1].replace(/,.*$/, "").trim() ?? "";
+  const flatOf = (r) => (roomNameParts(r.name).flat ?? /\s-\s([^—–]+)$/.exec(r.name)?.[1] ?? "").replace(/,.*$/, "").trim();
   const day = ["hall", "living", "kitchen-living", "dining", "kitchen"];
   const centre = (r) => r.polygon.reduce(([x, z], [a, b]) => [x + a / r.polygon.length, z + b / r.polygon.length], [0, 0]);
   const out = [];

@@ -1,6 +1,6 @@
 {
   "pinned": "2026-09-12-baseline",
-  "viewer": "2026-10-11-v31",
+  "viewer": "2026-10-30-v33",
   "versions": [
     {
       "name": "2026-09-12-baseline",
@@ -166,6 +166,11 @@
       "name": "2026-10-11-v32",
       "date": "2026-10-11",
       "note": "v31 with real sanitary ware and kitchen fittings, the demo's quality pass: wc() is a real wall-hung WC with a closed seat and lid and a white flush plate with round chrome buttons, basin() a real 60 x 46 basin (stretched from 50 to 75 cm wide) with a real chrome mixer, every smaller basin the real mixer (kit/assets/sanitary, simplified from manufacturers' CAD files by kit/scripts/sanitary.mjs, 3-10k triangles each, loaded once and swapped in for the parametric shapes before the first picture: finishes.js track); the bath a round wall mixer with a curved spout; the shower a thermostatic bar mixer, a slide rail and a hand shower on its hose, a round arm to the rain head; kitchenRun's sink an undermount brushed-steel bowl in a one-piece worktop over a lowered cabinet, with an arched single-lever mixer. Waiting for review: not the viewer's default. Not pinned."
+    },
+    {
+      "name": "2026-10-30-v33",
+      "date": "2026-10-30",
+      "note": "v32 with a room's flat read on either side of the dash in its name (#78): \"App. 2 — Chambre 1\" as well as \"Chambre 1 — App. 2\" (plan2d.roomNameParts, shared by the surfaces report, the 2D plan's labels and the tour's order). A builder that named its rooms flat first left every room in \"Commun\", and the report counted no living area (0 m², the sale value from the balconies alone). Pictures unchanged from v32. The viewer's default (with v32's sanitary ware and kitchen fittings). Not pinned."
     }
   ]
 }

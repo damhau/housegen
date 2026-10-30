@@ -96,9 +96,10 @@ export function buildReport(
     SI: sum(S, (x) => x.SI),
   }
 
-  // ---- flats: those the rooms' names give, else the whole house is one dwelling
+  // ---- flats: those the rooms' names give, else the whole house is one dwelling, every room in it
+  // (a "Commun" room of a house without flats is still the house's: leaving it out gave 0 m², #78)
   const flatNames = q.flats.length ? q.flats.slice().sort() : ["Logement"]
-  const flatOf = (r: { flat: string | null }) => (q.flats.length ? r.flat : r.flat === "Commun" ? null : "Logement")
+  const flatOf = (r: { flat: string | null }) => (q.flats.length ? r.flat : "Logement")
 
   // ---- buildings: names, the slab under the lowest storey, volumes per band
   const nameOf = (b: QBuilding, i: number) => {

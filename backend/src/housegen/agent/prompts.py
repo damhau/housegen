@@ -157,7 +157,8 @@ Same frame as the exterior: metres, +x east, +z south, +y up; points are [x, z].
 ### Rooms, partitions, doors — import { floorPlan } from "housekit/interior"
 floorPlan({ y (finished floor level of the storey), height=2.5 (clear height to the ceiling), rooms, partitions,
   cornice=false (true for a period house, built before about 1950: a moulding where the walls meet the ceiling) })  → add to ctx.group
-  rooms: [{ name ("Salon", "Chambre 1" as on the plan), use: "living"|"kitchen"|"kitchen-living"|"dining"|"bedroom"|"bath"|"wc"|"hall"|"stair"|"office"
+  rooms: [{ name ("Salon", "Chambre 1" as on the plan; with several flats, the room then its flat: "Chambre 1 — App. 2",
+            a shared room "Cave — Commun": the surfaces report counts each flat's living area from it), use: "living"|"kitchen"|"kitchen-living"|"dining"|"bedroom"|"bath"|"wc"|"hall"|"stair"|"office"
             |"storage"|"cellar"|"laundry"|"garage"|"attic" (unheated roof space)|"technical" (plant room: boiler, heat pump)
             (the surfaces report classes each room by its use, SIA 416),
             polygon: the room's CLEAR floor, i.e. the inside faces of its walls, floor: "oak"|"oak-light"|"oak-smoked"|"herringbone"|"tile"|"tile-dark"|"terrazzo"|"marble"|"concrete",

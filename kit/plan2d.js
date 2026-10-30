@@ -7,6 +7,8 @@
 //   planStoreys(root)                        [{ index, y, label }] lowest first
 //   planData(root, index)                    the storey's plan in world metres (+x east, +z south)
 //   planSVG(data, { furnished = true })      the drawing; furnished: false keeps the fittings only
+//   roomNameParts(name)                      { name, flat } of a room's name, the flat before or after
+//                                            its dash (also read by quantities.js and the tour)
 //
 // The runtime answers the app's `house:plan2d` message with it (the viewer's Plan dialog).
 
@@ -362,10 +364,27 @@ function labelSpot(poly, hw, hh, obstacles) {
   return best;
 }
 
+/** A flat named in a room's name: "Appartement 1", "App. 2", "Logement B" (its number in group 1). */
+export const FLAT_LABEL = /\b(?:appartement|apartment|appart\.?|app\.?|logement|flat|wohnung|unit)\s*([0-9A-Za-z]+)/i;
+// the same leading a name ("App. 2 — Chambre 1"): its number has a digit or is one letter (not "Apparat")
+const FLAT_FIRST = /^(?:appartement|apartment|appart\.?|app\.?|logement|flat|wohnung|unit)\s*(?:[0-9][0-9A-Za-z]*|[A-Za-z])\b/i;
+
+/**
+ * A room's name split at its dash into the room and its flat (the text as written, null when the name
+ * has no dash): "Chambre 2 — Appartement 1, étage" → { name: "Chambre 2", flat: "Appartement 1, étage" };
+ * builders also put the flat first, "App. 1 — Chambre 2" → { name: "Chambre 2", flat: "App. 1" } (#78).
+ */
+export function roomNameParts(name) {
+  const parts = String(name ?? "").split(/\s+[—–]\s+/);
+  if (parts.length < 2) return { name: parts[0], flat: null };
+  if (FLAT_FIRST.test(parts[0].trim()) && !FLAT_LABEL.test(parts[1])) return { name: parts.slice(1).join(" — "), flat: parts[0].trim() };
+  return { name: parts[0], flat: parts[1] };
+}
+
 /** A room's display name and its flat: "Chambre 2 — App. 1, étage" → ["Chambre 2", "App. 1"]. */
 function splitName(name) {
-  const [base, rest] = String(name).split(/\s+[—–]\s+/);
-  return [base, rest ? rest.split(",")[0].trim() : null];
+  const { name: base, flat } = roomNameParts(name);
+  return [base, flat ? flat.split(",")[0].trim() : null];
 }
 
 const fmtArea = (a) => `${a.toFixed(2)} m²`;
@@ -533,4 +552,4 @@ export function planSVG(data, { furnished = true, title } = {}) {
     + `<rect x="${f(vx)}" y="${f(vz)}" width="${f(vw)}" height="${f(vh)}" fill="#ffffff"/>${out}${chrome}</svg>`;
 }
 
-export default { planStoreys, planData, planSVG };
+export default { planStoreys, planData, planSVG, roomNameParts };

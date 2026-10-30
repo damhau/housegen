@@ -6,6 +6,7 @@ import * as THREE from "three";
 import * as house from "../house.js";
 import { floorPlan, tileWalls } from "../interior.js";
 import { quantities, siaClass, flatOf, planGaps, _internals } from "../quantities.js";
+import { roomNameParts } from "../plan2d.js";
 
 const near = (a, b, tol = 1e-3, msg = "") => assert.ok(Math.abs(a - b) <= tol, `${msg} ${a} ≠ ${b}`);
 
@@ -81,6 +82,19 @@ test("the flat a room's name gives", () => {
   assert.equal(flatOf("Cuisine — App. 2"), "App. 2");
   assert.equal(flatOf("Local technique — Commun sous-sol"), "Commun");
   assert.equal(flatOf("Séjour"), null);
+  // the flat first, as some builders write it (#78)
+  assert.equal(flatOf("App. 2 — Chambre 1 combles"), "App. 2");
+  assert.equal(flatOf("Appartement 1 — Cuisine séjour"), "App. 1");
+  assert.equal(flatOf("Logement B — Salon"), "App. B");
+  assert.equal(flatOf("Apparat — Cave"), "Commun"); // a word starting like a flat is not one
+});
+
+test("a room's name without its flat, either side of the dash", () => {
+  assert.deepEqual(roomNameParts("Chambre 2 — Appartement 1, étage"), { name: "Chambre 2", flat: "Appartement 1, étage" });
+  assert.deepEqual(roomNameParts("App. 2 — Chambre 1 combles"), { name: "Chambre 1 combles", flat: "App. 2" });
+  assert.deepEqual(roomNameParts("App. 1 — Chambre 2 — étage"), { name: "Chambre 2 — étage", flat: "App. 1" });
+  assert.deepEqual(roomNameParts("Cuisine — App. 2"), { name: "Cuisine", flat: "App. 2" });
+  assert.deepEqual(roomNameParts("Séjour"), { name: "Séjour", flat: null });
 });
 
 test("plan gaps: over the share AND over the area, with the likely cause", () => {
