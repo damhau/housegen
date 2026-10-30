@@ -140,9 +140,7 @@ function ProjectPage() {
     }
   }, [versionEvents, projectId, qc])
 
-  // the viewer follows the build: reload after every error-free render (never on a broken scene),
-  // unless the user paused it to keep orbiting a given state
-  const [autoReload, setAutoReload] = useState(true)
+  // the viewer follows the build: reload after every error-free render (never on a broken scene)
   // (only renders taken after the builder's first write count: before that the working copy is
   // still the kit's template box, which must never be shown as "the house")
   const lastGoodRender = useMemo(() => {
@@ -157,8 +155,8 @@ function ProjectPage() {
   }, [events])
   useEffect(() => {
     // a conversation's small change shows when its version lands (once, not after its check too)
-    if (lastGoodRender > 0 && autoReload && Boolean(activeJob) && activeJob?.kind !== "chat") setReloadKey((k) => k + 1)
-  }, [lastGoodRender, autoReload]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (lastGoodRender > 0 && Boolean(activeJob) && activeJob?.kind !== "chat") setReloadKey((k) => k + 1)
+  }, [lastGoodRender]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (activeJob) setTab("conversation")
@@ -383,9 +381,7 @@ function ProjectPage() {
           sceneUrl={hasScene ? sceneUrl : null}
           reloadKey={`${reloadKey}-${selectedVersion ?? "c"}`}
           className="min-h-[420px]"
-          live={Boolean(activeJob) && selectedVersion === null}
-          autoReload={autoReload}
-          onToggleAutoReload={() => setAutoReload((v) => !v)}
+          showFps
           planName={p.name}
           projectId={projectId}
           coverUrl={version ? (version.render_urls.southeast ?? Object.values(version.render_urls)[0] ?? null) : null}

@@ -149,16 +149,41 @@ function SceneLoader({
         </div>
         <p className="mt-4 text-base font-semibold tracking-tight">{drawing ? "Preparing the first picture" : "Loading the scene"}</p>
         <p className="mt-1 text-xs tabular-nums text-muted-foreground">{detail}</p>
-        <div className="mt-5 flex gap-1.5">
-          <LoaderBar className="flex-[3]" value={drawing ? 1 : total ? loaded / total : null} />
-          <LoaderBar className="flex-1" value={drawing ? null : 0} />
-        </div>
-        <div className="mt-1.5 flex gap-1.5 text-left text-[10px] font-medium uppercase tracking-wider">
-          <span className={cn("flex-[3]", drawing ? "text-muted-foreground" : "text-foreground")}>Files</span>
-          <span className={cn("flex-1", drawing ? "text-foreground" : "text-muted-foreground")}>Picture</span>
-        </div>
+        <LoaderBar className="mt-5" value={drawing ? 1 : total ? loaded / total : null} />
         {error && <p className="mt-4 line-clamp-2 text-left text-[11px] text-destructive" title={error}>Scene error: {error}</p>}
       </div>
+    </div>
+  )
+}
+
+/**
+ * The page's frame rate, counted over half a second. The scene's iframe is on the same origin, so
+ * its frames are this page's: orbiting or walking, this is the scene's own rate; idle (the scene
+ * draws only when the camera moves), it is the screen's.
+ */
+function FpsCounter() {
+  const [fps, setFps] = useState<number | null>(null)
+  useEffect(() => {
+    let raf = 0
+    let frames = 0
+    let since = performance.now()
+    const tick = (now: number) => {
+      frames += 1
+      if (now - since >= 500) {
+        setFps(Math.round((frames * 1000) / (now - since)))
+        frames = 0
+        since = now
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+  const tone = fps === null ? "bg-muted-foreground" : fps >= 50 ? "bg-emerald-500" : fps >= 25 ? "bg-amber-500" : "bg-red-500"
+  return (
+    <div className="pointer-events-none absolute left-3 top-3 flex items-center gap-1.5 rounded-lg border bg-background/85 px-2.5 py-1.5 text-[11px] font-medium tabular-nums shadow-sm backdrop-blur">
+      <span className={cn("size-2 rounded-full", tone)} />
+      {fps ?? "–"} fps
     </div>
   )
 }
@@ -173,9 +198,7 @@ export function SceneViewer({
   reloadKey,
   className,
   placeholder,
-  live = false,
-  autoReload = true,
-  onToggleAutoReload,
+  showFps = false,
   planName = "plan",
   projectId,
   contextUrl,
@@ -188,10 +211,8 @@ export function SceneViewer({
   reloadKey?: string | number
   className?: string
   placeholder?: ReactNode
-  /** a job is running: the viewer follows the build (reloads after every error-free render) */
-  live?: boolean
-  autoReload?: boolean
-  onToggleAutoReload?: () => void
+  /** the frame rate in the top left corner (the project page, not the share page) */
+  showFps?: boolean
   /** start of the downloaded plans' file names (the project's name) */
   planName?: string
   /** the project (its surroundings can be fetched and aligned here) */
@@ -512,26 +533,7 @@ export function SceneViewer({
       {sunOpen && sunAvailable && !srcB && (
         <SunPanel ask={ask} post={postToScene} progress={sunHoursProgress} readyKey={String(readyCount)} onClose={() => setSunOpen(false)} />
       )}
-      {live && (
-        <div className="absolute left-3 top-3 flex items-center gap-1 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
-          <span className="flex items-center gap-1.5 px-1.5 text-[11px] font-medium">
-            <span className={cn("size-2 rounded-full", autoReload ? "animate-pulse bg-emerald-500" : "bg-muted-foreground")} />
-            {autoReload ? "live" : "paused"}
-          </span>
-          {onToggleAutoReload && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2"
-              title={autoReload ? "Pause auto-reload to keep orbiting this state" : "Resume following the build"}
-              onClick={onToggleAutoReload}
-            >
-              {autoReload ? <Pause className="size-3.5" /> : <Play className="size-3.5" />}
-              {autoReload ? "Pause" : "Follow"}
-            </Button>
-          )}
-        </div>
-      )}
+      {showFps && ready && <FpsCounter />}
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3">
         <div className="pointer-events-auto flex flex-wrap gap-1 rounded-lg border bg-background/85 p-1 shadow-sm backdrop-blur">
           {walking ? (
