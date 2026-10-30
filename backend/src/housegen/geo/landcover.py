@@ -4,8 +4,10 @@ geodienste.ch serves it as a national WMS (the WFS is open in some cantons only,
 draws the land cover's outlines; every region between them is one surface, and GetFeatureInfo at a
 point inside it returns that surface's polygon (holes included) and its kind ("Genre": jardin,
 route_chemin, trottoir…). Each region is asked once; the polygons are turned into soft masks on a
-0.25 m grid (cover.png): R asphalt, G lawn, B paving, A gravel. What none of them covers (fields,
-woods, buildings, water) keeps the aerial photo.
+0.25 m grid: cover.png R asphalt, G lawn, B paving (buildings too), A gravel; cover2.png (#74) R field,
+G wood, B water, A pool. And tint.png: the colour of each surface on the aerial photo (its median,
+shadows left out), so the kit's finishes take a surface's colour without its shadows, cars or cranes
+(#74); between the surfaces, the photo blurred over a few metres.
 """
 
 from __future__ import annotations
@@ -31,9 +33,11 @@ CHANNELS: dict[str, int] = {
     "route_chemin": 0,  # asphalt
     "jardin": 1,  # lawn
     "trottoir": 2,  # paving
+    "ilot": 2,  # a traffic island (the WMS's name)
     "ilot_circulation": 2,
     "autre_revetement_dur": 2,
     "place_aviation": 2,
+    "batiment": 2,  # under a building the 3D does not have: paved ground, not its roof photographed
     "gravier_sable": 3,  # gravel and bare ground
     "autre_sans_vegetation": 3,
     "voie_ferree": 3,
@@ -42,6 +46,31 @@ CHANNELS: dict[str, int] = {
     "exploitation_de_materiaux": 3,
 }
 NAMES = ("asphalt", "lawn", "paving", "gravel")
+# cover2.png (#74): what used to keep the photo
+CHANNELS2: dict[str, int] = {
+    "champ_pre_paturage": 0,  # field
+    "culture_intensive": 0,
+    "vigne": 0,
+    "autre_culture_intensive": 0,
+    "tourbiere": 0,
+    "autre_verte": 0,
+    "foret_dense": 1,  # wood: its floor, under the lidar's trees
+    "autre_boisee": 1,
+    "paturage_boise_dense": 1,
+    "paturage_boise_ouvert": 1,
+    "eau_stagnante": 2,  # water
+    "cours_eau": 2,
+    "roseliere": 2,
+    "bassin": 3,  # a pool
+}
+NAMES2 = ("field", "wood", "water", "pool")
+# a surface's colour on the photo leaves out its darkest pixels (shadows) and anything small (#74)
+SHADOW_SHARE = 0.25  # its darkest quarter
+BETWEEN_BLUR = 6.0  # metres: the photo between the surfaces, blurred so no shadow or car shows
+LOCAL_AREA = 600.0  # m²: a surface this large takes the colour around each place, not one for all
+LOCAL_BLUR = (
+    8.0  # metres: around each place (a tree group's shade, a car: gone; a drier corner: kept)
+)
 
 
 @dataclass
@@ -160,8 +189,9 @@ async def surfaces(e0: float, n0: float, ext: float, client: httpx.AsyncClient) 
     return out
 
 
-def masks(found: list[Surface], ext: float) -> np.ndarray:
-    """The four masks (asphalt, lawn, paving, gravel) on the MASK_CELL grid over ± ext, rows north → south."""
+def masks(found: list[Surface], ext: float, channels: dict[str, int] = CHANNELS) -> np.ndarray:
+    """The four masks of `channels` (cover.png's: asphalt, lawn, paving, gravel) on the MASK_CELL
+    grid over ± ext, rows north → south."""
     from rasterio.features import rasterize
     from rasterio.transform import Affine
     from shapely.geometry import Polygon
@@ -172,7 +202,7 @@ def masks(found: list[Surface], ext: float) -> np.ndarray:
     for ch in range(4):
         shapes = []
         for s in found:
-            if CHANNELS.get(s.kind) != ch:
+            if channels.get(s.kind) != ch:
                 continue
             poly = Polygon(s.rings[0], s.rings[1:]).buffer(0)
             if not poly.is_empty:
@@ -185,11 +215,96 @@ def masks(found: list[Surface], ext: float) -> np.ndarray:
 
 
 def cover_png(m: np.ndarray) -> bytes:
+    """An RGBA (masks) or RGB (tint) array as a PNG."""
     from PIL import Image
 
     buf = io.BytesIO()
-    Image.fromarray(m, "RGBA").save(buf, "PNG", optimize=True)
+    Image.fromarray(m, "RGBA" if m.shape[2] == 4 else "RGB").save(buf, "PNG", optimize=True)
     return buf.getvalue()
+
+
+def _on_grid(photo: np.ndarray, size: int, ext: float, radius: int) -> np.ndarray:
+    """The photo (± radius at its own resolution) sampled on the masks' grid (± ext at MASK_CELL)."""
+    px = photo.shape[0] / (2 * radius)
+    centres = (np.arange(size) + 0.5) * MASK_CELL - ext
+    idx = np.clip(((centres + radius) * px).astype(int), 0, photo.shape[0] - 1)
+    return photo[np.ix_(idx, idx)]
+
+
+def _local(
+    rows: np.ndarray, cols: np.ndarray, rgb: np.ndarray, lit: np.ndarray, sigma_m: float
+) -> np.ndarray | None:
+    """The colour around each of a surface's pixels (rows, cols): the mean of its lit pixels within
+    about sigma_m, computed on a 1 m grid; only the surface's own pixels count (no road bleeds into a
+    garden). None where too few lit pixels are near."""
+    from scipy import ndimage as ndi
+
+    f = round(1.0 / MASK_CELL)  # fine pixels per coarse one
+    pad = int(3 * sigma_m / MASK_CELL)
+    r0, c0 = max(0, rows.min() - pad), max(0, cols.min() - pad)
+    h = -(-(rows.max() + pad + 1 - r0) // f) * f
+    w = -(-(cols.max() + pad + 1 - c0) // f) * f
+    weight = np.zeros((h, w), np.float32)
+    weight[rows[lit] - r0, cols[lit] - c0] = 1.0
+    colour = np.zeros((h, w, 3), np.float32)
+    colour[rows[lit] - r0, cols[lit] - c0] = rgb[lit]
+
+    def block(a: np.ndarray) -> np.ndarray:  # the sum over each coarse pixel
+        return np.asarray(a.reshape(h // f, f, w // f, f).sum(axis=(1, 3)))
+
+    s = sigma_m / (f * MASK_CELL)  # in coarse pixels
+    sw = ndi.gaussian_filter(block(weight), s)
+    sc = np.stack([ndi.gaussian_filter(block(colour[:, :, k]), s) for k in range(3)], axis=2)
+    cr, cc = (rows - r0) // f, (cols - c0) // f
+    near = sw[cr, cc]
+    if (near < 0.5).mean() > 0.5:
+        return None
+    return np.asarray(sc[cr, cc] / np.maximum(near, 1e-6)[:, None])
+
+
+def tint(found: list[Surface], photo: np.ndarray, ext: float, radius: int) -> np.ndarray:
+    """tint.png (#74), on the masks' grid: each surface in the colour the photo gives it, without its
+    shadows (the darkest SHADOW_SHARE of its pixels: a crane's, a tree's) or anything small (a car, a
+    pool's edge): in a small surface the median of the rest; in a large one (LOCAL_AREA and up: a
+    block of gardens, a field) their mean around each place (LOCAL_BLUR), so its greener and drier
+    parts stay. The kit's finish there takes that colour and none of the photo's detail. sRGB; between
+    the surfaces, the photo blurred over BETWEEN_BLUR."""
+    from rasterio.features import rasterize
+    from rasterio.transform import Affine
+    from scipy import ndimage as ndi
+    from shapely.geometry import Polygon
+
+    size = round(2 * ext / MASK_CELL)
+    rgb = _on_grid(photo, size, ext, radius).astype(np.float32)
+    sigma = BETWEEN_BLUR / MASK_CELL
+    out = np.stack([ndi.gaussian_filter(rgb[:, :, k], sigma) for k in range(3)], axis=2)
+    shapes = []
+    for k, s in enumerate(found):
+        poly = Polygon(s.rings[0], s.rings[1:]).buffer(0)
+        if not poly.is_empty:
+            shapes.append((poly, k + 1))
+    if shapes:
+        transform = Affine(MASK_CELL, 0, -ext, 0, MASK_CELL, -ext)
+        labels = rasterize(
+            shapes, out_shape=(size, size), transform=transform, fill=0, dtype="int32"
+        )
+        flat, pixels = labels.ravel(), rgb.reshape(-1, 3)
+        lum = pixels @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+        order = np.argsort(flat, kind="stable")
+        starts = np.searchsorted(flat[order], np.arange(1, len(found) + 2))
+        painted = out.reshape(-1, 3)
+        for k in range(len(found)):
+            idx = order[starts[k] : starts[k + 1]]
+            if len(idx) == 0:
+                continue
+            lit = lum[idx] >= np.quantile(lum[idx], SHADOW_SHARE)
+            median = np.median(pixels[idx[lit] if lit.any() else idx], axis=0)
+            painted[idx] = median
+            if len(idx) * MASK_CELL**2 >= LOCAL_AREA:
+                local = _local(idx // size, idx % size, pixels[idx], lit, LOCAL_BLUR)
+                if local is not None:
+                    painted[idx] = local
+    return np.clip(np.rint(out), 0, 255).astype(np.uint8)
 
 
 def class_colours(
@@ -197,12 +312,8 @@ def class_colours(
 ) -> list[list[float] | None]:
     """The photo's mean colour (0..1, sRGB) under each mask: the kit tints its finishes by the photo's
     colour there relative to this mean (a red court stays red-ish, a dry lawn yellowish)."""
-    # the photo spans ± radius at its own resolution; the masks ± ext at MASK_CELL
     size = m.shape[0]
-    px = photo.shape[0] / (2 * radius)
-    centres = (np.arange(size) + 0.5) * MASK_CELL - ext
-    idx = np.clip(((centres + radius) * px).astype(int), 0, photo.shape[0] - 1)
-    sample = photo[np.ix_(idx, idx)].reshape(-1, 3) / 255.0
+    sample = _on_grid(photo, size, ext, radius).reshape(-1, 3) / 255.0
     out: list[list[float] | None] = []
     for ch in range(4):
         w = m[:, :, ch].reshape(-1) > 200

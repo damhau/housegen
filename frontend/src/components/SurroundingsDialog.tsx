@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Loader2, MapPin, Mountain, RotateCcw, RotateCw, Search, Trash2, X } from "lucide-react"
+import { Loader2, MapPin, Mountain, RefreshCw, RotateCcw, RotateCw, Search, Trash2, X } from "lucide-react"
 import {
   alignSurroundings,
   deleteSurroundings,
@@ -9,10 +9,10 @@ import {
   searchPlaces,
   useGetSurroundings,
 } from "@/api/endpoints/surroundings/surroundings"
-import type { PlaceOut } from "@/api/model"
+import type { FetchInRadius, PlaceOut } from "@/api/model"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { cn, errorMessage } from "@/lib/utils"
+import { cn, errorMessage, formatDate } from "@/lib/utils"
 
 /** The scene from above, as the scene page reports it (scene metres: x east, z south). */
 type Quad = [number, number, number, number]
@@ -80,11 +80,11 @@ export function SurroundingsDialog({
     }
   }
 
-  async function fetchPlace(place: PlaceOut) {
+  async function fetchPlace(place: PlaceOut, radius: FetchInRadius = 200) {
     setFetching(place)
     setError(null)
     try {
-      const out = await fetchSurroundings(projectId, { place, radius: 200 })
+      const out = await fetchSurroundings(projectId, { place, radius })
       qc.setQueryData(getGetSurroundingsQueryKey(projectId), out)
       setChangePlace(false)
       onChanged()
@@ -158,6 +158,12 @@ export function SurroundingsDialog({
               setResults(null)
             }}
             onRemove={() => void remove()}
+            fetchedAt={data.fetched_at ?? null}
+            fetching={fetching !== null}
+            // the same place and radius again: what the survey and the lidar have now; the alignment is kept
+            onFetchAgain={() => {
+              if (data.place) void fetchPlace(data.place, (data.radius ?? 200) as FetchInRadius)
+            }}
             credits={data.credits ?? []}
           />
         ) : (
@@ -245,6 +251,9 @@ function AlignEditor({
   onSaved,
   onChangePlace,
   onRemove,
+  fetchedAt,
+  fetching,
+  onFetchAgain,
   credits,
 }: {
   projectId: string
@@ -256,6 +265,9 @@ function AlignEditor({
   onSaved: (out: Awaited<ReturnType<typeof alignSurroundings>>) => void
   onChangePlace: () => void
   onRemove: () => void
+  fetchedAt: string | null
+  fetching: boolean
+  onFetchAgain: () => void
   credits: string[]
 }) {
   const [a, setA] = useState<Alignment>({
@@ -403,9 +415,23 @@ function AlignEditor({
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Place</div>
           <div className="mt-1 font-medium">{place?.label ?? "—"}</div>
-          <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={onChangePlace}>
-            Change place
-          </Button>
+          {fetchedAt && <div className="text-xs text-muted-foreground">Fetched {formatDate(fetchedAt)}</div>}
+          <div className="flex items-center gap-3">
+            <Button size="sm" variant="link" className="h-auto p-0 text-xs" onClick={onChangePlace} disabled={fetching}>
+              Change place
+            </Button>
+            <Button
+              size="sm"
+              variant="link"
+              className="h-auto gap-1 p-0 text-xs"
+              title="Fetch this place's surroundings again, with what the survey and the lidar have now (newer buildings and trees, the ground by type). The alignment is kept."
+              onClick={onFetchAgain}
+              disabled={fetching || !place}
+            >
+              {fetching ? <Loader2 className="size-3 animate-spin" /> : <RefreshCw className="size-3" />}
+              {fetching ? "Fetching…" : "Fetch again"}
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-col gap-2">
@@ -437,8 +463,8 @@ function AlignEditor({
             onChange={(v) => setA({ ...a, near: Math.min(165, Math.max(30, Math.round(v))) })}
           />
           <p className="text-xs text-muted-foreground">
-            Within it, the trees and the ground by type (roads, gardens, paving); beyond it, the aerial photo. 30 to 165 m. The
-            viewer's Surroundings switch shows the photo alone.
+            Within it, the trees and the ground drawn by type (roads, gardens, paving, fields, woods, water); beyond it, the aerial
+            photo. 30 to 165 m. The viewer's Surroundings switch shows the photo alone.
           </p>
         </div>
 

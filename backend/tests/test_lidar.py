@@ -243,6 +243,16 @@ async def test_the_surroundings_keep_the_newer_houses(
     assert m[400, 400, 1] == 255  # the garden: lawn at the centre
     assert m[400 + 172, 400, 0] == 255  # the road, 43 m south
     assert m[400 + 172, 400, 1] == 0
+    # what used to keep the photo, and each surface's colour (#74)
+    assert ctx["cover"]["file2"] == "cover2.png"
+    assert ctx["cover"]["channels2"] == ["field", "wood", "water", "pool"]
+    assert ctx["cover"]["tint"] == "tint.png"
+    m2 = np.asarray(Image.open(tmp_path / "context" / "cover2.png"))
+    assert m2.shape == (800, 800, 4)
+    assert m2.max() == 0  # neither a field nor a wood here
+    tint = np.asarray(Image.open(tmp_path / "context" / "tint.png")).astype(int)
+    assert tint.shape == (800, 800, 3)
+    assert np.abs(tint[400, 400] - (90, 120, 60)).max() <= 6  # the garden, as photographed (JPEG)
     saved = json.loads((tmp_path / "context" / "buildings.json").read_text())["buildings"]
     assert [b["source"] for b in saved] == ["swissbuildings3d", "lidar"]
 
@@ -319,6 +329,43 @@ def test_the_land_cover_answer_is_read_in_the_local_frame() -> None:
     assert s.kind == "jardin"
     assert s.rings[0][0] == (-10.0, 10.0)  # 10 m west, 10 m south
     assert len(s.rings) == 2  # with its hole
+
+
+def test_each_surface_takes_its_colour_without_its_shadows() -> None:
+    # a photo ± 50 m at 0.5 m a pixel: a dry field west with a crane's shadow across it, a green
+    # garden east, a bright strip between them that no surface covers (#74)
+    photo = np.zeros((200, 200, 3), np.uint8)
+    photo[:, :100] = (190, 170, 110)
+    photo[:, 100:] = (70, 120, 50)
+    photo[90:110, :100] = (40, 35, 30)  # the shadow: 10 % of the field
+    photo[:, 96:104] = (250, 250, 250)
+    found = [
+        landcover.Surface("champ_pre_paturage", [[(-50, -50), (-2, -50), (-2, 50), (-50, 50)]]),
+        landcover.Surface("jardin", [[(2, -50), (50, -50), (50, 50), (2, 50)]]),
+    ]
+    t = landcover.tint(found, photo, ext=40, radius=50).astype(int)
+    assert t.shape == (320, 320, 3)  # ± 40 m at 0.25 m
+    assert tuple(t[160, 40]) == (190, 170, 110)  # in the shadow: the field's own colour
+    assert tuple(t[10, 40]) == (190, 170, 110)
+    assert tuple(t[160, 280]) == (70, 120, 50)  # the garden
+    # between them: the photo blurred over metres (its bright strip mixed with both sides)
+    assert t[160, 160].max() < 200
+    assert tuple(t[160, 160]) not in {(190, 170, 110), (70, 120, 50)}
+    m2 = landcover.masks(found, 40, landcover.CHANNELS2)
+    assert m2[160, 40, 0] == 255  # the field in cover2's R
+    assert m2[160, 280].max() == 0  # the garden in none of cover2's
+
+
+def test_a_large_surface_keeps_its_greener_and_drier_parts() -> None:
+    # one 80 x 40 m block of gardens, watered on the west, dry on the east: one colour for all of it
+    # would paint the whole block the same (#74)
+    photo = np.zeros((200, 200, 3), np.uint8)
+    photo[:, :100] = (60, 110, 40)
+    photo[:, 100:] = (150, 150, 80)
+    found = [landcover.Surface("jardin", [[(-40, -20), (40, -20), (40, 20), (-40, 20)]])]
+    t = landcover.tint(found, photo, ext=45, radius=50).astype(int)
+    assert np.abs(t[180, 40] - (60, 110, 40)).max() <= 3  # 30 m west of the middle
+    assert np.abs(t[180, 320] - (150, 150, 80)).max() <= 3  # 30 m east
 
 
 def test_a_point_inside_every_region_between_the_outlines() -> None:

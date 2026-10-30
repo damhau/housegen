@@ -130,13 +130,22 @@ async def build(
         ext = min(radius, COVER_EXTENT)
         m = landcover.masks(cover, ext)
         (tmp / "cover.png").write_bytes(landcover.cover_png(m))
+        m2 = landcover.masks(cover, ext, landcover.CHANNELS2)
+        (tmp / "cover2.png").write_bytes(landcover.cover_png(m2))
+        rgb = np.asarray(img)
+        (tmp / "tint.png").write_bytes(landcover.cover_png(landcover.tint(cover, rgb, ext, radius)))
         cover_meta = {
             "file": "cover.png",
             "extent": ext,
             "cell": landcover.MASK_CELL,
             "channels": list(landcover.NAMES),
+            # what used to keep the photo (#74): R field, G wood, B water, A pool
+            "file2": "cover2.png",
+            "channels2": list(landcover.NAMES2),
+            # each surface's colour on the photo, shadows left out: the kit's finishes take it (#74)
+            "tint": "tint.png",
             # the photo's mean colour (sRGB) under each: the kit tints its finishes relative to it
-            "colours": landcover.class_colours(m, np.asarray(img), ext, radius),
+            "colours": landcover.class_colours(m, rgb, ext, radius),
             "surfaces": len(cover),
         }
     if trees:

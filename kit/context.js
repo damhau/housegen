@@ -27,6 +27,8 @@ const SITE_MARGIN = 3; // metres of the builder's ground kept around its site
 // default), thinning out over BLEND_3D beyond it, like the ground by type
 const NEAR_TREES = 35, MAX_NEAR_TREES = 30, MID_TREES = 70;
 const NEAR_3D = 120, BLEND_3D = 15;
+// metres from the camera over which the ground's finishes lose their texture for its mean colour (#74)
+const COVER_DETAIL = [40, 160];
 const DEG = Math.PI / 180;
 
 /** Scene ← local transform of an alignment: rotate by `rotation`° (clockwise from above) about the scene's origin. */
@@ -95,6 +97,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     meta.trees ? get(meta.trees.file).then((r) => r.json()).then((j) => j.trees ?? []).catch(() => []) : [],
   ]);
   // the ground by type near the house (cover.png, #50): masks, R asphalt, G lawn, B paving, A gravel
+  // (cover2.png and tint.png, #74: see groundFinishes)
   const cover = meta.cover ? await loadTexture(new URL(meta.cover.file, base).href).catch(() => null) : null;
   photo.colorSpace = THREE.SRGBColorSpace;
   photo.anisotropy = 8;
@@ -168,7 +171,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
   const dissolve = { value: meta.far ? 1 : 0 };
   const detail = grain(256);
   const near3D = { house: { value: new THREE.Vector2(siteCentre.x, siteCentre.z) }, radius: { value: nearRadius }, on: { value: cover ? 1 : 0 } };
-  const coverUniforms = cover ? await groundFinishes(cover, meta, R) : null;
+  const coverUniforms = cover ? await groundFinishes(cover, meta, R, base) : null;
   groundMat.onBeforeCompile = (shader) => {
     shader.uniforms.uMeadow = meadowColor;
     shader.uniforms.uDissolve = dissolve;
@@ -325,55 +328,102 @@ export async function loadContext(url, { houseGroup, heightAt }) {
   };
 }
 
-// the ground by type: four finishes mixed by the masks. Each keeps its texture's detail; its colour moves
-// toward the photo's there (seen at a few metres: a mipmap level down) by the share W: all of it for a
-// lawn (a dry or muddy plot stays as photographed), a third for asphalt (roads stay clean). It fades into
-// the photo beyond uNear (+ BLEND_3D) from the house
+// the ground by type: the finishes mixed by the masks. Each keeps its texture's detail; its colour moves
+// toward the photo's by the share W: all of it for a lawn or a field (a dry or muddy plot stays as
+// photographed), a third for asphalt (roads stay clean). With tint.png (#74) the photo's colour is the
+// surface's own (its median, shadows left out), so no shadow, car or crane of the photo prints through,
+// fields, woods, water and pools (cover2.png) get finishes too and what the survey leaves out is a field:
+// nothing within the 3D radius is the photo. Older surroundings (cover.png alone): the photo's colour
+// there (a mipmap level down) and the photo where no mask is. It fades into the photo beyond uNear
+// (+ BLEND_3D) from the house
 const COVER_GLSL = `
-  uniform sampler2D uCover, uF0, uF1, uF2, uF3;
-  uniform vec2 uCoverScale, uR0, uR1, uR2, uR3, uHouse;
-  uniform vec3 uT0, uT1, uT2, uT3, uC0, uC1, uC2, uC3;
-  uniform float uNear, uCoverOn;
-  vec3 coverFinish(sampler2D tex, vec2 rep, vec3 tint, vec3 colour, float w, vec3 low, vec2 xz) {
-    return texture2D(tex, xz * rep).rgb * tint * mix(vec3(1.0), clamp(low / colour, 0.3, 3.0), w);
+  uniform sampler2D uCover, uCover2, uTint, uF0, uF1, uF2, uF3;
+  uniform vec2 uCoverScale, uR0, uR1, uR2, uR3, uRField, uHouse;
+  uniform vec3 uT0, uT1, uT2, uT3, uT4, uT5, uT6, uT7, uC0, uC1, uC2, uC3, uC4, uC5, uC6, uC7;
+  uniform float uNear, uCoverOn, uTintOn;
+  float coverFar; // with tint.png: 0 up close, 1 far from the camera (set by coverGround)
+  vec3 coverFinish(vec3 tex, vec3 tint, vec3 colour, float w, vec3 low) {
+    // far off, the texture's mean (colour / tint): its grain and its tiling go, its colour stays
+    tex = mix(tex, colour / max(tint, vec3(1e-3)), coverFar);
+    return tex * tint * mix(vec3(1.0), clamp(low / colour, 0.3, 3.0), w);
   }
   vec3 coverGround(vec3 photo, vec2 uv, vec3 world) {
     vec2 cuv = (uv - 0.5) * uCoverScale + 0.5;
     if (uCoverOn < 0.5 || any(lessThan(cuv, vec2(0.0))) || any(greaterThan(cuv, vec2(1.0)))) return photo;
     // the masks a quarter metre a pixel, their edges sharpened (no blur, no staircase)
     vec4 c = smoothstep(0.3, 0.7, texture2D(uCover, cuv));
-    float total = c.r + c.g + c.b + c.a;
-    float k = min(total, 1.0) * (1.0 - smoothstep(uNear, uNear + ${BLEND_3D.toFixed(1)}, length(world.xz - uHouse)));
+    vec4 c2 = uTintOn > 0.5 ? smoothstep(0.3, 0.7, texture2D(uCover2, cuv)) : vec4(0.0);
+    float total = c.r + c.g + c.b + c.a + c2.r + c2.g + c2.b + c2.a;
+    float rest = uTintOn > 0.5 ? max(0.0, 1.0 - total) : 0.0;
+    float k = min(total + rest, 1.0) * (1.0 - smoothstep(uNear, uNear + ${BLEND_3D.toFixed(1)}, length(world.xz - uHouse)));
     if (k < 0.002) return photo;
-    vec3 low = texture2D(map, uv, 4.0).rgb;
-    vec3 f = coverFinish(uF0, uR0, uT0, uC0, 0.35, low, world.xz) * c.r
-           + coverFinish(uF1, uR1, uT1, uC1, 1.0, low, world.xz) * c.g
-           + coverFinish(uF2, uR2, uT2, uC2, 0.5, low, world.xz) * c.b
-           + coverFinish(uF3, uR3, uT3, uC3, 0.8, low, world.xz) * c.a;
-    return mix(photo, f / max(total, 1e-3), k);
+    vec3 low = uTintOn > 0.5 ? texture2D(uTint, cuv).rgb : texture2D(map, uv, 4.0).rgb;
+    coverFar = uTintOn > 0.5 ? smoothstep(${COVER_DETAIL[0].toFixed(1)}, ${COVER_DETAIL[1].toFixed(1)}, length(world - cameraPosition)) : 0.0;
+    vec3 grass = texture2D(uF1, world.xz * uR1).rgb;
+    vec3 f = coverFinish(texture2D(uF0, world.xz * uR0).rgb, uT0, uC0, 0.35, low) * c.r
+           + coverFinish(grass, uT1, uC1, 1.0, low) * c.g
+           + coverFinish(texture2D(uF2, world.xz * uR2).rgb, uT2, uC2, 0.5, low) * c.b
+           + coverFinish(texture2D(uF3, world.xz * uR3).rgb, uT3, uC3, 0.8, low) * c.a
+           // a field: the lawn's grass, larger; a wood's floor: the grass in its shade; water, a pool: flat
+           + coverFinish(texture2D(uF1, world.xz * uRField).rgb, uT4, uC4, 1.0, low) * (c2.r + rest)
+           + coverFinish(grass, uT5, uC5, 0.6, low) * c2.g
+           + coverFinish(vec3(1.0), uT6, uC6, 0.3, low) * c2.b
+           + coverFinish(vec3(1.0), uT7, uC7, 0.15, low) * c2.a;
+    return mix(photo, f / max(total + rest, 1e-3), k);
   }`;
-const COVER_FINISHES = [["asphalt", "#55575a"], ["grass", "#5d7a3c"], ["concrete", "#b3aea4"], ["gravel", "#a39a8a"]];
+// cover.png's channels, then cover2.png's (#74); null: a flat colour, no texture
+const COVER_FINISHES = [
+  ["asphalt", "#55575a"], ["grass", "#5d7a3c"], ["concrete", "#b3aea4"], ["gravel", "#a39a8a"],
+  ["grass", "#6f7d42"], ["grass", "#3f4d2c"], [null, "#34505a"], [null, "#5fb4c6"],
+];
 
-/** The uniforms of the ground by type: the masks, the four finishes' maps, tints and sizes, the photo's means. */
-async function groundFinishes(cover, meta, R) {
-  cover.colorSpace = THREE.NoColorSpace;
-  cover.generateMipmaps = false;
-  cover.minFilter = cover.magFilter = THREE.LinearFilter;
-  const mats = COVER_FINISHES.map(([name, color]) => finishMaterial(name, { color }));
+/**
+ * The uniforms of the ground by type: the masks, the finishes' maps, tints and sizes; with tint.png
+ * (#74) cover2.png and the surfaces' colours too. `base`: the surroundings' folder.
+ */
+async function groundFinishes(cover, meta, R, base) {
+  const raw = (t) => {
+    t.colorSpace = THREE.NoColorSpace;
+    t.generateMipmaps = false;
+    t.minFilter = t.magFilter = THREE.LinearFilter;
+    return t;
+  };
+  raw(cover);
+  const [cover2, tint] = meta.cover.file2 && meta.cover.tint
+    ? await Promise.all([meta.cover.file2, meta.cover.tint].map((f) => loadTexture(new URL(f, base).href).catch(() => null)))
+    : [null, null];
+  if (tint) {
+    raw(tint);
+    tint.colorSpace = THREE.SRGBColorSpace; // colours, read in linear as the photo is
+  }
+  const mats = COVER_FINISHES.map(([name, color]) => (name ? finishMaterial(name, { color }) : null));
   await finishesReady();
   const white = new THREE.DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1);
   white.needsUpdate = true;
-  const u = { uCover: { value: cover }, uCoverScale: { value: new THREE.Vector2(R / meta.cover.extent, R / meta.cover.extent) } };
+  const on = Boolean(cover2 && tint);
+  const u = {
+    uCover: { value: cover },
+    uCover2: { value: on ? raw(cover2) : white },
+    uTint: { value: on ? tint : white },
+    uTintOn: { value: on ? 1 : 0 },
+    uCoverScale: { value: new THREE.Vector2(R / meta.cover.extent, R / meta.cover.extent) },
+  };
   mats.forEach((m, k) => {
     const map = m?.map ?? null;
     if (map) { map.wrapS = map.wrapT = THREE.RepeatWrapping; map.needsUpdate = true; }
-    u[`uF${k}`] = { value: map ?? white };
-    // metric UVs: the map's repeat is 1 / its size in metres; the tint makes its mean the colour asked for
-    u[`uR${k}`] = { value: map ? map.repeat.clone() : new THREE.Vector2(1, 1) };
+    // cover.png's four have their own maps; the field and the wood take the lawn's (k 4, 5)
+    if (k < 4) {
+      u[`uF${k}`] = { value: map ?? white };
+      // metric UVs: the map's repeat is 1 / its size in metres
+      u[`uR${k}`] = { value: map ? map.repeat.clone() : new THREE.Vector2(1, 1) };
+    }
+    // the tint makes the texture's mean the colour asked for (a flat finish: the colour itself)
     u[`uT${k}`] = { value: (m?.color ?? new THREE.Color(COVER_FINISHES[k][1])).clone() };
     // the finish's own colour (linear): the photo's colour relative to it tints the finish
     u[`uC${k}`] = { value: new THREE.Color(COVER_FINISHES[k][1]) };
   });
+  // a field's grass twice the lawn's size (seen from farther, over larger surfaces)
+  u.uRField = { value: u.uR1.value.clone().multiplyScalar(0.5) };
   return u;
 }
 

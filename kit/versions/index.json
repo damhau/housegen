@@ -1,6 +1,6 @@
 {
   "pinned": "2026-09-12-baseline",
-  "viewer": "2026-10-30-v33",
+  "viewer": "2026-10-30-v34",
   "versions": [
     {
       "name": "2026-09-12-baseline",
@@ -171,6 +171,11 @@
       "name": "2026-10-30-v33",
       "date": "2026-10-30",
       "note": "v32 with a room's flat read on either side of the dash in its name (#78): \"App. 2 — Chambre 1\" as well as \"Chambre 1 — App. 2\" (plan2d.roomNameParts, shared by the surfaces report, the 2D plan's labels and the tour's order). A builder that named its rooms flat first left every room in \"Commun\", and the report counted no living area (0 m², the sale value from the balconies alone). Pictures unchanged from v32. The viewer's default (with v32's sanitary ware and kitchen fittings). Not pinned."
+    },
+    {
+      "name": "2026-10-30-v34",
+      "date": "2026-10-30",
+      "note": "v33 with \"3D near\" drawing everything within the 3D radius (#74): the finishes no longer take the aerial photo's colour pixel by pixel (its shadows, a crane's, the cars, a building site's patches printed through the lawn) but each survey surface's own colour (tint.png: its lit pixels' median, or around each place in a large surface), and fields, woods, water and pools get finishes too (cover2.png), what the survey leaves out a field; far from the camera the textures give way to their mean colour (no tiling from the air). Surroundings fetched before (cover.png alone) draw as with v33: the viewer's \"Fetch again\" brings the new ones. The viewer's default. Not pinned."
     }
   ]
 }
