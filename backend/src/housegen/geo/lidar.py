@@ -27,6 +27,16 @@ CELL = 0.5  # metres: the query's resolution and the grid the buildings are foun
 GROUND, VEGETATION, BUILDING = 2, 3, 6
 MIN_AREA = 12.0  # m²: a garden shed and up
 MIN_HEIGHT = 2.5  # m above the ground
+ROOF_FIT = 0.6  # m (RMS): a simple roof shape further off the lidar's heights does not fit
+# a house and its lower wing or garage are two volumes, each with its own roof (#73): split where two
+# neighbouring cells differ by more than STEP (a wall: steeper than any roof); a piece under MIN_PART
+# (a dormer, a chimney, a porch) stays with its neighbours
+STEP = 1.0  # m
+MIN_PART = 10.0  # m²
+# the volumes' outlines are simplified together, so two of them keep the same edge where they meet
+# (Visvalingam: the square root of the smallest corner's triangle kept); 1.5 straightens the 0.5 m
+# cells' staircase as 0.6 m does a single outline
+PART_SIMPLIFY = 1.5  # m
 
 
 @dataclass
@@ -119,7 +129,8 @@ def new_buildings(
 ) -> list[swiss.Building]:
     """The buildings of the lidar that `known` lacks: an outline (a rectangle when it nearly is one)
     with walls down to the ground and a roof following the lidar's roof heights (smoothed), so a
-    gable, a hip, a flat roof or an L-shaped house each come out as they are."""
+    gable, a hip, a flat roof or an L-shaped house each come out as they are. A building whose roof
+    steps (a house and its lower wing or garage) is made of one such volume per level (#73)."""
     from rasterio.features import shapes as vectorize
     from scipy import ndimage as ndi
     from shapely.geometry import Polygon, shape
@@ -163,14 +174,9 @@ def new_buildings(
         filled = roof[tuple(idx)]
         smooth = ndi.median_filter(filled, size=3)
         # the outline, from the cells (rasterio's polygons follow the cell edges), simplified
+        here = transform @ transform.translation(sl[1].start, sl[0].start)
         polys = [
-            shape(g)
-            for g, v in vectorize(
-                m.astype(np.uint8),
-                mask=m,
-                transform=transform @ transform.translation(sl[1].start, sl[0].start),
-            )
-            if v == 1
+            shape(g) for g, v in vectorize(m.astype(np.uint8), mask=m, transform=here) if v == 1
         ]
         if not polys:
             continue
@@ -186,12 +192,33 @@ def new_buildings(
         base = min(ground_at(x, z) for x, z in ring) - 0.3
         if np.nanpercentile(roof, 95) - base < MIN_HEIGHT:
             continue
-        # the roof heights of the building's own cells, at their centres
-        cj, ci = np.nonzero(m & ~missing)
-        hx = -radius + (ci + sl[1].start + 0.5) * CELL
-        hz = -radius + (cj + sl[0].start + 0.5) * CELL
-        roof_at, creases = roof_shape(hx, hz, smooth[cj, ci], outline)
-        positions, roof_tris, wall_tris = _mesh(outline, roof_at, creases, base)
+        parts = _volumes(m, smooth)
+        pieces = [(outline, m)] if len(parts) == 1 else _pieces(parts, here)
+        positions: list[np.ndarray] = []
+        roof_tris: list[int] = []
+        wall_tris: list[int] = []
+        for part, own in pieces:
+            # the roof heights of the volume's own cells, at their centres
+            cj, ci = np.nonzero(own & ~missing)
+            if len(cj) < 4:
+                continue
+            hx = -radius + (ci + sl[1].start + 0.5) * CELL
+            hz = -radius + (cj + sl[0].start + 0.5) * CELL
+            hh = smooth[cj, ci]
+            rms, roof_at, creases = _simple_roof(hx, hz, hh, part)
+            if rms <= ROOF_FIT:
+                roofs = [(part, roof_at, creases)]
+            else:
+                # no simple roof over it: two wings under one roof (an L-shaped house), else the planes
+                roofs = _wings(part, hx, hz, hh) or [(part, _faceted(hx, hz, hh), [])]
+            for drawn, at, ridges in roofs:
+                p, r, w = _mesh(drawn, at, ridges, base)
+                k0 = len(positions)
+                positions += p
+                roof_tris += [k0 + t for t in r]
+                wall_tris += [k0 + t for t in w]
+        if not roof_tris:
+            continue
         cx, cz = outline.centroid.x, outline.centroid.y
         out.append(
             swiss.Building(
@@ -207,12 +234,84 @@ def new_buildings(
     return out
 
 
+def _volumes(m: np.ndarray, h: np.ndarray) -> list[np.ndarray]:
+    """A building's cells (`m`, roof heights `h`) split into its volumes: the regions of at least
+    MIN_PART between the cells whose roof jumps more than STEP to a neighbour, each cell left over
+    (by a jump, in a small piece) given to the neighbouring volume whose height is nearest its own.
+    One mask, `m` itself, when the roof does not step."""
+    from scipy import ndimage as ndi
+
+    grid = np.where(m, h, np.nan)
+    pad = np.pad(grid, 1, constant_values=np.nan)
+    sides = [(1 + dj, 1 + di) for dj, di in ((0, 1), (0, -1), (1, 0), (-1, 0))]
+    near = [pad[a : a + grid.shape[0], b : b + grid.shape[1]] for a, b in sides]
+    jump = np.zeros(m.shape, bool)
+    for nb in near:
+        jump |= np.abs(np.nan_to_num(nb - grid, nan=0.0)) > STEP
+    labels, count = ndi.label(m & ~jump)
+    area = ndi.sum(np.ones(m.shape), labels, range(1, count + 1)) * CELL * CELL
+    keep = [k + 1 for k in range(count) if area[k] >= MIN_PART]
+    if len(keep) < 2:
+        return [m]
+    own = np.where(np.isin(labels, keep), labels, 0)
+    for _ in range(m.shape[0] + m.shape[1]):
+        todo = m & (own == 0)
+        if not todo.any():
+            break
+        best = np.full(m.shape, np.inf)
+        take = np.zeros_like(own)
+        lp = np.pad(own, 1)
+        for (a, b), nb in zip(sides, near, strict=True):
+            nl = lp[a : a + m.shape[0], b : b + m.shape[1]]
+            d = np.abs(nb - grid)
+            ok = todo & (nl > 0) & (d < best)
+            best[ok], take[ok] = d[ok], nl[ok]
+        if not take.any():
+            break
+        own = np.where(take > 0, take, own)
+    return [own == k for k in keep]
+
+
+def _pieces(parts: list[np.ndarray], transform: Any) -> list[tuple[Any, np.ndarray]]:
+    """The volumes' outlines, simplified together: where two volumes meet they keep the same edge,
+    so no gap opens between them. Each comes with its cells."""
+    import shapely
+    from rasterio.features import shapes as vectorize
+    from shapely.geometry import Polygon, shape
+    from shapely.geometry.polygon import orient
+
+    labels = np.zeros(parts[0].shape, np.int32)
+    for k, p in enumerate(parts, start=1):
+        labels[p] = k
+    cells: list[list[Any]] = [[] for _ in parts]
+    for g, v in vectorize(labels, mask=labels > 0, transform=transform):
+        cells[int(v) - 1].append(shape(g))
+    simple = shapely.coverage_simplify([shapely.union_all(c) for c in cells], PART_SIMPLIFY)
+    return [
+        (orient(Polygon(g.exterior), sign=1.0), p)
+        for geom, p in zip(simple, parts, strict=True)
+        for g in getattr(geom, "geoms", [geom])
+        if Polygon(g.exterior).area >= 1.0
+    ]
+
+
 def roof_shape(
     x: np.ndarray, z: np.ndarray, h: np.ndarray, outline: Any
 ) -> tuple[Any, list[tuple[np.ndarray, np.ndarray]]]:
     """The roof that fits the lidar's heights best: flat, a single pitch, a gable or a hip along either
-    axis of the outline's rectangle, or (none fits within 0.6 m) the heights themselves, smoothed.
+    axis of the outline's rectangle, or (none fits within ROOF_FIT) the heights themselves, smoothed.
     Returns the height at a point and the creases (ridges: segments the mesh must have edges along)."""
+    rms, at, creases = _simple_roof(x, z, h, outline)
+    if rms > ROOF_FIT:
+        return _faceted(x, z, h), []
+    return at, creases
+
+
+def _simple_roof(
+    x: np.ndarray, z: np.ndarray, h: np.ndarray, outline: Any
+) -> tuple[float, Any, list[tuple[np.ndarray, np.ndarray]]]:
+    """The simple roof shape (flat, a single pitch, a gable, a hip) that fits the heights best, with
+    its RMS off them: (rms, the height at a point, the creases)."""
     rect = np.asarray(outline.minimum_rotated_rectangle.exterior.coords)[:4]
     e1, e2 = rect[1] - rect[0], rect[2] - rect[1]
     long_, short_ = (e1, e2) if np.hypot(*e1) >= np.hypot(*e2) else (e2, e1)
@@ -246,8 +345,6 @@ def roof_shape(
     if spread < 0.8:
         rms, name, d0, coef = candidates[0]
     creases: list[tuple[np.ndarray, np.ndarray]] = []
-    if rms > 0.6:
-        return _faceted(x, z, h), creases
     r0, s0 = float(coef[0]), float(coef[1])
     dd = float(d0 or 0.0)
 
@@ -277,7 +374,56 @@ def roof_shape(
         for sx in (-1, 1):
             for sy in (-1, 1):
                 creases.append((c + sx * e, c + sx * e + (sx * u + sy * v) * big))
-    return at, creases
+    return rms, at, creases
+
+
+def _wings(
+    outline: Any, x: np.ndarray, z: np.ndarray, h: np.ndarray
+) -> list[tuple[Any, Any, list[tuple[np.ndarray, np.ndarray]]]] | None:
+    """An L- or T-shaped volume under one roof (a cross gable, a hip and valley) as two wings that
+    overlap at their corner: cut through an inner corner along each axis of the outline, the larger
+    side of each cut, each with the simple roof fitted on the cells only it covers. Drawn together,
+    the higher roof shows where they overlap, as on the house. None when no inner corner gives two
+    wings that fit within ROOF_FIT. Each wing: (outline, the height at a point, the creases)."""
+    from shapely import contains_xy
+    from shapely.geometry import LineString
+    from shapely.geometry.polygon import orient
+    from shapely.ops import split
+
+    rect = np.asarray(outline.minimum_rotated_rectangle.exterior.coords)[:4]
+    axes = [
+        (b - a) / max(float(np.hypot(*(b - a))), 1e-9)
+        for a, b in ((rect[0], rect[1]), (rect[1], rect[2]))
+    ]
+    big = 2 * float(np.hypot(*(rect[2] - rect[0])))
+    ring = np.asarray(orient(outline, sign=1.0).exterior.coords)[:-1]
+    best: tuple[float, list[tuple[Any, Any, list[tuple[np.ndarray, np.ndarray]]]]] | None = None
+    for k, p in enumerate(ring):
+        d1, d2 = p - ring[k - 1], ring[(k + 1) % len(ring)] - p
+        turn = np.arctan2(d1[0] * d2[1] - d1[1] * d2[0], float(d1 @ d2))
+        if turn > -np.radians(30):  # convex, or nearly straight: not an inner corner
+            continue
+        wings = []
+        for a in axes:
+            sides = split(outline, LineString([p - a * big, p + a * big])).geoms
+            if len(sides) < 2:
+                break
+            wings.append(max(sides, key=lambda g: g.area))
+        if len(wings) != 2 or min(w.area for w in wings) < MIN_PART or wings[0].equals(wings[1]):
+            continue
+        fits = []
+        for w, other in ((wings[0], wings[1]), (wings[1], wings[0])):
+            only = w.difference(other)
+            sel = contains_xy(only if only.area >= MIN_PART else w, x, z)
+            if sel.sum() < 16:
+                break
+            rms, at, creases = _simple_roof(x[sel], z[sel], h[sel], w)
+            fits.append((rms, (orient(w, sign=1.0), at, creases)))
+        if len(fits) == 2 and (best is None or max(f[0] for f in fits) < best[0]):
+            best = (max(f[0] for f in fits), [f[1] for f in fits])
+    if best is None or best[0] > ROOF_FIT:
+        return None
+    return best[1]
 
 
 def _faceted(x: np.ndarray, z: np.ndarray, h: np.ndarray) -> Any:

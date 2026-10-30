@@ -93,6 +93,88 @@ def test_a_house_the_old_dataset_lacks_comes_from_the_lidar() -> None:
     assert (n[:, 1] > 0).all()
 
 
+def _top(b: swiss.Building, x: float, z: float) -> float:
+    """The highest roof of `b` over (x, z): what a camera above sees there (its volumes overlap)."""
+    p = np.asarray(b.positions).reshape(-1, 3)
+    best = -np.inf
+    for t in np.asarray(b.roof).reshape(-1, 3):
+        (x0, y0, z0), (x1, y1, z1), (x2, y2, z2) = p[t]
+        d = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2)
+        if abs(d) < 1e-12:
+            continue
+        w0 = ((z1 - z2) * (x - x2) + (x2 - x1) * (z - z2)) / d
+        w1 = ((z2 - z0) * (x - x2) + (x0 - x2) * (z - z2)) / d
+        if min(w0, w1, 1 - w0 - w1) >= -1e-9:
+            best = max(best, w0 * y0 + w1 * y1 + (1 - w0 - w1) * y2)
+    return float(best)
+
+
+def _steepest(b: swiss.Building) -> float:
+    """The steepest roof triangle of `b`, in degrees: a step drawn as roof instead of a wall shows."""
+    t = np.asarray(b.positions).reshape(-1, 3)[np.asarray(b.roof)].reshape(-1, 3, 3)
+    n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+    return float(np.degrees(np.arccos(np.abs(n[:, 1]) / np.linalg.norm(n, axis=1))).max())
+
+
+def test_a_house_and_its_lower_garage_are_two_volumes_each_with_its_roof() -> None:
+    # a 12 x 9 m gable house (eaves 5 m, ridge 8 m along x) and a 6 x 9 m flat-roofed garage (3 m) as
+    # wide as its east end: one rectangle, one roof over both fits neither (#73)
+    cloud = _cloud(_house(0, 0, 12, 9), _house(9, 0, 6, 9, "flat", eave=3.0))
+    found = lidar.new_buildings(cloud, [], _ground(), RADIUS)
+    assert len(found) == 1
+    b = found[0]
+    assert _top(b, -3, 0) == pytest.approx(GROUND + 8.0, abs=0.2)  # the ridge
+    assert _top(b, -3, 3) == pytest.approx(GROUND + 6.0, abs=0.2)  # down the slope
+    assert _top(b, 3, -3) == pytest.approx(GROUND + 6.0, abs=0.2)
+    assert _top(b, 9, 0) == pytest.approx(GROUND + 3.0, abs=0.1)  # the garage, flat
+    assert _top(b, 10.5, 3.5) == pytest.approx(GROUND + 3.0, abs=0.1)
+    assert b.height == pytest.approx(8.3, abs=0.3)
+    # the step from the garage up to the house is a wall: no roof steeper than the gable's 34°
+    assert _steepest(b) < 36
+
+
+def test_an_l_shaped_house_under_one_roof_comes_as_two_gabled_wings() -> None:
+    # a 16 x 8 m bar along x and an 8 x 8 m wing south of its east half, both gabled (eaves 5 m,
+    # ridges 8 m), the wing's roof running on into the bar's to the valleys: no step to split at,
+    # and no simple roof over the L
+    x, z = (
+        g.ravel()
+        for g in np.meshgrid(np.arange(-8, 8, 0.25) + 0.125, np.arange(-4, 12, 0.25) + 0.125)
+    )
+    bar, wing = np.abs(z) < 4, (x > 0) & (x < 8)
+    h = np.maximum(
+        np.where(bar, 8 - 3 * np.abs(z) / 4, -np.inf),
+        np.where(wing, 8 - 3 * np.abs(x - 4) / 4, -np.inf),
+    )
+    keep = bar | wing
+    pts = np.c_[x[keep], z[keep], GROUND + h[keep], np.full(int(keep.sum()), lidar.BUILDING)]
+    found = lidar.new_buildings(_cloud(pts), [], _ground(), RADIUS)
+    assert len(found) == 1
+    b = found[0]
+    for (px, pz), want in {
+        (-6, 0): 8.0,  # the bar's ridge
+        (-6, 3): 5.75,
+        (4, 10): 8.0,  # the wing's ridge
+        (7, 10): 5.75,
+        (4, 0): 8.0,  # where the ridges cross
+        (2, -2): 6.5,  # the valleys
+        (6, 2): 6.5,
+    }.items():
+        assert _top(b, px, pz) == pytest.approx(GROUND + want, abs=0.25), (px, pz)
+    assert _steepest(b) < 39  # the gables' 37°, nothing steeper
+
+
+def test_a_roof_splits_into_volumes_where_it_steps_not_at_a_chimney() -> None:
+    m = np.ones((20, 30), bool)  # 10 x 15 m
+    h = np.full(m.shape, 5.0)
+    h[8:11, 8:11] = 7.0  # a 1.5 x 1.5 m chimney: stays with its roof
+    assert len(lidar._volumes(m, h)) == 1
+    h[:, 20:] = 3.0  # a 10 x 5 m lower wing
+    parts = lidar._volumes(m, h)
+    assert len(parts) == 2
+    assert sorted(int(p.sum()) for p in parts) == [200, 400]  # every cell in one of them
+
+
 @pytest.mark.parametrize(("kind", "creases"), [("gable", 1), ("hip", 5), ("flat", 0)])
 def test_the_roof_is_fitted_to_its_shape(kind: str, creases: int) -> None:
     from shapely.geometry import box
