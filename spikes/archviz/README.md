@@ -1,0 +1,153 @@
+# Archviz stills in Cycles (#40 revisited), 2026-10-30
+
+Question: can one furnished room of a housegen scene reach the quality of a professional archviz render
+(the agency renders in `reference/`, kept local: third-party images) with Blender Cycles on the local RTX 3050,
+no AI repaint, only CC0 assets and our own?
+
+Project: TestVillaGille on dev (`fa8bd00053e6`, version 21), the ground floor's open kitchen / dining / living.
+The still: `final.jpg` (r5, 2560x1440); round by round: `progress.jpg`. Side by side with the reference
+(kept local): `sheets/final.jpg`. Scores: [Blind judgments](#blind-judgments).
+
+## Pipeline, step by step
+
+Everything runs from this folder. Blender is `bpy` 5.0.1 from PyPI (`uv run --no-project --python 3.11 --with bpy`),
+Cycles on CUDA (OptiX does not initialise under WSL), OIDN denoiser.
+
+1. **Export the house** from its scene page on dev (headless Chrome 145 on the GPU, `GLTFExporter`), 51 s, 260 MB:
+
+       cd ../../backend && WALK_CHROME=<chrome 145> BAKE_KIT=2026-10-30-v34 uv run python ../spikes/bake/export.py fa8bd00053e6 ../spikes/archviz/work
+       WALK_CHROME=<chrome 145> uv run python ../spikes/archviz/rooms.py fa8bd00053e6 ../spikes/archviz/work/rooms.json
+
+   (`export.py` reads `report().rooms` synchronously; the kit's `report()` is async now, hence `rooms.py`.)
+2. **Import** into a .blend (8 s) and look at the storey from above to place the camera:
+
+       uv run --no-project --python 3.11 --with bpy python plan.py work/house.glb work/plan-rdc.png 0
+
+3. **Assets**: `ph_get.py <id>` (Poly Haven models, glTF 2k) and `ph_get.py --tex <id>` (texture sets) into
+   `assets/` (git-ignored); the HDRI `meadow_8k.exr` (Poly Haven, CC0). Ours, made by script in `made/`:
+   - `made/eucalyptus.py` -> `eucalyptus.glb`: branches with round leaves for the table vase;
+   - `made/art.py` -> `art-print.jpg`, `art.glb`: a generated abstract print in an oak frame with a mount;
+   - `made/throw.py` -> `throw.glb`: a wool throw dropped over the lounge chair by cloth simulation.
+4. **Render**: `still.py` opens the .blend, applies the steps, renders, and saves the grades asked for:
+
+       PLANT_AT=-1.72,0.01,1.25 PLANT_H=1.5 VIEW_GAIN=2.2 SKY=0.6 SUN_POWER=5 HDRI_TURN=257 SUN_AZ=215 SUN_ELEV=24 \
+       GRADES="6400:High Contrast:0.7" \
+       uv run --no-project --python 3.11 --with bpy --with numpy python still.py work/house.blend work/r5.png \
+         "0.6,1.25,2.3>-4.5,1.0,4.15@54" 2560 1440 400 \
+         --step lamps_off outside glass sun photo_ground finishes linen decor
+       uv run --no-project --with pillow --with numpy python post.py work/r5-6400-HighContrast-0.7.png sheets/ours-final.png
+
+   The camera is `x,y,z>tx,ty,tz@vfov` in scene metres, level, the target's height reached with the lens shift
+   (vertical lines stay vertical).
+
+### The steps (`still.py`, `dress.py`)
+
+| step | what it does |
+|---|---|
+| base | Cycles GPU, adaptive sampling, OIDN, AgX; the kit's room ceilings hidden (2 cm inside the slab: black seams) |
+| `lamps_off` | daytime: every lamp off |
+| `outside` | the view: a CC0 HDRI of a sunlit wood for camera and reflection rays (Light Path: camera or glossy), the physical sky for the light the room receives; the hedges' bare cores go (their leaves are instanced, not exported) |
+| `glass` | window, door and railing panes: thin clear glass (Transparent + a Layer Weight reflection, transparent to shadow rays); the export's panes are 55 % opaque blue-grey, and a Fresnel node on a thin pane goes totally reflective from inside and stops the sun |
+| `sun` | a sun lamp (0.53 deg) instead of the sky's disc: sharp patches, no noise; `SKY` scales the sky's fill |
+| `photo_ground` | the export's terrain (no shader: flat pale green) and the garden's low pieces beyond 3 m go; the HDRI's own grass shows |
+| `finishes` | the oak floor as a 1.7 m photo-scanned plank set, scaled to the old texture's mean colour; a plaster relief and matte roughness on walls, partitions and ceilings; the terrace tiles at a stone grey |
+| `linen` | the grey curtains as translucent off-white linen |
+| `decor` | rug (CC0 boucle scan, our border band), pachira, eucalyptus in the table vase and in a floor vase, a board, bowl and fruit on the island, the framed print, a linen runner, the lounge chair with the throw and a cushion, the dining chairs' shells in a fine wool |
+| `edges` | (tried last, not in the final) a 4 mm Bevel node in every material's normal: invisible at the judged size |
+| `post.py` | the global finish: a soft bloom around the windows, an unsharp mask (radius 1.6 px, 60 %) |
+
+## Timings (RTX 3050 6 GB, CUDA under WSL)
+
+| | |
+|---|---|
+| export from dev | 51 s (260 MB GLB) |
+| import to .blend | ~10 s |
+| 640x360, 24-32 samples (framing, sun, HDRI turn) | 4-6 s |
+| 960x540, 64-96 samples (drafts) | 12-16 s |
+| 1920x1080, 256 samples | 135-157 s |
+| 1920x1080, 400 samples | 274 s |
+| **2560x1440, 400 samples, final** | **425 s** |
+| cloth simulation of the throw (90 frames) | ~10 s |
+
+## Blind judgments
+
+Each round: three fresh subagents, each shown only two images (ours scaled to the reference's 967x543, both
+re-saved as JPEG q92) as A and B in random order, no other context; scores 1-10 (8 = "an agency would publish
+it as is"). `judge_prep.py` makes the pairs, `work/judge/r<n>/key.json` says which was ours.
+
+| round | still | judge | Daylight | Materials | Decor | View | Grade | Overall | ref Overall |
+|---|---|---|---|---|---|---|---|---|---|
+| r1 | base1 (export + HDRI view + clear glass + sun, no dressing) | j1 | 6 | 4 | 3 | 6 | 6 | 4 | 5 |
+| r1 | | j2 | 5 | 4 | 3 | 6 | 6 | 4 | 6 |
+| r1 | | j3 | 6 | 5 | 3 | 6 | 6 | 4 | 5 |
+| r2 | r2 (view D, finishes, linen, rug, plants, eucalyptus, island) | j1 | 7 | 6 | 6 | 7 | 7 | 7 | 5 |
+| r2 | | j2 | 6 | 6 | 6 | 7 | 6 | 6 | 4 |
+| r2 | | j3 | 7 | 6 | 6 | 7 | 7 | 7 | 5 |
+| r3 | r3 (+ grade 6400 K High Contrast, sky 0.6 / sun 5, print, rug border, runner, lounge chair + cloth throw, terrace) | j1 | 7 | 7 | 7 | 7 | 7 | 7 | 4 |
+| r3 | | j2 | 8 | 7 | 7 | 7 | 8 | 7 | 5 |
+| r3 | | j3 | 7 | 6 | 6 | 7 | 7 | 6 | 4 |
+| r4 | r4 (+ view x1.5, 400 samples, chair/plant moved, floor vase, relief 0.25, post: bloom + unsharp mask) | j1 | 7 | 7 | 7 | 7 | 7 | 7 | 4 |
+| r4 | | j2 | 7 | 6 | 7 | 7 | 7 | 7 | 5 |
+| r4 | | j3 | 7 | 7 | 7 | 7 | 7 | 7 | 5 |
+| r5 | r5 (+ satin 4k floor, wool-upholstered chairs, cushion, view x2.2, tighter frame, 2560x1440) | j1 | 7 | 6 | 7 | 7 | 7 | 7 | 4 |
+| r5 | | j2 | 7 | 7 | 7 | 8 | 7 | 7 | 5 |
+| r5 | | j3 | 7 | 7 | 7 | 8 | 7 | 7 | 4 |
+| r6 | r6 (r5 with sky 0.35, sun 6 at 232/19, exposure 1.35, right plant removed: a white strip appears at the edge) | j1 | 7 | 6 | 7 | 7 | 7 | 6 | 5 |
+| r6 | | j2 | 6 | 6 | 7 | 7 | 7 | 6 | 5 |
+| r6 | | j3 | 6 | 5 | 6 | 6 | 6 | 6 | 4 |
+
+**The goal's bar was not met.** It asked for at least 8 on every line from every judge; the best still (r5)
+scores 7 on almost every line (View 8 for two judges, Materials 6 for one). Its overall (7/7/7) is above the
+reference's (4/5/4): the judges mark the reference down for its dark, veiled grade (Grade 2-4 in every round)
+while scoring its materials and decor 6-8. Scores move by about one point between judges on the same image.
+
+Image statistics (`stats.py`; luminance 0-255, the wall's CIELAB a*/b*, 0/0 = neutral):
+
+| | mean | p10 | p50 | p90 | wall L* | a* | b* |
+|---|---|---|---|---|---|---|---|
+| ours (r5, final) | 127 | 37 | 140 | 195 | 51 | -1.2 | +4.8 |
+| reference | 105 | 71 | 107 | 135 | 51 | +0.3 | -0.1 |
+
+## What made the biggest difference
+
+1. **The styling and the camera (r1 -> r2: overall 4 -> 6-7, decor 3 -> 6).** A view with depth and no blank
+   wall, then the dressing: linen curtains, a rug, plants, eucalyptus, fruit, photo-scanned finishes.
+2. **Light that gets in at all.** Two bugs hid the sun: the export's window panes (55 % opaque blue-grey), and a
+   Fresnel-mixed thin pane, which goes totally reflective seen from inside at the sun's angle (total internal
+   reflection) and blocks shadow rays. Clear glass (Transparent + Layer Weight, transparent to shadow rays) and a
+   sun lamp gave the sun patches and chair shadows.
+3. **The view outside.** A CC0 HDRI of a sunlit wood seen only by camera and reflection rays (the room keeps the
+   physical sky's light), the export's flat terrain and bare hedge cores hidden. The judges rated it 7-8 from r2.
+4. **A neutral grade.** Blender's white balance at 6000-6400 K (higher values warm it up: the setting is the
+   light that counts as white), AgX High Contrast, less sky fill: walls from b* +10.9 to +4.8.
+
+From r3 on, targeted fixes (a print, a chair with a cloth-simulated throw, bloom and sharpening, a 4k satin
+floor, wool chairs, 2560 px) moved single lines by about a point but not the overall: a plateau at 7.
+
+## What still looks worse than the reference
+
+What the judges kept naming, round after round:
+
+- **"Plain, flat walls and ceiling."** That is the house's own white plaster; the reference has a board-formed
+  concrete ceiling, a stone backsplash and wood. The goal kept finishes in their kind and colour, so no feature
+  wall or concrete ceiling was added.
+- **"Plastic-looking identical grey chairs", a plain table.** The kit's furniture is simple geometry: clean
+  edges, no wear, one material. Better models would help most here, and CC0 libraries have few modern
+  dining pieces (Poly Haven: a tufted leather chair, classic consoles).
+- **A slightly soft, clean "real-time CG" surface**, weak contact shadows. Real geometric detail (bevels in the
+  mesh, seams, stitching) is missing. A shading bevel (`edges`) and sharpening barely show at 967 px.
+- **The sun/shade contrast.** A lower sun and less fill (r6) gave stronger patches, but the judges did not
+  score it higher (and the plant's removal opened a white strip at the right edge).
+- **Small staging flaws**: plants cropped at the frame edges, the cloth throw a little stiff where it hangs.
+
+Fidelity notes:
+- **The view outside is a stock photo of a wood, not the site.** For a real listing it should be the project's
+  own surroundings (the context photo, or a photo taken on the plot).
+- The furniture, decor and textiles are staging, not the owner's design. The architecture, openings, floor and
+  wall colours are the house's.
+
+## Licences
+
+Poly Haven assets are CC0 (models, textures, the HDRI `meadow` by Sergej Majboroda); none is marked NoAI and none
+was bought. `made/` is ours. The reference renders are third-party marketing images, kept in `reference/`
+(git-ignored), as are `assets/`, `work/` and `sheets/` (the sheet contains the reference).
