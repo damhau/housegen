@@ -62,9 +62,9 @@ def shoot(name: str, camera: str, w: int, h: int, samples: int) -> dict:
     if p.returncode:
         res["log"] += "\n" + text[-4000:]
         return res
-    for suffix in ("", "-preview", "-raw"):
-        with open(out.replace(".png", f"{suffix}.png"), "rb") as f:
-            res["files"][f"{name}{suffix}.png"] = f.read()
+    for suffix in ("-preview.png", "-raw.png", ".png", "-linear.exr", "-grade.json"):
+        with open(out.replace(".png", suffix), "rb") as f:
+            res["files"][f"{name}{suffix}"] = f.read()
     return res
 
 

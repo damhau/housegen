@@ -42,7 +42,12 @@ from dress import model, place, principled  # noqa: E402
 from post import post  # noqa: E402
 
 LAT = float(os.environ.get("LAT", "46.5"))
-SKY, SUN_POWER = 0.55, 5.5  # the hand-tuned rooms' values (0.5-0.6, 5-6)
+SKY = 0.55  # the hand-tuned rooms' value (0.5-0.6)
+# the sun lamp against the sky: at 16 a patch on the floor or a wall is 5-8x the sky's light around it (5.5, the
+# hand-tuned rooms' value, gave 2-3x: patches the judges did not see, "flat light")
+SUN_POWER = float(os.environ.get("PHOTO_SUN_POWER", "16"))
+LAMPS = float(os.environ.get("PHOTO_LAMPS", "0.4"))  # the lamps of a room without sun, x their full strength
+THUMBS = int(os.environ.get("THUMBS", "10"))  # candidate suns rendered as thumbnails (0: the ray count alone)
 LOOK = "AgX - High Contrast"
 TARGET_MEDIAN, TARGET_WALL_B, TARGET_WALL_A = 155.0, 4.0, 0.5  # sRGB luminance 0-255 of the room; CIELAB b*, a* of its walls
 CACHE = os.path.join(HERE, "work", "cache")
@@ -712,6 +717,22 @@ def clear_edges(scene, cam, widest=0.03):
                     break
         if len(widths) >= 3:
             turns[side] = max(widths) + 0.005
+    # a strip of ceiling along the top edge, a few pixels high (the camera's top edge just over the wall's
+    # top): tilt the frame down (less shift) to lose it
+    strips = []
+    for fx in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9):
+        f = 0.0
+        while f <= widest + 0.0025:
+            d = (rot @ Vector((x0 + fx * (x1 - x0), y1 - f * (y1 - y0), zc))).normalized()
+            hit = trace(scene, dg, origin, d)
+            if hit is None or hit[1].z > -0.7:
+                break
+            f += 0.0025
+        strips.append(f)
+    if sum(f > 0 for f in strips) >= 3 and max(strips) <= widest:
+        h = max(strips) + 0.004
+        cam.data.shift_y -= h * (y1 - y0) / max(x1 - x0, y1 - y0)
+        log(f"frame: a {h * 100:.1f} % ceiling strip at the top edge, frame lowered")
     if len(turns) != 1:
         return
     side, w = next(iter(turns.items()))
@@ -863,6 +884,7 @@ def sun_positions(lat):
 
 
 SUN_DEBUG = {}
+RANKED = []  # every sun position pick_sun scored: (score, azimuth, elevation, floor lit, all lit), best first
 
 
 def pick_sun(scene, rays):
@@ -883,6 +905,7 @@ def pick_sun(scene, rays):
     if not use:
         return still.SUN["azimuth"], still.SUN["elevation"], 0.0
     weight = [0.3 + r["fy"] ** 2 for r in use]  # patches in the foreground count more
+    every = [r for r in rays if r["interior"]][::4]
     best = None
     for az, el in sun_positions(LAT):
         a, e = math.radians(az), math.radians(el)
@@ -890,18 +913,22 @@ def pick_sun(scene, rays):
         def lights(r):
             return r["hit"][1].dot(s) > 0.05 and trace(scene, dg, r["hit"][0] + r["hit"][1] * 2e-3, s) is None
 
-        if not any(lights(r) for r in use[::5]):  # a coarse pass: most positions light nothing of it
+        if not any(lights(r) for r in every[::4]):  # a coarse pass: most positions light nothing in view
             continue
         lit = [lights(r) for r in use]
         frac = sum(w for w, ok in zip(weight, lit) if ok) / sum(weight)
+        # any surface in view (walls, furniture), for the thumbnails' candidates
+        frac_all = sum(lights(r) for r in every) / max(1, len(every))
         if os.environ.get("DEBUG"):
             SUN_DEBUG[(az, el)] = [(r["fx"], r["fy"]) for r, ok in zip(use, lit) if ok]
         score = abs(frac - 0.2) + (0.5 if frac < 0.05 else 0) + abs(el - 30) / 600
+        RANKED.append((score, az, el, frac, frac_all))
         if best is None or score < best[0]:
-            best = (score, az, el, frac)
+            best = (score, az, el, frac, frac_all)
+    RANKED.sort()
     if best is None:
         return still.SUN["azimuth"], still.SUN["elevation"], 0.0
-    _, az, el, frac = best
+    _, az, el, frac, _ = best
     if frac < 0.02:
         return still.SUN["azimuth"], still.SUN["elevation"], frac
     return az, el, frac
@@ -919,8 +946,10 @@ def lamps_on(scene, room):
             continue
         o.hide_render = False
         o.data.color = (1.0, 0.78, 0.56)
-        o.data.energy = 18.0 if o.data.type == "SPOT" else 25.0
-        o.data.shadow_soft_size = 0.02
+        # warm accents under the window's light, not the key: at full strength (18-25 W) the room read as lit
+        # from nowhere, with a hard streak from the mirror light (r1 judges); a soft source
+        o.data.energy = (18.0 if o.data.type == "SPOT" else 25.0) * LAMPS
+        o.data.shadow_soft_size = 0.12
         o.visible_camera = False  # the fixture's diffuser shows, not the bulb
         if o.data.type == "SPOT":
             o.data.spot_size = max(o.data.spot_size, math.radians(100))
@@ -932,10 +961,103 @@ def lamps_on(scene, room):
 HDRI_WOOD = -50.0  # the HDRI's direction (degrees from +x, its own frame) where it shows only the wood
 
 
+def aim_sun(scene, lamp, az, el):
+    """Turn the sun lamp and the sky's sun (its glow and colour) to a compass azimuth and elevation."""
+    sky = next(n for n in scene.world.node_tree.nodes if n.bl_idname == "ShaderNodeTexSky")
+    sky.sun_elevation, sky.sun_rotation = math.radians(el), math.radians(az)
+    lamp.rotation_euler = (math.pi / 2 - math.radians(el), 0.0, math.pi - math.radians(az))
+
+
+def spread(ranked, n, apart=12.0):
+    """The n best positions at least `apart` degrees from each other (thumbnails of near twins say nothing)."""
+    out = []
+    for _, az, el, _, frac in sorted(ranked, key=lambda r: abs(r[4] - 0.15)):
+        if frac < 0.01:
+            continue
+        a = Vector((math.sin(math.radians(az)) * math.cos(math.radians(el)), math.cos(math.radians(az)) * math.cos(math.radians(el)), math.sin(math.radians(el))))
+        if all(math.degrees(a.angle(b)) >= apart for b, _, _ in out):
+            out.append((a, az, el))
+        if len(out) == n:
+            break
+    return [(az, el) for _, az, el in out]
+
+
+def linear_lum(scene, path):
+    """Render at the current settings; the scene-linear luminance, rows top-down."""
+    bpy.ops.render.render()
+    bpy.data.images["Render Result"].save_render(path, scene=scene)
+    img = bpy.data.images.load(path)
+    w, h = img.size
+    px = np.empty(w * h * 4, np.float32)
+    img.pixels.foreach_get(px)
+    bpy.data.images.remove(img)
+    return px.reshape(h, w, 4)[::-1, :, :3] @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+
+
+THUMB_W, THUMB_SAMPLES = 192, 24
+PATCH_AT, PATCH_TARGET = 2.5, 0.12  # a ray's surface is in a sun patch when the sun adds 2.5x its sky light
+
+
+def sun_thumbs(scene, rays, lamp, cands, sy, tmp):
+    """Render each candidate sun small, once with the sky and once alone; keep the one whose sun patches fall
+    on the floor and the walls (where a patch reads as sunlight, not as a brighter white bed) over about
+    12 % of the room, foreground first. Returns (azimuth, elevation, patch fraction, the sun-to-sky ratio
+    in the patches) or None."""
+    rs, vs, cy = scene.render, scene.view_settings, scene.cycles
+    keep = (rs.resolution_x, rs.resolution_y, cy.samples, rs.image_settings.file_format, vs.view_transform, vs.look, vs.exposure,
+            rs.image_settings.color_depth)
+    rs.resolution_x, rs.resolution_y = THUMB_W, round(THUMB_W * keep[1] / keep[0])
+    cy.samples = THUMB_SAMPLES
+    rs.image_settings.file_format = "OPEN_EXR"
+    vs.view_transform, vs.exposure = "Raw", 0.0
+    bg = scene.world.node_tree.nodes["Background"].inputs[1]
+    sky = bg.default_value
+    floor_y = sy + 0.25
+    inside = [r for r in rays if r["interior"]]
+    arch = [r["hit"][1].z > 0.7 and to_scene(r["hit"][0])[1] < floor_y or abs(r["hit"][1].z) < 0.2 and bool(kinds(r["hit"][2]) & {"wall", "partition"})
+            for r in inside]
+    weight = np.array([0.3 + r["fy"] ** 2 for r in inside])
+    best, rows = None, []
+    exr = tmp.replace(".png", ".exr")
+    for i, (az, el) in enumerate(cands):
+        aim_sun(scene, lamp, az, el)
+        full = linear_lum(scene, exr)
+        bg.default_value = 0.0
+        sun = linear_lum(scene, exr)
+        bg.default_value = sky
+        h, w = sun.shape
+
+        def at(img, r):
+            x, y = min(w - 2, max(1, int(r["fx"] * w))), min(h - 2, max(1, int(r["fy"] * h)))
+            return float(img[y - 1:y + 2, x - 1:x + 2].mean())
+
+        s = np.array([at(sun, r) for r in inside])
+        b = np.maximum(np.array([at(full, r) for r in inside]) - s, 1e-4)
+        ratio = s / b
+        lit = ratio > PATCH_AT
+        patch = lit & np.array(arch)
+        f_patch = float(weight[patch].sum() / weight.sum())
+        f_lit = float(weight[lit].sum() / weight.sum())
+        contrast = float(np.median(ratio[patch])) if patch.any() else 0.0
+        score = abs(f_patch - PATCH_TARGET) + max(0.0, f_lit - 0.4) + (0.5 if f_patch < 0.03 else 0) + abs(el - 30) / 600
+        rows.append(f"{az:.0f}/{el:.0f} patch {f_patch * 100:.0f} % lit {f_lit * 100:.0f} % x{contrast:.1f}")
+        if os.environ.get("DEBUG"):
+            t = np.clip((full / max(np.percentile(full, 60), 1e-4) * 0.35) ** (1 / 2.2), 0, 1)
+            Image.fromarray((t * 255).astype(np.uint8)).save(tmp.replace(".png", f"-sun{i}.png"))
+        if best is None or score < best[0]:
+            best = (score, az, el, f_patch, contrast)
+    (rs.resolution_x, rs.resolution_y, cy.samples, rs.image_settings.file_format, vs.view_transform, vs.look, vs.exposure,
+     rs.image_settings.color_depth) = keep
+    log("sun thumbnails: " + "; ".join(rows))
+    return None if best is None else best[1:]
+
+
 def set_sun(scene, az, el):
     still.SUN_AZ, still.SUN_ELEV, still.SUN_POWER = az, el, SUN_POWER
     os.environ["SKY"] = str(SKY)
+    before = set(scene.objects)
     still.sun(scene)
+    lamp = next(o for o in scene.objects if o not in before and o.type == "LIGHT")
     # the HDRI turned so the camera looks at its wood (its other side has a house and a car), whatever the sun:
     # the hand-tuned rooms (HDRI_TURN 257) did the same
     d = scene.camera.matrix_world.to_3x3() @ Vector((0, 0, -1))
@@ -943,6 +1065,7 @@ def set_sun(scene, az, el):
     for node in scene.world.node_tree.nodes:
         if node.bl_idname == "ShaderNodeMapping":
             node.inputs["Rotation"].default_value[2] = math.radians(yaw - HDRI_WOOD)
+    return lamp
 
 
 # ---------------------------------------------------------------- the grade
@@ -1033,9 +1156,11 @@ def grade(scene, rays, tmp):
     solve("white_balance_temperature", 4000.0, 12000.0, 1, TARGET_WALL_B)
     solve_exposure()
     lum, ab = measure(scene, rays, walls, tmp)
+    clip = float((np.asarray(Image.open(tmp).convert("RGB")).max(axis=2) >= 250).mean())
     log(f"grade: exposure {vs.exposure:+.2f}, white {vs.white_balance_temperature:.0f} K, tint "
         f"{vs.white_balance_tint:+.1f} -> room median {lum:.0f}, wall a* b* "
-        f"{ab if ab is None else (round(ab[0], 1), round(ab[1], 1))} ({len(walls)} wall samples)")
+        f"{ab if ab is None else (round(ab[0], 1), round(ab[1], 1))} ({len(walls)} wall samples), "
+        f"{clip * 100:.1f} % of the frame at white")
 
 
 # ---------------------------------------------------------------- main
@@ -1091,8 +1216,21 @@ def main():
     t = time.time()
     az, el, frac = pick_sun(scene, rays)
     log(f"sun: azimuth {az:.0f}, elevation {el:.0f}, {frac * 100:.0f} % of the room in sun ({time.time() - t:.0f} s)")
-    set_sun(scene, az, el)
-    if frac < 0.05:
+    lamp = set_sun(scene, az, el)
+    cands = spread(RANKED, THUMBS)
+    if os.environ.get("SUN_PICK"):  # "az/el": a fixed sun, for experiments
+        az, el = (float(v) for v in os.environ["SUN_PICK"].split("/"))
+        aim_sun(scene, lamp, az, el)
+        cands = []
+    if THUMBS and len(cands) > 1:
+        t = time.time()
+        pick = sun_thumbs(scene, rays, lamp, cands, sy, out.replace(".png", "-thumb.png"))
+        if pick:
+            az, el, frac, contrast = pick
+            aim_sun(scene, lamp, az, el)
+            log(f"sun: thumbnails pick {az:.0f}/{el:.0f}, sun patches on {frac * 100:.0f} % of the room, x{contrast:.1f} "
+                f"the sky's light there ({len(cands)} candidates, {time.time() - t:.0f} s)")
+    if frac < 0.05 and not (THUMBS and len(cands) > 1 and frac >= 0.03):
         lamps_on(scene, room)
     log(f"setup {time.time() - t0:.0f} s")
     # the preview for the grade, at the final's aspect
@@ -1101,6 +1239,24 @@ def main():
     scene.cycles.samples = 32
     bpy.ops.render.render()
     log(f"preview {time.time() - t:.0f} s")
+    for power in os.environ.get("PREVIEW_POWERS", "").split(",") if os.environ.get("PREVIEW_POWERS") else []:
+        lamp.data.energy = float(power)  # the same scene at other sun strengths, for experiments
+        bpy.ops.render.render()
+        grade(scene, rays, out.replace(".png", f"-p{power}.png"))
+        bpy.data.images["Render Result"].save_render(out.replace(".png", f"-p{power}.png"), scene=scene)
+    lit = [o for o in scene.objects if o.type == "LIGHT" and not o.hide_render and o != lamp]
+    base = {o.name: o.data.energy for o in lit}
+    for k in os.environ.get("PREVIEW_LAMPS", "").split(",") if os.environ.get("PREVIEW_LAMPS") else []:
+        for o in lit:  # the room's lamps at other strengths, for experiments
+            o.data.energy = base[o.name] * float(k)
+        bpy.ops.render.render()
+        grade(scene, rays, out.replace(".png", f"-l{k}.png"))
+        bpy.data.images["Render Result"].save_render(out.replace(".png", f"-l{k}.png"), scene=scene)
+    if os.environ.get("PREVIEW_POWERS") or os.environ.get("PREVIEW_LAMPS"):
+        lamp.data.energy = SUN_POWER
+        for o in lit:
+            o.data.energy = base[o.name]
+        bpy.ops.render.render()
     grade(scene, rays, out.replace(".png", "-preview.png"))
     bpy.data.images["Render Result"].save_render(out.replace(".png", "-preview.png"), scene=scene)
     if os.environ.get("DEBUG"):  # the floor samples the chosen sun lights, as red dots on the preview
@@ -1121,6 +1277,16 @@ def main():
     raw = out.replace(".png", "-raw.png")
     bpy.data.images["Render Result"].save_render(raw, scene=scene)
     post(raw, out)
+    # the scene-linear frame and the grade, for regrading without a render (regrade.py)
+    vs, ims = scene.view_settings, scene.render.image_settings
+    keep = (vs.view_transform, vs.look, vs.exposure, vs.use_white_balance, ims.file_format, ims.color_depth)
+    vs.view_transform, vs.exposure, vs.use_white_balance = "Raw", 0.0, False
+    ims.file_format, ims.color_depth = "OPEN_EXR", "16"
+    bpy.data.images["Render Result"].save_render(out.replace(".png", "-linear.exr"), scene=scene)
+    vs.view_transform, vs.look, vs.exposure, vs.use_white_balance, ims.file_format, ims.color_depth = keep
+    json.dump({"view_transform": vs.view_transform, "look": vs.look, "exposure": vs.exposure,
+               "temperature": vs.white_balance_temperature, "tint": vs.white_balance_tint},
+              open(out.replace(".png", "-grade.json"), "w"))
     log(f"final {width}x{height} {samples} samples {time.time() - t:.0f} s; total {time.time() - t0:.0f} s -> {out}")
 
 

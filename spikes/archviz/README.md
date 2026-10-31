@@ -289,6 +289,9 @@ De = Decor, V = View, G = Grade, O = Overall.
 |---|---|---|---|---|---|---|
 | a2 | the starting point | 3 | 6/6/5/7/7/**6** | 5/5/5/6/5/**5** | 5/5/5/6/6/**5** | - |
 | b0 | cars painted out of the HDRI (`hdri_clean.py`), the near-edge sliver turn | 5 | 6/6/6/7/7/**6** | 5/5/5/6/6/**5** | 6/6/6/6/6/**5** | 6/6/5/5/6/**5** |
+| g1 | b0 through a tone curve toward the references' percentiles (`post.py` strength 0.5): no gain, left off | 3 | 6/6/5/7/6/**6** | 5/5/5/6/6/**5** | 5/5/5/6/6/**5** | - |
+| r1 | the sun picked from thumbnails (patches on the floor and walls), sun 16 instead of 5.5 | 3 | 7/6/5/7/7/**6** | 6/5/5/6/6/**5** | 5/5/5/6/5/**5** | - |
+| r2 | rooms without sun: lamps at 40 % and soft (the window leads) | 3 | (= r1) | (= r1) | 6/5/6/6/6/**5** | - |
 
 What the b0 judges named as the weakest point:
 - **Every room:** plain surfaces and sparse styling.
@@ -297,4 +300,12 @@ What the b0 judges named as the weakest point:
   under 3 %).
 - **Living room:** windows blown to white, a large bare wall, garish cushions.
 
-Spend so far: $0.88 for 3 Modal runs (T4).
+Phase 1 (#82, light and grade), r1 and r2:
+- **The sun pick:** each candidate sun is rendered as a thumbnail twice, with and without the sky, and the pick keeps
+  the one whose patches fall on the floor and the walls.
+  - The ray count it replaced said "20 % of the room in sun" where the render showed 1 %.
+- **The sun's strength:** 16 instead of 5.5, so a patch is 4-8x the sky's light around it instead of 2-3x.
+- **`regrade.py`:** regrades a photo from the linear EXR that photo.py now writes, in seconds and without a render.
+- **What did not help:** a global tone curve (g1); a brighter or flatter AgX look (judged by eye only).
+
+Spend so far: $1.54 for 5 Modal runs (T4).
