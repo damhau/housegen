@@ -93,13 +93,16 @@ def objects_of(scene, kind):
     return out
 
 
+FLOOR_AT = tuple(float(v) for v in os.environ.get("FLOOR_AT", "-3.0,0.0,2.5").split(","))
+
+
 def floor_material(scene, at):
-    """The material of the room floor under scene point (x, z)."""
-    x, z = at
+    """The material of the room floor under scene point (x, y, z) (y: the storey's floor level)."""
+    x, y, z = at
     for o in objects_of(scene, "roomFloor"):
         ps = [o.matrix_world @ Vector(c) for c in o.bound_box]
         if min(p.x for p in ps) <= x <= max(p.x for p in ps) and min(-p.y for p in ps) <= z <= max(-p.y for p in ps) \
-                and max(p.z for p in ps) < 0.2:
+                and abs(max(p.z for p in ps) - y) < 0.2:
             for s in o.material_slots:
                 if s.material and principled(s.material).inputs["Base Color"].is_linked:
                     return s.material
@@ -110,7 +113,7 @@ def floor_material(scene, at):
 def finishes(scene):
     """The same finishes with texture: the oak floor as 1.7 m tiles of real planks (its colour kept: the photo
     scan is scaled to the old texture's mean), a fine plaster relief and a matte roughness on walls and ceilings."""
-    floor = floor_material(scene, (-3.0, 2.5))
+    floor = floor_material(scene, FLOOR_AT)
     p = principled(floor)
     nt = floor.node_tree
     old = p.inputs["Base Color"].links[0].from_node.image
@@ -163,22 +166,58 @@ def finishes(scene):
     print(f"finishes: plaster on {sorted(done)}")
     # the terrace outside the dining glazing: its tiles at a stone grey (white in the sun, they blow out)
     dg = bpy.context.evaluated_depsgraph_get()
-    ok, _, _, _, hit, _ = scene.ray_cast(dg, blender((-2.5, 3.0, 5.8)), Vector((0, 0, -1)))
-    if ok and hit.material_slots:
-        m = hit.material_slots[0].material
+    for at in ((-2.5, 2.3, 5.8), (2.7, 2.72, 5.6)):  # the dining's terrace, the bedroom's balcony
+        stone(scene, dg, at)
+
+
+STONE = {}
+
+
+def deck_material():
+    """A balcony's timber decking: the oak plank scan, stained dark, planks across the balcony, matte."""
+    m = bpy.data.materials.new("archviz-deck")
+    m["stone"] = True
+    nt = m.node_tree
+    p = principled(m)
+    d = os.path.join(TEX, "laminate_floor_02_4k")
+    vec = world_mapping(nt, 1.2, 0)
+    col = tex_node(nt, image(os.path.join(d, "diff.jpg")), vec)
+    stain = nt.nodes.new("ShaderNodeMixRGB")
+    stain.blend_type = "MULTIPLY"
+    stain.inputs[0].default_value = 1.0
+    stain.inputs[2].default_value = (0.42, 0.34, 0.28, 1)
+    nt.links.new(col.outputs["Color"], stain.inputs[1])
+    nt.links.new(stain.outputs[0], p.inputs["Base Color"])
+    nt.links.new(normal_map(nt, image(os.path.join(d, "nor_gl.jpg"), True), vec, 1.0), p.inputs["Normal"])
+    p.inputs["Roughness"].default_value = 0.8
+    return m
+
+
+def stone(scene, dg, at):
+    ok, _, _, face, hit, _ = scene.ray_cast(dg, blender(at), Vector((0, 0, -1)))
+    slot = hit.data.polygons[face].material_index if ok and hit.type == "MESH" and face < len(hit.data.polygons) else 0
+    if ok and hit.material_slots and round(at[1]) == 3 and not hit.material_slots[slot].material.get("stone"):
+        hit.material_slots[slot].material = deck_material()
+        print(f"finishes: a timber deck under {at}")
+        return
+    if ok and hit.material_slots and not hit.material_slots[slot].material.get("stone"):
+        # its own copy: the slab may share its material with the walls
+        m = hit.material_slots[slot].material.copy()
+        hit.material_slots[slot].material = m
         q = principled(m)
         nt = m.node_tree
         dim = nt.nodes.new("ShaderNodeMixRGB")
         dim.blend_type = "MULTIPLY"
         dim.inputs[0].default_value = 1.0
-        dim.inputs[2].default_value = (0.52, 0.51, 0.49, 1)
+        dim.inputs[2].default_value = (*STONE.get(round(at[1]), (0.52, 0.51, 0.49)), 1)
         if q.inputs["Base Color"].is_linked:
             nt.links.new(q.inputs["Base Color"].links[0].from_socket, dim.inputs[1])
         else:
             dim.inputs[1].default_value = q.inputs["Base Color"].default_value
         nt.links.new(dim.outputs[0], q.inputs["Base Color"])
         q.inputs["Roughness"].default_value = 0.75
-        print(f"finishes: terrace {m.name} at stone grey")
+        m["stone"] = True
+        print(f"finishes: {m.name} under {at} at stone grey")
 
 
 @step
@@ -259,7 +298,7 @@ def model(name):
     return os.path.join(MODELS, name, f"{name}.gltf")
 
 
-def rug(scene, center, size, thickness=0.012):
+def rug(scene, center, size, thickness=0.012, floor=0.0):
     """A rug with rounded corners in a cream boucle (CC0 scan), lying on the floor."""
     w, l = size
     bpy.ops.mesh.primitive_plane_add(size=1.0)
@@ -274,7 +313,7 @@ def rug(scene, center, size, thickness=0.012):
     sol = o.modifiers.new("thick", "SOLIDIFY")
     sol.thickness = thickness
     sol.offset = 1.0
-    o.location = blender((center[0], 0.006, center[1]))
+    o.location = blender((center[0], floor + 0.006, center[1]))
     m = bpy.data.materials.new("archviz-rug")
     nt = m.node_tree
     p = principled(m)
@@ -452,21 +491,21 @@ def attach(root, path, material=None):
             o.data.materials.append(material)
 
 
-def wool_material():
+def wool_material(scale=(5.8, 1.9), tint=(1.7, 1.6, 1.45)):
     m = bpy.data.materials.new("archviz-wool")
     nt = m.node_tree
     p = principled(m)
     d = os.path.join(TEX, "poly_wool_herringbone")
     uv = nt.nodes.new("ShaderNodeUVMap")
     mp = nt.nodes.new("ShaderNodeMapping")
-    mp.inputs["Scale"].default_value = (5.8, 1.9, 1)
+    mp.inputs["Scale"].default_value = (*scale, 1)
     nt.links.new(uv.outputs["UV"], mp.inputs["Vector"])
     vec = mp.outputs["Vector"]
     col = tex_node(nt, image(os.path.join(d, "diff.jpg")), vec)
     lift = nt.nodes.new("ShaderNodeMixRGB")
     lift.blend_type = "MULTIPLY"
     lift.inputs[0].default_value = 1.0
-    lift.inputs[2].default_value = (1.7, 1.6, 1.45, 1)  # an oatmeal wool, lighter than the grey scan
+    lift.inputs[2].default_value = (*tint, 1)  # oatmeal by default, lighter than the grey scan
     nt.links.new(col.outputs["Color"], lift.inputs[1])
     nt.links.new(lift.outputs[0], p.inputs["Base Color"])
     nt.links.new(normal_map(nt, image(os.path.join(d, "nor_gl.jpg"), True), vec, 1.0), p.inputs["Normal"])
@@ -499,3 +538,138 @@ def runner(scene, at, size):
     nt.links.new(normal_map(nt, image(os.path.join(TEX, "rough_linen", "nor_gl.jpg"), True), mp.outputs["Vector"], 0.8), p.inputs["Normal"])
     o.data.materials.append(m)
     return o
+
+
+@step
+def bedroom(scene):
+    """Chambre 4 (first floor): the cloth-simulated bedding (made/bedding.py) in linen and wool, two cushions,
+    our rug instead of the kit's, a fuller plant by the glazing."""
+    floor = 2.75
+    # the kit's bed (bedding baked into one mesh) gives way to ours (made/bed.py) and its bedding (made/bedding.py)
+    for o in scene.objects:
+        if o.get("name") == "bed-oak-linen":
+            ps = [c.matrix_world @ Vector(v) for c in o.children_recursive if c.type == "MESH" for v in c.bound_box]
+            if ps and 0 < min(p.x for p in ps) < 1 and 1.6 < -ps[0].y < 4.6 and abs(min(p.z for p in ps) - floor) < 0.1:
+                for c in [o, *o.children_recursive]:
+                    c.hide_render = True
+    linen, fabric, wool = linen_material(), fabric_material(), wool_material((0.5, 2.2), (0.62, 0.61, 0.6))
+    for path in ("bed.glb", "bedding.glb"):
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=os.path.join(HERE, "made", path))
+        for o in [o for o in bpy.data.objects if o not in before and o.type == "MESH"]:
+            name = o.data.materials[0].name if o.data.materials else ""
+            pick = {"bed-fabric": fabric, "bed-linen": linen}.get(name.split(".")[0])
+            if "throw" in o.name:
+                pick = wool
+            elif "duvet" in o.name:
+                pick = linen
+            if pick:
+                o.data.materials.clear()
+                o.data.materials.append(pick)
+    # sleeping pillows: the CC0 cushion pair, pillow-sized, in the duvet's linen; the patterned pair in front
+    root, _ = place(scene, model("throw_pillows_01"), (0.40, 3.27, 3.2), height=0.52, turn_deg=PILLOW_TURN)
+    for c in root.children_recursive:
+        if c.type == "MESH":
+            c.data = c.data.copy()
+            c.data.materials.clear()
+            c.data.materials.append(linen)
+    root.scale = (root.scale[0] * 1.45, root.scale[1], root.scale[2])  # the pair spans the bed's width
+    root, _ = place(scene, model("throw_pillows_01"), (CUSHION_X, 3.30, 3.2), height=0.38, turn_deg=PILLOW_TURN)
+    if CUSHION_RGB:  # a plain velvet in place of the scan's zigzag
+        velvet = bpy.data.materials.new("archviz-velvet")
+        q = principled(velvet)
+        q.inputs["Base Color"].default_value = (*CUSHION_RGB, 1)
+        q.inputs["Roughness"].default_value = 0.75
+        q.inputs["Sheen Weight"].default_value = 0.8
+        q.inputs["Sheen Roughness"].default_value = 0.35
+        for c in root.children_recursive:
+            if c.type == "MESH":
+                c.data = c.data.copy()
+                c.data.materials.clear()
+                c.data.materials.append(velvet)
+    for o in scene.objects:
+        if o.get("name") in ("rug", "plant-small"):
+            ps = [o.matrix_world @ Vector(c) for c in [*o.children_recursive][0].bound_box] if o.children_recursive else []
+            if ps and 0 < ps[0].x < 5.1 and 1.6 < -ps[0].y < 4.6 and abs(ps[0].z - floor) < 0.6:
+                for c in [o, *o.children_recursive]:
+                    c.hide_render = True
+    rug(scene, (2.25, 3.2), (2.5, 2.3), floor=floor)
+    place(scene, model("potted_plant_02"), PLANT2_AT, height=0.8, turn_deg=20)
+    mirror(scene, MIRROR_AT, 0.32)
+    print("bedroom: bed, bedding, cushions, rug, plant, mirror")
+
+
+PLANT2_AT = tuple(float(v) for v in os.environ.get("PLANT2_AT", "1.75,2.75,4.38").split(","))
+MIRROR_AT = tuple(float(v) for v in os.environ.get("MIRROR_AT", "1.35,4.25,1.62").split(","))
+
+
+def mirror(scene, at, r):
+    """A round mirror with a thin brass rim, flat on the north wall (facing south, +z)."""
+    bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=0.02, vertices=96)
+    rim = bpy.context.active_object
+    rim.rotation_euler = (math.pi / 2, 0, 0)
+    rim.location = blender((at[0], at[1], at[2] + 0.01))
+    brass = bpy.data.materials.new("archviz-brass")
+    q = principled(brass)
+    q.inputs["Base Color"].default_value = (0.75, 0.56, 0.3, 1)
+    q.inputs["Metallic"].default_value = 1.0
+    q.inputs["Roughness"].default_value = 0.3
+    rim.data.materials.append(brass)
+    bpy.ops.mesh.primitive_circle_add(radius=r - 0.012, vertices=96, fill_type="NGON")
+    glass = bpy.context.active_object
+    glass.rotation_euler = (math.pi / 2, 0, 0)
+    glass.location = blender((at[0], at[1], at[2] + 0.021))
+    silver = bpy.data.materials.new("archviz-mirror")
+    q = principled(silver)
+    q.inputs["Base Color"].default_value = (0.92, 0.92, 0.92, 1)
+    q.inputs["Metallic"].default_value = 1.0
+    q.inputs["Roughness"].default_value = 0.02
+    glass.data.materials.append(silver)
+
+
+CUSHION_X = float(os.environ.get("CUSHION_X", "0.78"))
+CUSHION_RGB = tuple(float(v) for v in os.environ["CUSHION_RGB"].split(",")) if os.environ.get("CUSHION_RGB") else None
+CREASE = float(os.environ.get("CREASE", "0.6"))
+
+
+def fabric_material():
+    """The bed's upholstery: a greige linen weave."""
+    m = bpy.data.materials.new("archviz-upholstery")
+    nt = m.node_tree
+    p = principled(m)
+    p.inputs["Base Color"].default_value = (0.42, 0.39, 0.35, 1)
+    p.inputs["Roughness"].default_value = 0.92
+    p.inputs["Sheen Weight"].default_value = 0.5
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    mp = nt.nodes.new("ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (1 / 0.12,) * 3
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    nt.links.new(normal_map(nt, image(os.path.join(TEX, "rough_linen", "nor_gl.jpg"), True), mp.outputs["Vector"], 1.2, box=True), p.inputs["Normal"])
+    return m
+
+
+def linen_material():
+    """Off-white washed linen: its weave (CC0 scan) and the soft creases of a slept-in duvet."""
+    m = bpy.data.materials.new("archviz-duvet")
+    nt = m.node_tree
+    p = principled(m)
+    p.inputs["Base Color"].default_value = (0.86, 0.85, 0.82, 1)
+    p.inputs["Roughness"].default_value = 0.9
+    p.inputs["Sheen Weight"].default_value = 0.4
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    mp = nt.nodes.new("ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (1 / 0.18,) * 3
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    weave = normal_map(nt, image(os.path.join(TEX, "rough_linen", "nor_gl.jpg"), True), mp.outputs["Vector"], 1.0, box=True)
+    crease = nt.nodes.new("ShaderNodeTexNoise")
+    crease.inputs["Scale"].default_value = 2.5
+    crease.inputs["Detail"].default_value = 8.0
+    crease.inputs["Distortion"].default_value = 1.5
+    nt.links.new(tc.outputs["Object"], crease.inputs["Vector"])
+    bump = nt.nodes.new("ShaderNodeBump")
+    bump.inputs["Strength"].default_value = CREASE
+    bump.inputs["Distance"].default_value = 0.03
+    nt.links.new(crease.outputs["Fac"], bump.inputs["Height"])
+    nt.links.new(weave, bump.inputs["Normal"])
+    nt.links.new(bump.outputs["Normal"], p.inputs["Normal"])
+    return m

@@ -13,12 +13,11 @@ The still: `final.jpg` (r5, 2560x1440); round by round: `progress.jpg`. Side by 
 Everything runs from this folder. Blender is `bpy` 5.0.1 from PyPI (`uv run --no-project --python 3.11 --with bpy`),
 Cycles on CUDA (OptiX does not initialise under WSL), OIDN denoiser.
 
-1. **Export the house** from its scene page on dev (headless Chrome 145 on the GPU, `GLTFExporter`), 51 s, 260 MB:
+1. **Export the house** from its scene page on dev (headless Chrome 145 on the GPU, `GLTFExporter`), 51 s, 260 MB,
+   with its rooms (`export.py`: the bake spike's exporter with the v34 kit and the async `report()`):
 
-       cd ../../backend && WALK_CHROME=<chrome 145> BAKE_KIT=2026-10-30-v34 uv run python ../spikes/bake/export.py fa8bd00053e6 ../spikes/archviz/work
-       WALK_CHROME=<chrome 145> uv run python ../spikes/archviz/rooms.py fa8bd00053e6 ../spikes/archviz/work/rooms.json
+       cd ../../backend && WALK_CHROME=<chrome 145> uv run python ../spikes/archviz/export.py fa8bd00053e6 ../spikes/archviz/work
 
-   (`export.py` reads `report().rooms` synchronously; the kit's `report()` is async now, hence `rooms.py`.)
 2. **Import** into a .blend (8 s) and look at the storey from above to place the camera:
 
        uv run --no-project --python 3.11 --with bpy python plan.py work/house.glb work/plan-rdc.png 0
@@ -151,3 +150,58 @@ Fidelity notes:
 Poly Haven assets are CC0 (models, textures, the HDRI `meadow` by Sergej Majboroda); none is marked NoAI and none
 was bought. `made/` is ours. The reference renders are third-party marketing images, kept in `reference/`
 (git-ignored), as are `assets/`, `work/` and `sheets/` (the sheet contains the reference).
+
+## Second room: the bedroom (Chambre 4, first floor), 2026-10-31
+
+The same pipeline in the room that opens onto the south balcony, judged blind against
+`reference/bedroom-balcony.jpg`. The still: `bedroom.jpg`; round by round: `bedroom-progress.jpg`.
+
+    CUSHION_RGB=0.16,0.19,0.13 PILLOW_TURN=90 LAMPS_ON="opal mushroom table lamp" FLOOR_AT=2.0,2.75,3.0 \
+    VIEW_GAIN=2.2 SKY=0.5 SUN_POWER=6 HDRI_TURN=257 SUN_AZ=165 SUN_ELEV=22 GRADES="6800:High Contrast:0.8" \
+    uv run --no-project --python 3.11 --with bpy --with numpy python still.py work/house.blend work/bedr4.png \
+      "3.5,4.0,1.95>0.6,3.6,4.3@55" 2560 1440 400 \
+      --step lamps_off outside glass sun photo_ground finishes linen bedroom
+
+What the `bedroom` step adds (dress.py) and what was made for it:
+- `made/bed.py` -> `bed.glb`: an upholstered platform bed (linen base on a recessed plinth, padded headboard,
+  a 160 x 200 mattress). The kit's bed has its bedding baked into one mesh with one material: it cannot be
+  re-dressed, so it is hidden.
+- `made/bedding.py` -> `bedding.glb`: cloth simulation on that mattress: a linen duvet pinned under the pillows,
+  shrinking a little as it settles (creases), its top turned back, a wool throw across the foot.
+  Pressure-inflated pillows were tried and collapse (a soft bag does not stand against a headboard): the pillows
+  are Poly Haven's CC0 cushion pair, pillow-sized, in the duvet's linen, a sage velvet pair in front.
+- the balcony slab gets a timber deck material (the glTF wall material it shared went sky-blue-white in full sun);
+  the bedside lamp is on (`LAMPS_ON`), a plant by the glazing.
+- the sun: a morning sun from the south-east (165 deg) is the one that reaches the bed (west side of the room);
+  from the south-west the patches fall on floor the camera does not see, and the judges flagged sun on the deck
+  without sun inside.
+
+| round | still | judge | Daylight | Materials | Decor | View | Grade | Overall | ref Overall |
+|---|---|---|---|---|---|---|---|---|---|
+| round | still | judge | Daylight | Materials | Decor | View | Grade | Overall | ref Overall |
+|---|---|---|---|---|---|---|---|---|---|
+| b1 | kit bed under a cloth-sim duvet on a proxy box, throw, cushions | j1 | 5 | 4 | 4 | 6 | 5 | 4 | 8 |
+| b1 | | j2 | 5 | 4 | 3 | 6 | 5 | 4 | 8 |
+| b1 | | j3 | 5 | 5 | 4 | 6 | 5 | 4 | 8 |
+| b2 | made bed (upholstered, padded headboard, box pillows), duvet + fold + throw on its mattress, plant, lamp on, timber deck | j1 | 6 | 5 | 5 | 7 | 6 | 5 | 8 |
+| b2 | | j2 | 5 | 4 | 4 | 6 | 5 | 4 | 8 |
+| b2 | | j3 | 5 | 4 | 5 | 6 | 6 | 4 | 8 |
+| b3 | + CC0 cushions as pillows (linen), cloth-sim creased duvet, fold, throw on our bed | j1 | 6 | 6 | 6 | 7 | 6 | 6 | 8 |
+| b3 | | j2 | 6 | 5 | 5 | 7 | 6 | 5 | 8 |
+| b3 | | j3 | 6 | 5 | 5 | 7 | 6 | 5 | 8 |
+| b4 | + sage velvet cushions, morning sun 165/22 across the bed, sky 0.5 / sun 6 | j1 | 6 | 6 | 5 | 6 | 6 | 5 | 7 |
+| b4 | | j2 | 5 | 5 | 6 | 6 | 5 | 5 | 7 |
+| b4 | | j3 | 6 | 6 | 5 | 7 | 6 | 6 | 8 |
+
+**Result: 5-6 against a reference the judges rate 7-8.** The dining room's reference was scored 4-5 (its dark
+grade); this one is a well-lit, densely styled studio render, and the gap is real. From a box-like bed (4) the
+bedding work brought the room to 5-6; the judges' remaining points are the same as in the dining room, heavier
+here because a bedroom is mostly textiles:
+- bedding that still reads synthetic (simulated folds are softer and more uniform than slept-in linen);
+- sparse styling and plain walls, base and ceiling (the reference has a desk, a mirror, art, textured upholstery);
+- the lamp's glow halo (the post bloom) and weak contact shadows.
+
+**Lesson:** for textile-heavy rooms, the bottleneck is soft-goods assets. Cloth simulation from scratch reaches
+"plausible" in a few iterations, not "studio"; a library of good bedding, cushions and throws (CC0 or licensed for
+AI use) would move this room more than any renderer setting.
+

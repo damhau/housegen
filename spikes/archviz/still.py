@@ -112,9 +112,19 @@ def step(fn):
 @step
 def lamps_off(scene):
     """Daytime, as in listing photos: the lamps stay off."""
+    keep = [n for n in os.environ.get("LAMPS_ON", "").split(",") if n]
     for o in scene.objects:
         if o.type == "LIGHT":
-            o.hide_render = True
+            names, p = [], o.parent
+            while p is not None:
+                names.append(str(p.get("name", "")))
+                p = p.parent
+            on = any(k in names for k in keep) and o.data.type == "POINT"
+            o.hide_render = not on
+            if on:  # a warm bulb behind an opal shade
+                o.data.energy = 25.0
+                o.data.color = (1.0, 0.78, 0.55)
+                o.data.shadow_soft_size = 0.05
 
 
 HDRI = os.path.join(HERE, "assets", "hdri", "meadow_8k.exr")
