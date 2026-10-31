@@ -271,3 +271,30 @@ Known gaps:
   sun lands on the deck outside);
 - the HDRI's car still shows in the dining room's right-hand window;
 - there are no rules yet for showers, WCs, kitchens without an island, desks, or children's rooms.
+
+## Milestone: listing stills at 8/10 (#88)
+
+The plan, the protocol and the stop rules are on #88; each phase has its own issue (#81-#87).
+- **Judging:** `judge_prep.py` makes the blind pairs, `judge_prompt.md` is the prompt, `judge_save.py` and
+  `judge_tab.py` unblind and tabulate the replies.
+- **Cameras:** in `modal_photo.py`. The living room is the holdout: it is scored at the milestone checks only and
+  never tuned on.
+- **Contact sheets:** one per scored round, in `rounds/`.
+- **Spend:** `work/ledger.csv`.
+
+The table gives the medians of ours, ours against the reference, with columns D = Daylight, M = Materials,
+De = Decor, V = View, G = Grade, O = Overall.
+
+| round | what changed | judges | dining D/M/De/V/G/O | bedroom | bathroom | living (holdout) |
+|---|---|---|---|---|---|---|
+| a2 | the starting point | 3 | 6/6/5/7/7/**6** | 5/5/5/6/5/**5** | 5/5/5/6/6/**5** | - |
+| b0 | cars painted out of the HDRI (`hdri_clean.py`), the near-edge sliver turn | 5 | 6/6/6/7/7/**6** | 5/5/5/6/6/**5** | 6/6/6/6/6/**5** | 6/6/5/5/6/**5** |
+
+What the b0 judges named as the weakest point:
+- **Every room:** plain surfaces and sparse styling.
+- **Bedroom and bathroom:** flat light with no sun.
+- **Bathroom:** the flush plate cut off at the left edge, after the edge turn (since then limited to slivers
+  under 3 %).
+- **Living room:** windows blown to white, a large bare wall, garish cushions.
+
+Spend so far: $0.88 for 3 Modal runs (T4).

@@ -682,6 +682,46 @@ def dress_storey(scene, sy):
 
 # ---------------------------------------------------------------- what the camera sees
 
+def clear_edges(scene, cam, widest=0.03):
+    """A sliver of something right in front of the lens at a side edge of the frame (a wall end, a door jamb)
+    reads as a bright or dark bar: turn the camera just enough to lose it. Only for slivers narrower than
+    `widest` of the frame, so the owner's framing stays."""
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    corners = cam.data.view_frame(scene=scene)
+    x0, x1 = min(c.x for c in corners), max(c.x for c in corners)
+    y0, y1 = min(c.y for c in corners), max(c.y for c in corners)
+    zc = corners[0].z
+    rot, origin = cam.matrix_world.to_3x3(), cam.matrix_world.translation
+
+    def depth(fx, fy):
+        d = (rot @ Vector((x0 + fx * (x1 - x0), y1 - fy * (y1 - y0), zc))).normalized()
+        hit = trace(scene, dg, origin, d)
+        return (hit[0] - origin).length if hit else 1e3
+
+    steps = [k * 0.0025 for k in range(int(widest / 0.0025) + 2)]
+    turns = {}
+    for side in ("left", "right"):
+        widths = []
+        for fy in (0.2, 0.35, 0.5, 0.65, 0.8):
+            ds = [depth(f if side == "left" else 1 - f, fy) for f in steps]
+            for k in range(1, len(ds)):
+                near = max(ds[:k])
+                if ds[k] > 1.6 * near and ds[k] - near > 0.5:
+                    widths.append(steps[k])
+                    break
+        if len(widths) >= 3:
+            turns[side] = max(widths) + 0.005
+    if len(turns) != 1:
+        return
+    side, w = next(iter(turns.items()))
+    edge = math.atan2(x1, -zc)  # the half angle of the frame, horizontally
+    inner = math.atan2(x1 - w * (x1 - x0), -zc)
+    delta = edge - inner
+    cam.rotation_euler[2] += delta if side == "right" else -delta  # right sliver: turn left, it leaves on the right
+    log(f"frame: a {w * 100:.1f} % sliver at the {side} edge, camera turned {math.degrees(delta):.1f} deg")
+
+
 def camera_rays(scene, cam, rooms, sy, nx=48, ny=27):
     """Rays through a grid of the frame: each sample's pixel (fractions, from the top left), what it meets,
     and whether that is inside the storey's rooms."""
@@ -1043,6 +1083,7 @@ def main():
     dress_storey(scene, sy)
     scene.render.resolution_x, scene.render.resolution_y = width, height  # view_frame() reads the aspect from it
     still.camera(scene, cam_spec, width, height)
+    clear_edges(scene, scene.camera)
     rays = camera_rays(scene, scene.camera, rooms, sy)
     pave(rays, sy)
     if hang_art(scene, rays, sy):
