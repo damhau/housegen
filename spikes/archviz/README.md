@@ -148,7 +148,8 @@ Fidelity notes:
 ## Licences
 
 Poly Haven assets are CC0 (models, textures, the HDRI `meadow` by Sergej Majboroda); none is marked NoAI and none
-was bought. `made/` is ours. The reference renders are third-party marketing images, kept in `reference/`
+was bought. Phase 2 added the CC0 texture sets `concrete_wall_008`, `curly_teddy_natural`, `wood_floor_deck` and
+`oak_veneer_01`. `made/` is ours. The reference renders are third-party marketing images, kept in `reference/`
 (git-ignored), as are `assets/`, `work/` and `sheets/` (the sheet contains the reference).
 
 ## Second room: the bedroom (Chambre 4, first floor), 2026-10-31
@@ -292,6 +293,12 @@ De = Decor, V = View, G = Grade, O = Overall.
 | g1 | b0 through a tone curve toward the references' percentiles (`post.py` strength 0.5): no gain, left off | 3 | 6/6/5/7/6/**6** | 5/5/5/6/6/**5** | 5/5/5/6/6/**5** | - |
 | r1 | the sun picked from thumbnails (patches on the floor and walls), sun 16 instead of 5.5 | 3 | 7/6/5/7/7/**6** | 6/5/5/6/6/**5** | 5/5/5/6/5/**5** | - |
 | r2 | rooms without sun: lamps at 40 % and soft (the window leads) | 3 | (= r1) | (= r1) | 6/5/6/6/6/**5** | - |
+| r3 | phase 2: the façade's render off the room side of the outside walls (`inner_walls`), relief on the ceilings (`paint`), glazed tiles one by one, glazed sanitaryware, a limewash wall behind the bed | 3 | 7/6/6/7/7/**6** (r3b) | - | 6/5/6/6/6/**5** | - |
+| r3b | r3 with the limewash up to the ceiling and the balcony's decking back (per-face paving) | 3 | (above) | - | - | - |
+| r4 | stronger glaze on the white tiles | 3 | - | 6/6/5/7/6/**5** | (= r3 by eye, not judged) | - |
+| r5 | `CEILING=concrete` (exposed concrete, CC0 scan), the grade's highlight cap (`CLIP_MAX`), a sage tile wall behind the bathtub | 3 | 7/6/6/7/7/**6** | 6/6/5/6/6/**5** | 6/6/6/6/6/**5** | - |
+| r6 | r5 + bouclé on the bed and the dining chairs (CC0 scan), a weathered deck (CC0 scan) | 3 | 7/6/6/7/7/**7** | 7/6/6/7/6/**6** | - | - |
+| r7 | r6 + the floor laid plank by plank (2.1 x 0.19 m, a CC0 oak scan, tone and gloss per plank, V-joints); wet rooms keep a painted ceiling | 3 | 7/6/6/7/7/**7** | 7/6/5/6/7/**6** | 5/6/6/6/6/**5** | - |
 
 What the b0 judges named as the weakest point:
 - **Every room:** plain surfaces and sparse styling.
@@ -308,4 +315,26 @@ Phase 1 (#82, light and grade), r1 and r2:
 - **`regrade.py`:** regrades a photo from the linear EXR that photo.py now writes, in seconds and without a render.
 - **What did not help:** a global tone curve (g1); a brighter or flatter AgX look (judged by eye only).
 
-Spend so far: $1.54 for 5 Modal runs (T4).
+Phase 2 (#83, surfaces), r3 to r7: **stopped by its stop rule.** The target was a Materials median of 7 in the
+three rooms; it ended at 6 / 6 / 6, and the dining room's Materials median stayed at 6 for four scored rounds
+(r3b, r5, r6, r7). Sheet: `rounds/r7.jpg` (end of phase 1 above, end of phase 2 below).
+- **What moved:** Materials +1 in the bedroom (r4: the façade's render off its walls) and in the bathroom (r5);
+  Overall +1 in the dining room and the bedroom at r6 (bouclé, deck). Single judges gave Materials 7 or 8; never
+  two out of three.
+- **What did not move Materials:** the concrete ceilings, the sage tile wall, the plank floor (one r7 judge called
+  its planks "repetitive"), stronger tile glaze.
+- **Where the judges' Materials complaints went in r7:** almost none name a surface any more. They name sparse
+  styling, "plain walls, one print, one vase", the crumpled and "synthetic" bedding, the blown-out terrace and
+  globe lamps, "flat CG white" sanitaryware with weak contact shadows. Those belong to #84 (styling), #85 (soft
+  goods, furniture) and #86 (framing): a judge seems to score Materials on the whole picture's realism, not on the
+  floor and walls alone.
+- **Denoising is not the "smear":** a crop of the dining chairs and floor at 2560 px with 400 samples (default),
+  with the prefilter off, and with 1024 samples at an adaptive threshold of 0.003 looks the same. The "soft,
+  over-denoised" look the judges name comes from the soft goods and the plain walls.
+- **Concrete ceilings and the grade:** a dark ceiling pushes the auto exposure up and the windows clip. The grade
+  now pulls the exposure back by up to half a stop when more than 3 % of the frame is at white (`CLIP_MAX`).
+  `CEILING=concrete` stays off by default: the export doesn't know the ceiling's finish.
+- **Knobs added:** `CEILING`, `CLIP_MAX`, `FEATURE_TILE` (sage, clay, white), `FLOOR=scan` (the old laminate scan),
+  `ADAPTIVE`, `PREFILTER`, `CROP`.
+
+Spend so far: $4.11 for 11 Modal runs (T4).

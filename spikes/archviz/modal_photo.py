@@ -28,6 +28,9 @@ HOLDOUT = {  # scored at the milestone checks only, never tuned on (#88)
     "living": "4.5,1.3,4.1>-1.2,1.0,1.2@58",
 }
 
+KNOBS = ("CEILING", "TILE_TONE", "MOTTLE", "LIMEWASH", "SKIP", "THUMBS", "SUN_PICK", "PHOTO_SUN_POWER", "PHOTO_LAMPS",
+         "RELIEF", "FLOOR_ROUGH", "CLIP_MAX", "FEATURE_TILE", "ADAPTIVE", "PREFILTER", "FLOOR")  # photo.py's environment knobs, forwarded to the containers
+
 app = modal.App("housegen-photo-test")
 image = (
     modal.Image.debian_slim(python_version="3.11")
@@ -48,14 +51,15 @@ image = (
 
 
 @app.function(image=image, gpu=GPU, cpu=4.0, memory=16384, timeout=3600)
-def shoot(name: str, camera: str, w: int, h: int, samples: int) -> dict:
+def shoot(name: str, camera: str, w: int, h: int, samples: int, env: dict) -> dict:
     import subprocess
     import sys
 
     out = f"/tmp/{name}.png"
     t = time.time()
     p = subprocess.run([sys.executable, f"{R}/photo.py", f"{R}/work/house.blend", f"{R}/work/rooms.json", camera, out,
-                        str(w), str(h), str(samples)], capture_output=True, text=True, cwd=R)
+                        str(w), str(h), str(samples)], capture_output=True, text=True, cwd=R,
+                       env={**os.environ, **env})
     text = p.stdout + p.stderr
     log = "\n".join(line for line in text.splitlines() if "PHOTO" in line or "rror" in line or "WARNING" in line)
     res = {"name": name, "seconds": time.time() - t, "log": log, "files": {}}
@@ -73,7 +77,10 @@ def main(rooms: str = "dining,bedroom,bath", w: int = 2560, h: int = 1440, sampl
     os.makedirs(os.path.join(HERE, "work", "auto"), exist_ok=True)
     t = time.time()
     cams = {**CAMERAS, **HOLDOUT}
-    jobs = [(n, cams[n], w, h, samples) for n in rooms.split(",")]
+    env = {k: v for k, v in os.environ.items() if k in KNOBS}  # the experiment's knobs, as set here
+    if env:
+        print(f"knobs: {env}")
+    jobs = [(n, cams[n], w, h, samples, env) for n in rooms.split(",")]
     seconds = []
     for res in shoot.starmap(jobs):
         seconds.append(res["seconds"])

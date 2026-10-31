@@ -50,6 +50,8 @@ LAMPS = float(os.environ.get("PHOTO_LAMPS", "0.4"))  # the lamps of a room witho
 THUMBS = int(os.environ.get("THUMBS", "10"))  # candidate suns rendered as thumbnails (0: the ray count alone)
 LOOK = "AgX - High Contrast"
 TARGET_MEDIAN, TARGET_WALL_B, TARGET_WALL_A = 155.0, 4.0, 0.5  # sRGB luminance 0-255 of the room; CIELAB b*, a* of its walls
+CLIP_MAX = float(os.environ.get("CLIP_MAX", "0.03"))  # at most this share of the frame at white...
+CLIP_PULL = 0.5  # ...by lowering the median's exposure at most this many stops (darker than that reads as a grey veil)
 CACHE = os.path.join(HERE, "work", "cache")
 ART = os.path.join(HERE, "made", "art.glb")  # 0.62 x 0.82 m, facing +y
 EUCALYPTUS = os.path.join(HERE, "made", "eucalyptus.glb")
@@ -177,6 +179,105 @@ def ground(scene):
     log(f"ground: terrain and {n} garden pieces hidden")
 
 
+PLANK = (2.1, 0.19)  # length and width of the floor's planks, metres
+
+
+def plank_floor(m, turn_deg=90):
+    """A wood floor laid plank by plank: long planks (PLANK) in staggered rows, each cut from its own place in a
+    seamless oak scan (Poly Haven oak_veneer_01, CC0, 1.83 m; its grain along the plank), its own tone (±7 %) and
+    gloss, micro-bevelled V-joints at the long sides and the ends. Tinted to the export's floor colour."""
+    q = principled(m)
+    nt = m.node_tree
+    old = q.inputs["Base Color"].links[0].from_node.image
+    d = os.path.join(dress.TEX, "oak_veneer_01")
+    diff = dress.image(os.path.join(d, "diff.jpg"))
+    ratio = np.clip(dress.mean_linear(old) / dress.mean_linear(diff), 0.3, 3.0)
+    length, width = PLANK
+    geo = node(nt, "ShaderNodeNewGeometry")
+    rot = node(nt, "ShaderNodeMapping")
+    rot.inputs["Rotation"].default_value[2] = math.radians(turn_deg)
+    nt.links.new(geo.outputs["Position"], rot.inputs["Vector"])
+    xyz = node(nt, "ShaderNodeSeparateXYZ")
+    nt.links.new(rot.outputs["Vector"], xyz.inputs[0])
+
+    def math_(op, *args):
+        n = node(nt, "ShaderNodeMath", _operation=op)
+        for i, v in enumerate(args):
+            if isinstance(v, (int, float)):
+                n.inputs[i].default_value = v
+            else:
+                nt.links.new(v, n.inputs[i])
+        return n.outputs[0]
+
+    along, across = xyz.outputs["X"], xyz.outputs["Y"]
+    row = math_("FLOOR", math_("DIVIDE", across, width))
+    stagger = node(nt, "ShaderNodeTexWhiteNoise", _noise_dimensions="1D")
+    nt.links.new(row, stagger.inputs["W"])
+    a2 = math_("ADD", along, math_("MULTIPLY", stagger.outputs["Value"], length))
+    col = math_("FLOOR", math_("DIVIDE", a2, length))
+    cell = node(nt, "ShaderNodeCombineXYZ")
+    nt.links.new(col, cell.inputs["X"])
+    nt.links.new(row, cell.inputs["Y"])
+    rnd = node(nt, "ShaderNodeTexWhiteNoise", _noise_dimensions="3D")
+    nt.links.new(cell.outputs["Vector"], rnd.inputs["Vector"])
+    la = math_("SUBTRACT", a2, math_("MULTIPLY", col, length))  # 0..length along the plank
+    lb = math_("SUBTRACT", across, math_("MULTIPLY", row, width))  # 0..width across it
+    # the scan: grain (its v) along the plank, from a place of the plank's own
+    sc = node(nt, "ShaderNodeSeparateColor")
+    nt.links.new(rnd.outputs["Color"], sc.inputs[0])
+    uv = node(nt, "ShaderNodeCombineXYZ")
+    nt.links.new(math_("ADD", math_("DIVIDE", lb, 1.83), sc.outputs["Red"]), uv.inputs["X"])
+    nt.links.new(math_("ADD", math_("DIVIDE", la, 1.83), sc.outputs["Green"]), uv.inputs["Y"])
+    vec = uv.outputs["Vector"]
+    tex = dress.tex_node(nt, diff, vec)
+    # the plank's tone: the floor's colour, ±7 %, a slight warm or grey drift
+    tone = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY_ADD")
+    tone.inputs[1].default_value = (0.14, 0.14, 0.14)
+    tone.inputs[2].default_value = tuple(0.93 * r for r in ratio)
+    nt.links.new(rnd.outputs["Value"], tone.inputs[0])
+    drift = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY_ADD")
+    drift.inputs[1].default_value = (0.05, 0.02, -0.04)
+    drift.inputs[2].default_value = (0.975, 0.99, 1.02)
+    nt.links.new(sc.outputs["Blue"], drift.inputs[0])
+    c1 = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY")
+    nt.links.new(tex.outputs["Color"], c1.inputs[0])
+    nt.links.new(tone.outputs[0], c1.inputs[1])
+    c2 = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY")
+    nt.links.new(c1.outputs[0], c2.inputs[0])
+    nt.links.new(drift.outputs[0], c2.inputs[1])
+    # the joints: distance to the plank's edge in metres; the V-groove is dark and its bevel catches the light
+    e = math_("MINIMUM", math_("MINIMUM", la, math_("SUBTRACT", length, la)),
+              math_("MINIMUM", lb, math_("SUBTRACT", width, lb)))
+    groove = node(nt, "ShaderNodeMapRange", _interpolation_type="SMOOTHSTEP")
+    groove.inputs["From Min"].default_value, groove.inputs["From Max"].default_value = 0.0003, 0.0011
+    groove.inputs["To Min"].default_value, groove.inputs["To Max"].default_value = 0.55, 1.0
+    nt.links.new(e, groove.inputs["Value"])
+    c3 = node(nt, "ShaderNodeVectorMath", _operation="SCALE")
+    nt.links.new(c2.outputs[0], c3.inputs[0])
+    nt.links.new(groove.outputs["Result"], [x for x in c3.inputs if x.name == "Scale"][0])
+    for lk in list(q.inputs["Base Color"].links):
+        nt.links.remove(lk)
+    nt.links.new(c3.outputs[0], q.inputs["Base Color"])
+    # gloss: the scan's roughness in FLOOR_ROUGH, each plank x0.85-1.15, matte in the groove
+    rough = dress.rough_map(nt, dress.image(os.path.join(d, "rough.jpg"), True), vec, *dress.FLOOR_ROUGH)
+    rr = math_("MULTIPLY", rough, math_("MULTIPLY_ADD", sc.outputs["Green"], 0.3, 0.85))
+    rj = math_("MAXIMUM", rr, math_("SUBTRACT", 1.0, groove.outputs["Result"]))
+    for lk in list(q.inputs["Roughness"].links):
+        nt.links.remove(lk)
+    nt.links.new(rj, q.inputs["Roughness"])
+    # relief: the grain, then the bevel
+    bevel = node(nt, "ShaderNodeMapRange", _interpolation_type="SMOOTHSTEP")
+    bevel.inputs["From Min"].default_value, bevel.inputs["From Max"].default_value = 0.0003, 0.0025
+    nt.links.new(e, bevel.inputs["Value"])
+    bump = node(nt, "ShaderNodeBump", Distance=0.0008, Strength=1.0)
+    nt.links.new(bevel.outputs["Result"], bump.inputs["Height"])
+    nt.links.new(dress.normal_map(nt, dress.image(os.path.join(d, "nor_gl.jpg"), True), vec, 0.5), bump.inputs["Normal"])
+    for lk in list(q.inputs["Normal"].links):
+        nt.links.remove(lk)
+    nt.links.new(bump.outputs["Normal"], q.inputs["Normal"])
+    log(f"floor: {m.name} in {length} x {width} m planks, tinted by {np.round(ratio, 2)}")
+
+
 def floors(scene, rooms, sy, room):
     """Wood floors of the storey: the plank scan in the floor's own colour, planks along the room's long side."""
     xs, zs = [p[0] for p in room["polygon"]], [p[1] for p in room["polygon"]]
@@ -201,9 +302,316 @@ def floors(scene, rooms, sy, room):
             img = principled(m).inputs["Base Color"].links[0].from_node.image
             c = dress.mean_linear(img)
             if c[0] > 1.25 * c[2]:  # warm: wood (tiles and stone are grey)
-                dress.oak_floor(m, 90 if along_z else 0)
+                if os.environ.get("FLOOR") == "scan":
+                    dress.oak_floor(m, 90 if along_z else 0)
+                else:
+                    plank_floor(m, 90 if along_z else 0)
             break
     log(f"floors: {sorted(done)}")
+
+
+def inner_walls(scene, rooms):
+    """The room side of the outside walls in the partitions' plaster. The export gives a wall one material inside and
+    out, so behind a coloured façade the room's wall came out in the façade's colour, its texture stretched (the
+    bedroom's "smeared dark panelling"). A face is on the room side when a step off it, along its normal or, for
+    reveals and soffits, across it, lands in a room of its storey."""
+    areas = {}
+    for o in scene.objects:
+        if o.type != "MESH" or "partition" not in kinds(o) or kinds(o) & {"interiorDoor", "door", "window", "skirting"}:
+            continue
+        for p in o.data.polygons:
+            m, _ = material_at(o, p.index)
+            if m is not None:
+                areas[m] = areas.get(m, 0.0) + p.area
+    if not areas:
+        return
+    plaster = max(areas, key=areas.get)
+
+    def in_room(v):
+        return any(r["y"] - 0.05 <= v[1] <= r["y"] + 2.6 and inside(r["polygon"], v[0], v[2]) for r in rooms)
+
+    faces = 0
+    for o in scene.objects:
+        k = kinds(o)
+        if o.type != "MESH" or not {"wall", "perimeter"} <= k or k & {"window", "door", "partition"}:
+            continue
+        mw, rot = o.matrix_world, o.matrix_world.to_3x3()
+        room_side = []
+        for p in o.data.polygons:
+            c = Vector(to_scene(mw @ p.center))
+            n = Vector(to_scene(rot @ p.normal)).normalized()
+            steps = [c + n * 0.03]
+            h = Vector((n.z, 0.0, -n.x))  # across the face, horizontal
+            axes = [Vector(a) for a in ((1, 0, 0), (0, 0, 1))] if h.length < 0.1 else [h.normalized()]
+            steps += [c + a * s for a in axes for s in (0.3, -0.3)]
+            if any(in_room(s) for s in steps):
+                room_side.append(p.index)
+        if not room_side:
+            continue
+        if o.data.users > 1:
+            o.data = o.data.copy()
+        if plaster.name not in o.data.materials:
+            o.data.materials.append(plaster)
+        i = list(o.data.materials).index(plaster)
+        for f in room_side:
+            o.data.polygons[f].material_index = i
+        faces += len(room_side)
+    log(f"inner walls: {faces} faces of the outside walls in {plaster.name}")
+
+
+def node(nt, kind, **inputs):
+    n = nt.nodes.new(kind)
+    for k, v in inputs.items():
+        if k.startswith("_"):
+            setattr(n, k[1:], v)
+        else:
+            n.inputs[k].default_value = v
+    return n
+
+
+def glaze_tiles(scene):
+    """Ceramic wall tiles that read as tiles: each tile its own tone (±2.5 %), gloss and a slight tilt, so the
+    reflections break at the joints; a faint wave in the glaze; recessed, matte grout joints. The export's tile is a
+    flat colour with a grout line (its UVs in metres, a Mapping to tiles)."""
+    done = []
+    for o in scene.objects:
+        if o.type != "MESH" or "wallTiles" not in kinds(o):
+            continue
+        for s in o.material_slots:
+            m = s.material
+            if m is None or m.name in done or not m.use_nodes:
+                continue
+            nt = m.node_tree
+            p = principled(m)
+            bc = p.inputs["Base Color"]
+            if not bc.is_linked:
+                continue
+            img = bc.links[0].from_node
+            maps = [lk.from_node for lk in img.inputs["Vector"].links if lk.from_node.bl_idname == "ShaderNodeMapping"]
+            if not maps:
+                continue
+            mp = maps[0]
+            w, h = (1 / max(1e-3, mp.inputs["Scale"].default_value[i]) for i in (0, 1))
+            cell = node(nt, "ShaderNodeVectorMath", _operation="FLOOR")
+            nt.links.new(mp.outputs["Vector"], cell.inputs[0])
+            rnd = node(nt, "ShaderNodeTexWhiteNoise", _noise_dimensions="3D")
+            nt.links.new(cell.outputs["Vector"], rnd.inputs["Vector"])
+            # the joint: distance to the tile's edge in metres, 1 in the joint
+            fr = node(nt, "ShaderNodeVectorMath", _operation="FRACTION")
+            nt.links.new(mp.outputs["Vector"], fr.inputs[0])
+            sep = node(nt, "ShaderNodeSeparateXYZ")
+            nt.links.new(fr.outputs["Vector"], sep.inputs[0])
+            edge = []
+            for axis, size in (("X", w), ("Y", h)):
+                inv = node(nt, "ShaderNodeMath", _operation="SUBTRACT")
+                inv.inputs[0].default_value = 1.0
+                nt.links.new(sep.outputs[axis], inv.inputs[1])
+                mn = node(nt, "ShaderNodeMath", _operation="MINIMUM")
+                nt.links.new(sep.outputs[axis], mn.inputs[0])
+                nt.links.new(inv.outputs[0], mn.inputs[1])
+                mt = node(nt, "ShaderNodeMath", _operation="MULTIPLY")
+                mt.inputs[1].default_value = size
+                nt.links.new(mn.outputs[0], mt.inputs[0])
+                edge.append(mt)
+            e = node(nt, "ShaderNodeMath", _operation="MINIMUM")
+            nt.links.new(edge[0].outputs[0], e.inputs[0])
+            nt.links.new(edge[1].outputs[0], e.inputs[1])
+            joint = node(nt, "ShaderNodeMapRange", _interpolation_type="SMOOTHSTEP")
+            joint.inputs["From Min"].default_value, joint.inputs["From Max"].default_value = 0.0012, 0.0024
+            joint.inputs["To Min"].default_value, joint.inputs["To Max"].default_value = 1.0, 0.0
+            nt.links.new(e.outputs[0], joint.inputs["Value"])
+            # tone
+            # each tile its tone (± TILE_TONE) and a slight warm or cool drift
+            tone = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY_ADD")
+            tone.inputs[1].default_value = (2 * TILE_TONE,) * 3
+            tone.inputs[2].default_value = (1 - TILE_TONE,) * 3
+            nt.links.new(rnd.outputs["Value"], tone.inputs[0])
+            drift = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY_ADD")
+            drift.inputs[1].default_value = (0.012, 0.0, -0.012)
+            drift.inputs[2].default_value = (-0.006, 0.0, 0.006)
+            nt.links.new(rnd.outputs["Color"], drift.inputs[0])
+            hue = node(nt, "ShaderNodeVectorMath", _operation="ADD")
+            nt.links.new(tone.outputs[0], hue.inputs[0])
+            nt.links.new(drift.outputs[0], hue.inputs[1])
+            mix = node(nt, "ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
+            mix.inputs["Factor"].default_value = 1.0
+            nt.links.new(img.outputs["Color"], [x for x in mix.inputs if x.name == "A" and x.type == "RGBA"][0])
+            nt.links.new(hue.outputs[0], [x for x in mix.inputs if x.name == "B" and x.type == "RGBA"][0])
+            nt.links.new([x for x in mix.outputs if x.type == "RGBA"][0], bc)
+            # gloss: 0.04-0.12 on the glaze, 0.85 in the joint
+            sc = node(nt, "ShaderNodeSeparateColor")
+            nt.links.new(rnd.outputs["Color"], sc.inputs[0])
+            gl = node(nt, "ShaderNodeMath", _operation="MULTIPLY_ADD")
+            gl.inputs[1].default_value, gl.inputs[2].default_value = 0.08, 0.04
+            nt.links.new(sc.outputs["Green"], gl.inputs[0])
+            rough = node(nt, "ShaderNodeMix", _data_type="FLOAT")
+            nt.links.new(joint.outputs[0], rough.inputs["Factor"])
+            nt.links.new(gl.outputs[0], [x for x in rough.inputs if x.name == "A" and x.type == "VALUE"][0])
+            [x for x in rough.inputs if x.name == "B" and x.type == "VALUE"][0].default_value = 0.85
+            nt.links.new([x for x in rough.outputs if x.type == "VALUE"][0], p.inputs["Roughness"])
+            # the tilt: the export's normal (its bevel at the joint) plus a random 1-2 degrees per tile
+            off = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY_ADD")
+            off.inputs[1].default_value = (0.05, 0.05, 0.05)
+            off.inputs[2].default_value = (-0.025, -0.025, -0.025)
+            nt.links.new(rnd.outputs["Color"], off.inputs[0])
+            base = p.inputs["Normal"].links[0].from_socket if p.inputs["Normal"].is_linked else \
+                node(nt, "ShaderNodeNewGeometry").outputs["Normal"]
+            add = node(nt, "ShaderNodeVectorMath", _operation="ADD")
+            nt.links.new(base, add.inputs[0])
+            nt.links.new(off.outputs[0], add.inputs[1])
+            nrm = node(nt, "ShaderNodeVectorMath", _operation="NORMALIZE")
+            nt.links.new(add.outputs[0], nrm.inputs[0])
+            # the joint, then a cushioned edge rising over 7 mm (it catches a line of light), then the glaze's wave
+            cushion = node(nt, "ShaderNodeMapRange", _interpolation_type="SMOOTHSTEP")
+            cushion.inputs["From Min"].default_value, cushion.inputs["From Max"].default_value = 0.0012, 0.007
+            nt.links.new(e.outputs[0], cushion.inputs["Value"])
+            sunk = node(nt, "ShaderNodeBump", Strength=1.0, Distance=0.002)
+            nt.links.new(cushion.outputs["Result"], sunk.inputs["Height"])
+            nt.links.new(nrm.outputs[0], sunk.inputs["Normal"])
+            wave = node(nt, "ShaderNodeTexNoise", Scale=9.0, Detail=1.0)
+            uv = node(nt, "ShaderNodeTexCoord")
+            nt.links.new(uv.outputs["Object"], wave.inputs["Vector"])
+            bump = node(nt, "ShaderNodeBump", Strength=0.25, Distance=0.002)
+            nt.links.new(wave.outputs["Fac"], bump.inputs["Height"])
+            nt.links.new(sunk.outputs["Normal"], bump.inputs["Normal"])
+            nt.links.new(bump.outputs["Normal"], p.inputs["Normal"])
+            p.inputs["Metallic"].default_value = 0.0
+            for lk in list(p.inputs["Metallic"].links):
+                nt.links.remove(lk)
+            done.append(m.name)
+    log(f"tiles: glazed {done}")
+
+
+MOTTLE = float(os.environ.get("MOTTLE", "0.025"))  # the paint's slow unevenness, ± this share of its tone
+
+
+def paint(scene):
+    """Paint that is not a render's perfect white. Walls and ceilings get a faint, slow unevenness in tone (± 2.5 %,
+    blobs of about a metre, in world space so no wall repeats another), and the ceilings get the walls' plaster
+    relief (dress.plaster leaves the export's ceilings out: they came out as one smooth gradient)."""
+    pl = os.path.join(dress.TEX, "plaster_grey_04")
+    nor, rough = dress.image(os.path.join(pl, "nor_gl.jpg"), True), dress.image(os.path.join(pl, "rough.jpg"), True)
+    done = {}
+    for kind in ("wall", "partition", "slab", "ceiling"):
+        for o in dress.objects_of(scene, kind):
+            if kinds(o) & {"window", "door", "interiorDoor", "skirting", "wallTiles"}:
+                continue
+            for s in o.material_slots:
+                m = s.material
+                if m is None or m.name in done or m.name.startswith("archviz") or not m.use_nodes:
+                    continue
+                nt = m.node_tree
+                q = principled(m)
+                col = q.inputs["Base Color"]
+                if q.inputs["Alpha"].default_value < 1 or (not col.is_linked and min(col.default_value[:3]) < 0.5):
+                    continue
+                if kind == "ceiling" and not q.inputs["Normal"].is_linked:
+                    tc = nt.nodes.new("ShaderNodeTexCoord")
+                    mp = node(nt, "ShaderNodeMapping", Scale=(1 / 1.5,) * 3)
+                    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+                    nt.links.new(dress.normal_map(nt, nor, mp.outputs["Vector"], dress.RELIEF, box=True), q.inputs["Normal"])
+                    nt.links.new(dress.rough_map(nt, rough, mp.outputs["Vector"], 0.78, 0.92, box=True), q.inputs["Roughness"])
+                geo = node(nt, "ShaderNodeNewGeometry")
+                blobs = node(nt, "ShaderNodeTexNoise", Scale=0.9, Detail=3.0, Roughness=0.55)
+                nt.links.new(geo.outputs["Position"], blobs.inputs["Vector"])
+                k = node(nt, "ShaderNodeMapRange", **{"From Min": 0.3, "From Max": 0.7, "To Min": 1 - MOTTLE, "To Max": 1 + MOTTLE * 0.4})
+                nt.links.new(blobs.outputs["Fac"], k.inputs["Value"])
+                mix = node(nt, "ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
+                mix.inputs["Factor"].default_value = 1.0
+                a_in = [x for x in mix.inputs if x.name == "A" and x.type == "RGBA"][0]
+                b_in = [x for x in mix.inputs if x.name == "B" and x.type == "RGBA"][0]
+                if col.is_linked:
+                    nt.links.new(col.links[0].from_socket, a_in)
+                else:
+                    a_in.default_value = col.default_value
+                nt.links.new(k.outputs["Result"], b_in)
+                nt.links.new([x for x in mix.outputs if x.type == "RGBA"][0], col)
+                done[m.name] = kind
+    log(f"paint: {done}")
+
+
+CEILING = os.environ.get("CEILING", "plaster")  # or "concrete": the references' exposed concrete
+
+
+def concrete_ceilings(scene):
+    """Exposed concrete ceilings (the references' Swiss Sichtbeton): the formwork-concrete scan (Poly Haven
+    concrete_wall_008, CC0, 2.7 m a tile) at a light warm grey, its own relief and roughness. A finish choice, not
+    the export's: CEILING=concrete."""
+    d = os.path.join(dress.TEX, "concrete_wall_008")
+    diff = dress.image(os.path.join(d, "diff.jpg"))
+    gain = np.array((0.50, 0.49, 0.47)) / np.maximum(dress.mean_linear(diff), 1e-3)
+    done = []
+    for o in dress.objects_of(scene, "ceiling"):
+        for s in o.material_slots:
+            m = s.material
+            if m is None or m.name in done or m.name.startswith("archviz") or not m.use_nodes:
+                continue
+            nt = m.node_tree
+            q = principled(m)
+            tc = node(nt, "ShaderNodeTexCoord")
+            mp = node(nt, "ShaderNodeMapping", Scale=(1 / 2.7,) * 3)
+            nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+            col = dress.tex_node(nt, diff, mp.outputs["Vector"], box=True)
+            tint = node(nt, "ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
+            tint.inputs["Factor"].default_value = 1.0
+            nt.links.new(col.outputs["Color"], [x for x in tint.inputs if x.name == "A" and x.type == "RGBA"][0])
+            [x for x in tint.inputs if x.name == "B" and x.type == "RGBA"][0].default_value = (*gain, 1)
+            for lk in list(q.inputs["Base Color"].links):
+                nt.links.remove(lk)
+            nt.links.new([x for x in tint.outputs if x.type == "RGBA"][0], q.inputs["Base Color"])
+            nt.links.new(dress.normal_map(nt, dress.image(os.path.join(d, "nor_gl.jpg"), True), mp.outputs["Vector"], 0.8, box=True),
+                         q.inputs["Normal"])
+            nt.links.new(dress.rough_map(nt, dress.image(os.path.join(d, "rough.jpg"), True), mp.outputs["Vector"], 0.62, 0.88, box=True),
+                         q.inputs["Roughness"])
+            done.append(m.name)
+    log(f"ceilings: concrete {done}")
+
+
+TILE_TONE = float(os.environ.get("TILE_TONE", "0.05"))
+
+
+SANITARY = ("bathtub", "basin", "wc", "bidet", "shower", "sink", "toilet")
+
+
+def sanitaryware(scene, pieces):
+    """The kit's sanitaryware: a fired glaze (glossy, faint unevenness) and chrome, both with rounded edges (a 3 mm
+    bevel in the shading) that catch a highlight, as moulded and pressed pieces do."""
+    done = {}
+    for o in pieces:
+        if not any(name(o).lower().startswith(s) for s in SANITARY):
+            continue
+        for c in family(o):
+            if c.type != "MESH":
+                continue
+            for s in c.material_slots:
+                m = s.material
+                if m is None or m.name in done or m.name.startswith(("archviz", "mirror")) or not m.use_nodes:
+                    continue
+                p = principled(m)
+                col = p.inputs["Base Color"]
+                if col.is_linked or p.inputs["Metallic"].is_linked:
+                    continue
+                rgb = col.default_value[:3]
+                metal = p.inputs["Metallic"].default_value > 0.5
+                if not metal and min(rgb) < 0.85:
+                    continue
+                nt = m.node_tree
+                bev = node(nt, "ShaderNodeBevel", Radius=0.003)
+                bev.samples = 6
+                nt.links.new(bev.outputs["Normal"], p.inputs["Normal"])
+                if metal:
+                    col.default_value = (0.86, 0.87, 0.88, 1)
+                    p.inputs["Roughness"].default_value = 0.06
+                    done[m.name] = "chrome"
+                    continue
+                wave = node(nt, "ShaderNodeTexNoise", Scale=14.0, Detail=2.0)
+                r = node(nt, "ShaderNodeMapRange", **{"To Min": 0.035, "To Max": 0.09})
+                nt.links.new(wave.outputs["Fac"], r.inputs["Value"])
+                nt.links.new(r.outputs["Result"], p.inputs["Roughness"])
+                p.inputs["Coat Weight"].default_value = 0.3
+                p.inputs["Coat Roughness"].default_value = 0.03
+                done[m.name] = "glaze"
+    log(f"sanitaryware: {done}")
 
 
 # ---------------------------------------------------------------- dressing
@@ -297,9 +705,84 @@ def velvet(rgb):
     return m
 
 
+def upholstery_material(rgb=(0.20, 0.17, 0.14)):
+    """The bed's upholstery: a bouclé (Poly Haven curly_teddy_natural, CC0, 0.34 m a tile) in a mushroom taupe, about
+    half the walls' albedo, so the bed stands off a light wall and its white linen; its pile in the colour, the
+    normal and a sheen."""
+    m = bpy.data.materials.new("archviz-boucle")
+    nt = m.node_tree
+    q = principled(m)
+    d = os.path.join(dress.TEX, "curly_teddy_natural")
+    diff = dress.image(os.path.join(d, "diff.jpg"))
+    gain = np.array(rgb) / np.maximum(dress.mean_linear(diff), 1e-3)
+    tc = node(nt, "ShaderNodeTexCoord")
+    mp = node(nt, "ShaderNodeMapping", Scale=(1 / 0.34,) * 3)
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    col = dress.tex_node(nt, diff, mp.outputs["Vector"], box=True)
+    tint = node(nt, "ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
+    tint.inputs["Factor"].default_value = 1.0
+    nt.links.new(col.outputs["Color"], [x for x in tint.inputs if x.name == "A" and x.type == "RGBA"][0])
+    [x for x in tint.inputs if x.name == "B" and x.type == "RGBA"][0].default_value = (*gain, 1)
+    nt.links.new([x for x in tint.outputs if x.type == "RGBA"][0], q.inputs["Base Color"])
+    nt.links.new(dress.normal_map(nt, dress.image(os.path.join(d, "nor_gl.jpg"), True), mp.outputs["Vector"], 1.0, box=True),
+                 q.inputs["Normal"])
+    q.inputs["Roughness"].default_value = 0.95
+    q.inputs["Sheen Weight"].default_value = 0.6
+    q.inputs["Sheen Roughness"].default_value = 0.4
+    return m
+
+
+def upholster_chairs(scene):
+    """The dining chairs' shells upholstered in bouclé, a warm light grey (the kit's chair is a grey plastic shell;
+    the judges read it as plastic)."""
+    mat, done = upholstery_material((0.34, 0.33, 0.31)), set()
+    for o in scene.objects:
+        if o.get("name") != "dining-chair-grey":
+            continue
+        for c in o.children_recursive:
+            if c.type != "MESH":
+                continue
+            for sl in c.material_slots:
+                m = sl.material
+                if m is None or m.name.startswith("archviz") or "chair" not in m.name.lower():
+                    continue
+                done.add(m.name)
+                sl.material = mat
+    log(f"chairs: bouclé on {sorted(done)}")
+
+
+def deck_material():
+    """A balcony's timber deck: the deck scan (Poly Haven wood_floor_deck, CC0, 1.8 m a tile: planks with open
+    gaps), its varnished orange taken down to weathered larch, a warm grey-brown; matte."""
+    m = bpy.data.materials.new("archviz-deck")
+    m["stone"] = True
+    nt = m.node_tree
+    q = principled(m)
+    d = os.path.join(dress.TEX, "wood_floor_deck")
+    diff = dress.image(os.path.join(d, "diff.jpg"))
+    vec = dress.world_mapping(nt, 1.8, 0)
+    col = dress.tex_node(nt, diff, vec)
+    grey = node(nt, "ShaderNodeHueSaturation", Saturation=0.35)
+    nt.links.new(col.outputs["Color"], grey.inputs["Color"])
+    mean = dress.mean_linear(diff)
+    lum = float(mean @ np.array([0.2126, 0.7152, 0.0722]))
+    gain = np.array((0.17, 0.145, 0.12)) / max(lum, 1e-3)
+    tint = node(nt, "ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
+    tint.inputs["Factor"].default_value = 1.0
+    nt.links.new(grey.outputs["Color"], [x for x in tint.inputs if x.name == "A" and x.type == "RGBA"][0])
+    [x for x in tint.inputs if x.name == "B" and x.type == "RGBA"][0].default_value = (*gain, 1)
+    nt.links.new([x for x in tint.outputs if x.type == "RGBA"][0], q.inputs["Base Color"])
+    nt.links.new(dress.normal_map(nt, dress.image(os.path.join(d, "nor_gl.jpg"), True), vec, 1.0), q.inputs["Normal"])
+    nt.links.new(dress.rough_map(nt, dress.image(os.path.join(d, "rough.jpg"), True), vec, 0.7, 0.9), q.inputs["Roughness"])
+    return m
+
+
+BEDS = []  # (frame at the head of the bed, facing -y; width) of the beds made
+
+
 def swap_beds(scene, pieces):
     n = 0
-    linen, fabric = dress.linen_material(), dress.fabric_material()
+    linen, fabric = dress.linen_material(), upholstery_material()
     wool = dress.wool_material((0.5, 2.2), (0.62, 0.61, 0.6))
     for o in pieces:
         nm, fp = name(o).lower(), list(o.get("footprint", ()))
@@ -340,9 +823,271 @@ def swap_beds(scene, pieces):
         cushions, _ = place(scene, model("throw_pillows_01"), to_scene(frame @ Vector((0, -0.68, top + 0.03))), height=0.38,
                             turn_deg=math.degrees(rot))
         recolour(cushions, velvet((0.16, 0.19, 0.13)))
+        BEDS.append((frame, w))
         n += 1
         log(f"bed: {nm} {fp[0]:.2f} x {fp[1]:.2f} -> {w} x {length}")
     return n
+
+
+LIMEWASH = tuple(float(v) for v in os.environ.get("LIMEWASH", "0.40,0.335,0.27").split(","))  # linear, a warm greige
+
+
+def limewash_material():
+    """A limewashed wall: a warm greige in soft clouds of tone (the brush's passes) over a fine plaster relief."""
+    m = bpy.data.materials.new("archviz-limewash")
+    nt = m.node_tree
+    p = principled(m)
+    tc = node(nt, "ShaderNodeTexCoord")
+    clouds = node(nt, "ShaderNodeTexNoise", Scale=1.4, Detail=6.0, Roughness=0.62, Distortion=0.35)
+    nt.links.new(tc.outputs["Object"], clouds.inputs["Vector"])
+    strokes = node(nt, "ShaderNodeTexNoise", Scale=5.0, Detail=4.0, Roughness=0.5)
+    mp = node(nt, "ShaderNodeMapping", Scale=(1.0, 3.0, 1.0))  # longer than high: horizontal passes
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    nt.links.new(mp.outputs["Vector"], strokes.inputs["Vector"])
+    mix = node(nt, "ShaderNodeMath", _operation="MULTIPLY_ADD")
+    mix.inputs[1].default_value, mix.inputs[2].default_value = 0.35, 0.0
+    nt.links.new(strokes.outputs["Fac"], mix.inputs[0])
+    add = node(nt, "ShaderNodeMath", _operation="ADD")
+    nt.links.new(clouds.outputs["Fac"], add.inputs[0])
+    nt.links.new(mix.outputs[0], add.inputs[1])
+    tone = node(nt, "ShaderNodeMapRange", **{"From Min": 0.45, "From Max": 0.85, "To Min": 0.84, "To Max": 1.1})
+    nt.links.new(add.outputs[0], tone.inputs["Value"])
+    col = node(nt, "ShaderNodeMix", _data_type="RGBA", _blend_type="MULTIPLY")
+    col.inputs["Factor"].default_value = 1.0
+    [x for x in col.inputs if x.name == "A" and x.type == "RGBA"][0].default_value = (*LIMEWASH, 1)
+    nt.links.new(tone.outputs["Result"], [x for x in col.inputs if x.name == "B" and x.type == "RGBA"][0])
+    nt.links.new([x for x in col.outputs if x.type == "RGBA"][0], p.inputs["Base Color"])
+    pl = os.path.join(dress.TEX, "plaster_grey_04")
+    scale = node(nt, "ShaderNodeMapping", Scale=(1 / 1.2,) * 3)
+    nt.links.new(tc.outputs["Object"], scale.inputs["Vector"])
+    nt.links.new(dress.normal_map(nt, dress.image(os.path.join(pl, "nor_gl.jpg"), True), scale.outputs["Vector"], 0.5, box=True),
+                 p.inputs["Normal"])
+    p.inputs["Roughness"].default_value = 0.92
+    return m
+
+
+FEATURE_TILE = os.environ.get("FEATURE_TILE", "sage")  # the wet wall's colour; "" leaves it white
+TILE_COLOURS = {"sage": (0.30, 0.345, 0.275), "clay": (0.42, 0.25, 0.17), "white": (0.80, 0.78, 0.74)}  # linear
+
+
+def feature_tile_material(rgb, size=(0.075, 0.30), tone=0.09):
+    """Narrow handmade tiles in a stack bond (on the export's UVs, which are in metres): each tile its own tone and
+    a slight hue drift, a cloudy glaze, a cushioned edge and a wavy surface that breaks the reflections, glossy;
+    a light grout, recessed and matte."""
+    m = bpy.data.materials.new("archviz-feature-tile")
+    nt = m.node_tree
+    q = principled(m)
+    w, h = size
+    uv = node(nt, "ShaderNodeUVMap")
+    mp = node(nt, "ShaderNodeMapping", Scale=(1 / w, 1 / h, 1.0))
+    nt.links.new(uv.outputs["UV"], mp.inputs["Vector"])
+    cell = node(nt, "ShaderNodeVectorMath", _operation="FLOOR")
+    nt.links.new(mp.outputs["Vector"], cell.inputs[0])
+    rnd = node(nt, "ShaderNodeTexWhiteNoise", _noise_dimensions="3D")
+    nt.links.new(cell.outputs["Vector"], rnd.inputs["Vector"])
+    fr = node(nt, "ShaderNodeVectorMath", _operation="FRACTION")
+    nt.links.new(mp.outputs["Vector"], fr.inputs[0])
+    sep = node(nt, "ShaderNodeSeparateXYZ")
+    nt.links.new(fr.outputs["Vector"], sep.inputs[0])
+    edge = []
+    for axis, length in (("X", w), ("Y", h)):
+        inv = node(nt, "ShaderNodeMath", _operation="SUBTRACT")
+        inv.inputs[0].default_value = 1.0
+        nt.links.new(sep.outputs[axis], inv.inputs[1])
+        mn = node(nt, "ShaderNodeMath", _operation="MINIMUM")
+        nt.links.new(sep.outputs[axis], mn.inputs[0])
+        nt.links.new(inv.outputs[0], mn.inputs[1])
+        mt = node(nt, "ShaderNodeMath", _operation="MULTIPLY")
+        mt.inputs[1].default_value = length
+        nt.links.new(mn.outputs[0], mt.inputs[0])
+        edge.append(mt)
+    e = node(nt, "ShaderNodeMath", _operation="MINIMUM")
+    nt.links.new(edge[0].outputs[0], e.inputs[0])
+    nt.links.new(edge[1].outputs[0], e.inputs[1])
+
+    def ramp(a, b, lo, hi):
+        r = node(nt, "ShaderNodeMapRange", _interpolation_type="SMOOTHSTEP")
+        r.inputs["From Min"].default_value, r.inputs["From Max"].default_value = a, b
+        r.inputs["To Min"].default_value, r.inputs["To Max"].default_value = lo, hi
+        nt.links.new(e.outputs[0], r.inputs["Value"])
+        return r
+
+    joint = ramp(0.0012, 0.0024, 1.0, 0.0)
+    # colour: the tile's tone, a hue drift, a cloud in the glaze
+    tn = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY_ADD")
+    tn.inputs[1].default_value = (2 * tone,) * 3
+    tn.inputs[2].default_value = (1 - tone,) * 3
+    nt.links.new(rnd.outputs["Value"], tn.inputs[0])
+    drift = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY_ADD")
+    drift.inputs[1].default_value = (0.06, 0.03, -0.04)
+    drift.inputs[2].default_value = (0.97, 0.985, 1.02)
+    nt.links.new(rnd.outputs["Color"], drift.inputs[0])
+    tc = node(nt, "ShaderNodeTexCoord")
+    cloud = node(nt, "ShaderNodeTexNoise", Scale=28.0, Detail=3.0)
+    nt.links.new(tc.outputs["Object"], cloud.inputs["Vector"])
+    cl = node(nt, "ShaderNodeMapRange")
+    cl.inputs["From Min"].default_value, cl.inputs["From Max"].default_value = 0.3, 0.7
+    cl.inputs["To Min"].default_value, cl.inputs["To Max"].default_value = 0.92, 1.05
+    nt.links.new(cloud.outputs["Fac"], cl.inputs["Value"])
+    col = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY")
+    col.inputs[1].default_value = rgb
+    nt.links.new(tn.outputs[0], col.inputs[0])
+    col2 = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY")
+    nt.links.new(col.outputs[0], col2.inputs[0])
+    nt.links.new(drift.outputs[0], col2.inputs[1])
+    col3 = node(nt, "ShaderNodeVectorMath", _operation="SCALE")
+    nt.links.new(col2.outputs[0], col3.inputs[0])
+    nt.links.new(cl.outputs[0], [x for x in col3.inputs if x.name == "Scale"][0])
+    mix = node(nt, "ShaderNodeMix", _data_type="RGBA")
+    nt.links.new(joint.outputs[0], mix.inputs["Factor"])
+    nt.links.new(col3.outputs[0], [x for x in mix.inputs if x.name == "A" and x.type == "RGBA"][0])
+    [x for x in mix.inputs if x.name == "B" and x.type == "RGBA"][0].default_value = (0.55, 0.53, 0.50, 1)
+    nt.links.new([x for x in mix.outputs if x.type == "RGBA"][0], q.inputs["Base Color"])
+    # gloss 0.05-0.15 on the glaze, 0.85 in the joint
+    sc = node(nt, "ShaderNodeSeparateColor")
+    nt.links.new(rnd.outputs["Color"], sc.inputs[0])
+    gl = node(nt, "ShaderNodeMath", _operation="MULTIPLY_ADD")
+    gl.inputs[1].default_value, gl.inputs[2].default_value = 0.10, 0.05
+    nt.links.new(sc.outputs["Green"], gl.inputs[0])
+    rough = node(nt, "ShaderNodeMix", _data_type="FLOAT")
+    nt.links.new(joint.outputs[0], rough.inputs["Factor"])
+    nt.links.new(gl.outputs[0], [x for x in rough.inputs if x.name == "A" and x.type == "VALUE"][0])
+    [x for x in rough.inputs if x.name == "B" and x.type == "VALUE"][0].default_value = 0.85
+    nt.links.new([x for x in rough.outputs if x.type == "VALUE"][0], q.inputs["Roughness"])
+    # relief: the cushioned edge, then the handmade wave, then each tile's own tilt
+    bump = node(nt, "ShaderNodeBump", Distance=0.002, Strength=1.0)
+    nt.links.new(ramp(0.0012, 0.006, 0.0, 1.0).outputs[0], bump.inputs["Height"])
+    wave = node(nt, "ShaderNodeTexNoise", Scale=7.0, Detail=2.0)
+    nt.links.new(tc.outputs["Object"], wave.inputs["Vector"])
+    bump2 = node(nt, "ShaderNodeBump", Strength=0.35)
+    nt.links.new(wave.outputs["Fac"], bump2.inputs["Height"])
+    nt.links.new(bump.outputs["Normal"], bump2.inputs["Normal"])
+    tilt = node(nt, "ShaderNodeVectorMath", _operation="MULTIPLY_ADD")
+    tilt.inputs[1].default_value = (0.06,) * 3
+    tilt.inputs[2].default_value = (-0.03,) * 3
+    nt.links.new(rnd.outputs["Color"], tilt.inputs[0])
+    add = node(nt, "ShaderNodeVectorMath", _operation="ADD")
+    nt.links.new(bump2.outputs["Normal"], add.inputs[0])
+    nt.links.new(tilt.outputs[0], add.inputs[1])
+    nrm = node(nt, "ShaderNodeVectorMath", _operation="NORMALIZE")
+    nt.links.new(add.outputs[0], nrm.inputs[0])
+    nt.links.new(nrm.outputs[0], q.inputs["Normal"])
+    q.inputs["Coat Weight"].default_value = 0.15
+    q.inputs["Coat Roughness"].default_value = 0.04
+    return m
+
+
+def feature_tiles(scene, room, sy):
+    """The wet wall in a designer's tile: the tiled wall the room's bathtub backs onto (the faces of the tile meshes
+    in that plane, on this room's side), in feature_tile_material. The other tiled walls keep the white tile."""
+    rgb = TILE_COLOURS.get(FEATURE_TILE)
+    if rgb is None:
+        return 0
+    dg = bpy.context.evaluated_depsgraph_get()
+    poly = room["polygon"]
+    for o in storey_pieces(scene, sy):
+        if name(o) != "bathtub" or len(o.get("footprint", ())) != 2:
+            continue
+        lo, hi = box(o)
+        f = frame_of(o, lo.z)
+        cx, _, cz = to_scene(f.translation)
+        if not inside(poly, cx, cz):
+            continue
+        back = (f.to_3x3() @ Vector((0, 1, 0))).normalized()
+        w = o["footprint"][0]
+        hits = (trace(scene, dg, f @ Vector((u * w, 0, hi.z - lo.z + dz)), back, far=2.0)
+                for dz in (0.08, 0.2) for u in (0.0, -0.35, 0.35))  # past a window over the tub
+        hit = next((x for x in hits if x is not None and "wallTiles" in kinds(x[2])), None)
+        if hit is None:
+            log("feature tiles: no tiled wall behind the bathtub")
+            return 0
+        loc, normal = hit[0], hit[1].normalized()
+        mat, n = feature_tile_material(rgb), 0
+        for t in scene.objects:
+            if t.type != "MESH" or "wallTiles" not in kinds(t):
+                continue
+            mw, rot = t.matrix_world, t.matrix_world.to_3x3()
+            faces = []
+            for pg in t.data.polygons:
+                c, nw = mw @ pg.center, (rot @ pg.normal).normalized()
+                x, _, z = to_scene(c + nw * 0.05)
+                if nw.dot(normal) > 0.97 and abs((c - loc).dot(normal)) < 0.03 and inside(poly, x, z):
+                    faces.append(pg.index)
+            if faces:
+                reslot(t, faces, mat)
+                n += len(faces)
+        log(f"feature tiles: {FEATURE_TILE} on the wall behind the bathtub ({n} faces)")
+        return n
+    return 0
+
+
+def feature_wall(scene, room, sy):
+    """A designer's one coloured wall: the wall at the head of the room's bed, limewashed from the floor to the
+    ceiling and from corner to corner (the stretch of the room's outline it stands on), as a plane 3 mm off it.
+    Left plain when an opening is in it."""
+    dg = bpy.context.evaluated_depsgraph_get()
+    poly = room["polygon"]
+    for frame, _ in BEDS:
+        hx, _, hz = to_scene(frame.translation)
+        if not inside(poly, hx, hz):
+            continue
+        head = (frame.to_3x3() @ Vector((0, 1, 0))).normalized()
+        hit = trace(scene, dg, frame @ Vector((0, -0.05, 1.25)), head, far=0.8)
+        if hit is None:
+            continue
+        loc, normal = hit[0], hit[1]
+        px, _, pz = to_scene(loc)
+        nx, _, nz = to_scene(normal)
+        best = None
+        for i in range(len(poly)):
+            (ax, az), (bx, bz) = poly[i - 1], poly[i]
+            ex, ez = bx - ax, bz - az
+            length = math.hypot(ex, ez)
+            if length < 1.0 or abs(ex * nx + ez * nz) / length > 0.1:
+                continue
+            t = ((px - ax) * ex + (pz - az) * ez) / length**2
+            d = abs((px - ax) * ez - (pz - az) * ex) / length
+            if -0.02 <= t <= 1.02 and d < 0.2 and (best is None or d < best[0]):
+                best = (d, (ax, az), (bx, bz))
+        if best is None:
+            continue
+        _, (ax, az), (bx, bz) = best
+        y0, y1, up = sy, sy + 2.5, loc + normal * 0.05
+        for _ in range(8):  # up to the ceiling, through what hangs on the wall
+            top = trace(scene, dg, up, Vector((0, 0, 1)), far=4.0)
+            if top is None:
+                break
+            if kinds(top[2]) & {"ceiling", "slab", "roof", "building"}:
+                y1 = to_scene(top[0])[1]
+                break
+            up = top[0] + Vector((0, 0, 0.002))
+        plane = px * nx + pz * nz
+
+        def on_wall(x, z, y, off=0.003):  # the outline's corner, moved onto the wall's plane and off it
+            k = x * nx + z * nz - plane - off
+            return Vector((x - nx * k, y, z - nz * k))
+
+        corners = [on_wall(ax, az, y0), on_wall(bx, bz, y0), on_wall(bx, bz, y1), on_wall(ax, az, y1)]
+        back = Vector((-nx, nz, 0.0))  # towards the wall, in Blender's frame
+        for i in range(1, 12):  # openings: a probe a step off the wall must meet it right behind
+            for j in range(1, 6):
+                q = corners[0].lerp(corners[1], i / 12)
+                h = trace(scene, dg, Vector((q.x + nx * 0.05, -(q.z + nz * 0.05), y0 + (y1 - y0) * j / 6)), back, far=0.25)
+                if h is None or kinds(h[2]) & {"window", "door", "interiorDoor"}:
+                    log("feature wall: an opening in the bed's wall, left plain")
+                    return 0
+        me = bpy.data.meshes.new("limewash")
+        me.from_pydata([Vector((c.x, -c.z, c.y)) for c in corners], [], [(0, 1, 2, 3)])
+        me.update()
+        if me.polygons[0].normal.dot(Vector((nx, -nz, 0.0))) < 0:
+            me.flip_normals()
+        ob = bpy.data.objects.new("limewash", me)
+        ob["kind"] = "featureWall"  # a wall for the sun's patches, not for the white balance
+        scene.collection.objects.link(ob)
+        ob.data.materials.append(limewash_material())
+        log(f"feature wall: limewash behind the bed, {math.hypot(bx - ax, bz - az):.2f} x {y1 - y0:.2f} m")
+        return 1
+    return 0
 
 
 def sofa_cushions(scene, pieces):
@@ -679,6 +1424,8 @@ def dress_storey(scene, sy):
     done["sofas"] = sofa_cushions(scene, pieces)
     done["tables"] = dress_tables(scene, pieces)
     done["counters"] = dress_counter(scene, pieces)
+    if "sanitary" not in os.environ.get("SKIP", "").split(","):
+        sanitaryware(scene, pieces)
     dg = bpy.context.evaluated_depsgraph_get()
     done["tubs"] = dress_tubs(scene, dg, pieces)
     done["basins"] = dress_basins(scene, dg, pieces, sy)
@@ -825,10 +1572,24 @@ def hang_art(scene, rays, sy):
     return False
 
 
-def pave(rays, sy):
+def reslot(obj, faces, material):
+    """Give some faces of a mesh another material (the rest keep theirs)."""
+    if obj.data.users > 1:
+        obj.data = obj.data.copy()
+    if material.name not in obj.data.materials:
+        obj.data.materials.append(material)
+    i = list(obj.data.materials).index(material)
+    for f in faces:
+        obj.data.polygons[f].material_index = i
+
+
+def pave(rays, sy, rooms):
     """Light exterior paving the camera sees through the glass: stone grey on the ground floor, a timber deck
-    on upper floors (white in the sun, it blows out; a balcony sharing the walls' material turns sky-blue)."""
+    on upper floors (white in the sun, it blows out; a balcony sharing the walls' material turns sky-blue).
+    Face by face: the export's balcony can share a mesh and a material with the walls (a slot-wide swap turned the
+    bedroom's walls into decking)."""
     deck = sy > 1.5
+    plans = [r for r in rooms if abs(r["y"] - sy) < 0.1]
     done = set()
     for r in rays:
         if r["hit"] is None or r["interior"]:
@@ -844,11 +1605,19 @@ def pave(rays, sy):
         if not q.inputs["Base Color"].is_linked and 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2] < 0.35:
             continue
         done.add((obj.name, slot))
+        mw, rot = obj.matrix_world, obj.matrix_world.to_3x3()
+        faces = []
+        for p in obj.data.polygons:
+            if p.material_index != slot or (rot @ p.normal).normalized().z < 0.7:
+                continue
+            x, y, z = to_scene(mw @ p.center + (rot @ p.normal).normalized() * 0.05)
+            if abs(y - sy) <= 0.65 and not any(inside(pl["polygon"], x, z) for pl in plans):
+                faces.append(p.index)
         if deck:
-            obj.material_slots[slot].material = dress.deck_material()
+            reslot(obj, faces, deck_material())
             continue
         m2 = m.copy()
-        obj.material_slots[slot].material = m2
+        reslot(obj, faces, m2)
         q = principled(m2)
         nt = m2.node_tree
         dim = nt.nodes.new("ShaderNodeMixRGB")
@@ -1014,7 +1783,7 @@ def sun_thumbs(scene, rays, lamp, cands, sy, tmp):
     sky = bg.default_value
     floor_y = sy + 0.25
     inside = [r for r in rays if r["interior"]]
-    arch = [r["hit"][1].z > 0.7 and to_scene(r["hit"][0])[1] < floor_y or abs(r["hit"][1].z) < 0.2 and bool(kinds(r["hit"][2]) & {"wall", "partition"})
+    arch = [r["hit"][1].z > 0.7 and to_scene(r["hit"][0])[1] < floor_y or abs(r["hit"][1].z) < 0.2 and bool(kinds(r["hit"][2]) & {"wall", "partition", "featureWall"})
             for r in inside]
     weight = np.array([0.3 + r["fy"] ** 2 for r in inside])
     best, rows = None, []
@@ -1122,6 +1891,9 @@ def grade(scene, rays, tmp):
     vs.exposure = 0.0
     walls = wall_samples(rays)
 
+    def clipped():
+        return float((np.asarray(Image.open(tmp).convert("RGB")).max(axis=2) >= 250).mean())
+
     def solve_exposure():
         lo, hi = -2.0, 3.0
         for _ in range(9):
@@ -1129,6 +1901,19 @@ def grade(scene, rays, tmp):
             lum, _ = measure(scene, rays, walls, tmp)
             lo, hi = (vs.exposure, hi) if lum < TARGET_MEDIAN else (lo, vs.exposure)
         vs.exposure = (lo + hi) / 2
+        measure(scene, rays, walls, tmp)
+        if clipped() <= CLIP_MAX:
+            return
+        lo, hi = vs.exposure - CLIP_PULL, vs.exposure  # a darker finish lifts the median's exposure: protect the highlights
+        vs.exposure = lo
+        measure(scene, rays, walls, tmp)
+        if clipped() > CLIP_MAX:
+            return
+        for _ in range(6):
+            vs.exposure = (lo + hi) / 2
+            measure(scene, rays, walls, tmp)
+            lo, hi = (lo, vs.exposure) if clipped() > CLIP_MAX else (vs.exposure, hi)
+        vs.exposure = lo
 
     def solve(attr, lo, hi, index, target, n=8):
         """Bisect a view setting so the walls' a* (index 0) or b* (1) meets the target; the setting's direction
@@ -1156,7 +1941,7 @@ def grade(scene, rays, tmp):
     solve("white_balance_temperature", 4000.0, 12000.0, 1, TARGET_WALL_B)
     solve_exposure()
     lum, ab = measure(scene, rays, walls, tmp)
-    clip = float((np.asarray(Image.open(tmp).convert("RGB")).max(axis=2) >= 250).mean())
+    clip = clipped()
     log(f"grade: exposure {vs.exposure:+.2f}, white {vs.white_balance_temperature:.0f} K, tint "
         f"{vs.white_balance_tint:+.1f} -> room median {lum:.0f}, wall a* b* "
         f"{ab if ab is None else (round(ab[0], 1), round(ab[1], 1))} ({len(walls)} wall samples), "
@@ -1202,15 +1987,27 @@ def main():
     sy = room["y"]
     log(f"room: {room['name']} ({room['use']}), storey y {sy}; {device}")
     floors(scene, rooms, sy, room)
+    skip = os.environ.get("SKIP", "").split(",")  # steps left out, for experiments
+    if "inner" not in skip:
+        inner_walls(scene, rooms)
     dress.plaster(scene)
+    if "tiles" not in skip:
+        glaze_tiles(scene)
+    if CEILING == "concrete" and room["use"] not in ("bath", "wc"):  # wet rooms keep a painted ceiling
+        concrete_ceilings(scene)
+    if "paint" not in skip:
+        paint(scene)
     dress.linen(scene)
-    dress.upholster(scene)
+    upholster_chairs(scene)
     dress_storey(scene, sy)
+    if "feature" not in skip:
+        feature_wall(scene, room, sy)
+        feature_tiles(scene, room, sy)
     scene.render.resolution_x, scene.render.resolution_y = width, height  # view_frame() reads the aspect from it
     still.camera(scene, cam_spec, width, height)
     clear_edges(scene, scene.camera)
     rays = camera_rays(scene, scene.camera, rooms, sy)
-    pave(rays, sy)
+    pave(rays, sy, rooms)
     if hang_art(scene, rays, sy):
         rays = camera_rays(scene, scene.camera, rooms, sy)
     t = time.time()
@@ -1273,6 +2070,12 @@ def main():
     t = time.time()
     scene.render.resolution_x, scene.render.resolution_y = width, height
     scene.cycles.samples = samples
+    scene.cycles.adaptive_threshold = float(os.environ.get("ADAPTIVE", scene.cycles.adaptive_threshold))
+    scene.cycles.denoising_prefilter = os.environ.get("PREFILTER", scene.cycles.denoising_prefilter)
+    if os.environ.get("CROP"):  # "x0,x1,y0,y1" in frame fractions, y up: a full-resolution crop, for experiments
+        rs = scene.render
+        rs.border_min_x, rs.border_max_x, rs.border_min_y, rs.border_max_y = (float(v) for v in os.environ["CROP"].split(","))
+        rs.use_border, rs.use_crop_to_border = True, True
     bpy.ops.render.render()
     raw = out.replace(".png", "-raw.png")
     bpy.data.images["Render Result"].save_render(raw, scene=scene)
