@@ -113,14 +113,23 @@ def floor_material(scene, at):
 def finishes(scene):
     """The same finishes with texture: the oak floor as 1.7 m tiles of real planks (its colour kept: the photo
     scan is scaled to the old texture's mean), a fine plaster relief and a matte roughness on walls and ceilings."""
-    floor = floor_material(scene, FLOOR_AT)
+    oak_floor(floor_material(scene, FLOOR_AT))
+    plaster(scene)
+    # the terrace outside the dining glazing: its tiles at a stone grey (white in the sun, they blow out)
+    dg = bpy.context.evaluated_depsgraph_get()
+    for at in ((-2.5, 2.3, 5.8), (2.7, 2.72, 5.6)):  # the dining's terrace, the bedroom's balcony
+        stone(scene, dg, at)
+
+
+def oak_floor(floor, turn_deg=90):
+    """A wood floor material as the 4k plank scan, tinted to the old texture's mean colour."""
     p = principled(floor)
     nt = floor.node_tree
     old = p.inputs["Base Color"].links[0].from_node.image
     d = os.path.join(TEX, "laminate_floor_02_4k")
     diff = image(os.path.join(d, "diff.jpg"))
     ratio = np.clip(mean_linear(old) / mean_linear(diff), 0.3, 3.0)
-    vec = world_mapping(nt, 1.7, 90)  # planks run north-south, toward the glazing
+    vec = world_mapping(nt, 1.7, turn_deg)  # 90: planks run north-south
     col = tex_node(nt, diff, vec)
     tint = nt.nodes.new("ShaderNodeMixRGB")
     tint.blend_type = "MULTIPLY"
@@ -131,7 +140,11 @@ def finishes(scene):
     nt.links.new(normal_map(nt, image(os.path.join(d, "nor_gl.jpg"), True), vec, 0.7), p.inputs["Normal"])
     nt.links.new(rough_map(nt, image(os.path.join(d, "rough.jpg"), True), vec, FLOOR_ROUGH[0], FLOOR_ROUGH[1]), p.inputs["Roughness"])
     print(f"finishes: floor {floor.name} tinted by {np.round(ratio, 2)}")
-    # walls, partitions and the slabs' undersides: their colour, a plaster relief, matte
+    return ratio
+
+
+def plaster(scene):
+    """Walls, partitions and the slabs' undersides: their colour, a plaster relief, matte."""
     pl = os.path.join(TEX, "plaster_grey_04")
     nor, rough = image(os.path.join(pl, "nor_gl.jpg"), True), image(os.path.join(pl, "rough.jpg"), True)
     done = set()
@@ -164,10 +177,6 @@ def finishes(scene):
                 m.node_tree.links.new(rough_map(m.node_tree, rough, mp.outputs["Vector"], 0.78, 0.92, box=True), q.inputs["Roughness"])
                 done.add(m.name)
     print(f"finishes: plaster on {sorted(done)}")
-    # the terrace outside the dining glazing: its tiles at a stone grey (white in the sun, they blow out)
-    dg = bpy.context.evaluated_depsgraph_get()
-    for at in ((-2.5, 2.3, 5.8), (2.7, 2.72, 5.6)):  # the dining's terrace, the bedroom's balcony
-        stone(scene, dg, at)
 
 
 STONE = {}
@@ -514,8 +523,8 @@ def wool_material(scale=(5.8, 1.9), tint=(1.7, 1.6, 1.45)):
     return m
 
 
-def runner(scene, at, size):
-    """A linen table runner lying along the table (scene z)."""
+def runner(scene, at, size, turn_rad=0.0):
+    """A linen table runner lying along the table (scene z, turned by `turn_rad` about the vertical)."""
     bpy.ops.mesh.primitive_plane_add(size=1.0)
     o = bpy.context.active_object
     o.name = "runner"
@@ -525,6 +534,7 @@ def runner(scene, at, size):
     sol.thickness = 0.002
     sol.offset = 1.0
     o.location = blender(at)
+    o.rotation_euler[2] = turn_rad
     m = bpy.data.materials.new("archviz-runner")
     nt = m.node_tree
     p = principled(m)

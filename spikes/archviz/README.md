@@ -205,3 +205,69 @@ here because a bedroom is mostly textiles:
 "plausible" in a few iterations, not "studio"; a library of good bedding, cushions and throws (CC0 or licensed for
 AI use) would move this room more than any renderer setting.
 
+
+## Third part: any room, no per-room settings (`photo.py`), 2026-10-31
+
+The question: does the recipe generalise to any room of any housegen house? `photo.py` takes only the export
+(`work/house.blend`, `work/rooms.json`) and a camera (as the owner would frame it in the viewer). It decides
+everything the two hand-tuned rooms set with environment variables:
+
+    uv run --no-project --python 3.11 --with bpy --with numpy --with pillow python photo.py \
+        work/house.blend work/rooms.json "0.6,1.25,2.3>-4.5,1.0,4.15@54" work/auto/dining.png 2560 1440 400
+    # the same on Modal GPUs (a temporary app, one container per photo, in parallel; nothing stays deployed):
+    uvx modal run modal_photo.py [--rooms dining,bedroom,bath]
+
+- **room and storey**: the room under the camera (rooms.json); the dressing covers that storey.
+- **finishes**: wood-coloured floors become the plank scan in their own colour, laid along the room's long axis;
+  plaster relief, linen curtains; the light exterior paving seen through the glass becomes stone (ground floor) or
+  a timber deck (upper floors).
+- **dressing from the kit's own pieces** (their `name` and `footprint`):
+  - swaps: rugs become bouclé, plants become CC0 scans, art becomes our print, armchairs become the lounge chair
+    with a throw, beds become our bed with cloth-simulated bedding (`made/bedset.py`, cached per size);
+  - additions: cushions on sofas; a runner, a rug and eucalyptus at dining tables; a bowl and a board on the
+    counter's longest free stretch; a print on the wall the camera sees most, if none is in view;
+  - bathrooms (`made/bathset.py`, all ours): an oak caddy with a candle across the tub; a towel draped over its
+    front rim (cloth simulation, made per rim width); pump bottles on the basin's free deck; the kit's
+    accessories and towel stacks become ours. Rims and decks are found by rays down the piece; a flat bowl
+    bottom is rejected because it has walls on most sides.
+- **sun**: a real position for the latitude (`LAT`). The pick is the one that puts about 20 % of the open floor
+  the camera sees in sun (open: nothing above it within 1.5 m, so not under a table). North rooms get no sun and
+  their lights are switched on instead (warm, the bulb hidden from the camera).
+- **window view**: the HDRI is turned from the camera's yaw, so the window always shows its wood.
+- **grade**: from a 768 px preview, exposure to a room median of 155, then white balance and tint to wall
+  b* 4 and a* 0.5 (the north bathroom came out green-grey before the tint).
+
+Same cameras as the hand-tuned rooms, plus a bathroom (SDB, ground floor, north window). Blind, 3 judges each,
+same protocol and references as above (the bathroom is paired with the bedroom reference as an anchor). Overall
+scores:
+
+| room | auto a1 | auto a2 | hand-tuned | reference |
+|---|---|---|---|---|
+| dining | 6 / 6 / 6 | 6 / 6 / 7 | 7 / 7 / 7 (r5) | 4-7 |
+| bedroom | 5 / 5 / 5 | 5 / 5 / 5 | 5 / 5 / 6 (b4) | 8 |
+| bathroom | 4 / 4 / 4 (decor 3) | 5 / 5 / 5 (decor 4-5) | - | 8 |
+
+a2 added the bathroom set, the tint, lamps in rooms without sun, the open-floor sun pick and a bathroom camera
+aimed away from the door leaf. Side by side, a1 on the left and a2 on the right: `auto.jpg`.
+
+**Result:** with no per-room settings, the generic version lands within a point of the hand-tuned rooms (dining
+6-7 against 7, bedroom 5 against 5-6). The bathroom went from 4 to 5 with one made asset set. The remaining
+complaints are the same in every room, and none of them is about generalising:
+- flat light: no visible sun inside;
+- plain walls and tiles, CG-clean sanitaryware;
+- sparse styling.
+
+Timings, Modal T4 (OptiX works there), per photo:
+- setup 90-115 s: open the file, dress, rays, sun pick;
+- preview and grade 10 s;
+- final 2560x1440 at 400 samples: 180-260 s;
+- total 5-6 min, the three in parallel in 8.5-14.5 min including the image build and the upload of
+  about 480 MB of assets.
+
+Locally on the RTX 3050, a preview takes about 1 min.
+
+Known gaps:
+- the sun pick favours patches the shadow rays can reach, not ones that read well in the picture (the bedroom's
+  sun lands on the deck outside);
+- the HDRI's car still shows in the dining room's right-hand window;
+- there are no rules yet for showers, WCs, kitchens without an island, desks, or children's rooms.
