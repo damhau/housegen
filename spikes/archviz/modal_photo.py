@@ -29,7 +29,7 @@ HOLDOUT = {  # scored at the milestone checks only, never tuned on (#88)
 }
 
 KNOBS = ("CEILING", "TILE_TONE", "MOTTLE", "LIMEWASH", "SKIP", "THUMBS", "SUN_PICK", "PHOTO_SUN_POWER", "PHOTO_LAMPS",
-         "RELIEF", "FLOOR_ROUGH", "CLIP_MAX", "FEATURE_TILE", "ADAPTIVE", "PREFILTER", "FLOOR")  # photo.py's environment knobs, forwarded to the containers
+         "RELIEF", "FLOOR_ROUGH", "CLIP_MAX", "FEATURE_TILE", "ADAPTIVE", "PREFILTER", "FLOOR", "STYLE_SKIP", "ART_SCALES")  # photo.py's environment knobs, forwarded to the containers
 
 app = modal.App("housegen-photo-test")
 image = (
@@ -47,6 +47,7 @@ image = (
     .add_local_file(os.path.join(HERE, "still.py"), f"{R}/still.py")
     .add_local_file(os.path.join(HERE, "dress.py"), f"{R}/dress.py")
     .add_local_file(os.path.join(HERE, "post.py"), f"{R}/post.py")
+    .add_local_file(os.path.join(HERE, "style.py"), f"{R}/style.py")
 )
 
 

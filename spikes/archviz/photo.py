@@ -37,6 +37,7 @@ from PIL import Image  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import dress  # noqa: E402
+import style  # noqa: E402
 import still  # noqa: E402
 from dress import model, place, principled  # noqa: E402
 from post import post  # noqa: E402
@@ -54,6 +55,7 @@ CLIP_MAX = float(os.environ.get("CLIP_MAX", "0.03"))  # at most this share of th
 CLIP_PULL = 0.5  # ...by lowering the median's exposure at most this many stops (darker than that reads as a grey veil)
 CACHE = os.path.join(HERE, "work", "cache")
 ART = os.path.join(HERE, "made", "art.glb")  # 0.62 x 0.82 m, facing +y
+ART2 = os.path.join(HERE, "made", "art2.glb")  # its pair (made/art.py 8 art2)
 EUCALYPTUS = os.path.join(HERE, "made", "eucalyptus.glb")
 THROW = os.path.join(HERE, "made", "throw.glb")
 BED_SIZES = (0.9, 1.2, 1.4, 1.6, 1.8)
@@ -1252,14 +1254,64 @@ def oak_wood(rgb=(0.42, 0.29, 0.17)):
     return m
 
 
+def cloth_weave(rgb, scale=0.05, rough=0.85, sheen=0.3, name="archviz-cloth"):
+    """A woven cloth (book cloth, napkin linen): the linen scan's weave as relief at `scale` metres a tile, in a flat
+    colour with a faint mottle."""
+    m = bpy.data.materials.new(name)
+    nt = m.node_tree
+    p = principled(m)
+    d = os.path.join(dress.TEX, "rough_linen")
+    tc = node(nt, "ShaderNodeTexCoord")
+    mp = node(nt, "ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (1 / scale,) * 3
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    vec = mp.outputs["Vector"]
+    mottle = node(nt, "ShaderNodeTexNoise", Scale=40.0, Detail=4.0)
+    nt.links.new(tc.outputs["Object"], mottle.inputs["Vector"])
+    mix = node(nt, "ShaderNodeMapRange")
+    mix.inputs["To Min"].default_value, mix.inputs["To Max"].default_value = 0.92, 1.06
+    nt.links.new(mottle.outputs["Fac"], mix.inputs["Value"])
+    col = node(nt, "ShaderNodeVectorMath", _operation="SCALE")
+    col.inputs[0].default_value = rgb
+    nt.links.new(mix.outputs["Result"], [x for x in col.inputs if x.name == "Scale"][0])
+    nt.links.new(col.outputs[0], p.inputs["Base Color"])
+    nt.links.new(dress.normal_map(nt, dress.image(os.path.join(d, "nor_gl.jpg"), True), vec, 1.0, box=True), p.inputs["Normal"])
+    p.inputs["Roughness"].default_value = rough
+    p.inputs["Sheen Weight"].default_value = sheen
+    return m
+
+
+def clear_glass(ior=1.5, name="archviz-glass"):
+    """Clear glass for small pieces, transparent to shadow rays: without caustics, the light behind a glass or a
+    carafe would otherwise be its dark shadow."""
+    m = bpy.data.materials.new(name)
+    nt = m.node_tree
+    p = principled(m)
+    p.inputs["Base Color"].default_value = (1, 1, 1, 1)
+    p.inputs["Roughness"].default_value = 0.0
+    p.inputs["IOR"].default_value = ior
+    p.inputs["Transmission Weight"].default_value = 1.0
+    out = next(n for n in nt.nodes if n.type == "OUTPUT_MATERIAL")
+    lp = node(nt, "ShaderNodeLightPath")
+    tr = node(nt, "ShaderNodeBsdfTransparent")
+    mix = node(nt, "ShaderNodeMixShader")
+    nt.links.new(lp.outputs["Is Shadow Ray"], mix.inputs["Fac"])
+    nt.links.new(p.outputs["BSDF"], mix.inputs[1])
+    nt.links.new(tr.outputs["BSDF"], mix.inputs[2])
+    nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
+    return m
+
+
 BATH_MATS = {}
 
 
 def bath_materials(root):
-    """The Cycles materials of a bathset piece, by its material names."""
+    """The Cycles materials of a made piece (made/bathset.py), by its material names."""
     if not BATH_MATS:
         BATH_MATS.update({"towel-white": terry((0.80, 0.79, 0.76)), "towel-sand": terry((0.52, 0.45, 0.36)),
-                          "oak": oak_wood()})
+                          "oak": oak_wood(), "glass": clear_glass(), "water": clear_glass(1.33, "archviz-water"),
+                          "napkin": cloth_weave((0.30, 0.35, 0.26), 0.04, 0.9, 0.1, "archviz-napkin"),  # sage linen, little sheen
+                          "mat-terry": terry((0.78, 0.76, 0.72))})
     for c in family(root):
         if c.type != "MESH":
             continue
@@ -1268,8 +1320,14 @@ def bath_materials(root):
             if m is None:
                 continue
             key = m.name.split(".")[0]
+            if key.startswith("cover-") and key not in BATH_MATS:
+                rgb = tuple(principled(m).inputs["Base Color"].default_value[:3])
+                BATH_MATS[key] = cloth_weave(rgb, 0.035, 0.8, 0.25, f"archviz-{key}")
             if key in BATH_MATS:
                 slot.material = BATH_MATS[key]
+            elif key == "pages":
+                q = principled(m)
+                q.inputs["Roughness"].default_value = 0.9
             elif key == "amber-glass":
                 q = principled(m)
                 q.inputs["Roughness"].default_value = 0.02
@@ -1523,6 +1581,9 @@ def ancestors(o):
         o = o.parent
 
 
+ART_SCALES = tuple(float(v) for v in os.environ.get("ART_SCALES", "1.3,1.0").split(","))  # a hung print's sizes, tried in turn
+
+
 def hang_art(scene, rays, sy):
     """A print on the wall the camera sees most, if no print is in view: centred near the middle of what the
     camera sees of that wall, where nothing stands in front of it between 1.05 and 1.9 m (a sideboard below
@@ -1550,9 +1611,10 @@ def hang_art(scene, rays, sy):
         mid = ss[len(ss) // 2]
         cands = sorted((ss[0] + 0.4 + 0.1 * k for k in range(int((ss[-1] - ss[0] - 0.8) / 0.1) + 1)), key=lambda v: abs(v - mid))
 
-        def free(s):
-            for h in (1.05, 1.45, 1.9):
-                for ds in (-0.35, 0.0, 0.35):
+        def free(s, sc=1.0):
+            half, top = 0.31 * sc + 0.04, 1.04 + 0.82 * sc + 0.04
+            for h in (1.05, (1.05 + top) / 2, top):
+                for ds in (-half, 0.0, half):
                     p = p0 + a * (s + ds - a.dot(p0))
                     p.z = sy + h
                     hit = trace(scene, dg, p + n * 0.5, -n, far=0.6)
@@ -1561,12 +1623,17 @@ def hang_art(scene, rays, sy):
                         return False
             return True
 
-        s = next((c for c in cands if free(c)), None)
-        log(f"art: wall {tuple(round(v, 2) for v in n)} {len(g)} samples, s {ss[0]:.2f}..{ss[-1]:.2f}, {len(cands)} spots, free at {s}")
+        s, sc = None, 1.0
+        for sc in ART_SCALES:  # the biggest print the wall takes, near the middle of what the camera sees of it
+            s = next((c for c in cands if free(c, sc)), None)
+            if s is not None:
+                break
+        log(f"art: wall {tuple(round(v, 2) for v in n)} {len(g)} samples, s {ss[0]:.2f}..{ss[-1]:.2f}, {len(cands)} spots, "
+            f"free at {s} (scale {sc})")
         if s is None:
             continue
         p = p0 + a * (s - a.dot(p0)) + n * 0.016
-        place(scene, ART, (p.x, sy + 1.04, -p.y), turn_deg=math.degrees(math.atan2(-n.x, n.y)))
+        place(scene, ART, (p.x, sy + 1.04, -p.y), height=0.82 * sc, turn_deg=math.degrees(math.atan2(-n.x, n.y)))
         log(f"art: on the wall facing {tuple(round(v, 2) for v in n)} at {tuple(round(v, 2) for v in to_scene(p))}")
         return True
     return False
@@ -1660,7 +1727,6 @@ def pick_sun(scene, rays):
     """The sun position that puts about 20 % of the floor the camera sees in sun (the whole room if little floor
     is in view; an elevation near 30 deg on a tie); if no position reaches 2 %, the presentation look's sun."""
     dg = bpy.context.evaluated_depsgraph_get()
-    pts = [r["hit"] for r in rays if r["interior"]]
     cam_z = bpy.context.scene.camera.matrix_world.translation.z
     up = Vector((0, 0, 1))
 
@@ -2009,6 +2075,10 @@ def main():
     rays = camera_rays(scene, scene.camera, rooms, sy)
     pave(rays, sy, rooms)
     if hang_art(scene, rays, sy):
+        rays = camera_rays(scene, scene.camera, rooms, sy)
+    if "style" not in skip:
+        style.H = sys.modules[__name__]
+        style.style(scene, scene.camera, rays, rooms, sy, storey_pieces(scene, sy))
         rays = camera_rays(scene, scene.camera, rooms, sy)
     t = time.time()
     az, el, frac = pick_sun(scene, rays)

@@ -1,7 +1,10 @@
 """A framed abstract print (made here): made/art-print.jpg (generated) and made/art.glb (oak frame, white
 mount, the print), 0.62 x 0.82 m, its back on the wall plane z=0, facing +Y in Blender (glTF +Z).
 
-    uv run --no-project --python 3.11 --with bpy --with numpy python made/art.py [seed]
+    uv run --no-project --python 3.11 --with bpy --with numpy python made/art.py [seed] [name]
+
+`name` (default "art") names the outputs made/<name>.glb and made/<name>-print.jpg: art2 is the second print of a
+pair (seed 11).
 """
 
 import math
@@ -14,6 +17,7 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 seed = int(sys.argv[1]) if len(sys.argv) > 1 else 3
+NAME = sys.argv[2] if len(sys.argv) > 2 else "art"
 rng = random.Random(seed)
 W, H = 1200, 1600  # print pixels (0.48 x 0.64 m)
 
@@ -43,7 +47,7 @@ for px, py in zip(ax.astype(int), ay.astype(int)):
 # paper grain
 img *= 1 + np.random.default_rng(seed).normal(0, 0.012, (H, W, 1)).astype(np.float32)
 img = np.clip(img, 0, 1)
-png = os.path.join(HERE, "art-print.jpg")
+png = os.path.join(HERE, f"{NAME}-print.jpg")
 bpy.ops.wm.read_factory_settings(use_empty=True)
 im = bpy.data.images.new("art-print", W, H)
 im.pixels.foreach_set(np.concatenate([img[::-1], np.ones((H, W, 1), np.float32)], axis=2).ravel())
@@ -94,6 +98,6 @@ pr.location = (0, DEPTH - 0.0095, 0)
 bpy.ops.object.transform_apply(scale=True, rotation=True)
 pr.data.uv_layers.active.data.foreach_set("uv", [c for uv in ((0, 0), (1, 0), (1, 1), (0, 1)) for c in uv])
 pr.data.materials.append(mat("art-print", (1, 1, 1), 0.85, im))
-out = os.path.join(HERE, "art.glb")
+out = os.path.join(HERE, f"{NAME}.glb")
 bpy.ops.export_scene.gltf(filepath=out, export_format="GLB", export_image_format="JPEG")
 print("wrote", out, png)

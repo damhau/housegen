@@ -149,7 +149,12 @@ Fidelity notes:
 
 Poly Haven assets are CC0 (models, textures, the HDRI `meadow` by Sergej Majboroda); none is marked NoAI and none
 was bought. Phase 2 added the CC0 texture sets `concrete_wall_008`, `curly_teddy_natural`, `wood_floor_deck` and
-`oak_veneer_01`. `made/` is ours. The reference renders are third-party marketing images, kept in `reference/`
+`oak_veneer_01`. Phase 3 added the CC0 models `potted_plant_04` (the bedside succulent), `ceramic_vase_01` (the
+floor and sill vases), `outdoor_table_chair_set_01` (the balcony and terrace set), `modern_wooden_cabinet` (the
+sideboard) and `ceramic_vase_04` (the jug on it); `potted_plant_02` was already used for the kit's small plants, and
+`wooden_bowl_01`, `lemon` and `food_apple_01` for the kitchen island. `made/` is ours, the phase 3 props included
+(books, carafe, candles, napkins, the stool, the bath mat, the towel rail, the second print `art2`). The reference
+renders are third-party marketing images, kept in `reference/`
 (git-ignored), as are `assets/`, `work/` and `sheets/` (the sheet contains the reference).
 
 ## Second room: the bedroom (Chambre 4, first floor), 2026-10-31
@@ -299,6 +304,12 @@ De = Decor, V = View, G = Grade, O = Overall.
 | r5 | `CEILING=concrete` (exposed concrete, CC0 scan), the grade's highlight cap (`CLIP_MAX`), a sage tile wall behind the bathtub | 3 | 7/6/6/7/7/**6** | 6/6/5/6/6/**5** | 6/6/6/6/6/**5** | - |
 | r6 | r5 + bouclé on the bed and the dining chairs (CC0 scan), a weathered deck (CC0 scan) | 3 | 7/6/6/7/7/**7** | 7/6/6/7/6/**6** | - | - |
 | r7 | r6 + the floor laid plank by plank (2.1 x 0.19 m, a CC0 oak scan, tone and gloss per plank, V-joints); wet rooms keep a painted ceiling | 3 | 7/6/6/7/7/**7** | 7/6/5/6/7/**6** | 5/6/6/6/6/**5** | - |
+| s1 | phase 3: `style.py` — a rug under the bed, the bedside (lamp to the back, books, a succulent), napkins, candles and a carafe on the dining table, a floor vase of branches in a free corner the camera sees | 3 | 7/6/6/7/7/**6** | 7/6/6/7/6/**6** | 5/5/5/6/6/**5** (no change in the bath) | - |
+| s2 | s1 + a bistro set on the balcony or terrace the camera sees through the glass (CC0), a bud vase with a sprig on deep window sills in view | 3 | 7/7/7/7/7/**7** | 6/6/6/6/6/**6** | 5/6/6/6/6/**5** | - |
+| s3 | s2 + a pair of prints over the bed (`made/art2.glb`, seed 8), the dining print hung 1.3x when its wall takes it | 3 | 7/6/7/7/7/**7** | 7/6/7/7/6/**6** | 6/6/6/6/6/**5** | - |
+| s4 | s3 + a walnut sideboard (CC0) styled under the dining room's ribbon window, the dark foreground plant and the cut-off bath bottle taken out | 3 | 7/6/6/7/7/**7** | 7/6/6/7/7/**6** | 6/6/6/6/6/**6** | - |
+| s5 | s4 + clear wine glasses, a flax runner, sage napkins with little sheen; the sideboard's top a potted plant, a jug and books; foreground plants cut by the frame taken out before the rules | 3 | 6/6/6/7/6/**6** | 7/6/7/7/7/**6** | 5/6/6/6/6/**5** | - |
+| s6 | s5 + a towel on a black bar on a plain wall the bathroom's camera faces (`made/bathset.py rail`, cloth-simulated); the bath's wall rules keyed on the room the camera sees most of, floor or not; the dining and bedroom images are s5's, judged again | 3 | 7/6/7/7/6/**6** | 6/6/6/7/6/**6** | 5/6/6/6/6/**5** | - |
 
 What the b0 judges named as the weakest point:
 - **Every room:** plain surfaces and sparse styling.
@@ -339,4 +350,71 @@ phase 1 above, end of phase 2 below).
 - **Knobs added:** `CEILING`, `CLIP_MAX`, `FEATURE_TILE` (sage, clay, white), `FLOOR=scan` (the old laminate scan),
   `ADAPTIVE`, `PREFILTER`, `CROP`.
 
-Spend so far: $4.11 for 11 Modal runs (T4).
+Phase 3 (#84, styling), from s1: `style.py` places props by rules on what the camera sees, nothing per room.
+- **Free floor:** `floor_spots` walks a 0.1 m grid of the room's outline, keeps spots against a wall, off door
+  swings, on the bare floor (rays down meet the room's floor mesh, not a rug), not in front of glass (a ray toward the
+  wall must meet it at every height), with a passage in front, in frame and unoccluded; it prefers corners and the
+  sides of the frame.
+- **The rules:** a bed gets a rug under its lower two-thirds (sized to the room) and a pair of prints over it; a
+  nightstand its lamp moved to the back corner away from the bed, books and a succulent on the bed's side, a carafe
+  and a glass on the other if it is large enough; a dining table napkins on its plates, candles, a carafe and a bowl
+  of fruit on free spots of its centre line; the living room or kitchen the camera sees most a styled sideboard
+  against a plain wall; a bathroom a towel on a bar on a plain wall it faces and a stool with towels where the floor
+  shows; the room the camera sees most a floor accent (a tall plant in a corner unless one is in view, else branches
+  in a floor vase); deep window sills a bud vase; a terrace or balcony seen through the glass a bistro set; last,
+  small props cut by the frame go.
+- **s1:** Decor medians 6 / 6 / 5 (from 6 / 5 / 6), the mean over 9 judgments 5.67 as at r7: no gain. The bath
+  did not change at all (its camera sees no floor, so no stool) and lost a point: the noise of 3 judges. The judges
+  still say "sparse": "bare walls, one small artwork, a minimal table setting"; the small props (napkins, candles,
+  books) don't read at the judges' size.
+- **s2:** Decor medians 7 / 6 / 6, mean 6.00 (+0.33, a new best). The dining room reached 7 on every line (Overall
+  7/7/7). The bistro set: `outdoor_set` takes the outdoor floor the camera rays meet beyond the glass, turns the set
+  along the pane it stands behind (the first glass a ray from the camera meets), keeps it 0.45 m clear of the glazing,
+  on clear decking and fully in frame, and takes the biggest. Window sills come from the export's `windowSills`
+  faces (the 48 x 27 ray grid misses a sill 1.4 % of the frame high). All three bedroom judges name the bedding
+  (smeared, melted): that is #85.
+- **s3:** Decor medians 7 / 7 / 6, mean 6.56 (+0.56, a new best). The bedroom moved 6 → 7 on the pair of prints:
+  `bed_art` takes the print `swap_art` hung over a bed (`H.BEDS`), checks with rays that the wall behind both
+  prints is plain (the wall's plane, facing the room, no window, door or piece), and hangs `art.glb` and its pair
+  `art2.glb` side by side, together about 0.7 of the bed's width. `hang_art` tries the print at 1.3x before 1x
+  (`ART_SCALES`). The judges now name the softness ("over-denoised"), the bedding (#85), the dining room's dark
+  foreground plant and "sparse room", and the bath's flat light and cut-off bottles at the left edge.
+- **s4:** Decor medians 6 / 6 / 6, mean 6.11 (best 6.56: one round without a gain). `sideboard` walks each wall of
+  the most-seen living room or kitchen in 0.1 m steps and keeps the place where the cabinet's whole volume is free
+  (rays down), the wall behind it is plain up to its top (rays back; a window above is fine), doors are 0.6 m away,
+  0.75 m of passage is in front, and its top is in frame and seen; then a vase with branches toward the frame's edge,
+  books and a succulent at the other end, a print leaning on the wall if the wall is plain. `edge_clutter` takes out
+  small props cut by a side of the frame, and a plant cut and within 2 m of the lens. **The bedroom was the same
+  image as in s3 and went 7/7/7 -> 6/6/7**: a room's 3-judge mean moves about 0.5 on noise alone, so a phase best
+  set by one lucky round is hard to beat by 0.3.
+- **s5:** Decor medians 6 / 7 / 6, mean 6.22 (best 6.56: the second round without a gain). The table's glassware
+  clear (the export's wine glasses had an opaque white "glass"), the runner in flax and the napkins in sage, both with
+  a low sheen (a white sheen at the camera's grazing angle reads grey); the sideboard's top a 0.55 m potted plant, a
+  ceramic jug and books with a succulent. The judges named none of it: the dining room's "hazy warm-green bloom",
+  weak contact shadows and flat rug; the bedroom's duvet ("a messy cloth simulation, not a styled made bed", #85);
+  the bath's flat light, CG-white sanitaryware, blown mirror lamp and cut-off flush plate (#86).
+- **s6:** Decor medians 7 / 6 / 6, mean 6.22: the third round without a gain, **phase 3 closed as saturated.**
+  `towel_rail` walks the bathroom's walls in 0.1 m steps for a flat, plain face (rays back at 20 points over the
+  towel's height: no window, door, piece or mirror proud of it), nothing in front of it (rays down), facing the
+  camera, the towel whole in frame and seen; it hung over the tub, left of the window. The bath's camera sees almost
+  no floor, so no floor-keyed rule had ever run there: `seen_any` counts every surface the camera rays meet, by room.
+  A fruit bowl on the dining table (`fruit_bowl`) and a carafe on a nightstand at least 0.45 x 0.36 m are in the
+  rules; neither applied here (the table's centre line had two free spots, the nightstand is 0.28 m deep). The
+  dining room's s5 image went 6/6/7 -> 7/7/6 on Decor, the bedroom's 6/7/7 -> 6/7/6.
+
+Phase 3 (#84, styling), s1 to s6: **closed as saturated.** The target was a Decor median of 7.5 in the three rooms.
+It ended at 7 / 6 / 6 (from 6 / 5 / 6 at r7). The Decor mean over 9 judgments rose from 5.67 at r7 to 6.00-6.56
+(best s3, then 6.11, 6.22, 6.22). Sheet: `rounds/s6.jpg` (r7 above, s6 below).
+- **What moved:** the bistro set on the terrace and the balcony (s2: the dining room 7 on every line), the pair of
+  prints over the bed (s3: the bedroom's Decor 6 -> 7). Both are large and in the middle of the picture.
+- **What did not move Decor:** small props (napkins, candles, books, a carafe, glassware, a runner's colour), the
+  styled sideboard, the towel rail. At the judges' size they don't read, and the Decor line follows the whole
+  picture's impression.
+- **Where the judges' complaints are now:** almost none names missing styling (one s6 dining judge: "a large blank
+  wall with a curtain fills the left foreground", which is framing). They name the soft, hazy look and blown whites (the grade, #82's line), the duvet's crumpled cloth
+  simulation (#85), the bath's flat sunless light and CG-white sanitaryware (#85, #82) and its framing, the flush
+  plate cut at the left edge (#86).
+- **Judge noise:** the same image scored again moves a room's 3-judge Decor mean by up to 0.67 (bedroom s3 -> s4).
+  A 0.3 gain over a phase's best is within that noise; a single lucky round sets a best that is hard to beat.
+
+Spend so far: $6.82 for 17 Modal runs (T4).
