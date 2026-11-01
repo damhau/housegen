@@ -315,9 +315,11 @@ Phase 1 (#82, light and grade), r1 and r2:
 - **`regrade.py`:** regrades a photo from the linear EXR that photo.py now writes, in seconds and without a render.
 - **What did not help:** a global tone curve (g1); a brighter or flatter AgX look (judged by eye only).
 
-Phase 2 (#83, surfaces), r3 to r7: **stopped by its stop rule.** The target was a Materials median of 7 in the
-three rooms; it ended at 6 / 6 / 6, and the dining room's Materials median stayed at 6 for four scored rounds
-(r3b, r5, r6, r7). Sheet: `rounds/r7.jpg` (end of phase 1 above, end of phase 2 below).
+Phase 2 (#83, surfaces), r3 to r7: **closed as saturated.** The target was a Materials median of 7 in the
+three rooms. It ended at 6 / 6 / 6. Over the 3 rooms, the Materials mean rose from 5.3 at the end of phase 1 to 6.1.
+The dining room's Materials median stayed at 6 for four scored rounds (r3b, r5, r6, r7). That tripped the old stop
+rule, which was then revised on #88: a flat phase is now closed and the work moves on. Sheet: `rounds/r7.jpg` (end of
+phase 1 above, end of phase 2 below).
 - **What moved:** Materials +1 in the bedroom (r4: the façade's render off its walls) and in the bathroom (r5);
   Overall +1 in the dining room and the bedroom at r6 (bouclé, deck). Single judges gave Materials 7 or 8; never
   two out of three.
