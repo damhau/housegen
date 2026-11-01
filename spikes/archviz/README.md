@@ -310,6 +310,7 @@ De = Decor, V = View, G = Grade, O = Overall.
 | s4 | s3 + a walnut sideboard (CC0) styled under the dining room's ribbon window, the dark foreground plant and the cut-off bath bottle taken out | 3 | 7/6/6/7/7/**7** | 7/6/6/7/7/**6** | 6/6/6/6/6/**6** | - |
 | s5 | s4 + clear wine glasses, a flax runner, sage napkins with little sheen; the sideboard's top a potted plant, a jug and books; foreground plants cut by the frame taken out before the rules | 3 | 6/6/6/7/6/**6** | 7/6/7/7/7/**6** | 5/6/6/6/6/**5** | - |
 | s6 | s5 + a towel on a black bar on a plain wall the bathroom's camera faces (`made/bathset.py rail`, cloth-simulated); the bath's wall rules keyed on the room the camera sees most of, floor or not; the dining and bedroom images are s5's, judged again | 3 | 7/6/7/7/6/**6** | 6/6/6/7/6/**6** | 5/6/6/6/6/**5** | - |
+| **M2** | the check: s6's three images and the holdout rendered with the same code, nothing tuned on it | 5 | 7/6/7/7/6/**7** | 7/7/7/7/7/**7** | 5/6/6/6/6/**6** | 6/6/5/5/6/**5** |
 
 What the b0 judges named as the weakest point:
 - **Every room:** plain surfaces and sparse styling.
@@ -417,4 +418,32 @@ It ended at 7 / 6 / 6 (from 6 / 5 / 6 at r7). The Decor mean over 9 judgments ro
 - **Judge noise:** the same image scored again moves a room's 3-judge Decor mean by up to 0.67 (bedroom s3 -> s4).
   A 0.3 gain over a phase's best is within that noise; a single lucky round sets a best that is hard to beat.
 
-Spend so far: $6.82 for 17 Modal runs (T4).
+M2 check (2026-11-01), 5 judges per room, sheet `rounds/m2.jpg` (b0 above, M2 below): **below the expected 7.5.**
+Overall medians 7 / 7 / 6 in the iteration rooms (b0: 6 / 5 / 5), **5 in the holdout (b0: 5)**. The bedroom has
+every line at 7; no room has a line at 8.
+
+| line | iteration rooms, mean of 15, b0 -> M2 | holdout, mean of 5, b0 -> M2 |
+|---|---|---|
+| Daylight | 5.80 -> 6.33 | 6.2 -> 6.0 |
+| Materials | 5.53 -> 6.27 | 5.6 -> 5.8 |
+| Decor | 5.40 -> 6.47 | 4.8 -> 4.8 |
+| View | 6.40 -> 6.93 | 4.6 -> 5.2 |
+| Grade | 6.20 -> 6.40 | 6.0 -> 6.0 |
+| Overall | 5.53 -> 6.33 | 5.0 -> 5.0 |
+
+- **The gains did not reach the holdout.** The rules are generic in code (nothing names a room or a camera), but
+  they were written for what the three iteration rooms contain: a dining table, a bed, a bath, a window sill, a
+  terrace in view. In the living room the table rule found no table, the sideboard found no wall, the terrace set no
+  spot; only a floor vase and a sill vase went in. There is no rule for a sofa (throw, cushions) or a coffee table.
+  The light and floor work did apply there; its Daylight and Materials did not move.
+- **What the holdout's judges name** (all 5 alike): sparse styling (two cushions, a plant, a magazine), a large bare
+  wall and dark open doorways on the right, the coffee table and the armchair cut by the bottom edge, the left
+  windows blown to white. Framing (#86) and the sofa's styling, not the light.
+- **What the iteration rooms' judges name:** the dining image's soft, smooth surfaces (floor, walls), weak contact
+  shadows and a muddy green-brown concrete ceiling; the bedroom's milky haze and bloom, detail smeared as if
+  over-denoised, the duvet's lumpy folds, brownish walls; the bathroom's flat sunless light (all 5), weak contact
+  shadows, CG-white tiles and the flush plate cut at the left edge.
+- (Read against `key.json`: the wire pendant, the "suspended tile ceiling" and the bedroom's cut globe lamp some
+  judges named belong to the reference photos.)
+
+Spend so far: $6.99 for 18 Modal runs (T4).
