@@ -53,12 +53,31 @@ def tone(a, strength=1.0):
     return b, (at, to)
 
 
-def post(src, out, bloom=0.12, sharpen=60, strength=0.0):
+def clarity(a, amount=0.3, dehaze=0.5):
+    """A photographer's clarity and de-haze, global rules, no AI: the black point moved down to the darkest
+    0.5 % (a share `dehaze` of the veil taken off), then luminance local contrast at a large radius (a width/80
+    blur), as a ratio so colours keep their hue."""
+    lum = a @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    veil = float(np.percentile(lum[::4, ::4], 0.5)) * dehaze
+    if veil > 0.002:
+        a = np.clip((a - veil) / (1 - veil), 0, 1)
+        lum = a @ np.array([0.2126, 0.7152, 0.0722], np.float32)
+    h, w = lum.shape
+    blur = np.asarray(Image.fromarray((lum * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(w / 80))
+                      ).astype(np.float32) / 255
+    new = np.clip(lum + amount * (lum - blur) * (1 - lum), 0, 1)  # less in the highlights: no halos at the windows
+    return np.clip(a * (new / np.maximum(lum, 1e-3))[..., None], 0, 1), veil
+
+
+def post(src, out, bloom=0.12, sharpen=60, strength=0.0, clear=0.0):
     im = Image.open(src).convert("RGB")
     a = np.asarray(im).astype(np.float32) / 255
     if strength:
         a, (at, to) = tone(a, strength)
         print("tone", np.round(np.array(at) * 255), "->", np.round(np.array(to) * 255))
+    if clear:
+        a, veil = clarity(a, clear)
+        print(f"clarity {clear}, veil {veil * 255:.1f}")
     lum = a @ np.array([0.2126, 0.7152, 0.0722], np.float32)
     hi = np.clip((lum - 0.8) / 0.2, 0, 1)[..., None] * a
     glow = np.asarray(Image.fromarray((hi * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(im.width / 60))).astype(np.float32) / 255

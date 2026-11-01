@@ -29,9 +29,11 @@ import time
 os.environ.setdefault("VIEW_GAIN", "2.2")  # still.py reads it on import
 
 import bpy  # noqa: E402
+import bmesh  # noqa: E402
 import addon_utils  # noqa: E402
 import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
+from mathutils.bvhtree import BVHTree  # noqa: E402
 from PIL import Image  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -533,6 +535,7 @@ def paint(scene):
 
 
 CEILING = os.environ.get("CEILING", "plaster")  # or "concrete": the references' exposed concrete
+CONCRETE = tuple(float(v) for v in os.environ.get("CONCRETE", "0.58,0.58,0.58").split(","))  # its linear albedo
 
 
 def concrete_ceilings(scene):
@@ -541,7 +544,8 @@ def concrete_ceilings(scene):
     the export's: CEILING=concrete."""
     d = os.path.join(dress.TEX, "concrete_wall_008")
     diff = dress.image(os.path.join(d, "diff.jpg"))
-    gain = np.array((0.50, 0.49, 0.47)) / np.maximum(dress.mean_linear(diff), 1e-3)
+    # 0.50/0.49/0.47 until #89 r2: under the oak floor's warm bounce it read as a heavy, muddy brown ceiling
+    gain = np.array(CONCRETE) / np.maximum(dress.mean_linear(diff), 1e-3)
     done = []
     for o in dress.objects_of(scene, "ceiling"):
         for s in o.material_slots:
@@ -1092,21 +1096,111 @@ def feature_wall(scene, room, sy):
     return 0
 
 
-def sofa_cushions(scene, pieces):
+CUSHION_OAT, CUSHION_RUST = (0.50, 0.45, 0.37), (0.28, 0.11, 0.05)  # linear albedo: an oatmeal boucle, a muted rust
+
+
+def cushion(scene, which, at, turn_rad, scale, material):
+    """One of the CC0 pair (throw_pillows_01: pillow01 0.57 m, pillow02 0.52 m wide, slumped as on a seat), alone,
+    its base centred on Blender point `at`, facing -y turned by turn_rad."""
+    root, _ = place(scene, model("throw_pillows_01"), (0.0, 0.0, 0.0))
+    keep = [c for c in root.children_recursive if c.type == "MESH" and c.name.split(".")[0].endswith(which)]
+    for c in [c for c in root.children_recursive if c.type == "MESH" and c not in keep]:
+        bpy.data.objects.remove(c, do_unlink=True)
+    bpy.context.view_layer.update()
+    ps = [c.matrix_world @ Vector(v) for c in keep for v in c.bound_box]
+    mid = Vector(((min(p.x for p in ps) + max(p.x for p in ps)) / 2, (min(p.y for p in ps) + max(p.y for p in ps)) / 2,
+                  min(p.z for p in ps)))
+    for c in keep:
+        c.matrix_world = Matrix.Translation(-mid) @ c.matrix_world
+        c.data = c.data.copy()
+        c.data.materials.clear()
+        c.data.materials.append(material)
+    root.scale = (scale, scale, scale)
+    root.rotation_euler[2] = turn_rad
+    root.location = at
+    return root
+
+
+def arm_pillows_out(o, f, seat):
+    """The kit's own pillows standing against a sofa's arms (on the seat, thin along the sofa's length) make room
+    for ours and the throw, as a stager would; the ones against the back stay (on a low-backed kit sofa they are its
+    back cushions). Whole loose parts of the sofa's meshes (a kit pillow may be two shells); returns how many went."""
+    inv = f.inverted()
+    n = 0
+    done = set()
+    for c in family(o):
+        if c.type != "MESH" or c.data.name in done:
+            continue
+        done.add(c.data.name)
+        bm = bmesh.new()
+        bm.from_mesh(c.data)
+        to_f = inv @ c.matrix_world
+        seen, drop = set(), []
+        for v in bm.verts:
+            if v in seen:
+                continue
+            part, stack = [], [v]
+            seen.add(v)
+            while stack:
+                x = stack.pop()
+                part.append(x)
+                for e in x.link_edges:
+                    y = e.other_vert(x)
+                    if y not in seen:
+                        seen.add(y)
+                        stack.append(y)
+            ps = [to_f @ x.co for x in part]
+            lo = Vector([min(p[i] for p in ps) for i in range(3)])
+            hi = Vector([max(p[i] for p in ps) for i in range(3)])
+            size = hi - lo
+            on_seat = abs(lo.z - seat) < 0.06 and 0.15 < size.z < 0.45
+            if on_seat and size.x < 0.6 and size.y < 0.6 and size.x < 0.6 * size.y:  # thin along the sofa: an arm's
+                drop.extend(part)
+                n += 1
+        if drop:
+            bmesh.ops.delete(bm, geom=list(set(drop)), context="VERTS")
+            bm.to_mesh(c.data)
+            c.data.update()
+        bm.free()
+    return n
+
+
+def sofa_measure(scene, pieces):
+    """Each sofa's seat height, its back's front face and its arms' inner faces, from rays down its depth and width,
+    kept on the piece for style.sofa_dress (which places cushions and a throw once the camera is known)."""
     n = 0
     dg = bpy.context.evaluated_depsgraph_get()
     for o in pieces:
-        if "sofa" not in name(o).lower():
+        if "sofa" not in name(o).lower() or len(o.get("footprint", ())) != 2:
             continue
-        fp = o["footprint"]
+        w, d = o["footprint"]
         lo, hi = box(o)
         f = frame_of(o, lo.z)
-        spot = Vector((fp[0] / 2 - 0.45, 0.12, 0))
-        ok, seat, *_ = scene.ray_cast(dg, f @ (spot + Vector((0, 0, hi.z - lo.z + 0.05))), Vector((0, 0, -1)))
-        if ok and seat.z - lo.z < 0.7:
-            at = f @ spot
-            place(scene, model("throw_pillows_01"), (at.x, seat.z + 0.005, -at.y), height=0.4, turn_deg=math.degrees(turn(o)) - 8)
-            n += 1
+        top = hi.z - lo.z + 0.1
+        vs = [-d / 2 + 0.02 + 0.02 * k for k in range(int((d - 0.04) / 0.02) + 1)]
+        prof = [(v, h) for v, (h, _) in zip(vs, heights_down(scene, dg, f, [(0.0, v) for v in vs], top)) if h is not None]
+        front = sorted(h for _, h in prof[: len(prof) // 2] if 0.25 <= h <= 0.65)  # the seat, not its plinth's edge
+        seat = front[len(front) // 2] if len(front) >= 3 else None
+        back = next((v for v, h in prof if v > prof[0][0] + 0.15 and h > seat + 0.12), None) if seat else None
+        if seat is None or back is None:
+            log(f"sofa {name(o)}: no seat and back found (heights {[round(h, 2) for _, h in prof]})")
+            continue
+        gone = arm_pillows_out(o, f, seat)
+        if gone:
+            bpy.context.view_layer.update()
+            dg = bpy.context.evaluated_depsgraph_get()
+        sv = (prof[0][0] + back) / 2  # the seat's middle, front to back
+        vf = prof[0][0] + 0.10  # along the seat's front: loose back cushions do not reach it, the arms do
+        us = [-w / 2 + 0.02 + 0.02 * k for k in range(int((w - 0.04) / 0.02) + 1)]
+        row = [(u, h) for u, (h, _) in zip(us, heights_down(scene, dg, f, [(u, vf) for u in us], top))]
+        flat = [u for u, h in row if h is not None and abs(h - seat) < 0.05]
+        if not flat:
+            continue
+        a0, a1 = min(flat), max(flat)  # where the seat ends at each arm
+        o["archviz_sofa"] = [seat, back, a0, a1, sv, vf]
+        log(f"sofa {name(o)} ({w:.2f} x {d:.2f}): seat {seat:.2f} m, back at {back:+.2f}, seat between {a0:+.2f} {a1:+.2f}"
+            f"{f', {gone} pillow parts against the arms taken out' if gone else ''}")
+        n += 1
     return n
 
 
@@ -1311,7 +1405,7 @@ def bath_materials(root):
         BATH_MATS.update({"towel-white": terry((0.80, 0.79, 0.76)), "towel-sand": terry((0.52, 0.45, 0.36)),
                           "oak": oak_wood(), "glass": clear_glass(), "water": clear_glass(1.33, "archviz-water"),
                           "napkin": cloth_weave((0.30, 0.35, 0.26), 0.04, 0.9, 0.1, "archviz-napkin"),  # sage linen, little sheen
-                          "mat-terry": terry((0.78, 0.76, 0.72))})
+                          "mat-terry": terry((0.78, 0.76, 0.72)), "throw-wool": dress.wool_material(tint=(1.15, 0.86, 0.62))})  # camel
     for c in family(root):
         if c.type != "MESH":
             continue
@@ -1479,7 +1573,7 @@ def dress_storey(scene, sy):
         "beds": swap_beds(scene, pieces),
     }
     bpy.context.view_layer.update()
-    done["sofas"] = sofa_cushions(scene, pieces)
+    done["sofas"] = sofa_measure(scene, pieces)
     done["tables"] = dress_tables(scene, pieces)
     done["counters"] = dress_counter(scene, pieces)
     if "sanitary" not in os.environ.get("SKIP", "").split(","):
@@ -1491,6 +1585,171 @@ def dress_storey(scene, sy):
 
 
 # ---------------------------------------------------------------- what the camera sees
+
+NUDGE_YAW, NUDGE_BACK, NUDGE_FOV = 10.0, 0.5, 8.0
+NUDGE_LOW = 0.2  # a piece this tall counts (a coffee table cut at the bottom; r1 judges, living room)  # the owner's "small nudges" (#89): degrees, metres, degrees
+
+
+def near_bvh(scene, dg, centre, radius):
+    """One BVH of what the render shows within `radius` of a point (clear glass left out), and each triangle's
+    object name: thousands of rays in milliseconds where scene.ray_cast takes a millisecond each."""
+    verts, tris, owner = [], [], []
+    for o in scene.objects:
+        if o.type != "MESH" or o.hide_render or not o.visible_get():
+            continue
+        bb = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        lo = Vector([min(p[i] for p in bb) for i in range(3)])
+        hi = Vector([max(p[i] for p in bb) for i in range(3)])
+        q = Vector([min(max(centre[i], lo[i]), hi[i]) for i in range(3)])
+        if (q - centre).length > radius:
+            continue
+        ev = o.evaluated_get(dg)
+        me = ev.to_mesh()
+        me.calc_loop_triangles()
+        glass = {k for k, sl in enumerate(o.material_slots)
+                 if sl.material is not None and sl.material.name.startswith("archviz-glass")}
+        n = len(me.vertices)
+        co = np.empty(n * 3, dtype=np.float32)
+        me.vertices.foreach_get("co", co)
+        co = co.reshape(n, 3) @ np.array(o.matrix_world.to_3x3()).T + np.array(o.matrix_world.translation)
+        t = np.empty(len(me.loop_triangles) * 3, dtype=np.int32)
+        me.loop_triangles.foreach_get("vertices", t)
+        t = t.reshape(-1, 3)
+        if glass:
+            mi = np.empty(len(me.loop_triangles), dtype=np.int32)
+            me.loop_triangles.foreach_get("material_index", mi)
+            t = t[~np.isin(mi, list(glass))]
+        ev.to_mesh_clear()
+        if not len(t):
+            continue
+        base = sum(len(v) for v in verts)
+        verts.append(co)
+        tris.append(t + base)
+        owner.extend([o.name] * len(t))
+    if not verts:
+        return None, []
+    return BVHTree.FromPolygons(np.concatenate(verts).tolist(), np.concatenate(tris).tolist()), owner
+
+
+def nudge_frame(scene, cam, rooms, room, sy, target, nx=48, ny=27, near=3.5):
+    """A large piece cut by an edge of the frame (a lounger in the foreground, a table half out at the bottom)
+    reads as an accident: a photographer turns, steps back or zooms a little until it is in or out. Candidates
+    within the owner's small nudges (yaw, a step back that stays in the room, the vertical fov within 50-65 deg),
+    each scored by rays through the frame: the share of the frame filled, within `near` metres, by pieces that
+    touch its border. The camera stays level; the lens shift keeps the target's height. Plants, rugs and small
+    props are not pieces here (the edge rule; a rug under the frame's edge is normal)."""
+    # Off unless NUDGE=1 (#89 p4r3): every move it made on the iteration rooms was judged worse. It brought the bath's
+    # WC into the foreground, zoomed the living room into "a corridor", and its turn showed a side glazing at a
+    # grazing angle that mirrored the dining room ("a confusing glass panel that duplicates the dining room").
+    if os.environ.get("NUDGE", "0") != "1" or "nudge" in os.environ.get("SKIP", "").split(","):
+        return
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    W, H = scene.render.resolution_x, scene.render.resolution_y
+    piece = {}
+    for o in scene.objects:
+        if o.hide_render:
+            continue
+        mine = o.type == "EMPTY" and o.get("kind") is None and o.parent is None  # a swapped piece or one of our props
+        # the kit's pieces hang under the house's root (until r2 they were all skipped here): the outermost one
+        kit = o.get("kind") == "furniture" and not any(a.get("kind") == "furniture" for a in ancestors(o.parent))
+        if not (kit or mine) or o.name.startswith(("pachira", "potted_plant")):
+            continue
+        lo, hi = box(o)
+        size = hi - lo
+        standing, hanging = sy - 0.1 <= lo.z <= sy + 0.6, sy + 1.5 <= lo.z <= sy + 2.3 and hi.z >= sy + 2.2  # a pendant
+        if not (standing or hanging) or size.z < NUDGE_LOW or max(size.x, size.y) < 0.5:
+            continue
+        for c in family(o):
+            piece[c.name] = name(o) or o.name
+    loc0, yaw0, fy0 = cam.location.copy(), cam.rotation_euler[2], cam.data.angle_y
+    up = Vector((0, 0, 1))
+    t0 = time.time()
+    bvh, owner = near_bvh(scene, dg, loc0, near + NUDGE_BACK + 0.5)
+    if bvh is None:
+        return
+    log(f"frame: {len(owner)} triangles within {near + NUDGE_BACK + 0.5:.1f} m of the lens ({time.time() - t0:.0f} s)")
+
+    def cost(loc, yaw, fy, detail=False):
+        right, fwd = Vector((math.cos(yaw), math.sin(yaw), 0)), Vector((-math.sin(yaw), math.cos(yaw), 0))
+        t = target - loc
+        tp = t.z / max(t.dot(fwd), 0.1)  # the shift keeps the target at the frame's centre height
+        ty, tx = math.tan(fy / 2), math.tan(fy / 2) * W / H
+        area, border = {}, set()
+        for i in range(nx):
+            for j in range(ny):
+                d = (fwd + right * ((2 * (i + 0.5) / nx - 1) * tx) + up * ((2 * (j + 0.5) / ny - 1) * ty + tp)).normalized()
+                _, _, k, _ = bvh.ray_cast(loc, d, near)
+                nm = piece.get(owner[k]) if k is not None else None
+                if nm is None:
+                    continue
+                area[nm] = area.get(nm, 0) + 1
+                if i in (0, nx - 1) or j in (0, ny - 1):
+                    border.add(nm)
+        cuts = sorted(((area[nm] / (nx * ny), nm) for nm in border), reverse=True)
+        # a toilet in the hero shot: photographers keep it small or out (r2 judges: "the oversized flush plate")
+        wc = sum(a for nm, a in area.items() if nm.lower().startswith(("wc", "toilet"))) / (nx * ny)
+        total = sum(a for a, _ in cuts) + wc
+        out = [(round(a, 3), nm) for a, nm in cuts[:3]] + ([(round(wc, 3), "a WC in view")] if wc else [])
+        return (total, out) if detail else total
+
+    def clear(loc):
+        if room_at(rooms, loc.x, loc.z, -loc.y) is not room:
+            return False
+        for k in range(8):
+            a = k * math.pi / 4
+            hit = trace(scene, dg, loc, Vector((math.cos(a), math.sin(a), 0)), far=0.4)
+            if hit is not None and (hit[0] - loc).length < 0.35:
+                return False
+        d = loc - loc0
+        return d.length < 0.01 or trace(scene, dg, loc0, d.normalized(), far=d.length + 0.35) is None
+
+    def moved(dyaw, back, dfov):
+        return abs(dyaw) / NUDGE_YAW + back / NUDGE_BACK + abs(dfov) / NUDGE_FOV
+
+    base, why = cost(loc0, yaw0, fy0, detail=True)
+    if base < 0.01:
+        log(f"frame: no large piece cut by the frame ({base:.3f})")
+        return
+    best, best_score = (base, 0.0, 0.0, 0.0), base
+    # wider only: zoomed in, the living room read as a corridor of walls (r2, fov 58 -> 54)
+    dfovs = [f for f in (0.0, NUDGE_FOV / 2, NUDGE_FOV) if math.degrees(fy0) + f <= 65 + 1e-6 or f == 0.0]
+    tried = []
+    for dyaw in [k * 2.5 for k in range(-4, 5)]:
+        yaw = yaw0 + math.radians(dyaw)
+        fwd = Vector((-math.sin(yaw), math.cos(yaw), 0))
+        for back in (0.0, 0.25, 0.5):
+            loc = loc0 - fwd * back
+            if back and not clear(loc):
+                continue
+            for dfov in dfovs:
+                if not (dyaw or back or dfov):
+                    continue
+                c = cost(loc, yaw, fy0 + math.radians(dfov))
+                score = c + 0.004 * moved(dyaw, back, dfov)  # the smaller nudge, when two are as good
+                tried.append((round(score, 3), dyaw, back, dfov))
+                if score < best_score:
+                    best, best_score = (c, dyaw, back, dfov), score
+    c, dyaw, back, dfov = best
+    if os.environ.get("DEBUG"):
+        log(f"frame: candidates (score, turn, back, fov) {sorted(tried)[:8]}; backs tried {sorted({t[2] for t in tried})}")
+    if c > base - 0.01 or c > 0.7 * base:
+        log(f"frame: large pieces cut by the frame fill {base:.3f} of it {why}; no nudge worth it "
+            f"(best {c:.3f}, {time.time() - t0:.0f} s)")
+        return
+    yaw = yaw0 + math.radians(dyaw)
+    fwd = Vector((-math.sin(yaw), math.cos(yaw), 0))
+    cam.location = loc0 - fwd * back
+    cam.rotation_euler[2] = yaw
+    cam.data.angle_y = fy0 + math.radians(dfov)
+    t = target - cam.location
+    cam.data.shift_y = (t.z / t.dot(fwd)) / (2 * math.tan(cam.data.angle_y / 2)) * (H / max(W, H))
+    bpy.context.view_layer.update()
+    after, left = cost(cam.location, yaw, cam.data.angle_y, detail=True)
+    log(f"frame: large pieces cut by the frame fill {base:.3f} of it {why} -> {after:.3f} {left}: turned "
+        f"{dyaw:+.1f} deg, {back:.2f} m back, fov {math.degrees(fy0):.0f} -> {math.degrees(cam.data.angle_y):.0f} deg "
+        f"({time.time() - t0:.0f} s)")
+
 
 def clear_edges(scene, cam, widest=0.03):
     """A sliver of something right in front of the lens at a side edge of the frame (a wall end, a door jamb)
@@ -1793,6 +2052,76 @@ def lamps_on(scene, room):
     log(f"lamps: {n} on in {room['name']} (no sun)")
 
 
+PASSAGES = ("hall", "stair", "entrance", "corridor")  # rooms without a window of their own, as a rule
+NEXT_SHARE = 0.01  # the share of the frame a room next door must fill to be lit
+NEXT_W = float(os.environ.get("NEXT_W", "20"))  # W per m2 of a lit hall's floor
+
+
+def next_rooms_lit(scene, rays, rooms, room, sy):
+    """A hall or a staircase seen through a doorway reads as a black hole in a daylight photo: photographers
+    switch its lights on. A soft panel under its ceiling, out of the camera's sight (its own sconces read as hot
+    spots at the frame's edge, r2a), its power by the floor area; rooms with windows of their own (the living
+    room seen from the kitchen) stay as they are."""
+    if "next" in os.environ.get("SKIP", "").split(","):
+        return
+    plans = [r for r in rooms if abs(r["y"] - sy) < 0.1 and r is not room and r["use"] in PASSAGES]
+    seen = {}
+    for r in rays:
+        if r["hit"] is None:
+            continue
+        loc, n, _, _ = r["hit"]
+        x, y, z = to_scene(loc + n * 0.05)
+        for p in plans:
+            if sy - 0.05 <= y <= sy + 2.8 and inside(p["polygon"], x, z):
+                seen[p["name"]] = seen.get(p["name"], 0) + 1
+                break
+    done = []
+    for p in plans:
+        share = seen.get(p["name"], 0) / max(1, len(rays))
+        if share < NEXT_SHARE:
+            continue
+        poly = p["polygon"]
+        area = abs(sum(a[0] * b[1] - b[0] * a[1] for a, b in zip(poly, poly[1:] + poly[:1]))) / 2
+        xs, zs = [q[0] for q in poly], [q[1] for q in poly]
+        cx, cz = (min(xs) + max(xs)) / 2, (min(zs) + max(zs)) / 2
+        if not inside(poly, cx, cz):  # an L: the vertex average, else the first vertex pulled in
+            cx, cz = sum(xs) / len(xs), sum(zs) / len(zs)
+            if not inside(poly, cx, cz):
+                cx, cz = poly[0][0] * 0.5 + cx * 0.5, poly[0][1] * 0.5 + cz * 0.5
+        d = bpy.data.lights.new("archviz-next", "AREA")
+        d.shape, d.size = "SQUARE", 0.8
+        d.energy, d.color = NEXT_W * max(area, 2.0), (1.0, 0.8, 0.6)
+        o = bpy.data.objects.new("archviz-next", d)
+        o.location = (cx, -cz, p["y"] + 2.3)
+        o.visible_camera = False
+        o.visible_glossy = False
+        scene.collection.objects.link(o)
+        done.append(f"{p['name']} ({share * 100:.0f} %, {area:.1f} m2, {d.energy:.0f} W)")
+    if done:
+        log(f"next rooms lit: {', '.join(done)}")
+
+
+FLASH = float(os.environ.get("FLASH", "0"))  # W, a bounce flash at the camera (0: none)
+
+
+def bounce_flash(scene, cam):
+    """Flambient, as listing photographers shoot: a soft flash at the camera aimed at the ceiling, which lifts
+    the ceiling and the shadows under the window's light and neutralises the floor's warm bounce. Out of the
+    camera's sight and its reflections."""
+    if FLASH <= 0:
+        return
+    d = bpy.data.lights.new("archviz-flash", "AREA")
+    d.shape, d.size = "DISK", 0.5
+    d.energy, d.color = FLASH, (1.0, 0.97, 0.94)
+    o = bpy.data.objects.new("archviz-flash", d)
+    o.location = cam.matrix_world.translation + Vector((0, 0, 0.25))
+    o.rotation_euler = (math.pi, 0.0, 0.0)  # an area light shines down its -Z: turned over, up
+    o.visible_camera = False
+    o.visible_glossy = False
+    scene.collection.objects.link(o)
+    log(f"flash: {FLASH:.0f} W at the camera, bounced off the ceiling")
+
+
 HDRI_WOOD = -50.0  # the HDRI's direction (degrees from +x, its own frame) where it shows only the wood
 
 
@@ -2071,7 +2400,25 @@ def main():
         feature_tiles(scene, room, sy)
     scene.render.resolution_x, scene.render.resolution_y = width, height  # view_frame() reads the aspect from it
     still.camera(scene, cam_spec, width, height)
+    tgt = [float(v) for v in cam_spec.split(">")[1].split("@")[0].split(",")]
+    nudge_frame(scene, scene.camera, rooms, room, sy, Vector((tgt[0], -tgt[2], tgt[1])))
     clear_edges(scene, scene.camera)
+    if os.environ.get("PICK"):  # "fx,fy;fx,fy" in frame fractions from the top left: what the render shows there
+        cam, dg = scene.camera, bpy.context.evaluated_depsgraph_get()
+        fr = cam.data.view_frame(scene=scene)
+        x0, x1 = min(c.x for c in fr), max(c.x for c in fr)
+        y0, y1 = min(c.y for c in fr), max(c.y for c in fr)
+        for pt in os.environ["PICK"].split(";"):
+            fx, fy = (float(v) for v in pt.split(","))
+            d = (cam.matrix_world.to_3x3() @ Vector((x0 + fx * (x1 - x0), y1 - fy * (y1 - y0), fr[0].z))).normalized()
+            hit = trace(scene, dg, cam.matrix_world.translation, d)
+            top = hit and hit[2]
+            while top is not None and top.parent is not None and top.parent.get("kind") != "house":
+                top = top.parent
+            log(f"pick {pt}: {hit and hit[2].name} (under {top and top.name}) at "
+                f"{hit and tuple(round(v, 2) for v in hit[0])}")
+    if os.environ.get("FRAME_ONLY"):  # the nudge's choice only, for experiments
+        return
     rays = camera_rays(scene, scene.camera, rooms, sy)
     pave(rays, sy, rooms)
     if hang_art(scene, rays, sy):
@@ -2099,6 +2446,8 @@ def main():
                 f"the sky's light there ({len(cands)} candidates, {time.time() - t:.0f} s)")
     if frac < 0.05 and not (THUMBS and len(cands) > 1 and frac >= 0.03):
         lamps_on(scene, room)
+    next_rooms_lit(scene, rays, rooms, room, sy)
+    bounce_flash(scene, scene.camera)
     log(f"setup {time.time() - t0:.0f} s")
     # the preview for the grade, at the final's aspect
     t = time.time()

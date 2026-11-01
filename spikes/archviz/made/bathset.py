@@ -7,15 +7,18 @@ napkin, a round oak stool (bare, or with folded towels), a terry bath mat, a tow
 
 what: drape (over a rim `rim width` m wide, 0.10 by default) | stack | caddy | bottles | pair (no tray) |
       books (seed: the colours and the twist) | carafe | carafe1 (no tumbler) | candles | napkin | stool | stooltowels | bathmat | rail
+      | sofathrow (arm width-arm height-seat height, in cm: "18-62-44")
 
 Frames (Blender, z up), as photo.py places them:
 - drape: the rim's top centre at the origin, the rim along x, the room on -y. Hangs about 0.30 outside and 0.20 inside.
 - rail: the bar's centre at the origin, along x, the wall at y = +0.075, the room on -y.
+- sofathrow: a sofa's right arm, its inner face at x = 0 (the arm on +x, the seat on -x), the floor at z = 0, y = 0 the
+  middle of the seat front to back (the front on -y).
 - stack, caddy, bottles: their base centred on the origin. The caddy is 0.80 long along y (photo.py stretches it
   across the tub), 0.20 wide along x.
 
 Material names (photo.py gives each its Cycles material): towel-white, towel-sand, oak, amber-glass, wax,
-pump-black, ceramic, stone, soap, cover-<colour>, pages, glass, water, napkin, mat-terry.
+pump-black, ceramic, stone, soap, cover-<colour>, pages, glass, water, napkin, mat-terry, throw-wool.
 """
 
 import math
@@ -27,8 +30,9 @@ import bpy
 from mathutils import Vector
 
 WHAT, OUT = sys.argv[1], sys.argv[2]
-RIM = float(sys.argv[3]) if len(sys.argv) > 3 else 0.10
-SEED = int(sys.argv[3]) if len(sys.argv) > 3 and sys.argv[3].isdigit() else 0
+ARG = sys.argv[3] if len(sys.argv) > 3 else ""
+RIM = float(ARG) if ARG.replace(".", "", 1).isdigit() else 0.10
+SEED = int(ARG) if ARG.isdigit() else 0
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
@@ -435,9 +439,35 @@ def bathmat():
     return [o]
 
 
+def sofathrow():
+    """A wool throw folded in three (a 0.45 m band, 1.25 m long), laid over a sofa's right arm: 0.40 m of it hangs
+    down the outside, the rest falls down the inside onto the seat. The strip on the arm's top is pinned (the
+    weight and friction that hold a throw there; a simulation's slides off)."""
+    aw, ah, sh = (int(v) / 100 for v in ARG.split("-"))
+    grey = mat("collider", (0.5, 0.5, 0.5))
+    arm = block("arm", (aw, 0.9, ah), (aw / 2, 0.0, ah / 2), grey, bevel=min(0.08, aw / 3))  # a padded, rounded arm
+    seat = block("seat", (1.2, 0.7, sh), (-0.6, -0.1, sh / 2), grey, bevel=0.02)
+    back = block("back", (1.2 + aw, 0.22, 0.8), (-0.6 + aw / 2, 0.36, 0.4), grey, bevel=0.02)
+    floor = block("floor", (4.0, 4.0, 0.02), (0, 0, -0.01), grey)
+    for o in (arm, seat, back, floor):
+        collider(o, 0.004, 8.0)
+    throw = towel_sheet("throw", 1.25, 0.45, 96, 34, mat("throw-wool", (0.55, 0.52, 0.47), 0.9))
+    throw.rotation_euler = (0, 0, math.radians(6))
+    throw.location = (aw + 0.40 - 0.625, -0.10, ah + 0.006)
+    bpy.ops.object.transform_apply(location=True, rotation=True)
+    pin = throw.vertex_groups.new(name="pin")
+    pin.add([v.index for v in throw.data.vertices if abs(v.co.x - aw / 2) < 0.04], 1.0, "REPLACE")  # its crest only
+    cloth(throw, mass=0.4, bend=0.15, tension=10.0).settings.vertex_group_mass = "pin"  # soft wool, not felt
+    settle([throw], 140)
+    finish(throw, 0.014)  # folded in three: thick
+    for o in (arm, seat, back, floor):
+        bpy.data.objects.remove(o, do_unlink=True)
+    return [throw]
+
+
 made = {"drape": drape, "stack": stack, "caddy": caddy, "bottles": bottles, "pair": lambda: bottles(False),
         "books": lambda: books(SEED), "carafe": carafe, "carafe1": lambda: carafe(False), "candles": candles, "napkin": napkin, "stool": stool,
-        "stooltowels": lambda: stool(True), "bathmat": bathmat, "rail": rail}[WHAT]()
+        "stooltowels": lambda: stool(True), "bathmat": bathmat, "rail": rail, "sofathrow": sofathrow}[WHAT]()
 bpy.ops.object.select_all(action="DESELECT")
 for o in made:
     for m in list(o.modifiers):

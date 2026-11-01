@@ -28,7 +28,7 @@ from mathutils import Matrix, Vector
 H = None  # photo.py's module, set by photo.main
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKIP = set(os.environ.get("STYLE_SKIP", "").split(","))  # rules left out, for experiments: rug,bedside,bedart,table,
-# stool,rail,sideboard,accent,sill,outdoor,edge
+# stool,rail,sideboard,accent,sill,outdoor,edge,coffee,sofa
 
 
 def log(*a):
@@ -466,6 +466,133 @@ def table_extras(scene, cam, room, sy, pieces):
     return n
 
 
+def sofa_dress(scene, cam, room, sy, pieces):
+    """A sofa the camera sees (measured by photo.sofa_measure): a wool throw over the arm farther from the camera,
+    where its top and its fold onto the seat read and it hides nothing (made/bathset.py sofathrow, cached by the
+    arm's size); a pair of
+    cushions at the near end (an oatmeal boucle, a smaller muted rust velvet in front, turned in) and one oatmeal
+    cushion at the far end, in front of the throw. All sit on the seat against the back."""
+    n = 0
+    dg = bpy.context.evaluated_depsgraph_get()
+    cam_at = cam.matrix_world.translation
+    oat, rust = H.upholstery_material(H.CUSHION_OAT), H.velvet(H.CUSHION_RUST)
+    for o in pieces:
+        if "archviz_sofa" not in o.keys() or not in_room(o, room) or not shown(scene, cam, o):
+            continue
+        seat, back, a0, a1, sv, vf = o["archviz_sofa"]
+        w, d = o["footprint"]
+        lo, hi = H.box(o)
+        f = H.frame_of(o, lo.z)
+        ends = []
+        for side, edge in ((1, a1), (-1, a0)):
+            us = [u for u in (edge + side * 0.02 * k for k in range(0, 30)) if abs(u) <= w / 2 - 0.01]  # this sofa only
+            hs = H.heights_down(scene, dg, f, [(u, vf) for u in us], hi.z - lo.z + 0.1)
+            row = [(u, h) for u, (h, _) in zip(us, hs) if h is not None]
+            ah = max((h for _, h in row), default=0.0)
+            plateau = [u for u, h in row if h >= ah - 0.04]
+            if ah < seat + 0.08 or not plateau:
+                continue
+            inner = plateau[0]
+            outer = max(u * side for u, h in row if h > seat * 0.5) * side  # a rounded arm: its whole width, not its crest
+            far = (f @ Vector((side * w / 2, sv, 0)) - cam_at).length
+            ends.append((far, side, edge, inner, abs(outer - inner) + 0.02, ah))
+        if len(ends) < 2:
+            log(f"sofa: arms not found on {H.name(o)}")
+            continue
+        ends.sort()
+        (_, ns, nedge, *_), (ffar, fs, fedge, finner, aw, ah) = ends
+        throw = 0.08 <= aw <= 0.45 and seat + 0.08 <= ah <= 0.85
+        if throw:
+            path = prop("sofathrow", f"{round(aw * 100)}-{round(ah * 100)}-{round(seat * 100)}")
+            H.in_frame(scene, f, path, (finner, sv, 0.0), (fs, 1.0, 1.0))
+        for side, edge, set_ in ((ns, nedge, (("pillow01", 0.88, 0.26, 0.0, 6, oat), ("pillow02", 0.80, 0.50, 0.07, 14, rust))),
+                                 (fs, fedge, (("pillow01", 0.84, 0.30, 0.02, 4, oat),))):
+            for which, scale, inset, fwd, twist, mat in set_:
+                depth = 0.45 * scale
+                u = edge - side * inset
+                vs = [vf + 0.02 * k for k in range(40)]  # the back (or a kit cushion against it) behind this one
+                hs = H.heights_down(scene, dg, f, [(u, v) for v in vs], hi.z - lo.z + 0.1)
+                bu = next((v for v, (h, _) in zip(vs, hs) if h is not None and h > seat + 0.12), back)
+                v = bu - depth / 2 - 0.01 - fwd
+                H.cushion(scene, which, f @ Vector((u, v, seat + 0.003)), H.turn(o) + math.radians(-side * twist), scale, mat)
+        log(f"sofa {H.name(o)}: a pair of cushions at the {'right' if ns > 0 else 'left'} end, one at the other"
+            + (f", a throw over that arm ({aw:.2f} x {ah:.2f} m), {ffar:.1f} m from the camera" if throw
+               else f"; no throw (the arm is {aw:.2f} x {ah:.2f} m)"))
+        n += 1
+    return n
+
+
+COFFEE_SEEN = 0.6  # a coffee table with less of its top in frame is taken out of the shot (#89 r3)
+
+
+def coffee_table(scene, cam, room, sy, pieces):
+    """A coffee table the camera sees: what the kit left on its top (an open book) goes; a stack of large books
+    with a bud vase and a sprig on them toward the end away from the camera, a candle tray toward the other."""
+    n = 0
+    for o in pieces:
+        nm = H.name(o).lower()
+        if "coffee" not in nm or "machine" in nm or len(o.get("footprint", ())) != 2 or not in_room(o, room):
+            continue
+        if not shown(scene, cam, o):
+            continue
+        lo, hi = H.box(o)
+        top = [Vector((lo.x + (hi.x - lo.x) * i / 6, lo.y + (hi.y - lo.y) * j / 6, hi.z)) for i in range(7) for j in range(7)]
+        seen = sum(in_view(scene, cam, p, 0.0)[0] for p in top) / len(top)
+        if seen < COFFEE_SEEN:  # a sliver at the bottom edge reads as "an unexplained white blob" (r2 judges):
+            for p in [o] + [p for p in pieces if p is not o and lo.x <= p.matrix_world.translation.x <= hi.x
+                            and lo.y <= p.matrix_world.translation.y <= hi.y and lo.z <= p.matrix_world.translation.z <= hi.z + 0.3]:
+                for c in [p, *p.children_recursive]:  # moved out of the shot with what is on it, as a photographer would
+                    c.hide_render = True
+            log(f"{nm}: {seen * 100:.0f} % of its top in frame, taken out of the shot")
+            continue
+        gone = []
+        for p in pieces:
+            t = p.matrix_world.translation
+            if p is not o and lo.x <= t.x <= hi.x and lo.y <= t.y <= hi.y and hi.z - 0.08 <= t.z <= hi.z + 0.3:
+                for c in [p, *p.children_recursive]:
+                    c.hide_render = True
+                gone.append(H.name(p))
+        bpy.context.view_layer.update()
+        dg = bpy.context.evaluated_depsgraph_get()
+        w, d = o["footprint"]
+        f = H.frame_of(o, lo.z)
+        along = Vector((1, 0, 0)) if w >= d else Vector((0, 1, 0))
+        length = max(w, d)
+        free = []
+        for k in range(-8, 9):
+            a = along * (k * length / 18)
+            spot = top_spots(scene, dg, o, lo.z, 0.12, [a.x], [a.y])
+            if spot:
+                free.append(spot[0])
+        if len(free) < 2:
+            log(f"{nm}: too few free spots on its top ({len(free)})")
+            continue
+        cam_at = cam.matrix_world.translation
+        def far_of(u, v, h):
+            return (f @ Vector((u, v, h)) - cam_at).length
+        ends = []
+        for sgn in (-1, 1):  # a spot about a quarter of the length from each end
+            cands = [(abs(along.dot(Vector((u, v, 0))) - sgn * length * 0.25), (u, v, h)) for u, v, h in free
+                     if sgn * along.dot(Vector((u, v, 0))) > 0.05]
+            if cands:
+                ends.append(min(cands)[1])
+        if len(ends) < 2:
+            log(f"{nm}: no free spot toward both ends")
+            continue
+        far, near = sorted(ends, key=lambda e: -far_of(*e))
+        books = put(scene, prop("books", 5), f @ Vector((far[0], far[1], far[2] + 0.001)), H.turn(o) + math.radians(8), 1.3)
+        blo, bhi = H.box(books)
+        c = (blo + bhi) / 2
+        x, _, z = H.to_scene(Vector((c.x, c.y, bhi.z)))
+        _, size = H.place(scene, H.model("ceramic_vase_01"), (x, bhi.z, z), height=0.15)
+        H.place(scene, H.EUCALYPTUS, (x, bhi.z + size.z * 0.8, z), height=0.38, turn_deg=70)
+        put(scene, prop("candles"), f @ Vector((near[0], near[1], near[2] + 0.001)), H.turn(o) + 0.4)
+        log(f"{nm} ({w:.2f} x {d:.2f}): books and a bud vase at {along.dot(Vector(far[:2] + (0,))):+.2f}, candles at "
+            f"{along.dot(Vector(near[:2] + (0,))):+.2f}; took off {gone}")
+        n += 1
+    return n
+
+
 def stool(scene, cam, room, sy, taken):
     """A bathroom: an oak stool with folded towels against a wall, where the camera sees it."""
     spots = floor_spots(scene, cam, room, sy, 0.2, 0.6, taken)
@@ -852,6 +979,9 @@ def sideboard(scene, cam, room, sy, taken):
     return (c.x, c.y, L / 2)
 
 
+LENS_CLEAR = 0.6  # m between the lens and the box of a prop or swapped plant (#89: a pachira around the lens)
+
+
 def edge_clutter(scene, cam, plants):
     """A small prop cut by a side of the frame reads as clutter, a plant right in front of the lens and cut as a
     dark blob: a stager takes both out of the shot. Only our props and swapped plants (no kit piece). Plants first,
@@ -864,6 +994,13 @@ def edge_clutter(scene, cam, plants):
         size = hi - lo
         plant = o.name.startswith(("pachira", "potted_plant_02"))
         if plant != plants or not plant and (max(size.x, size.y) > 0.5 or size.z > 0.7):
+            continue
+        eye = cam.matrix_world.translation
+        near = Vector([min(max(eye[k], lo[k]), hi[k]) for k in range(3)])  # the box's point closest to the lens
+        if (near - eye).length < LENS_CLEAR:  # around the lens or right against it: leaves or a prop over the frame
+            H.hide(o)
+            log(f"edge: {o.name} {(near - eye).length:.2f} m from the lens, taken out")
+            n += 1
             continue
         vs = [world_to_camera_view(scene, cam, Vector((a, b, cc))) for a in (lo.x, hi.x) for b in (lo.y, hi.y)
               for cc in (lo.z, hi.z)]
@@ -904,6 +1041,10 @@ def style(scene, cam, rays, rooms, sy, pieces):
                 done.append(("bedart", bed_art(scene, room, sy)))
         if "table" not in SKIP:
             done.append(("table", table_extras(scene, cam, room, sy, pieces)))
+        if "coffee" not in SKIP:
+            done.append(("coffee", coffee_table(scene, cam, room, sy, pieces)))
+        if "sofa" not in SKIP:
+            done.append(("sofa", sofa_dress(scene, cam, room, sy, pieces)))
         bpy.context.view_layer.update()
         if use in ("bath",) and "stool" not in SKIP:
             t = stool(scene, cam, room, sy, taken)

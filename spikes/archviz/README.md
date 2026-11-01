@@ -446,4 +446,121 @@ every line at 7; no room has a line at 8.
 - (Read against `key.json`: the wire pendant, the "suspended tile ceiling" and the bedroom's cut globe lamp some
   judges named belong to the reference photos.)
 
-Spend so far: $6.99 for 18 Modal runs (T4).
+## Phase 4: generalise (#89), 2026-11-01
+
+The living room is now an iteration room (with dining, bedroom and bathroom). The new holdout is a second house,
+Montelly49-Dev4 (`work/montelly/`, exported with `export.py`). Its Salon and Ch.1 are blind rooms: 5 judges at the
+start and at the end, never previewed, never tuned on, and their judges' comments do not drive the work. Their
+cameras were picked from bare-export thumbnails, as an owner would frame them (`BLIND` in `modal_photo.py`).
+
+**Blind baseline** (M2's code), 5 judges, medians D/M/De/V/G/O:
+
+| room | run | Daylight | Materials | Decor | View | Grade | Overall | ref Overall |
+|---|---|---|---|---|---|---|---|---|
+| Ch.1 (bedroom) | p4-blind0 | 4 | 5 | 5 | 3 | 4 | **4** | 8 |
+| Salon (living) | p4-blind0 | 5 | 4 | 3 | 5 | 6 | **2** | 7 |
+| Salon (living) | p4-blind0b: M2 + the lens fix only | 6 | 5 | 5 | 5 | 6 | **5** | 8 |
+
+- **The Salon's first 2 was one bug.** All five judges said the camera sat inside a large plant. The swapped pachira
+  had grown around the lens, and the edge rule skipped any object with a corner behind the camera, which is exactly
+  a plant around the lens.
+  - **The fix:** a prop or swapped plant whose box comes within 0.6 m of the lens is taken out (`LENS_CLEAR` in
+    `style.py`).
+  - **The re-baseline:** a gate of "1 over 2" would have been met by that fix alone. So the Salon was rendered again
+    from a worktree at e9678bf plus only this fix (p4-blind0b). **Its gate is 6, Ch.1's is 5.**
+
+
+**The iteration rooms**, 3 judges per room, Overall per judge (mean). M2 had 5 judges.
+
+| round | what changed | dining | bedroom | bath | living | mean of 4 |
+|---|---|---|---|---|---|---|
+| M2 | (the starting point) | 6.6 | 6.6 | 5.8 | 5.0 | 6.00 |
+| p4r1 | the sofa rule (kit pillows off the arms, a pair of cushions at the near end, a cloth-simulated throw and one cushion over the far arm), the coffee table (books, a vase of eucalyptus, candles), the frame nudge, the lens fix | 7/7/7 (7.0) | 7/6/5 (6.0) | 5/5/5 (5.0) | 6/5/6 (5.67) | 5.92 |
+| p4r1c | p4r1's images + a clarity pass (local contrast, black point from the 0.5th percentile) | 7/7/7 (7.0) | 7/7/7 (7.0) | 5/5/5 (5.0) | 5/5/5 (5.0) | 6.00 |
+| p4r2 | halls and stairs seen through a doorway lit (`next_rooms_lit`), the nudge counts low tables and kit furniture, a cut coffee table left bare, a lighter neutral concrete (0.58) | 7/7/7 (7.0) | 6/7/6 (6.33) | 5/4/5 (4.67) | 5/5/5 (5.0) | 5.75 |
+| p4r3 | the nudge widens only, counts pendants and any WC in view; a coffee table with under 60 % of its top in frame leaves the shot | (p4r2's pixels) 7.0 | (p4r2's pixels) 6.33 | (M2's pixels, pooled) 5.5 | 4/4/4 (4.0) | 5.71 |
+
+- **The frame nudge** (`nudge_frame` in `photo.py`): up to 10° of turn, 0.5 m back, ±8° of fov.
+  - **The cost:** the share of rays (48 x 27) that hit a piece of furniture touching the frame's border.
+  - **When it moves:** only when that cost drops by at least 30 %, and only to a spot in the same room with 0.35 m
+    clear around it.
+  - **Results:** it turned the living room 5° and took the cut lounger out of the frame. The bedroom's cut bed costs
+    0.235 and its best move costs 0.192, so the bedroom did not move. The dining room and the bath were already
+    clean.
+- **Judge noise, measured:** p4r1's bedroom and bath images are pixel-identical to M2's (`m2/` against `p4r1/`).
+  The new panels scored them 0.6 and 0.8 lower, so a 3-judge room mean moves by that much on the same pixels. From
+  here, a room whose image has not changed is not judged again; its judgments are pooled (bedroom 6.375 and bath 5.5
+  over 8 judges). On that footing M2 is 5.87 and p4r1 6.14 (+0.27, under the 0.3 bar: one round of three towards
+  saturation).
+- **Living room:** Decor rose from 4.8 to 6.0. All three judges now name the framing: a large blank grey wall and a
+  dark empty doorway, the coffee table cut at the bottom, the brick wall through the back window.
+- **The clarity pass does not help.** The bedroom's three judges gave 7 against 6 (on that room's noisy panel), the
+  living room's 5 against 5.67. Two of the three bedroom judges named it ("crunchy, oversharpened, like an AI pass",
+  "haloes"). `post(clear=)` stays at 0.
+
+- **p4r2 did not help** (5.75 over 12 judgments, against 6.14: two rounds of three towards saturation).
+  - **Bath:** the nudge turned it 10° and widened it to 64°, which brought the WC into the foreground. All three judges
+    named "the oversized flush plate". The cost only counted pieces cut by the frame, so it saw the WC fully in frame
+    as a gain.
+  - **Living room:** the nudge zoomed in (fov 58 → 54) to lose the cut pieces. That made the blank wall a third of the
+    frame: "the sofa squeezed into a corridor". The cut chandelier did not count (only standing pieces did), and the
+    cut coffee table, left bare, read as "an unexplained white blob" to all three judges.
+  - **The lit hall** behind the living room's doorway was not named, for good or bad.
+- **For p4r3:**
+  - The nudge only widens the frame now; it never zooms in.
+  - It counts hanging pieces (pendants) as well as standing ones.
+  - A WC's share of the frame counts as a cost, cut or not: photographers keep the toilet small or out.
+  - A coffee table with less than 60 % of its top in frame leaves the shot, with what is on it (`COFFEE_SEEN`).
+  - Dining and bedroom render the same pixels as p4r2 (checked with `FRAME_ONLY=1`), so only the bath and the living
+    room are rendered and judged; the other two are pooled.
+
+- **p4r3 made the living room worse** (4/4/4). The bath, no longer nudged, came back to M2's exact pixels.
+  - The nudge turned the living room 10° to bring the chandelier into the frame. That put the side glazing at a
+    grazing angle, where the glass reflects almost everything (Fresnel). All three judges named "a confusing glass
+    panel that duplicates the dining room", and the sofa "in a passage facing a bare grey wall".
+  - **Every move the nudge made was judged worse:** the bath's WC (p4r2), the living room's zoom (p4r2), its turn
+    (p4r3). Its cost function sees cut furniture; the judges see a confusing picture. Those are not the same thing.
+    **The nudge is off unless `NUDGE=1`**, and the frame stays the owner's. `clear_edges` (a sliver at a side edge)
+    stays on.
+- **Phase 4 is saturated** under #88's rule: the mean of the iteration rooms did not beat its best by 0.3 for three
+  rounds (M2 5.87 → p4r1 6.14 → p4r2 5.75 → p4r3 5.71).
+- **The final configuration** for the blind rooms: e9678bf plus the lens fix, the sofa rule, the coffee table (styled,
+  or out of the shot when under 60 % of its top is in frame), lit halls and stairs through a doorway, the 0.58 concrete,
+  no nudge. At the owner's framing the living room's coffee table shows enough to be styled; it renders close to
+  p4r1's image, without the 5° turn.
+
+**The end of phase 4** (p4-final, the final configuration above), medians D/M/De/V/G/O, Overall per judge:
+
+| room | run | Daylight | Materials | Decor | View | Grade | Overall | per judge | gate |
+|---|---|---|---|---|---|---|---|---|---|
+| Salon (blind) | p4-blind0b | 6 | 5 | 5 | 5 | 6 | 5 | 5/5/5/5/5 | |
+| Salon (blind) | p4-final | 6 | 6 | 5 | 6 | 6 | **5** | 5/5/5/5/5 | 6: **missed** |
+| Ch.1 (blind) | p4-blind0 | 4 | 5 | 5 | 3 | 4 | 4 | 4/4/4/4/4 | |
+| Ch.1 (blind) | p4-final | 4 | 5 | 5 | 4 | 4 | **4** | 4/4/4/4/4 | 5: **missed** |
+| living (iteration) | p4-final | 6 | 6 | 5 | 5 | 6 | **5** | 5/4/5 (4.67) | M2 5.0: under it, within noise |
+
+`rounds/p4-final.jpg`: before and after, by row: living (M2, final), Salon (p4-blind0b, final), Ch.1 (p4-blind0,
+final). The blind images were not looked at during the phase.
+
+- **Phase 4 did not generalise.** Neither blind room moved a point; the line medians moved by 0 to 1. The phase's rules
+  (the sofa, the coffee table, the lit halls, the lens fix) did not reach what is wrong with those two rooms.
+- **What the blind judges name**, read only now that the phase is over (all five agree in each room):
+  - **Salon:** a dark leather lounger cut by the frame fills the lower left foreground, and the room behind it is
+    sparse, with flat grey walls. A cut piece in the foreground is the case the nudge was written for. The nudge was
+    off, because on the iteration rooms its moves had made other things worse.
+  - **Ch.1:** the room is underexposed and the concrete ceiling reads "almost black". There is one sun patch on the
+    rug and a blind over the window. `CEILING=concrete` was set for every run in this spike. It suits sunlit rooms
+    (the references) but makes a dim room gloomy, and the ceiling's finish is not known from the plans anyway.
+- **Why the iteration rooms could not steer it:**
+  - A 3-judge room mean moves ±0.7 on the same pixels. A generic change worth half a point cannot be told from
+    noise in fewer than about 3 rounds.
+  - Each round fixed what the judges named in four known rooms. The blind rooms' first defect was a different one
+    each time: a plant around the lens (fixed in round 1), then a cut lounger and a dark ceiling.
+  - Generic rules that cover the next defect are a long tail. One rule (the nudge) fixed one case and broke three.
+- **What looks more promising than more fixed rules:** the judges agree with each other on a room's main defect (5 of
+  5 here, every time). That suggests a loop per image instead of more rules. Render a preview, have a critic name the
+  main defect, pick from a small menu of fixes, render again. The menu would hold: a framing nudge, taking a piece
+  out, the ceiling finish, exposure, lamps. This is the builder/critic pattern housegen already uses for scenes.
+  It is untested here.
+
+Spend so far: $9.73 for 24 Modal runs (T4).
