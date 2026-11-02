@@ -564,3 +564,110 @@ final). The blind images were not looked at during the phase.
   It is untested here.
 
 Spend so far: $9.73 for 24 Modal runs (T4).
+
+## Photo loop test (#89 follow-up), 2026-11-02
+
+A loop per image instead of more fixed rules. It works like housegen's builder and critic for scenes. The test used
+four rooms nobody had looked at, in the two houses we already have:
+- Gille: Salon (`g-salon2`) and Chambre 2 (`g-ch2`) of Appartement 2;
+- Montelly: the Salle à Manger (`m-sam`) and the Bain (`m-bain`).
+
+Their cameras were picked from candidate thumbnails of the bare export, as an owner would frame them
+(`frame_cands.py`, `LOOP` in `modal_photo.py`).
+
+**The loop** (`loop.py`; the critic and comparer prompts are in `loop_critic.md`):
+
+1. **Step 0** is the normal pipeline. It picks the sun and the lamps, and both stay pinned after that.
+2. **A critic** (a subagent) sees a preview (1280 px, 64 samples) and what the pipeline knows about the shot:
+   - the pieces in the frame, with id, share of the frame, extents, the edges that cut them and their distance;
+   - the camera moves so far;
+   - the fixes already rejected.
+
+   It names the one problem that most keeps an agency from publishing the photo. Then it picks one fix from a menu:
+   - a camera move: turn ±10°, height ±0.3 m, step back up to 0.5 m, fov ±10°;
+   - take a piece out;
+   - the ceiling finish;
+   - exposure (±1 stop);
+   - the room's lamps;
+   - none.
+3. **`photo.py` renders the next preview** with the kept fixes plus the proposed one (`FIXES` env, `PREVIEW_ONLY`).
+   With no `FIXES` it renders as before.
+4. **Three comparers** see the old and the new preview, in random A/B order, and pick the one an agency would rather
+   publish. Two votes keep the fix; otherwise it goes on the rejected list the critic sees next.
+5. **At most 3 steps per room**, dropped steps included. Then a full final with the kept fixes, judged by 5 judges
+   against the baseline's reference.
+
+Only the critics, comparers and judges looked at the loop rooms' previews and finals; I did not. The judges'
+comments did not reach the loop.
+
+**Steps** (votes: comparers who picked the new preview; a turn of −10° is to the right):
+
+| room | step | the critic's main problem | fix | votes | |
+|---|---|---|---|---|---|
+| g-salon2 | 1 | a leather lounger 0.3 m from the lens, a dark mass at the bottom right | take it out | 3/3 | kept |
+| | 2 | the other lounger fills the bottom-left corner, cut by the frame | take it out | 3/3 | kept |
+| | 3 | a terracotta potted plant cut by the right edge, heavy over the dark cabinet | take it out | 0/3 | dropped: all three liked the plant |
+| g-ch2 | 1 | a blank side wall fills the left third; the bed is cut on two sides | turn −10°, 0.3 m back | 3/3 | kept |
+| | 2 | the blank wall still fills the left quarter | turn −10°, 0.5 m back, fov −10° | 1/3 | dropped |
+| | 3 | too tight: the bed is cut at the bottom and the right | turn −10°, 0.3 m back, fov +10° | 3/3 | kept |
+| m-sam | 1 | a door jamb and wall return on the left edge, "shot from inside a doorway" | turn −10° | 3/3 | kept |
+| | 2 | too tight: the art and the sideboard cut on the right | turn −10°, 0.5 m back | 0/3 | dropped: a wall came in front of the lens |
+| | 3 | a framed print cut in half by the right edge | take it out | 3/3 | kept |
+| m-bain | 1 | a blank white door fills the centre; the shower and the bath are cut at the edges | turn −10°, 0.5 m back | 0/3 | dropped |
+| | 2 | the same | turn −10° | 0/3 | dropped |
+| | 3 | the same, plus a blown-out strip at the right | 0.5 m back, fov +10° | 0/3 | dropped |
+
+**Scores** (5 judges each; Overall median, mean in brackets):
+
+| room | baseline | loop final | kept | what the judges name first now |
+|---|---|---|---|---|
+| g-salon2 | 5 (4.8) | **6** (5.8) | both loungers out | the windows blown out, no view; a small sofa against a long bare wall |
+| g-ch2 | 5 (4.8) | 5 (5.0) | turn, back, wider lens | the blank left wall, still a third of the frame; the skylight blown out |
+| m-sam | 6 (6.0) | **7** (6.6) | turn, the cut print out | the architecture: a dark soffit band, the open casement sashes |
+| m-bain | 2 (2.4) | 2 (same image) | nothing | (the baseline's) a blank white door in the centre |
+
+Other medians that moved:
+- g-salon2: Daylight 6→7, View 3→4, Grade 5→6;
+- g-ch2: View 5→6;
+- m-sam: Materials 6→7.
+
+**The target was +1 in at least 3 of 4 rooms, none dropping. Missed: +1 in 2 of 4, none dropping.**
+
+`rounds/lp-final.jpg` shows the baseline on the left and the loop final on the right. Rows: g-salon2, g-ch2, m-sam,
+m-bain.
+
+- **It works when the fix is on the menu.** In g-salon2 and m-sam the main defect was a piece: the loungers, the cut
+  print. The critic named it by its id, and the judges stopped naming it. Both rooms gained +1. Removals were kept 3
+  times out of 4. The one dropped was a plant the comparers liked.
+- **A camera move this small can't fix a bad spot.** 8 of the 12 proposals moved the camera, and 3 were kept.
+  - **g-ch2:** the comparers picked each kept step 3/3, because more of the bed shows. The judges still name the left
+    wall, a third of the frame. The camera stands next to that wall, and ±10° from there does not lose it.
+  - **m-bain:** the camera faces a door panel. Three moves within the limits were all rejected 0/3.
+  - **What would help:** both rooms need a different spot, not a nudge. A menu entry "another viewpoint" could offer
+    the candidate cameras `frame_cands.py` already makes. Whether an owner accepts the pipeline moving their camera
+    is a product question.
+- **The critic never picked exposure, the ceiling or the lamps.** That fits the judges, who name framing and pieces
+  first in these four rooms. What they name after the loop is outside the menu:
+  - windows blown to white (g-salon2, and g-ch2's skylight);
+  - sparse styling;
+  - the model's geometry (m-sam's soffit and sashes).
+- **The comparers and the judges agree on direction, not on size.** Every kept step was a 3/3 pick. That moved a
+  5-judge median by +1 twice and by 0 once (g-ch2, mean +0.2).
+- **A known flaw:** `move_camera` only checks that the lens stays inside the room's polygon. In m-sam, stepping back
+  0.5 m put a wall in front of the lens, about 80 % of the frame. The comparers caught it (0/3). A ray test for
+  clearance ahead of the lens belongs before the render.
+- **The caveat:** these are unseen rooms of two known houses, not a new house, and each room had 5 judges.
+
+**Cost and time:**
+- **Modal:** $2.52 for the test, about $0.45 a room on top of the baseline (the three steps and the final):
+  - the baseline: $0.74;
+  - three preview steps: $0.42, $0.41 and $0.44;
+  - the finals: $0.51.
+- **Time per step:** about 9 minutes per room on a T4. The rooms run in parallel. For g-salon2's step 3, out of 556 s:
+  - the 1280 px preview: 256 s;
+  - the sun analysis: 112 s, wasted because the sun is pinned (`pick_sun` runs before `SUN_PICK` overrides it);
+  - container start, loading, dressing and styling: the rest.
+- **For the app:** a step should apply its fix to the open scene, not rebuild it, and skip the sun analysis.
+- **Subagents:** 12 critics, 36 comparers and 35 judges.
+
+Spend so far: $12.25 for 29 Modal runs (T4).

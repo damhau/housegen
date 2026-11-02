@@ -2345,6 +2345,109 @@ def grade(scene, rays, tmp):
 
 # ---------------------------------------------------------------- main
 
+# ---------------------------------------------------------------- the photo loop's fixes (#89 follow-up)
+# FIXES (JSON) holds the fixes a critic accepted, each one from a short menu, all within the owner's small nudges:
+#   {"camera": {"turn": deg (+ = to the left), "height": m, "back": m, "fov": deg}, "hide": [piece names],
+#    "ceiling": "plaster" | "concrete", "exposure": stops, "lamps": "on" | "off"}
+FIXES = json.loads(os.environ.get("FIXES") or "{}")
+BOUNDS = {"turn": 10.0, "height": 0.3, "back": 0.5, "fov": 10.0}  # the owner's small nudges
+
+
+def piece_top(o):
+    """The removable piece an object belongs to, or None for the building: a kit piece (its outermost
+    `furniture` ancestor) or a prop this pipeline added (a top-level object other than the house)."""
+    top, furn = o, None
+    while top.parent is not None:
+        if top.get("kind") == "furniture":
+            furn = top
+        top = top.parent
+    if top.get("kind") == "furniture":
+        furn = top
+    if furn is not None:
+        return furn
+    return top if top.name != "house" and top.get("kind") is None and not top.name.startswith("still") else None
+
+
+def piece_label(o):
+    return str(o.get("name") or o.name)
+
+
+def hide_pieces(scene, names):
+    """Pieces by id (the object's unique name, one piece) or by label (every piece of that name)."""
+    names = set(names)
+    gone = []
+    for o in scene.objects:
+        if o.hide_render or piece_top(o) is not o or not (o.name in names or piece_label(o) in names):
+            continue
+        hide(o)
+        gone.append(o.name)
+    if gone:
+        log(f"fix: took out {sorted(set(gone))}")
+
+
+def move_camera(scene, cam, rooms, room, target, fix, W, H):
+    """A camera fix, clamped to the owner's small nudges; a step back that would leave the room is shortened."""
+    f = {k: max(-v, min(v, float(fix.get(k, 0.0)))) for k, v in BOUNDS.items()}
+    f["back"] = max(0.0, f["back"])
+
+    def aim_shift():  # the shift that keeps the target at its height in the frame
+        fw = Vector((-math.sin(cam.rotation_euler[2]), math.cos(cam.rotation_euler[2]), 0))
+        t = target - cam.location
+        return (t.z / t.dot(fw)) / (2 * math.tan(cam.data.angle_y / 2)) * (H / max(W, H))
+
+    kept = cam.data.shift_y - aim_shift()  # what clear_edges took off the top, kept
+    yaw = cam.rotation_euler[2] + math.radians(f["turn"])
+    fwd = Vector((-math.sin(yaw), math.cos(yaw), 0))
+    back = f["back"]
+    while True:
+        loc = cam.location - fwd * back + Vector((0, 0, f["height"]))
+        if back < 0.05 or room_at(rooms, loc.x, loc.z, -loc.y) is room:
+            break
+        back /= 2
+    cam.location, cam.rotation_euler[2] = loc, yaw
+    cam.data.angle_y = math.radians(max(40.0, min(75.0, math.degrees(cam.data.angle_y) + f["fov"])))
+    cam.data.shift_y = aim_shift() + kept
+    bpy.context.view_layer.update()
+    log(f"fix: camera turned {f['turn']:+.1f} deg, {f['height']:+.2f} m up, {back:.2f} m back, "
+        f"fov {math.degrees(cam.data.angle_y):.0f} deg")
+
+
+def pieces_in_frame(scene, cam, nx=64, ny=36, least=0.005):
+    """What a critic can name: the pieces the camera sees, their share of the frame, where, and the edges cutting them."""
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    fr = cam.data.view_frame(scene=scene)
+    x0, x1 = min(c.x for c in fr), max(c.x for c in fr)
+    y0, y1 = min(c.y for c in fr), max(c.y for c in fr)
+    rot, origin = cam.matrix_world.to_3x3(), cam.matrix_world.translation
+    seen = {}
+    for j in range(ny):
+        for i in range(nx):
+            fx, fy = (i + 0.5) / nx, (j + 0.5) / ny
+            d = (rot @ Vector((x0 + fx * (x1 - x0), y1 - fy * (y1 - y0), fr[0].z))).normalized()
+            hit = trace(scene, dg, origin, d)
+            top = hit and piece_top(hit[2])
+            if top is None:
+                continue
+            e = seen.setdefault(top.name, {"label": piece_label(top), "n": 0, "x": [], "y": [], "cut": set(), "dist": []})
+            e["n"] += 1
+            e["x"].append(fx)
+            e["y"].append(fy)
+            e["dist"].append((hit[0] - origin).length)
+            for edge, on in (("left", i == 0), ("right", i == nx - 1), ("top", j == 0), ("bottom", j == ny - 1)):
+                if on:
+                    e["cut"].add(edge)
+    out = []
+    for nm, e in sorted(seen.items(), key=lambda kv: -kv[1]["n"]):
+        share = e["n"] / (nx * ny)
+        if share < least:
+            continue
+        out.append({"id": nm, "name": e["label"], "share": round(share, 3), "x": [round(min(e["x"]), 2), round(max(e["x"]), 2)],
+                    "y": [round(min(e["y"]), 2), round(max(e["y"]), 2)], "cut_by": sorted(e["cut"]),
+                    "distance_m": round(sorted(e["dist"])[len(e["dist"]) // 2], 1)})
+    return out
+
+
 def use_gpu():
     addon_utils.enable("cycles", default_set=True)
     prefs = bpy.context.preferences.addons["cycles"].preferences
@@ -2388,7 +2491,7 @@ def main():
     dress.plaster(scene)
     if "tiles" not in skip:
         glaze_tiles(scene)
-    if CEILING == "concrete" and room["use"] not in ("bath", "wc"):  # wet rooms keep a painted ceiling
+    if FIXES.get("ceiling", CEILING) == "concrete" and room["use"] not in ("bath", "wc"):  # wet rooms keep paint
         concrete_ceilings(scene)
     if "paint" not in skip:
         paint(scene)
@@ -2403,6 +2506,10 @@ def main():
     tgt = [float(v) for v in cam_spec.split(">")[1].split("@")[0].split(",")]
     nudge_frame(scene, scene.camera, rooms, room, sy, Vector((tgt[0], -tgt[2], tgt[1])))
     clear_edges(scene, scene.camera)
+    if FIXES.get("camera"):  # on top of the step the critic saw (clear_edges included)
+        move_camera(scene, scene.camera, rooms, room, Vector((tgt[0], -tgt[2], tgt[1])), FIXES["camera"], width, height)
+    if FIXES.get("hide"):
+        hide_pieces(scene, FIXES["hide"])
     if os.environ.get("PICK"):  # "fx,fy;fx,fy" in frame fractions from the top left: what the render shows there
         cam, dg = scene.camera, bpy.context.evaluated_depsgraph_get()
         fr = cam.data.view_frame(scene=scene)
@@ -2427,6 +2534,10 @@ def main():
         style.H = sys.modules[__name__]
         style.style(scene, scene.camera, rays, rooms, sy, storey_pieces(scene, sy))
         rays = camera_rays(scene, scene.camera, rooms, sy)
+    if FIXES.get("hide"):  # props the styling put on or by a piece that went
+        hide_pieces(scene, FIXES["hide"])
+        rays = camera_rays(scene, scene.camera, rooms, sy)
+    in_frame = pieces_in_frame(scene, scene.camera)
     t = time.time()
     az, el, frac = pick_sun(scene, rays)
     log(f"sun: azimuth {az:.0f}, elevation {el:.0f}, {frac * 100:.0f} % of the room in sun ({time.time() - t:.0f} s)")
@@ -2444,15 +2555,17 @@ def main():
             aim_sun(scene, lamp, az, el)
             log(f"sun: thumbnails pick {az:.0f}/{el:.0f}, sun patches on {frac * 100:.0f} % of the room, x{contrast:.1f} "
                 f"the sky's light there ({len(cands)} candidates, {time.time() - t:.0f} s)")
-    if frac < 0.05 and not (THUMBS and len(cands) > 1 and frac >= 0.03):
+    lamps = FIXES.get("lamps")
+    if lamps == "on" or (lamps != "off" and frac < 0.05 and not (THUMBS and len(cands) > 1 and frac >= 0.03)):
         lamps_on(scene, room)
     next_rooms_lit(scene, rays, rooms, room, sy)
     bounce_flash(scene, scene.camera)
     log(f"setup {time.time() - t0:.0f} s")
     # the preview for the grade, at the final's aspect
     t = time.time()
-    scene.render.resolution_x, scene.render.resolution_y = 768, round(768 * height / width)
-    scene.cycles.samples = 32
+    pw = int(os.environ.get("PREVIEW_W", "768"))
+    scene.render.resolution_x, scene.render.resolution_y = pw, round(pw * height / width)
+    scene.cycles.samples = int(os.environ.get("PREVIEW_SAMPLES", "32"))
     bpy.ops.render.render()
     log(f"preview {time.time() - t:.0f} s")
     for power in os.environ.get("PREVIEW_POWERS", "").split(",") if os.environ.get("PREVIEW_POWERS") else []:
@@ -2474,7 +2587,18 @@ def main():
             o.data.energy = base[o.name]
         bpy.ops.render.render()
     grade(scene, rays, out.replace(".png", "-preview.png"))
+    if FIXES.get("exposure"):
+        scene.view_settings.exposure += max(-1.0, min(1.0, float(FIXES["exposure"])))
+        log(f"fix: exposure {float(FIXES['exposure']):+.2f} -> {scene.view_settings.exposure:+.2f}")
     bpy.data.images["Render Result"].save_render(out.replace(".png", "-preview.png"), scene=scene)
+    vs = scene.view_settings
+    sky = next(n for n in scene.world.node_tree.nodes if n.bl_idname == "ShaderNodeTexSky")
+    json.dump({"room": room["name"], "use": room["use"],
+               "sun": f"{math.degrees(sky.sun_rotation) % 360:.1f}/{math.degrees(sky.sun_elevation):.1f}",
+               "ceiling": FIXES.get("ceiling", CEILING) if room["use"] not in ("bath", "wc") else "plaster (wet room)",
+               "lamps_on": any(o.type == "LIGHT" and not o.hide_render and o != lamp for o in scene.objects),
+               "exposure": round(vs.exposure, 2), "fixes": FIXES, "pieces": in_frame},
+              open(out.replace(".png", "-loop.json"), "w"), indent=1, ensure_ascii=False)
     if os.environ.get("DEBUG"):  # the floor samples the chosen sun lights, as red dots on the preview
         im = Image.open(out.replace(".png", "-preview.png")).convert("RGB")
         px = im.load()

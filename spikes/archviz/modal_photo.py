@@ -31,10 +31,17 @@ BLIND = {  # Montelly49-Dev4, framed once from the bare export as an owner would
     "m-living": "0.2,3.65,3.2>4.5,3.35,0.6@58",  # Salon
     "m-bedroom": "0.3,6.65,1.0>4.8,6.3,3.0@58",  # Ch.1
 }
-ROOMS = {**{n: ("gille", c) for n, c in CAMERAS.items()}, **{n: ("montelly", c) for n, c in BLIND.items()}}
+LOOP = {  # the photo loop's test rooms (#89 follow-up), framed from bare-export thumbnails (frame_cands.py); not looked at
+    "g-salon2": ("gille", "-4.60,4.04,4.10>-1.82,3.74,2.63@58"),  # Salon — Appartement 2
+    "g-ch2": ("gille", "4.60,6.78,-1.21>0.98,6.48,-1.81@58"),  # Chambre 2 — Appartement 2
+    "m-sam": ("montelly", "-1.15,3.65,0.25>-2.50,3.35,2.66@58"),  # Salle à Manger
+    "m-bain": ("montelly", "4.40,6.70,-3.05>3.01,6.40,-1.43@58"),  # Bain
+}
+ROOMS = {**{n: ("gille", c) for n, c in CAMERAS.items()}, **{n: ("montelly", c) for n, c in BLIND.items()}, **LOOP}
 
 KNOBS = ("CEILING", "TILE_TONE", "MOTTLE", "LIMEWASH", "SKIP", "THUMBS", "SUN_PICK", "PHOTO_SUN_POWER", "PHOTO_LAMPS",
-         "RELIEF", "FLOOR_ROUGH", "CLIP_MAX", "FEATURE_TILE", "ADAPTIVE", "PREFILTER", "FLOOR", "STYLE_SKIP", "ART_SCALES", "NUDGE")  # photo.py's environment knobs, forwarded to the containers
+         "RELIEF", "FLOOR_ROUGH", "CLIP_MAX", "FEATURE_TILE", "ADAPTIVE", "PREFILTER", "FLOOR", "STYLE_SKIP", "ART_SCALES", "NUDGE",
+         "FIXES", "PREVIEW_ONLY", "PREVIEW_W", "PREVIEW_SAMPLES")  # photo.py's environment knobs, forwarded to the containers
 
 app = modal.App("housegen-photo-test")
 image = (
@@ -75,25 +82,32 @@ def shoot(name: str, house: str, camera: str, w: int, h: int, samples: int, env:
     if p.returncode:
         res["log"] += "\n" + text[-4000:]
         return res
-    for suffix in ("-preview.png", "-raw.png", ".png", "-linear.exr", "-grade.json"):
-        with open(out.replace(".png", suffix), "rb") as f:
-            res["files"][f"{name}{suffix}"] = f.read()
+    for suffix in ("-preview.png", "-raw.png", ".png", "-linear.exr", "-grade.json", "-loop.json"):
+        if os.path.exists(out.replace(".png", suffix)):  # a preview run (PREVIEW_ONLY) has no final
+            with open(out.replace(".png", suffix), "rb") as f:
+                res["files"][f"{name}{suffix}"] = f.read()
     return res
 
 
 @app.local_entrypoint()
-def main(rooms: str = "dining,bedroom,bath", w: int = 2560, h: int = 1440, samples: int = 400):
+def main(rooms: str = "dining,bedroom,bath", w: int = 2560, h: int = 1440, samples: int = 400, envs: str = "",
+         tag: str = ""):
+    """--envs <file.json>: {room: {knob: value}} on top of the knobs set here (each room its own FIXES, SUN_PICK);
+    --tag: a suffix for the files written (a loop step: -i1, -i2...)."""
+    import json
     os.makedirs(os.path.join(HERE, "work", "auto"), exist_ok=True)
     t = time.time()
     env = {k: v for k, v in os.environ.items() if k in KNOBS}  # the experiment's knobs, as set here
     if env:
         print(f"knobs: {env}")
-    jobs = [(n, *ROOMS[n], w, h, samples, env) for n in rooms.split(",")]
+    per = json.load(open(envs)) if envs else {}
+    jobs = [(n, *ROOMS[n], w, h, samples, {**env, **per.get(n, {})}) for n in rooms.split(",")]
     seconds = []
     for res in shoot.starmap(jobs):
         seconds.append(res["seconds"])
         print(f"== {res['name']}: {res['seconds']:.0f} s on Modal ({GPU})\n{res['log']}")
         for fname, data in res["files"].items():
+            fname = fname.replace(res["name"], res["name"] + tag, 1)
             with open(os.path.join(HERE, "work", "auto", fname), "wb") as f:
                 f.write(data)
     ledger = os.path.join(HERE, "work", "ledger.csv")
