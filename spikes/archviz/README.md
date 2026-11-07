@@ -670,4 +670,93 @@ m-bain.
 - **For the app:** a step should apply its fix to the open scene, not rebuild it, and skip the sun analysis.
 - **Subagents:** 12 critics, 36 comparers and 35 judges.
 
-Spend so far: $12.25 for 29 Modal runs (T4).
+Spend at that point: $12.25 for 29 Modal runs (T4).
+
+## Wall art library, 2026-11-07
+
+The owner, on 2026-11-02: "we need a lot more painting, we cannot use the same everywhere". One generated print hung in
+every room. Now each room has its own, and no print hangs twice in a house while the library lasts.
+
+**Blind result, one house's six rooms judged as a set (median of 3 judges):**
+
+| Line | The old print | The library |
+|---|---|---|
+| Decor | 6 | **7** |
+| Variety | 4 | **6** |
+| Overall | 6 | **7** |
+
+Every judge scored the library higher on every line. `rounds/art-listing.jpg` shows both sets.
+
+**The library** (`made/art/`, `rounds/art-library.jpg` shows the 100 before the dark ones went): 96 prints in use.
+- **62 museum works**, picked by eye from 624 Cleveland Museum of Art works (`made/art_fetch.py`). 66 were picked, by
+  Hokusai, Hiroshige, Redouté, Anna Atkins, Klee, Mondrian, Cézanne, Monet, Turner, Atget and others. Their styles:
+  landscape 18, botanical 17, japanese 11, drawing 5, abstract 5, photo 5, still life 3, interior 2.
+- **34 made here** (`made/art_gen.py`, numpy and Pillow, no AI images): 9 styles in 6 palettes, some as pairs.
+- **The licence rule:** Cleveland marks the work CC0, the artist died in 1955 or earlier (public domain in Switzerland
+  and the EU), and anonymous works date from before 1880. All 66 pass.
+- **Left out as too dark:** 4 works with a mean brightness under 0.3. A dark still life read as a black panel or a TV
+  on a bright wall.
+- **Not used:** the Art Institute of Chicago. Its image server refuses scripted downloads, and that was respected.
+
+**How prints are hung** (`artlib.py`):
+- **One allocation for the whole house.** It is worked out from `rooms.json` alone, so every process agrees: rooms in
+  order of how likely they are to be photographed, each with its slots (`hang`, `pair`, `lean`, `swap1`, `swap2`). A
+  print goes to rooms its style suits. Gille has 66 slots and Montelly 32, with no repeats and 30 and 64 prints spare.
+- **Bed pairs** are two prints of one series with nearly the same shape.
+- **A slot with no print allocated** takes a spare. Each level of the house draws from its own share, because a process
+  renders one storey and knows nothing of the others.
+- **Frames are built in Blender** to each print's own shape: oak, ash, black, white or brass, with or without a mount.
+- **`ART_LIB=0`** hangs the old print everywhere, for A/B checks.
+
+**The check** (`listing.py`, `listing_prompt.md`): the existing judges score one photo at a time, so they can't see a
+repeat between rooms. Here each judge sees all twelve photos, the same six rooms in two sets, in a random A/B order, and
+scores each set as a buyer scrolling the listing would see it. Six Gille rooms, the sun and the lamps pinned per room
+(`work/auto/art-envs.json`), 1280 px at 64 samples.
+
+**What the judges said:**
+- **The old print:** "one stock poster copied through the house", "a catalogue template". The library: "a collected
+  home".
+- **Variety stops at 6 because of the objects.** All three listed the same eucalyptus in a white vase, terracotta
+  plant, mushroom lamp, ring pendant and rug from photo to photo. That is the same problem as the prints, and the next
+  thing to fix for variety.
+- **The picture in the last bedroom sits on the half-wall behind the bed.** All three noticed. It comes from where the
+  kit places that print, it is in both sets, and it was not changed.
+
+**The caveats:**
+- One house, three judges, preview quality.
+- The old-print set hangs one image twice over the bed, where the older pipeline had two slightly different prints, so
+  it is a little harsher on the old look.
+- The bathroom has no free wall, so the set shows five rooms with art.
+
+**Two bugs this check found:**
+- **Empty frames, which voided the first round.** All three judges saw two empty frames over the old-print set's bed
+  and marked it down (median 7/7/7 against 5/4/5), so those scores were dropped and both sets rendered again.
+  - **The cause:** `feature_wall` finds the wall with a ray 1.25 m above the floor. The new frames can be larger than
+    the kit's print, so one hung low enough to catch that ray, and the limewash was laid about 1 cm off the wall, over
+    the bed pair's prints.
+  - **The fix:** the ray now passes through art.
+- **One print on two floors.** Two rooms' spare prints landed on the same work by a chance hash, about 1 in 30. Levels
+  now draw from separate shares. Only Gille's garage level shares with the ground floor (print heights fall in it), and
+  garages hold no kit prints.
+
+**The GPU: RTX PRO 6000 from now on, the owner's choice.** The same six rooms and settings, measured, with Modal's list
+prices from 2026-11-07:
+
+| | T4 | RTX PRO 6000, sun analysis skipped |
+|---|---|---|
+| Time per room | 347-522 s across six runs | **215 s** (203-234 s) |
+| The six in parallel | 480-641 s | **238 s** |
+| Cost of the run | $0.52-0.79 | **$1.20** |
+
+- **The images are the same:** a mean difference of 0.05-0.10 out of 255 per room, no pixel off by more than 25, and the
+  same sun.
+- **The preview is only about twice as fast** (128-145 s against 236-313 s), not the 5-10× guessed beforehand. Sampling
+  64 passes is probably not most of that time, but this was not measured.
+- **An earlier claim was wrong.** "A faster GPU would save little time" was never measured. The run is about 2× faster
+  at about 1.8× the cost.
+- **The sun analysis** is skipped when both the sun and the lamps are pinned. It is CPU ray casting (29-97 s a room)
+  whose result was overwritten, so this needs no GPU. Rooms with automatic lamps still run it.
+
+**Cost:** $5.02 for the 7 runs of this work.
+
+Spend so far: $17.27 for 36 Modal runs (T4 up to 2026-11-07, RTX PRO 6000 since).

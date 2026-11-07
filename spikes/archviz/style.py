@@ -309,8 +309,10 @@ def bed_art(scene, room, sy):
                 log("bed art at", tuple(round(v, 2) for v in c), "bed origin", tuple(round(v, 2) for v in f.translation),
                     "into", tuple(round(v, 2) for v in into), "mid", tuple(round(v, 2) for v in mid))
             H.hide(o)
-            for sc in (min(1.0, (0.72 * w - 0.06) / 2 / 0.62), 0.8, 0.7):
-                pw, ph = 0.62 * sc, 0.82 * sc
+            pair = [H.artlib.pick(room, "pair", k) for k in (0, 1)]
+            for bw, bh in ((min(0.62, (0.72 * w - 0.06) / 2), 0.82), (0.5, 0.66), (0.43, 0.57)):
+                long = min(H.artlib.fit(p_, bw, bh) for p_ in pair)  # both at one long side, the pair fitting the box
+                pw, ph = (max(H.artlib.size(p_, long)[i] for p_ in pair) for i in (0, 1))
                 ok = True
                 for e in (-1, 1):
                     for dx in (pw * 0.55, pw + 0.06):
@@ -335,9 +337,9 @@ def bed_art(scene, room, sy):
                 log("bed art: the wall doesn't take a pair")
                 continue
             turn = math.degrees(o.rotation_euler.z)
-            for e, path in ((-1, H.ART), (1, H.ART2)):
+            for e, p_ in zip((-1, 1), pair):
                 at = mid + side * (e * (pw / 2 + 0.03))
-                H.place(scene, path, (at.x, c.z - ph / 2, -at.y), height=ph, turn_deg=turn)
+                H.artlib.build(scene, p_, (at.x, c.z - H.artlib.size(p_, long)[1] / 2, -at.y), long, turn)
             log(f"bed art: a pair of {pw:.2f} x {ph:.2f} prints over the bed ({w} m)")
             n += 1
             break
@@ -965,14 +967,16 @@ def sideboard(scene, cam, room, sy, taken):
     bc = (blo + bhi) / 2
     H.place(scene, H.model("potted_plant_04"), (bc.x, bhi.z, -bc.y), height=0.16, turn_deg=30)
     # a print leaning on the wall, off-centre toward the books, if the wall above is plain
-    sc, tilt = 0.78, math.radians(7)
+    piece, tilt = H.artlib.pick(room, "lean"), math.radians(7)
+    long = 0.82 * 0.78
+    fw, fh = H.artlib.size(piece, long)
     aq = c - u * (e * 0.12)
     plain = all(wall_behind(scene, dg, aq + u * a + Vector((0, 0, Hc + h)), n, D / 2 + 0.12) is not None
-                for a in (-0.3 * sc - 0.05, 0.0, 0.3 * sc + 0.05) for h in (0.12, 0.4 * sc, 0.8 * sc))
+                for a in (-fw / 2 - 0.05, 0.0, fw / 2 + 0.05) for h in (0.12, fh / 2, fh * 0.98))
     if plain:
-        back = c - n * (D / 2 + 0.02) + n * (0.82 * sc * math.sin(tilt) + 0.03) - u * (e * 0.12)
+        back = c - n * (D / 2 + 0.02) + n * (fh * math.sin(tilt) + 0.03) - u * (e * 0.12)
         ax_, _, az_ = H.to_scene(back)
-        art, _ = H.place(scene, H.ART2, (ax_, top + 0.002, az_), height=0.82 * sc, turn_deg=math.degrees(math.atan2(-n.x, n.y)))
+        art, _ = H.artlib.build(scene, piece, (ax_, top + 0.002, az_), long, math.degrees(math.atan2(-n.x, n.y)))
         art.rotation_euler[0] = tilt
     log(f"sideboard at {(round(x, 2), round(sy, 2), round(z, 2))} facing {tuple(round(v, 2) for v in n.xy)}, score "
         f"{score:.2f}; a plant at the {'right' if e > 0 else 'left'} end, {'a leaning print' if plain else 'no print (window)'}")

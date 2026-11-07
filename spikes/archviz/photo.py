@@ -38,6 +38,7 @@ from PIL import Image  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import artlib  # noqa: E402
 import dress  # noqa: E402
 import style  # noqa: E402
 import still  # noqa: E402
@@ -56,8 +57,6 @@ TARGET_MEDIAN, TARGET_WALL_B, TARGET_WALL_A = 155.0, 4.0, 0.5  # sRGB luminance 
 CLIP_MAX = float(os.environ.get("CLIP_MAX", "0.03"))  # at most this share of the frame at white...
 CLIP_PULL = 0.5  # ...by lowering the median's exposure at most this many stops (darker than that reads as a grey veil)
 CACHE = os.path.join(HERE, "work", "cache")
-ART = os.path.join(HERE, "made", "art.glb")  # 0.62 x 0.82 m, facing +y
-ART2 = os.path.join(HERE, "made", "art2.glb")  # its pair (made/art.py 8 art2)
 EUCALYPTUS = os.path.join(HERE, "made", "eucalyptus.glb")
 THROW = os.path.join(HERE, "made", "throw.glb")
 BED_SIZES = (0.9, 1.2, 1.4, 1.6, 1.8)
@@ -655,18 +654,34 @@ def swap_plants(scene, pieces, sy):
     return n
 
 
+def art_room(x, y, z):
+    """The room a print at scene point (x, y, z) belongs to: the room there, or the first one a step around it
+    (a point on a wall can fall just outside the room's polygon)."""
+    for dx, dz in ((0, 0), (0.3, 0), (-0.3, 0), (0, 0.3), (0, -0.3)):
+        r = room_at(artlib.ROOMS, x + dx, y, z + dz)
+        if r is not None:
+            return r
+    return None
+
+
 def swap_art(scene, pieces):
-    n = 0
+    """The kit's wall art becomes the room's prints from the library (artlib), each fitted to the kit piece's
+    box (at most about 1 m on the long side)."""
+    n, per_room = 0, {}
     for o in pieces:
         nm = name(o).lower()
         if "wall art" not in nm and "wall-art" not in nm:
             continue
         lo, hi = box(o)
         w, h = o["footprint"][0], hi.z - lo.z
-        s = min(w / 0.62, h / 0.82, 1.2)
         c = (lo + hi) / 2
+        room = art_room(c.x, lo.z, -c.y)
+        k = per_room[room["name"] if room else ""] = per_room.get(room["name"] if room else "", 0) + 1
+        e = artlib.pick(room or "", f"swap{k}", y=lo.z)
+        print(f"PHOTO art: kit print at ({c.x:.2f}, {lo.z:.2f}, {-c.y:.2f}) in {room['name'] if room else 'no room'}: swap{k}", flush=True)
+        long = min(artlib.fit(e, w * 1.2, h * 1.2), 0.98)
+        artlib.build(scene, e, (c.x, lo.z + (h - artlib.size(e, long)[1]) / 2, -c.y), long, math.degrees(turn(o)) + 180)
         hide(o)
-        place(scene, ART, (c.x, lo.z + (h - 0.82 * s) / 2, -c.y), height=0.82 * s, turn_deg=math.degrees(turn(o)) + 180)
         n += 1
     return n
 
@@ -1038,7 +1053,12 @@ def feature_wall(scene, room, sy):
         if not inside(poly, hx, hz):
             continue
         head = (frame.to_3x3() @ Vector((0, 1, 0))).normalized()
-        hit = trace(scene, dg, frame @ Vector((0, -0.05, 1.25)), head, far=0.8)
+        q = frame @ Vector((0, -0.05, 1.25))
+        for _ in range(4):  # the wall itself, not a print hanging low on it (the plane would land in front of the print)
+            hit = trace(scene, dg, q, head, far=0.8)
+            if hit is None or not hit[2].name.startswith("art"):
+                break
+            q = hit[0] + head * 1e-3
         if hit is None:
             continue
         loc, normal = hit[0], hit[1]
@@ -1870,8 +1890,15 @@ def hang_art(scene, rays, sy):
         mid = ss[len(ss) // 2]
         cands = sorted((ss[0] + 0.4 + 0.1 * k for k in range(int((ss[-1] - ss[0] - 0.8) / 0.1) + 1)), key=lambda v: abs(v - mid))
 
+        room = art_room(*to_scene(p0 + n * 0.3))
+        piece = artlib.pick(room or "", "hang", y=sy)
+
+        def long_of(sc):  # a landscape print a little longer, so it doesn't read smaller than a portrait one
+            return 0.82 * sc * (1.15 if piece["w"] > piece["h"] * 1.12 else 1.0)
+
         def free(s, sc=1.0):
-            half, top = 0.31 * sc + 0.04, 1.04 + 0.82 * sc + 0.04
+            fw, fh = artlib.size(piece, long_of(sc))
+            half, top = fw / 2 + 0.04, 1.04 + fh + 0.04
             for h in (1.05, (1.05 + top) / 2, top):
                 for ds in (-half, 0.0, half):
                     p = p0 + a * (s + ds - a.dot(p0))
@@ -1892,7 +1919,7 @@ def hang_art(scene, rays, sy):
         if s is None:
             continue
         p = p0 + a * (s - a.dot(p0)) + n * 0.016
-        place(scene, ART, (p.x, sy + 1.04, -p.y), height=0.82 * sc, turn_deg=math.degrees(math.atan2(-n.x, n.y)))
+        artlib.build(scene, piece, (p.x, sy + 1.04, -p.y), long_of(sc), math.degrees(math.atan2(-n.x, n.y)))
         log(f"art: on the wall facing {tuple(round(v, 2) for v in n)} at {tuple(round(v, 2) for v in to_scene(p))}")
         return True
     return False
@@ -2469,6 +2496,7 @@ def main():
     t0 = time.time()
     rooms = json.load(open(rooms_json, encoding="utf-8"))
     rooms = rooms["rooms"] if isinstance(rooms, dict) else rooms
+    artlib.init(rooms)
     bpy.ops.wm.open_mainfile(filepath=blend)
     device = use_gpu()
     scene = bpy.context.scene
@@ -2539,8 +2567,14 @@ def main():
         rays = camera_rays(scene, scene.camera, rooms, sy)
     in_frame = pieces_in_frame(scene, scene.camera)
     t = time.time()
-    az, el, frac = pick_sun(scene, rays)
-    log(f"sun: azimuth {az:.0f}, elevation {el:.0f}, {frac * 100:.0f} % of the room in sun ({time.time() - t:.0f} s)")
+    if os.environ.get("SUN_PICK") and FIXES.get("lamps") in ("on", "off"):
+        # both fixed: the analysis (CPU ray casts, 112 s of a 556 s run) could only be overwritten; its share of the room in sun decides nothing
+        az, el = (float(v) for v in os.environ["SUN_PICK"].split("/"))
+        frac = 0.0
+        log(f"sun: pinned at {az:.0f}/{el:.0f}, lamps {FIXES['lamps']}, no analysis")
+    else:
+        az, el, frac = pick_sun(scene, rays)
+        log(f"sun: azimuth {az:.0f}, elevation {el:.0f}, {frac * 100:.0f} % of the room in sun ({time.time() - t:.0f} s)")
     lamp = set_sun(scene, az, el)
     cands = spread(RANKED, THUMBS)
     if os.environ.get("SUN_PICK"):  # "az/el": a fixed sun, for experiments

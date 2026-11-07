@@ -1,9 +1,9 @@
-"""photo.py on Modal: the same script on a cloud GPU (a T4 by default, the render service's), one container per
+"""photo.py on Modal: the same script on a cloud GPU (an RTX PRO 6000 by default, the owner's choice 2026-11-07), one container per
 photo, in parallel. A test harness: `modal run` makes a temporary app, nothing stays deployed.
 
     cd spikes/archviz && uvx modal run modal_photo.py [--rooms dining,bedroom,bath,living] [--w 2560 --h 1440 --samples 400]
     uvx modal run modal_photo.py --rooms m-living,m-bedroom      # the blind rooms (#89): a phase's start and end only
-    PHOTO_GPU=L4 uvx modal run modal_photo.py --rooms bath
+    PHOTO_GPU=T4 uvx modal run modal_photo.py --rooms bath
 
 Uploads (cached by Modal between runs): assets/ (CC0 scans, the HDRI), made/, the exported houses (work/house.blend and
 work/rooms.json for TestVillaGille, work/montelly/ for Montelly49-Dev4) and the bed cache (work/cache). Writes work/auto/<room>.png (+ -preview, -raw) here, and appends the
@@ -16,10 +16,10 @@ import time
 import modal
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-GPU = os.environ.get("PHOTO_GPU", "T4")
+GPU = os.environ.get("PHOTO_GPU", "RTX-PRO-6000")
 R = "/root/archviz"
-# $ per container second: the GPU + 4 cores + 16 GiB (Modal list prices, 2025)
-PRICE = {"T4": 0.000164, "L4": 0.000222, "A10G": 0.000306}.get(GPU, 0.0003) + 4 * 0.0000131 + 16 * 0.00000222
+# $ per container second: the GPU + 4 cores + 16 GiB (Modal list prices, checked 2026-11-07)
+PRICE = {"T4": 0.000164, "L4": 0.000222, "A10G": 0.000306, "RTX-PRO-6000": 0.000842}.get(GPU, 0.0003) + 4 * 0.0000131 + 16 * 0.00000222
 CAMERAS = {  # TestVillaGille (fa8bd00053e6 v21): the hand-tuned rooms' cameras, and the bathroom from its door, aimed past the door leaf
     "dining": "0.6,1.25,2.3>-4.5,1.0,4.15@54",
     "bedroom": "3.5,4.0,1.95>0.6,3.6,4.3@55",
@@ -41,7 +41,7 @@ ROOMS = {**{n: ("gille", c) for n, c in CAMERAS.items()}, **{n: ("montelly", c) 
 
 KNOBS = ("CEILING", "TILE_TONE", "MOTTLE", "LIMEWASH", "SKIP", "THUMBS", "SUN_PICK", "PHOTO_SUN_POWER", "PHOTO_LAMPS",
          "RELIEF", "FLOOR_ROUGH", "CLIP_MAX", "FEATURE_TILE", "ADAPTIVE", "PREFILTER", "FLOOR", "STYLE_SKIP", "ART_SCALES", "NUDGE",
-         "FIXES", "PREVIEW_ONLY", "PREVIEW_W", "PREVIEW_SAMPLES")  # photo.py's environment knobs, forwarded to the containers
+         "FIXES", "PREVIEW_ONLY", "PREVIEW_W", "PREVIEW_SAMPLES", "ART_LIB")  # photo.py's environment knobs, forwarded to the containers
 
 app = modal.App("housegen-photo-test")
 image = (
@@ -62,6 +62,7 @@ image = (
     .add_local_file(os.path.join(HERE, "dress.py"), f"{R}/dress.py")
     .add_local_file(os.path.join(HERE, "post.py"), f"{R}/post.py")
     .add_local_file(os.path.join(HERE, "style.py"), f"{R}/style.py")
+    .add_local_file(os.path.join(HERE, "artlib.py"), f"{R}/artlib.py")
 )
 
 
