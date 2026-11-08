@@ -25,6 +25,9 @@ import bpy
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
+import objlib
+import stage
+
 H = None  # photo.py's module, set by photo.main
 HERE = os.path.dirname(os.path.abspath(__file__))
 SKIP = set(os.environ.get("STYLE_SKIP", "").split(","))  # rules left out, for experiments: rug,bedside,bedart,table,
@@ -209,6 +212,11 @@ def floor_spots(scene, cam, room, sy, r, h, taken=(), step=0.1):
             if before_glass(scene, dg, x, y, sy, n, d1, h):
                 why["glass"] = why.get("glass", 0) + 1
                 continue
+            p = Vector((x, y, sy + 0.25))  # a real wall behind, not the plan's line across an opening or a glass door
+            back = H.trace(scene, dg, p, -n, far=d1 + 0.3)
+            if back is None or (back[0] - p).length > d1 + 0.15 or H.kinds(back[2]) & {"door", "interiorDoor", "window"}:
+                why["open"] = why.get("open", 0) + 1
+                continue
             if passage(scene, dg, x, y, sy, n, r) < 0.6 and not corner:
                 why["passage"] = why.get("passage", 0) + 1
                 continue
@@ -253,7 +261,7 @@ def top_spots(scene, dg, o, floor_z, r, us=None, vs=None):
 # ---------------------------------------------------------------- the rules
 
 def our_rugs(scene):
-    return [o for o in scene.objects if o.name.startswith("rug") and o.type == "MESH" and o.data.materials
+    return [o for o in scene.objects if o.get("is_rug") or o.name.startswith("rug") and o.type == "MESH" and o.data.materials
             and o.data.materials[0].name.startswith("archviz-rug")]
 
 
@@ -278,11 +286,14 @@ def bed_rug(scene, room, sy):
         return 0
     for o in our_rugs(scene):
         if H.inside(poly, *H.to_scene(o.matrix_world.translation)[::2]):
-            o.hide_render = True
+            H.hide(o)
     centre = f @ Vector((0, -(length - cover) - rl / 2, 0))
     x, _, z = H.to_scene(centre)
-    rug = H.dress.rug(scene, (x, z), (rw, rl), floor=sy)
-    rug.rotation_euler[2] = f.to_euler().z
+    if objlib.LIB:
+        stage.rug(scene, room, (x, z), (rw, rl), sy, f.to_euler().z)
+    else:
+        rug = H.dress.rug(scene, (x, z), (rw, rl), floor=sy)
+        rug.rotation_euler[2] = f.to_euler().z
     log(f"rug {rw:.2f} x {rl:.2f} under the bed")
     return 1
 
@@ -759,8 +770,12 @@ def sills(scene, cam, rays, sy):
         q = best[1]
         used.append((c, run))
         x, _, zz = H.to_scene(q)
-        _, size = H.place(scene, H.model("ceramic_vase_01"), (x, z, zz), height=0.17)
-        H.place(scene, H.EUCALYPTUS, (x, z + size.z * 0.8, zz), height=0.42, turn_deg=110)
+        if objlib.LIB:
+            if not stage.sill(scene, x, z, zz):
+                continue
+        else:
+            _, size = H.place(scene, H.model("ceramic_vase_01"), (x, z, zz), height=0.17)
+            H.place(scene, H.EUCALYPTUS, (x, z + size.z * 0.8, zz), height=0.42, turn_deg=110)
         log(f"sill: a bud vase with a sprig at {(round(x, 2), round(z, 2), round(zz, 2))}, sill {run:.2f} x {depth:.2f}")
         n += 1
     if not n:
@@ -876,6 +891,13 @@ def sideboard(scene, cam, room, sy, taken):
     toward the frame's edge, books and a succulent at the other, a print leaning on the wall if the wall is plain."""
     dg = bpy.context.evaluated_depsgraph_get()
     name, L, D, Hc = CABINET
+    path = H.model(name)
+    if objlib.LIB:
+        e = objlib.pick(room, "sideboard", fit=lambda e: 1.0 <= objlib.size(e)[0] <= 2.1 and 0.25 <= objlib.size(e)[1] <= 0.6
+                        and 0.55 <= objlib.size(e)[2] <= 1.0)
+        if e:
+            path, (L, D, Hc) = objlib.path(e), objlib.size(e)
+            log(f"sideboard {e['id']}: {L:.2f} x {D:.2f} x {Hc:.2f}")
     poly = [tuple(p) for p in room["polygon"]]
     doors = doors_of(scene, sy)
     best, why = None, {}
@@ -949,23 +971,28 @@ def sideboard(scene, cam, room, sy, taken):
         return None
     score, c, u, n, views = best
     x, _, z = H.to_scene(c)
-    H.place(scene, H.model(name), (x, sy, z), turn_deg=math.degrees(math.atan2(n.x, -n.y)))
+    H.place(scene, path, (x, sy, z), turn_deg=math.degrees(math.atan2(n.x, -n.y)))
     bpy.context.view_layer.update()
     top = sy + Hc
     # the tall piece at the end toward the frame's nearer edge, the low one at the other
     e = 1.0 if abs(views[4][1].x - 0.5) >= abs(views[0][1].x - 0.5) else -1.0
     vq = c + u * (e * (L / 2 - 0.3)) - n * 0.04
     vx, _, vz = H.to_scene(vq)
-    H.place(scene, H.model("potted_plant_02"), (vx, top, vz), height=0.55, turn_deg=20)
-    bq = c - u * (e * (L / 2 - 0.36)) + n * 0.06
-    jq = c - u * (e * (L / 2 - 0.66)) - n * 0.05
-    jx, _, jz = H.to_scene(jq)
-    H.place(scene, H.model("ceramic_vase_04"), (jx, top, jz), height=0.3, turn_deg=-35)
-    books = put(scene, prop("books", 9), Vector((bq.x, bq.y, top + 0.001)), math.atan2(n.x, -n.y) + math.radians(-12 * e))
-    bpy.context.view_layer.update()
-    blo, bhi = H.box(books)
-    bc = (blo + bhi) / 2
-    H.place(scene, H.model("potted_plant_04"), (bc.x, bhi.z, -bc.y), height=0.16, turn_deg=30)
+    if objlib.LIB:
+        bq = c - u * (e * (L / 2 - 0.36)) + n * 0.06
+        jq = c - u * (e * (L / 2 - 0.66)) - n * 0.05
+        stage.sideboard_top(scene, room, vq, bq, jq, top, math.atan2(n.x, -n.y) + math.radians(-12 * e))
+    else:
+        H.place(scene, H.model("potted_plant_02"), (vx, top, vz), height=0.55, turn_deg=20)
+        bq = c - u * (e * (L / 2 - 0.36)) + n * 0.06
+        jq = c - u * (e * (L / 2 - 0.66)) - n * 0.05
+        jx, _, jz = H.to_scene(jq)
+        H.place(scene, H.model("ceramic_vase_04"), (jx, top, jz), height=0.3, turn_deg=-35)
+        books = put(scene, prop("books", 9), Vector((bq.x, bq.y, top + 0.001)), math.atan2(n.x, -n.y) + math.radians(-12 * e))
+        bpy.context.view_layer.update()
+        blo, bhi = H.box(books)
+        bc = (blo + bhi) / 2
+        H.place(scene, H.model("potted_plant_04"), (bc.x, bhi.z, -bc.y), height=0.16, turn_deg=30)
     # a print leaning on the wall, off-centre toward the books, if the wall above is plain
     piece, tilt = H.artlib.pick(room, "lean"), math.radians(7)
     long = 0.82 * 0.78
@@ -996,7 +1023,7 @@ def edge_clutter(scene, cam, plants):
             continue
         lo, hi = H.box(o)
         size = hi - lo
-        plant = o.name.startswith(("pachira", "potted_plant_02"))
+        plant = o.name.startswith(("pachira", "potted_plant_02")) or (o.get("obj_role") == "plant" and size.z > 0.7)
         if plant != plants or not plant and (max(size.x, size.y) > 0.5 or size.z > 0.7):
             continue
         eye = cam.matrix_world.translation
@@ -1025,11 +1052,12 @@ def edge_clutter(scene, cam, plants):
 def style(scene, cam, rays, rooms, sy, pieces):
     """The rules, room by room, for the rooms the camera sees enough floor of."""
     pieces = H.storey_pieces(scene, sy)  # what is still shown (the swaps hid the kit's pieces they replaced)
+    lib = bool(objlib.LIB)
+    if "edge" not in SKIP and edge_clutter(scene, cam, plants=True):
+        bpy.context.view_layer.update()
+        rays = H.camera_rays(scene, cam, rooms, sy)  # a plant taken out from before the lens hid the floor from them
     seen = seen_rooms(rays, rooms, sy)
     log("rooms seen:", [(r["name"], c) for r, c in seen])
-    if "edge" not in SKIP:
-        edge_clutter(scene, cam, plants=True)
-        bpy.context.view_layer.update()
     done = []
     taken = []
     for i, (room, count) in enumerate(seen):
@@ -1040,17 +1068,22 @@ def style(scene, cam, rays, rooms, sy, pieces):
             if "rug" not in SKIP:
                 done.append(("rug", bed_rug(scene, room, sy)))
             if "bedside" not in SKIP:
-                done.append(("bedside", bedsides(scene, cam, room, sy, pieces)))
+                done.append(("bedside", (stage.nightstand if lib else bedsides)(scene, cam, room, sy, pieces)))
             if "bedart" not in SKIP:
                 done.append(("bedart", bed_art(scene, room, sy)))
         if "table" not in SKIP:
-            done.append(("table", table_extras(scene, cam, room, sy, pieces)))
+            done.append(("table", (stage.dining if lib else table_extras)(scene, cam, room, sy, pieces)))
         if "coffee" not in SKIP:
-            done.append(("coffee", coffee_table(scene, cam, room, sy, pieces)))
+            done.append(("coffee", (stage.coffee if lib else coffee_table)(scene, cam, room, sy, pieces)))
         if "sofa" not in SKIP:
-            done.append(("sofa", sofa_dress(scene, cam, room, sy, pieces)))
+            done.append(("sofa", (stage.sofa if lib else sofa_dress)(scene, cam, room, sy, pieces)))
         bpy.context.view_layer.update()
-        if use in ("bath",) and "stool" not in SKIP:
+        if lib:
+            done.append(("desk", stage.desk(scene, cam, room, sy, pieces)))
+            done.append(("sofa side", stage.sofa_side(scene, cam, room, sy, pieces, taken)))
+            done.append(("bed foot", stage.bed_foot(scene, cam, room, sy, taken)))
+            bpy.context.view_layer.update()
+        if use in ("bath",) and "stool" not in SKIP and (not lib or objlib.choose(room, "stool", [True, False])):
             t = stool(scene, cam, room, sy, taken)
             if t:
                 taken.append(t)
@@ -1061,12 +1094,18 @@ def style(scene, cam, rays, rooms, sy, pieces):
             if t:
                 taken.append(t)
             bpy.context.view_layer.update()
-        if "accent" not in SKIP and i == 0 and use not in ("wc", "stair", "storage"):  # one, where most floor shows
+        if lib and "accent" not in SKIP and use not in ("stair", "storage"):
+            done.append(("floor", len(stage.floor(scene, cam, room, sy, taken, pieces))))
+            bpy.context.view_layer.update()
+        elif not lib and "accent" not in SKIP and i == 0 and use not in ("wc", "stair", "storage"):  # one, where most floor shows
             t = accent(scene, cam, room, sy, taken, pieces)
             if t:
                 taken.append(t)
     most = seen_any(rays, rooms, sy)  # wall rules: the room the camera sees most of, floor or not
     log("rooms seen, any surface:", [(r["name"], c) for r, c in most[:3]])
+    if lib and most and "wall" not in SKIP:
+        done.append(("wall", stage.wall(scene, cam, most[0][0], sy)))
+        bpy.context.view_layer.update()
     if most and most[0][0]["use"] == "bath" and "rail" not in SKIP:
         done.append(("rail", int(bool(towel_rail(scene, cam, most[0][0], sy)))))
         bpy.context.view_layer.update()

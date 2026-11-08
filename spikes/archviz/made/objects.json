@@ -1,0 +1,11300 @@
+[
+{
+"id": "abo-B075HR4ZDB",
+"src": "abo",
+"abo": "B/B075HR4ZDB.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Decorative Ceramic Vase Decor With ",
+"ex": [
+0.159,
+0.2,
+0.159
+],
+"tex": 4096,
+"faces": 18080,
+"size": [
+0.159,
+0.159,
+0.2
+]
+},
+{
+"id": "abo-B075HR7DM7",
+"src": "abo",
+"abo": "7/B075HR7DM7.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Angled Stoneware Vase, 5.25\"H, White",
+"ex": [
+0.141,
+0.152,
+0.141
+],
+"tex": 2048,
+"faces": 9616,
+"size": [
+0.141,
+0.141,
+0.152
+]
+},
+{
+"id": "abo-B075HR7KY9",
+"src": "abo",
+"abo": "9/B075HR7KY9.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Oval Pattern Decorative Stoneware V",
+"ex": [
+0.127,
+0.282,
+0.127
+],
+"tex": 2048,
+"faces": 4720,
+"size": [
+0.127,
+0.127,
+0.282
+]
+},
+{
+"id": "abo-B075HR7LJG",
+"src": "abo",
+"abo": "G/B075HR7LJG.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Oval Pattern Decorative Stoneware V",
+"ex": [
+0.162,
+0.223,
+0.162
+],
+"tex": 2048,
+"faces": 4720,
+"size": [
+0.162,
+0.162,
+0.223
+]
+},
+{
+"id": "abo-B075HWDT2Z",
+"src": "abo",
+"abo": "Z/B075HWDT2Z.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Geometric Pattern Decorative Stoneware Vas",
+"ex": [
+0.167,
+0.328,
+0.166
+],
+"tex": 2048,
+"faces": 34672,
+"size": [
+0.167,
+0.166,
+0.328
+]
+},
+{
+"id": "abo-B075HWDTMM",
+"src": "abo",
+"abo": "M/B075HWDTMM.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Angled Stoneware Home Decor Flower Vase - ",
+"ex": [
+0.133,
+0.263,
+0.133
+],
+"tex": 2048,
+"faces": 14080,
+"size": [
+0.133,
+0.133,
+0.263
+]
+},
+{
+"id": "abo-B075HWK9QT",
+"src": "abo",
+"abo": "T/B075HWK9QT.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Angled Stoneware Vase, 14.4\"H, White",
+"ex": [
+0.122,
+0.329,
+0.116
+],
+"tex": 2048,
+"faces": 6720,
+"size": [
+0.122,
+0.116,
+0.329
+]
+},
+{
+"id": "abo-B075HWMC6S",
+"src": "abo",
+"abo": "S/B075HWMC6S.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ceramic Home Decor Flower Vase With",
+"ex": [
+0.069,
+0.088,
+0.069
+],
+"tex": 2048,
+"faces": 13600,
+"off": true,
+"size": [
+0.069,
+0.069,
+0.088
+]
+},
+{
+"id": "abo-B075HWX46K",
+"src": "abo",
+"abo": "K/B075HWX46K.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Farmhouse Triangle Pattern Stonewar",
+"ex": [
+0.175,
+0.23,
+0.174
+],
+"tex": 2048,
+"faces": 4100,
+"size": [
+0.175,
+0.174,
+0.23
+]
+},
+{
+"id": "abo-B075HWX46N",
+"src": "abo",
+"abo": "N/B075HWX46N.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Crosshatch Home Decor Flower Vase -",
+"ex": [
+0.122,
+0.282,
+0.121
+],
+"tex": 2048,
+"faces": 5456,
+"size": [
+0.122,
+0.121,
+0.282
+]
+},
+{
+"id": "abo-B075HXJPW6",
+"src": "abo",
+"abo": "6/B075HXJPW6.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ceramic Home Decor Flower Vase With",
+"ex": [
+0.131,
+0.175,
+0.131
+],
+"tex": 2048,
+"faces": 11040,
+"size": [
+0.131,
+0.131,
+0.175
+]
+},
+{
+"id": "abo-B075HXLWT5",
+"src": "abo",
+"abo": "5/B075HXLWT5.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Angled Stoneware Vase, 5.5\"H, White",
+"ex": [
+0.138,
+0.134,
+0.139
+],
+"tex": 2048,
+"faces": 9174,
+"size": [
+0.138,
+0.139,
+0.134
+]
+},
+{
+"id": "abo-B075HXLWTN",
+"src": "abo",
+"abo": "N/B075HXLWTN.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Angled Stoneware Home Decor Flower Vase - ",
+"ex": [
+0.195,
+0.275,
+0.195
+],
+"tex": 2048,
+"faces": 8640,
+"size": [
+0.195,
+0.195,
+0.275
+]
+},
+{
+"id": "abo-B075HXPFTG",
+"src": "abo",
+"abo": "G/B075HXPFTG.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Geometric Stoneware Home Decor Flower Vase",
+"ex": [
+0.162,
+0.185,
+0.164
+],
+"tex": 2048,
+"faces": 6552,
+"size": [
+0.162,
+0.164,
+0.185
+]
+},
+{
+"id": "abo-B078JFFX4L",
+"src": "abo",
+"abo": "L/B078JFFX4L.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Round Ceramic Home Decor Flower Vas",
+"ex": [
+0.137,
+0.176,
+0.137
+],
+"tex": 2048,
+"faces": 8320,
+"size": [
+0.137,
+0.137,
+0.176
+]
+},
+{
+"id": "abo-B078JGHZT3",
+"src": "abo",
+"abo": "3/B078JGHZT3.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ceramic Home Decor Flower Vase - 7 ",
+"ex": [
+0.116,
+0.179,
+0.116
+],
+"tex": 2048,
+"faces": 14954,
+"size": [
+0.116,
+0.116,
+0.179
+]
+},
+{
+"id": "abo-B078JGRLCJ",
+"src": "abo",
+"abo": "J/B078JGRLCJ.glb",
+"role": "vase",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Mid Century Modern Round Ceramic Home Decor Flowe",
+"ex": [
+0.154,
+0.133,
+0.154
+],
+"tex": 2048,
+"faces": 7440,
+"size": [
+0.154,
+0.154,
+0.133
+]
+},
+{
+"id": "abo-B078JGYJTG",
+"src": "abo",
+"abo": "G/B078JGYJTG.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ceramic Home Decor Flower Vase - 11",
+"ex": [
+0.144,
+0.296,
+0.144
+],
+"tex": 2048,
+"faces": 27648,
+"size": [
+0.144,
+0.144,
+0.296
+]
+},
+{
+"id": "abo-B078JJDPR2",
+"src": "abo",
+"abo": "2/B078JJDPR2.glb",
+"role": "vase",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ceramic Home Decor Flower Vase - 7 ",
+"ex": [
+0.106,
+0.192,
+0.106
+],
+"tex": 2048,
+"faces": 8000,
+"size": [
+0.106,
+0.106,
+0.192
+]
+},
+{
+"id": "abo-B078JMJC46",
+"src": "abo",
+"abo": "6/B078JMJC46.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ceramic Spotted Decor Planter Pot -",
+"ex": [
+0.133,
+0.282,
+0.133
+],
+"tex": 2048,
+"faces": 15744,
+"size": [
+0.133,
+0.133,
+0.282
+]
+},
+{
+"id": "abo-B078JMJC49",
+"src": "abo",
+"abo": "9/B078JMJC49.glb",
+"role": "vase",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Mid Century Modern Ceramic Home Decor Flower Vase",
+"ex": [
+0.139,
+0.313,
+0.139
+],
+"tex": 2048,
+"faces": 4720,
+"size": [
+0.139,
+0.139,
+0.313
+]
+},
+{
+"id": "abo-B07B8NVHX1",
+"src": "abo",
+"abo": "1/B07B8NVHX1.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ombre Stoneware Home Decor Flower V",
+"ex": [
+0.108,
+0.204,
+0.108
+],
+"tex": 2048,
+"faces": 3456,
+"size": [
+0.108,
+0.108,
+0.204
+]
+},
+{
+"id": "abo-B07B8NZQ68",
+"src": "abo",
+"abo": "8/B07B8NZQ68.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Farmhouse Milk Jug Stoneware Home D",
+"ex": [
+0.158,
+0.228,
+0.158
+],
+"tex": 2048,
+"faces": 6720,
+"size": [
+0.158,
+0.158,
+0.228
+]
+},
+{
+"id": "abo-B07B8PXTSY",
+"src": "abo",
+"abo": "Y/B07B8PXTSY.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ombre Stoneware Home Decor Flower V",
+"ex": [
+0.111,
+0.261,
+0.111
+],
+"tex": 2048,
+"faces": 4248,
+"size": [
+0.111,
+0.111,
+0.261
+]
+},
+{
+"id": "abo-B07B8TGC9Z",
+"src": "abo",
+"abo": "Z/B07B8TGC9Z.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Stoneware Home Decor Flower Vase - 12 x 7.",
+"ex": [
+0.184,
+0.305,
+0.184
+],
+"tex": 2048,
+"faces": 104960,
+"size": [
+0.184,
+0.184,
+0.305
+]
+},
+{
+"id": "abo-B07B8VJBCL",
+"src": "abo",
+"abo": "L/B07B8VJBCL.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ombre Stoneware Home Decor Flower V",
+"ex": [
+0.111,
+0.154,
+0.111
+],
+"tex": 2048,
+"faces": 7128,
+"size": [
+0.111,
+0.111,
+0.154
+]
+},
+{
+"id": "abo-B07B8W8FBV",
+"src": "abo",
+"abo": "V/B07B8W8FBV.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Farmhouse Milk Jug Stoneware Home D",
+"ex": [
+0.153,
+0.167,
+0.153
+],
+"tex": 2048,
+"faces": 8080,
+"size": [
+0.153,
+0.153,
+0.167
+]
+},
+{
+"id": "abo-B07HSJVP5C",
+"src": "abo",
+"abo": "C/B07HSJVP5C.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Farmhouse Stoneware Jug Home Decor ",
+"ex": [
+0.203,
+0.382,
+0.186
+],
+"tex": 2048,
+"faces": 11952,
+"size": [
+0.203,
+0.186,
+0.382
+]
+},
+{
+"id": "abo-B07HSK2H7M",
+"src": "abo",
+"abo": "M/B07HSK2H7M.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Cylinder Stoneware Watering Can Vase Set -",
+"ex": [
+0.168,
+0.247,
+0.326
+],
+"tex": 2048,
+"faces": 29148,
+"size": [
+0.168,
+0.326,
+0.247
+]
+},
+{
+"id": "abo-B07HSLG6WR",
+"src": "abo",
+"abo": "R/B07HSLG6WR.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Westline Modern Indoor Outdoor Hand-Painted Stone",
+"ex": [
+0.169,
+0.237,
+0.169
+],
+"tex": 2048,
+"faces": 14880,
+"size": [
+0.169,
+0.169,
+0.237
+]
+},
+{
+"id": "abo-B07HSMVFMP",
+"src": "abo",
+"abo": "P/B07HSMVFMP.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Emerick Rustic Tall Stoneware Decor Vase w",
+"ex": [
+0.137,
+0.307,
+0.137
+],
+"tex": 2048,
+"faces": 3712,
+"size": [
+0.137,
+0.137,
+0.307
+]
+},
+{
+"id": "abo-B07JLBDT51",
+"src": "abo",
+"abo": "1/B07JLBDT51.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Westline Modern Indoor Outdoor Hand-Painted Stone",
+"ex": [
+0.169,
+0.24,
+0.169
+],
+"tex": 2048,
+"faces": 14880,
+"size": [
+0.169,
+0.169,
+0.24
+]
+},
+{
+"id": "abo-B07JM1K8VH",
+"src": "abo",
+"abo": "H/B07JM1K8VH.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Westline Modern Indoor Outdoor Hand-Painted Stone",
+"ex": [
+0.169,
+0.24,
+0.169
+],
+"tex": 2048,
+"faces": 14880,
+"size": [
+0.169,
+0.169,
+0.24
+]
+},
+{
+"id": "abo-B07JM6GHC8",
+"src": "abo",
+"abo": "8/B07JM6GHC8.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Emerick Rustic Tall Stoneware Decor Vase w",
+"ex": [
+0.186,
+0.38,
+0.185
+],
+"tex": 2048,
+"faces": 4160,
+"size": [
+0.186,
+0.185,
+0.38
+]
+},
+{
+"id": "abo-B07QB8L3L5",
+"src": "abo",
+"abo": "5/B07QB8L3L5.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Textured Modern Vase, 15.86\"H, Blue",
+"ex": [
+0.116,
+0.23,
+0.116
+],
+"tex": 4096,
+"faces": 6192,
+"size": [
+0.116,
+0.116,
+0.23
+]
+},
+{
+"id": "abo-B07QC8C7Y4",
+"src": "abo",
+"abo": "4/B07QC8C7Y4.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Textured Modern Vase, 12.4\"H, White",
+"ex": [
+0.202,
+0.335,
+0.202
+],
+"tex": 4096,
+"faces": 6192,
+"size": [
+0.202,
+0.202,
+0.335
+]
+},
+{
+"id": "abo-B07QC8CB15",
+"src": "abo",
+"abo": "5/B07QC8CB15.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century Feather Vase, 8.66\"H, Neutral ",
+"ex": [
+0.172,
+0.27,
+0.172
+],
+"tex": 4096,
+"faces": 6240,
+"size": [
+0.172,
+0.172,
+0.27
+]
+},
+{
+"id": "abo-B07QC8CFCY",
+"src": "abo",
+"abo": "Y/B07QC8CFCY.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Ravenna Home Mid-Century Stoneware Vases, Set of 3, 4.8",
+"ex": [
+0.297,
+0.122,
+0.097
+],
+"tex": 4096,
+"faces": 22080,
+"size": [
+0.297,
+0.097,
+0.122
+]
+},
+{
+"id": "abo-B07QD6ZC1P",
+"src": "abo",
+"abo": "P/B07QD6ZC1P.glb",
+"role": "vase",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Stoneware Vase, 10.51\"H, Blue and S",
+"ex": [
+0.163,
+0.267,
+0.163
+],
+"tex": 4096,
+"faces": 13320,
+"size": [
+0.163,
+0.163,
+0.267
+]
+},
+{
+"id": "abo-B07QD6ZV84",
+"src": "abo",
+"abo": "4/B07QD6ZV84.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century Rustic Vase, 8.66\"H, Neutral",
+"ex": [
+0.172,
+0.27,
+0.172
+],
+"tex": 4096,
+"faces": 6240,
+"size": [
+0.172,
+0.172,
+0.27
+]
+},
+{
+"id": "abo-B07QD6ZV9Q",
+"src": "abo",
+"abo": "Q/B07QD6ZV9Q.glb",
+"role": "vase",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Ravenna Home Mid-Century Stoneware Vase, 10.9\"H, Black",
+"ex": [
+0.136,
+0.289,
+0.136
+],
+"tex": 4096,
+"faces": 7552,
+"size": [
+0.136,
+0.136,
+0.289
+]
+},
+{
+"id": "abo-B07QFB5MW6",
+"src": "abo",
+"abo": "6/B07QFB5MW6.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Textured Modern Vase, 9.05\"H, Gray",
+"ex": [
+0.297,
+0.499,
+0.297
+],
+"tex": 4096,
+"faces": 6336,
+"size": [
+0.297,
+0.297,
+0.499
+]
+},
+{
+"id": "abo-B07QFB5MXX",
+"src": "abo",
+"abo": "X/B07QFB5MXX.glb",
+"role": "vase",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Metallic Stoneware Vase, 11.8\"H, Gold",
+"ex": [
+0.061,
+0.143,
+0.061
+],
+"tex": 4096,
+"faces": 8088,
+"off": true,
+"size": [
+0.061,
+0.061,
+0.143
+]
+},
+{
+"id": "abo-B07QHL2D4B",
+"src": "abo",
+"abo": "B/B07QHL2D4B.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Textured Stoneware Vase, 13.9\"H, White",
+"ex": [
+0.143,
+0.316,
+0.143
+],
+"tex": 4096,
+"faces": 4240,
+"size": [
+0.143,
+0.143,
+0.316
+]
+},
+{
+"id": "abo-B07QHL6PLF",
+"src": "abo",
+"abo": "F/B07QHL6PLF.glb",
+"role": "vase",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Stoneware Vase, 13.78\"H, Dark Blue ",
+"ex": [
+0.163,
+0.316,
+0.163
+],
+"tex": 4096,
+"faces": 13320,
+"size": [
+0.163,
+0.163,
+0.316
+]
+},
+{
+"id": "abo-B07QHL8W81",
+"src": "abo",
+"abo": "1/B07QHL8W81.glb",
+"role": "vase",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Stoneware Vases, 2-Piece Set, 5.2\"H, White",
+"ex": [
+0.187,
+0.131,
+0.089
+],
+"tex": 4096,
+"faces": 12032,
+"size": [
+0.187,
+0.089,
+0.131
+]
+},
+{
+"id": "abo-B0831PPZY6",
+"src": "abo",
+"abo": "6/B0831PPZY6.glb",
+"role": "vase",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Modern Totem Stoneware Vases, Set of 3, Black",
+"ex": [
+0.307,
+0.249,
+0.12
+],
+"tex": 4096,
+"faces": 24880,
+"size": [
+0.307,
+0.12,
+0.249
+]
+},
+{
+"id": "abo-B0842L2D5N",
+"src": "abo",
+"abo": "N/B0842L2D5N.glb",
+"role": "vase",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Stone & Beam Shibori Inspired Stoneware Vase, 11.6\"H, B",
+"ex": [
+0.159,
+0.295,
+0.159
+],
+"tex": 4096,
+"faces": 5438,
+"size": [
+0.159,
+0.159,
+0.295
+]
+},
+{
+"id": "abo-B075HWBL9Q",
+"src": "abo",
+"abo": "Q/B075HWBL9Q.glb",
+"role": "jar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Organic-Shape Stoneware Round Decorative O",
+"ex": [
+0.154,
+0.123,
+0.154
+],
+"tex": 2048,
+"faces": 11948,
+"size": [
+0.154,
+0.154,
+0.123
+]
+},
+{
+"id": "abo-B075HWDS7Y",
+"src": "abo",
+"abo": "Y/B075HWDS7Y.glb",
+"role": "jar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Organic-Shape Stoneware Round Decorative O",
+"ex": [
+0.118,
+0.168,
+0.118
+],
+"tex": 2048,
+"faces": 11948,
+"size": [
+0.118,
+0.118,
+0.168
+]
+},
+{
+"id": "abo-B075HWTX4Z",
+"src": "abo",
+"abo": "Z/B075HWTX4Z.glb",
+"role": "jar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Acorn Shaped Stoneware Box, 5\"H, Wh",
+"ex": [
+0.126,
+0.11,
+0.126
+],
+"tex": 2048,
+"faces": 5280,
+"size": [
+0.126,
+0.126,
+0.11
+]
+},
+{
+"id": "abo-B075HXHKVF",
+"src": "abo",
+"abo": "F/B075HXHKVF.glb",
+"role": "jar",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Stoneware Round Decorative Jewelry Box - 3",
+"ex": [
+0.123,
+0.1,
+0.123
+],
+"tex": 2048,
+"faces": 11948,
+"size": [
+0.123,
+0.123,
+0.1
+]
+},
+{
+"id": "abo-B075HXQJT1",
+"src": "abo",
+"abo": "1/B075HXQJT1.glb",
+"role": "jar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Acorn Shaped Stoneware Box, 4.25\"H,",
+"ex": [
+0.107,
+0.094,
+0.107
+],
+"tex": 2048,
+"faces": 5280,
+"size": [
+0.107,
+0.107,
+0.094
+]
+},
+{
+"id": "abo-B07B8PXQ49",
+"src": "abo",
+"abo": "9/B07B8PXQ49.glb",
+"role": "jar",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Mid Century Modern Decorative Marble Jewelry Box ",
+"ex": [
+0.101,
+0.063,
+0.101
+],
+"tex": 2048,
+"faces": 5480,
+"size": [
+0.101,
+0.101,
+0.063
+]
+},
+{
+"id": "abo-B075HWDSDK",
+"src": "abo",
+"abo": "K/B075HWDSDK.glb",
+"role": "bowl",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Stoneware Decorative Bowl Decor, 4.",
+"ex": [
+0.268,
+0.121,
+0.268
+],
+"tex": 2048,
+"faces": 15360,
+"size": [
+0.268,
+0.268,
+0.121
+]
+},
+{
+"id": "abo-B075HR7LD2",
+"src": "abo",
+"abo": "2/B075HR7LD2.glb",
+"role": "candle",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic-Look Stoneware Decorative Candle Ho",
+"ex": [
+0.11,
+0.239,
+0.11
+],
+"tex": 2048,
+"faces": 8800,
+"size": [
+0.11,
+0.11,
+0.239
+]
+},
+{
+"id": "abo-B075HX7JB2",
+"src": "abo",
+"abo": "2/B075HX7JB2.glb",
+"role": "candle",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Farmhouse Stoneware Pillar Candle D",
+"ex": [
+0.088,
+0.203,
+0.088
+],
+"tex": 2048,
+"faces": 8320,
+"size": [
+0.088,
+0.088,
+0.203
+]
+},
+{
+"id": "abo-B075HXHKTZ",
+"src": "abo",
+"abo": "Z/B075HXHKTZ.glb",
+"role": "candle",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Farmhouse Stoneware Pillar Candle D",
+"ex": [
+0.123,
+0.202,
+0.123
+],
+"tex": 2048,
+"faces": 8560,
+"size": [
+0.123,
+0.123,
+0.202
+]
+},
+{
+"id": "abo-B07B8JXP8G",
+"src": "abo",
+"abo": "G/B07B8JXP8G.glb",
+"role": "candle",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Concrete and Glass Decor Candl",
+"ex": [
+0.139,
+0.223,
+0.138
+],
+"tex": 0,
+"faces": 2820,
+"off": true,
+"size": [
+0.139,
+0.138,
+0.223
+]
+},
+{
+"id": "abo-B07HSPJ11F",
+"src": "abo",
+"abo": "F/B07HSPJ11F.glb",
+"role": "candle",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Cylindrical Stoneware Candle Holder Lanter",
+"ex": [
+0.347,
+0.255,
+0.184
+],
+"tex": 2048,
+"faces": 96128,
+"size": [
+0.347,
+0.184,
+0.255
+]
+},
+{
+"id": "abo-B07JM1K8VK",
+"src": "abo",
+"abo": "K/B07JM1K8VK.glb",
+"role": "candle",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Farmhouse Decorative Candle Holder ",
+"ex": [
+0.439,
+0.307,
+0.245
+],
+"tex": 2048,
+"faces": 107416,
+"size": [
+0.439,
+0.245,
+0.307
+]
+},
+{
+"id": "abo-B07JXZRQHL",
+"src": "abo",
+"abo": "L/B07JXZRQHL.glb",
+"role": "candle",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Faux Wood Finish Lantern with Bulb,",
+"ex": [
+0.157,
+0.331,
+0.161
+],
+"tex": 2048,
+"faces": 19734,
+"size": [
+0.157,
+0.161,
+0.331
+]
+},
+{
+"id": "abo-B07QD6ZWTP",
+"src": "abo",
+"abo": "P/B07QD6ZWTP.glb",
+"role": "candle",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Decorative Stoneware Container with",
+"ex": [
+0.163,
+0.229,
+0.172
+],
+"tex": 4096,
+"faces": 45516,
+"size": [
+0.163,
+0.172,
+0.229
+]
+},
+{
+"id": "abo-B07QFB4DQB",
+"src": "abo",
+"abo": "B/B07QFB4DQB.glb",
+"role": "candle",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Decorative Stoneware Container with",
+"ex": [
+0.188,
+0.264,
+0.198
+],
+"tex": 4096,
+"faces": 45516,
+"size": [
+0.188,
+0.198,
+0.264
+]
+},
+{
+"id": "abo-B078JM52VN",
+"src": "abo",
+"abo": "N/B078JM52VN.glb",
+"role": "tray",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Mid Century Modern Glam Serving Tray - 3.5 x 11 x",
+"ex": [
+0.444,
+0.084,
+0.304
+],
+"tex": 4096,
+"faces": 3628,
+"size": [
+0.444,
+0.304,
+0.084
+]
+},
+{
+"id": "abo-B078JMXRGC",
+"src": "abo",
+"abo": "C/B078JMXRGC.glb",
+"role": "tray",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Stone and Birch Natural Edge Serving Decor",
+"ex": [
+0.387,
+0.062,
+0.231
+],
+"tex": 4096,
+"faces": 22528,
+"size": [
+0.387,
+0.231,
+0.062
+]
+},
+{
+"id": "abo-B07B8M878P",
+"src": "abo",
+"abo": "P/B07B8M878P.glb",
+"role": "tray",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Contemporary Decorative Large and Small Metal Tra",
+"ex": [
+0.495,
+0.101,
+0.297
+],
+"tex": 2048,
+"faces": 9312,
+"size": [
+0.495,
+0.297,
+0.101
+]
+},
+{
+"id": "abo-B07B8NV9TK",
+"src": "abo",
+"abo": "K/B07B8NV9TK.glb",
+"role": "tray",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Contemporary Decorative Round Metal Serving Tray ",
+"ex": [
+0.543,
+0.069,
+0.438
+],
+"tex": 2048,
+"faces": 13344,
+"size": [
+0.543,
+0.438,
+0.069
+]
+},
+{
+"id": "abo-B076V9MWFL",
+"src": "abo",
+"abo": "L/B076V9MWFL.glb",
+"role": "clock",
+"tone": "neutral",
+"name": "Amazon Brand - Solimo 12\" Wall Clock - Paramount Dark Paneling (Silent",
+"ex": [
+0.293,
+0.293,
+0.04
+],
+"tex": 4096,
+"faces": 22998,
+"off": true,
+"size": [
+0.293,
+0.04,
+0.293
+]
+},
+{
+"id": "abo-B07B8NSY3Z",
+"src": "abo",
+"abo": "Z/B07B8NSY3Z.glb",
+"role": "clock",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Large Battery Operated Square Art Deco Woo",
+"ex": [
+0.705,
+0.705,
+0.032
+],
+"tex": 2048,
+"faces": 23173,
+"size": [
+0.705,
+0.032,
+0.705
+]
+},
+{
+"id": "abo-B07B8NZMZF",
+"src": "abo",
+"abo": "F/B07B8NZMZF.glb",
+"role": "clock",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Vintage Farmhouse Style Decorative Metal W",
+"ex": [
+0.843,
+0.843,
+0.025
+],
+"tex": 2048,
+"faces": 20026,
+"size": [
+0.843,
+0.025,
+0.843
+]
+},
+{
+"id": "abo-B07B8NZQF3",
+"src": "abo",
+"abo": "3/B07B8NZQF3.glb",
+"role": "clock",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Minamalist Wood-Face Clock, 12\"H, Walnut",
+"ex": [
+0.314,
+0.314,
+0.04
+],
+"tex": 2048,
+"faces": 11596,
+"size": [
+0.314,
+0.04,
+0.314
+]
+},
+{
+"id": "abo-B07B8P1SB7",
+"src": "abo",
+"abo": "7/B07B8P1SB7.glb",
+"role": "clock",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Minamalist Wood-Face Clock, 12\"H, Natural",
+"ex": [
+0.314,
+0.314,
+0.029
+],
+"tex": 2048,
+"faces": 11436,
+"size": [
+0.314,
+0.029,
+0.314
+]
+},
+{
+"id": "abo-B07B8PXJJW",
+"src": "abo",
+"abo": "W/B07B8PXJJW.glb",
+"role": "clock",
+"tone": "neutral",
+"name": "Rivet Modern Brass Clock, 12\"H, Green",
+"ex": [
+0.314,
+0.314,
+0.04
+],
+"tex": 2048,
+"faces": 15568,
+"size": [
+0.314,
+0.04,
+0.314
+]
+},
+{
+"id": "abo-B07B8PXMRT",
+"src": "abo",
+"abo": "T/B07B8PXMRT.glb",
+"role": "clock",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Clock, 18\"H, Black/Brass",
+"ex": [
+0.454,
+0.454,
+0.038
+],
+"tex": 2048,
+"faces": 14480,
+"size": [
+0.454,
+0.038,
+0.454
+]
+},
+{
+"id": "abo-B07B8TGC99",
+"src": "abo",
+"abo": "9/B07B8TGC99.glb",
+"role": "clock",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Retro Steel Clock, 12\"H, Copper",
+"ex": [
+0.313,
+0.313,
+0.04
+],
+"tex": 2048,
+"faces": 11624,
+"size": [
+0.313,
+0.04,
+0.313
+]
+},
+{
+"id": "abo-B07M6PJ66Q",
+"src": "abo",
+"abo": "Q/B07M6PJ66Q.glb",
+"role": "canister",
+"tone": "neutral",
+"name": "Ravenna Classic Stoneware 2-Piece Canister Set, 9.5\"H and 7.625\"H, Whi",
+"ex": [
+0.181,
+0.211,
+0.181
+],
+"tex": 4096,
+"faces": 27680,
+"size": [
+0.181,
+0.181,
+0.211
+]
+},
+{
+"id": "abo-B07MF1NJ7Q",
+"src": "abo",
+"abo": "Q/B07MF1NJ7Q.glb",
+"role": "canister",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Ravenna Home Classic Stoneware 3-Piece Filigree Caniste",
+"ex": [
+0.13,
+0.176,
+0.13
+],
+"tex": 4096,
+"faces": 21140,
+"size": [
+0.13,
+0.13,
+0.176
+]
+},
+{
+"id": "abo-B07MF1SFKD",
+"src": "abo",
+"abo": "D/B07MF1SFKD.glb",
+"role": "canister",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Ravenna Home Classic Stoneware 3-Piece Labeled Canister",
+"ex": [
+0.182,
+0.208,
+0.182
+],
+"tex": 4096,
+"faces": 12960,
+"size": [
+0.182,
+0.182,
+0.208
+]
+},
+{
+"id": "abo-B07ML7P8ZZ",
+"src": "abo",
+"abo": "Z/B07ML7P8ZZ.glb",
+"role": "canister",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Ravenna Home Classic Stoneware 3-Piece Filigree Caniste",
+"ex": [
+0.13,
+0.176,
+0.13
+],
+"tex": 4096,
+"faces": 21140,
+"size": [
+0.13,
+0.13,
+0.176
+]
+},
+{
+"id": "abo-B078JM9XSJ",
+"src": "abo",
+"abo": "J/B078JM9XSJ.glb",
+"role": "basket",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Farmhouse Wood and Galvanized Metal",
+"ex": [
+0.545,
+0.247,
+0.413
+],
+"tex": 2048,
+"faces": 47200,
+"size": [
+0.545,
+0.413,
+0.247
+]
+},
+{
+"id": "abo-B084HV7BDJ",
+"src": "abo",
+"abo": "J/B084HV7BDJ.glb",
+"role": "basket",
+"tone": "neutral",
+"name": "Rivet Modern Tall Geometric Wire Baskets, Set of 2, 13.25\"H and 10.75\"",
+"ex": [
+0.805,
+0.343,
+0.451
+],
+"tex": 4096,
+"faces": 107572,
+"size": [
+0.805,
+0.451,
+0.343
+]
+},
+{
+"id": "abo-B01DN8TB5U",
+"src": "abo",
+"abo": "U/B01DN8TB5U.glb",
+"role": "notebook",
+"tone": "dark",
+"name": "AmazonBasics Classic Blank Notebook, 240 Pages, Hardcover - Plain",
+"ex": [
+0.127,
+0.213,
+0.016
+],
+"tex": 4096,
+"faces": 1574,
+"size": [
+0.127,
+0.016,
+0.213
+]
+},
+{
+"id": "abo-B078GTTCCF",
+"src": "abo",
+"abo": "F/B078GTTCCF.glb",
+"role": "notebook",
+"tone": "dark",
+"name": "AmazonBasics Daily Planner and Journal - 21.6 x 28 cm - Soft Cover",
+"ex": [
+0.216,
+0.281,
+0.023
+],
+"tex": 4096,
+"faces": 3532,
+"size": [
+0.216,
+0.023,
+0.281
+]
+},
+{
+"id": "abo-B07QD6V6MP",
+"src": "abo",
+"abo": "P/B07QD6V6MP.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Industrial Hexagonal Side Table with Solid",
+"ex": [
+0.579,
+0.564,
+0.578
+],
+"tex": 4096,
+"faces": 6408,
+"size": [
+0.579,
+0.578,
+0.564
+]
+},
+{
+"id": "abo-B07QF9Y71N",
+"src": "abo",
+"abo": "N/B07QF9Y71N.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Industrial Solid Wood Lamp Table with Hairpin Met",
+"ex": [
+0.599,
+0.5,
+0.599
+],
+"tex": 4096,
+"faces": 3092,
+"size": [
+0.599,
+0.599,
+0.5
+]
+},
+{
+"id": "abo-B07RT64HF7",
+"src": "abo",
+"abo": "7/B07RT64HF7.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand-Movian Ljungan 2-Tier Side Table, 42 x 53cm, White",
+"ex": [
+0.418,
+0.532,
+0.418
+],
+"tex": 4096,
+"faces": 177696,
+"size": [
+0.418,
+0.418,
+0.532
+]
+},
+{
+"id": "abo-B07TTTGQKZ",
+"src": "abo",
+"abo": "Z/B07TTTGQKZ.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "AmazonBasics Plant Stand, Black",
+"ex": [
+0.24,
+0.584,
+0.24
+],
+"tex": 4096,
+"faces": 29520,
+"size": [
+0.24,
+0.24,
+0.584
+]
+},
+{
+"id": "abo-B07VDD538M",
+"src": "abo",
+"abo": "M/B07VDD538M.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Marchio Amazon - Movian Kyyvesi - Tavolino da salotto - 40 x 40 x 40 c",
+"ex": [
+0.4,
+0.4,
+0.4
+],
+"tex": 4096,
+"faces": 25468,
+"size": [
+0.4,
+0.4,
+0.4
+]
+},
+{
+"id": "abo-B07HGD1WYB",
+"src": "abo",
+"abo": "B/B07HGD1WYB.glb",
+"role": "pouf",
+"tone": "cool",
+"name": "Amazon Brand -\u00a0Rivet Ross Tweed Lift-Top Storage Ottoman/Footstool wit",
+"ex": [
+0.45,
+0.46,
+0.45
+],
+"tex": 4096,
+"faces": 27180,
+"size": [
+0.45,
+0.45,
+0.46
+]
+},
+{
+"id": "abo-B07HGK77RG",
+"src": "abo",
+"abo": "G/B07HGK77RG.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand -\u00a0Rivet Madison Lift-Top Storage Ottoman/Footstool with i",
+"ex": [
+0.5,
+0.419,
+0.5
+],
+"tex": 4096,
+"faces": 4288,
+"size": [
+0.5,
+0.5,
+0.419
+]
+},
+{
+"id": "abo-B07HGKCRT4",
+"src": "abo",
+"abo": "4/B07HGKCRT4.glb",
+"role": "pouf",
+"tone": "cool",
+"name": "Amazon Brand -\u00a0Rivet Madison Lift-Top Storage Ottoman/Footstool with i",
+"ex": [
+0.5,
+0.419,
+0.5
+],
+"tex": 4096,
+"faces": 4288,
+"size": [
+0.5,
+0.5,
+0.419
+]
+},
+{
+"id": "abo-B07HGKV8JD",
+"src": "abo",
+"abo": "D/B07HGKV8JD.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand -\u00a0Rivet Madison Lift-Top Storage Ottoman/Footstool with i",
+"ex": [
+0.5,
+0.419,
+0.5
+],
+"tex": 4096,
+"faces": 4288,
+"size": [
+0.5,
+0.5,
+0.419
+]
+},
+{
+"id": "abo-B07VMLFZ75",
+"src": "abo",
+"abo": "5/B07VMLFZ75.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand - Movian Galga - Poggiapiedi, 53 x 53 x 42 cm (Lu x La x ",
+"ex": [
+0.53,
+0.41,
+0.53
+],
+"tex": 4096,
+"faces": 28888,
+"size": [
+0.53,
+0.53,
+0.41
+]
+},
+{
+"id": "abo-B07VNLBNF7",
+"src": "abo",
+"abo": "7/B07VNLBNF7.glb",
+"role": "pouf",
+"tone": "cool",
+"name": "Amazon Brand - Movian Galga - Poggiapiedi, 53 x 53 x 42 cm (Lu x La x ",
+"ex": [
+0.53,
+0.42,
+0.53
+],
+"tex": 4096,
+"faces": 10492,
+"size": [
+0.53,
+0.53,
+0.42
+]
+},
+{
+"id": "abo-B07VRWM773",
+"src": "abo",
+"abo": "3/B07VRWM773.glb",
+"role": "pouf",
+"tone": "dark",
+"name": "Amazon Brand - Movian Galga - Poggiapiedi, 53 x 53 x 42 cm (Lu x La x ",
+"ex": [
+0.53,
+0.41,
+0.53
+],
+"tex": 4096,
+"faces": 11552,
+"size": [
+0.53,
+0.53,
+0.41
+]
+},
+{
+"id": "abo-B07HSGPBPR",
+"src": "abo",
+"abo": "R/B07HSGPBPR.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Surrey Modern Ceramic Planter Pot with Wood Plant",
+"ex": [
+0.417,
+0.67,
+0.417
+],
+"tex": 2048,
+"faces": 5768,
+"size": [
+0.417,
+0.417,
+0.67
+]
+},
+{
+"id": "abo-B07JM1K8VL",
+"src": "abo",
+"abo": "L/B07JM1K8VL.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Surrey Modern Ceramic Planter Pot with Wood Plant",
+"ex": [
+0.42,
+0.581,
+0.421
+],
+"tex": 2048,
+"faces": 6384,
+"size": [
+0.42,
+0.421,
+0.581
+]
+},
+{
+"id": "abo-B07JM6HFW3",
+"src": "abo",
+"abo": "3/B07JM6HFW3.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Surrey Modern Ceramic Planter Pot with Wood Plant",
+"ex": [
+0.224,
+0.358,
+0.224
+],
+"tex": 2048,
+"faces": 6112,
+"size": [
+0.224,
+0.224,
+0.358
+]
+},
+{
+"id": "abo-B0842H1DPF",
+"src": "abo",
+"abo": "F/B0842H1DPF.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Stand, 17\"H, Whi",
+"ex": [
+0.307,
+0.431,
+0.308
+],
+"tex": 4096,
+"faces": 5400,
+"size": [
+0.307,
+0.308,
+0.431
+]
+},
+{
+"id": "abo-B0842H6Q9W",
+"src": "abo",
+"abo": "W/B0842H6Q9W.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Stand, 14\"H, Whi",
+"ex": [
+0.239,
+0.356,
+0.239
+],
+"tex": 4096,
+"faces": 4920,
+"size": [
+0.239,
+0.239,
+0.356
+]
+},
+{
+"id": "abo-B079TXJNJD",
+"src": "abo",
+"abo": "D/B079TXJNJD.glb",
+"role": "pillow",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Modern Geometric Decorative Print Throw Pillow, 2",
+"ex": [
+0.517,
+0.508,
+0.158
+],
+"tex": 2048,
+"faces": 17436,
+"size": [
+0.517,
+0.158,
+0.508
+]
+},
+{
+"id": "abo-B079TXJV32",
+"src": "abo",
+"abo": "2/B079TXJV32.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Mojave-Inspired Decorative Throw Pillow Co",
+"ex": [
+0.503,
+0.506,
+0.182
+],
+"tex": 2048,
+"faces": 16256,
+"size": [
+0.503,
+0.182,
+0.506
+]
+},
+{
+"id": "abo-B079V31JM9",
+"src": "abo",
+"abo": "9/B079V31JM9.glb",
+"role": "pillow",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Modern 100% Cotton Triangle Loop Decorative Throw",
+"ex": [
+0.469,
+0.466,
+0.172
+],
+"tex": 2048,
+"faces": 1903616,
+"size": [
+0.469,
+0.172,
+0.466
+]
+},
+{
+"id": "abo-B079V39VG5",
+"src": "abo",
+"abo": "5/B079V39VG5.glb",
+"role": "pillow",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Stone & Beam Transitional Woven Diamond Decorative Thro",
+"ex": [
+0.435,
+0.428,
+0.148
+],
+"tex": 2048,
+"faces": 10240,
+"size": [
+0.435,
+0.148,
+0.428
+]
+},
+{
+"id": "abo-B079V3YG6X",
+"src": "abo",
+"abo": "X/B079V3YG6X.glb",
+"role": "pillow",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Modern Geometric Decorative Print Pillow Cover, 2",
+"ex": [
+0.517,
+0.508,
+0.158
+],
+"tex": 2048,
+"faces": 17436,
+"size": [
+0.517,
+0.158,
+0.508
+]
+},
+{
+"id": "abo-B079V96B4C",
+"src": "abo",
+"abo": "C/B079V96B4C.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Mojave-Inspired Decorative Throw Pillow Co",
+"ex": [
+0.431,
+0.431,
+0.139
+],
+"tex": 2048,
+"faces": 17434,
+"size": [
+0.431,
+0.139,
+0.431
+]
+},
+{
+"id": "abo-B079V9LW6Z",
+"src": "abo",
+"abo": "Z/B079V9LW6Z.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern 100% Cotton Tufted Contrast Decorative Thr",
+"ex": [
+0.436,
+0.438,
+0.156
+],
+"tex": 2048,
+"faces": 31040,
+"size": [
+0.436,
+0.156,
+0.438
+]
+},
+{
+"id": "abo-B0713T6W1C",
+"src": "abo",
+"abo": "C/B0713T6W1C.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Beveled Metal Mirror, 24\"H, Iron Finish",
+"ex": [
+0.61,
+0.61,
+0.032
+],
+"tex": 2048,
+"faces": 2412,
+"size": [
+0.61,
+0.032,
+0.61
+]
+},
+{
+"id": "abo-B071NHTQ26",
+"src": "abo",
+"abo": "6/B071NHTQ26.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Round Glass Hanging Wall Mirror, 30 Inch Height, ",
+"ex": [
+0.447,
+0.651,
+0.144
+],
+"tex": 2048,
+"faces": 11010,
+"size": [
+0.447,
+0.144,
+0.651
+]
+},
+{
+"id": "abo-B071V8M937",
+"src": "abo",
+"abo": "7/B071V8M937.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Sunburst Lines Hanging Wall Mirror Decor, ",
+"ex": [
+0.509,
+0.507,
+0.042
+],
+"tex": 2048,
+"faces": 5730,
+"size": [
+0.509,
+0.042,
+0.507
+]
+},
+{
+"id": "abo-B073WGQBPC",
+"src": "abo",
+"abo": "C/B073WGQBPC.glb",
+"role": "mirror",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Square Rustic Wood Frame Hanging Wall Mirr",
+"ex": [
+0.651,
+0.651,
+0.047
+],
+"tex": 2048,
+"faces": 1296,
+"size": [
+0.651,
+0.047,
+0.651
+]
+},
+{
+"id": "abo-B073WH17GB",
+"src": "abo",
+"abo": "B/B073WH17GB.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Curved Iron Mirror with Wood Shelf, 24\"H, ",
+"ex": [
+0.323,
+0.613,
+0.096
+],
+"tex": 2048,
+"faces": 10586,
+"size": [
+0.323,
+0.096,
+0.613
+]
+},
+{
+"id": "abo-B084DQ6BV4",
+"src": "abo",
+"abo": "4/B084DQ6BV4.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Ravenna Home Vintage Windowpane Metal Mantel Mirror, 25",
+"ex": [
+0.513,
+0.635,
+0.018
+],
+"tex": 2048,
+"faces": 10440,
+"size": [
+0.513,
+0.018,
+0.635
+]
+},
+{
+"id": "abo-B084DQ9VWM",
+"src": "abo",
+"abo": "M/B084DQ9VWM.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Ravenna Home Vintage Wooden Accent Mirror, 27.75\"H, Nat",
+"ex": [
+0.686,
+0.686,
+0.019
+],
+"tex": 4096,
+"faces": 4440,
+"size": [
+0.686,
+0.019,
+0.686
+]
+},
+{
+"id": "abo-B088HDDK11",
+"src": "abo",
+"abo": "1/B088HDDK11.glb",
+"role": "wall_shelf",
+"tone": "warm",
+"name": "AmazonBasics Floating Cube Shelves - 24-Inch, Natural, 2-Pack",
+"ex": [
+0.61,
+0.125,
+0.2
+],
+"tex": 4096,
+"faces": 8702,
+"size": [
+0.61,
+0.2,
+0.125
+]
+},
+{
+"id": "abo-B088HFR6VR",
+"src": "abo",
+"abo": "R/B088HFR6VR.glb",
+"role": "wall_shelf",
+"tone": "warm",
+"name": "AmazonBasics Floating Shelves - 16, 20, 24-Inch, Natural Wood, Set of ",
+"ex": [
+0.61,
+0.293,
+0.14
+],
+"tex": 4096,
+"faces": 25266,
+"size": [
+0.61,
+0.14,
+0.293
+]
+},
+{
+"id": "abo-B088HFSQXT",
+"src": "abo",
+"abo": "T/B088HFSQXT.glb",
+"role": "wall_shelf",
+"tone": "warm",
+"name": "AmazonBasics Floating Shelves - 24-Inch, Natural Wood, 2-Pack",
+"ex": [
+0.61,
+0.02,
+0.14
+],
+"tex": 4096,
+"faces": 12994,
+"size": [
+0.61,
+0.14,
+0.02
+]
+},
+{
+"id": "abo-B07374K53C",
+"src": "abo",
+"abo": "C/B07374K53C.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Ceramic Geometric Cut-Out Table Desk Lamp ",
+"ex": [
+0.325,
+0.636,
+0.324
+],
+"tex": 2048,
+"faces": 57258,
+"size": [
+0.325,
+0.324,
+0.636
+]
+},
+{
+"id": "abo-B07374M818",
+"src": "abo",
+"abo": "8/B07374M818.glb",
+"role": "table_lamp",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Table Desk Lamp With Light Bulb - 8 x 8 x ",
+"ex": [
+0.208,
+0.406,
+0.208
+],
+"tex": 2048,
+"faces": 11122,
+"size": [
+0.208,
+0.208,
+0.406
+]
+},
+{
+"id": "abo-B07374P6MR",
+"src": "abo",
+"abo": "R/B07374P6MR.glb",
+"role": "table_lamp",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Bedroom Table Desk Lamp With Light ",
+"ex": [
+0.244,
+0.536,
+0.244
+],
+"tex": 2048,
+"faces": 9012,
+"size": [
+0.244,
+0.244,
+0.536
+]
+},
+{
+"id": "abo-B07374SBFM",
+"src": "abo",
+"abo": "M/B07374SBFM.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid Century Modern Diamond Cut Concrete Bedside T",
+"ex": [
+0.276,
+0.501,
+0.276
+],
+"tex": 2048,
+"faces": 10650,
+"size": [
+0.276,
+0.276,
+0.501
+]
+},
+{
+"id": "abo-B07374VCVN",
+"src": "abo",
+"abo": "N/B07374VCVN.glb",
+"role": "table_lamp",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Copper Geometric Bedside Table Desk Lamp With Lig",
+"ex": [
+0.301,
+0.431,
+0.301
+],
+"tex": 4096,
+"faces": 17142,
+"size": [
+0.301,
+0.301,
+0.431
+]
+},
+{
+"id": "abo-B073751DMJ",
+"src": "abo",
+"abo": "J/B073751DMJ.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Gold Bedside Table Desk Lamp with Light Bulb - 18",
+"ex": [
+0.253,
+0.458,
+0.252
+],
+"tex": 2048,
+"faces": 24058,
+"size": [
+0.253,
+0.252,
+0.458
+]
+},
+{
+"id": "abo-B073751DML",
+"src": "abo",
+"abo": "L/B073751DML.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Round Ceramic Table Lamp With Light Bulb a",
+"ex": [
+0.34,
+0.528,
+0.34
+],
+"tex": 2048,
+"faces": 30610,
+"size": [
+0.34,
+0.34,
+0.528
+]
+},
+{
+"id": "abo-B073755HVV",
+"src": "abo",
+"abo": "V/B073755HVV.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Industrial Round Concrete Table Desk Lamp ",
+"ex": [
+0.269,
+0.409,
+0.269
+],
+"tex": 4096,
+"faces": 11628,
+"size": [
+0.269,
+0.269,
+0.409
+]
+},
+{
+"id": "abo-B073P2DNTD",
+"src": "abo",
+"abo": "D/B073P2DNTD.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Needle Sloped Table Desk Lamp ",
+"ex": [
+0.268,
+0.479,
+0.268
+],
+"tex": 2048,
+"faces": 13018,
+"size": [
+0.268,
+0.268,
+0.479
+]
+},
+{
+"id": "abo-B073P2N985",
+"src": "abo",
+"abo": "5/B073P2N985.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Deco Metal Frame Living Room Desk Lamp Wit",
+"ex": [
+0.257,
+0.489,
+0.257
+],
+"tex": 2048,
+"faces": 9166,
+"size": [
+0.257,
+0.257,
+0.489
+]
+},
+{
+"id": "abo-B073P39KRV",
+"src": "abo",
+"abo": "V/B073P39KRV.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Rivet Black Metal Tripod Table Lamp, 26.5\"H, with Bulb, Linen Shade",
+"ex": [
+0.353,
+0.674,
+0.422
+],
+"tex": 2048,
+"faces": 23758,
+"size": [
+0.353,
+0.422,
+0.674
+]
+},
+{
+"id": "abo-B073P484RQ",
+"src": "abo",
+"abo": "Q/B073P484RQ.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Rivet Atlas Mid Century Modern Wood Tripod Table Desk Lamp With Light ",
+"ex": [
+0.38,
+0.686,
+0.38
+],
+"tex": 2048,
+"faces": 19690,
+"size": [
+0.38,
+0.38,
+0.686
+]
+},
+{
+"id": "abo-B075X12JW7",
+"src": "abo",
+"abo": "7/B075X12JW7.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Rivet Mid-Century Modern Glass Lamp with Bulb, 21.5\" H, White, Brass",
+"ex": [
+0.309,
+0.545,
+0.309
+],
+"tex": 2048,
+"faces": 8480,
+"size": [
+0.309,
+0.309,
+0.545
+]
+},
+{
+"id": "abo-B075X12K17",
+"src": "abo",
+"abo": "7/B075X12K17.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Stone & Beam Eddy L\u00e1mpara de mesa moderna de cer\u00e1mica con bombilla",
+"ex": [
+0.253,
+0.428,
+0.252
+],
+"tex": 2048,
+"faces": 8880,
+"size": [
+0.253,
+0.252,
+0.428
+]
+},
+{
+"id": "abo-B075X12QV9",
+"src": "abo",
+"abo": "9/B075X12QV9.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Stone & Beam Modern Criss-Cross Lamp With Bulb, 21.5\"H, Black",
+"ex": [
+0.375,
+0.54,
+0.376
+],
+"tex": 2048,
+"faces": 8116,
+"size": [
+0.375,
+0.376,
+0.54
+]
+},
+{
+"id": "abo-B075X1T517",
+"src": "abo",
+"abo": "7/B075X1T517.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Stone & Beam Leland Modern Textured Table Lamp With Bulb, 24.5\"H, Grey",
+"ex": [
+0.366,
+0.609,
+0.367
+],
+"tex": 2048,
+"faces": 9640,
+"size": [
+0.366,
+0.367,
+0.609
+]
+},
+{
+"id": "abo-B075X1T52N",
+"src": "abo",
+"abo": "N/B075X1T52N.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Glass Ball and Metal Table Lamp with Bulb Include",
+"ex": [
+0.21,
+0.552,
+0.251
+],
+"tex": 2048,
+"faces": 9067,
+"size": [
+0.21,
+0.251,
+0.552
+]
+},
+{
+"id": "abo-B075X2FW6F",
+"src": "abo",
+"abo": "F/B075X2FW6F.glb",
+"role": "table_lamp",
+"tone": "warm",
+"name": "Rivet Wood and Black Marble Lamp, Mid-Century Walnut, With Bulb, 18\"H",
+"ex": [
+0.202,
+0.35,
+0.202
+],
+"tex": 2048,
+"faces": 9816,
+"size": [
+0.202,
+0.202,
+0.35
+]
+},
+{
+"id": "abo-B075X2FW7C",
+"src": "abo",
+"abo": "C/B075X2FW7C.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Geo Pattern Ceramic Nightstand Table Lamp ",
+"ex": [
+0.32,
+0.682,
+0.32
+],
+"tex": 2048,
+"faces": 10492,
+"size": [
+0.32,
+0.32,
+0.682
+]
+},
+{
+"id": "abo-B075X2LKPV",
+"src": "abo",
+"abo": "V/B075X2LKPV.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Stone & Beam Knit Pattern Ceramic Living Room Table Desk Lamp With LED",
+"ex": [
+0.39,
+0.58,
+0.389
+],
+"tex": 2048,
+"faces": 11300,
+"size": [
+0.39,
+0.389,
+0.58
+]
+},
+{
+"id": "abo-B075X2LLTD",
+"src": "abo",
+"abo": "D/B075X2LLTD.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Niet Geo Diamond Black Moderne Tischlampe aus Keramik mit LED-Leuchtmi",
+"ex": [
+0.268,
+0.566,
+0.269
+],
+"tex": 2048,
+"faces": 8301,
+"size": [
+0.268,
+0.269,
+0.566
+]
+},
+{
+"id": "abo-B075X2LLTY",
+"src": "abo",
+"abo": "Y/B075X2LLTY.glb",
+"role": "table_lamp",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Farmhouse Jug Living Room Table Lam",
+"ex": [
+0.318,
+0.486,
+0.318
+],
+"tex": 2048,
+"faces": 15114,
+"size": [
+0.318,
+0.318,
+0.486
+]
+},
+{
+"id": "abo-B075X2LLWF",
+"src": "abo",
+"abo": "F/B075X2LLWF.glb",
+"role": "table_lamp",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Glass Globe Living Room Table Desk Lamp Wi",
+"ex": [
+0.152,
+0.25,
+0.141
+],
+"tex": 2048,
+"faces": 5572,
+"size": [
+0.152,
+0.141,
+0.25
+]
+},
+{
+"id": "abo-B075X2NLKP",
+"src": "abo",
+"abo": "P/B075X2NLKP.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Stone & Beam Leland Modern Textured Ceramic Bedroom Table Desk Lamp Wi",
+"ex": [
+0.366,
+0.609,
+0.367
+],
+"tex": 2048,
+"faces": 9760,
+"size": [
+0.366,
+0.367,
+0.609
+]
+},
+{
+"id": "abo-B075X2R3BX",
+"src": "abo",
+"abo": "X/B075X2R3BX.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Square Pillar Living Room Tabl",
+"ex": [
+0.229,
+0.417,
+0.229
+],
+"tex": 2048,
+"faces": 20086,
+"size": [
+0.229,
+0.229,
+0.417
+]
+},
+{
+"id": "abo-B075X2Y3Q9",
+"src": "abo",
+"abo": "9/B075X2Y3Q9.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Lampe de table blanche Transitionnel Milk Glass",
+"ex": [
+0.285,
+0.483,
+0.285
+],
+"tex": 2048,
+"faces": 10916,
+"size": [
+0.285,
+0.285,
+0.483
+]
+},
+{
+"id": "abo-B075X2YJGK",
+"src": "abo",
+"abo": "K/B075X2YJGK.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid Century Modern Marble Table Decor Lamp With L",
+"ex": [
+0.189,
+0.34,
+0.189
+],
+"tex": 2048,
+"faces": 23482,
+"size": [
+0.189,
+0.189,
+0.34
+]
+},
+{
+"id": "abo-B075X3S2Z1",
+"src": "abo",
+"abo": "1/B075X3S2Z1.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Stone & Beam Leland l\u00e1mpara de mesa con textura moderna con bombilla",
+"ex": [
+0.251,
+0.429,
+0.251
+],
+"tex": 2048,
+"faces": 8780,
+"size": [
+0.251,
+0.251,
+0.429
+]
+},
+{
+"id": "abo-B075X3S2Z5",
+"src": "abo",
+"abo": "5/B075X3S2Z5.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Rivet L\u00e1mpara de mesa moderna ondulada con bombilla LED",
+"ex": [
+0.376,
+0.594,
+0.375
+],
+"tex": 2048,
+"faces": 18298,
+"size": [
+0.376,
+0.375,
+0.594
+]
+},
+{
+"id": "abo-B07B4VYKPR",
+"src": "abo",
+"abo": "R/B07B4VYKPR.glb",
+"role": "table_lamp",
+"tone": "neutral",
+"name": "Rivet L\u00e1mpara de mesa de hormig\u00f3n moderno, 15\"H, con foco, color gris",
+"ex": [
+0.229,
+0.38,
+0.229
+],
+"tex": 4096,
+"faces": 16308,
+"size": [
+0.229,
+0.229,
+0.38
+]
+},
+{
+"id": "abo-B07B4W2ZRW",
+"src": "abo",
+"abo": "W/B07B4W2ZRW.glb",
+"role": "table_lamp",
+"tone": "warm",
+"name": "Stone & Beam L\u00e1mpara de mesa de tr\u00edpode industrial moderna con foco de",
+"ex": [
+0.29,
+0.514,
+0.29
+],
+"tex": 2048,
+"faces": 17194,
+"size": [
+0.29,
+0.29,
+0.514
+]
+},
+{
+"id": "abo-B073P2ZGMJ",
+"src": "abo",
+"abo": "J/B073P2ZGMJ.glb",
+"role": "desk_lamp",
+"tone": "neutral",
+"name": "Rivet, L\u00e1mpara de Mesa Estilo Industrial, Bronze",
+"ex": [
+0.175,
+0.469,
+0.298
+],
+"tex": 2048,
+"faces": 22650,
+"size": [
+0.175,
+0.298,
+0.469
+]
+},
+{
+"id": "abo-B073P3562J",
+"src": "abo",
+"abo": "J/B073P3562J.glb",
+"role": "desk_lamp",
+"tone": "neutral",
+"name": "Rivet Lux Bendable Arm Marble and Brass Table Desk Lamp With Light Bul",
+"ex": [
+0.186,
+0.522,
+0.317
+],
+"tex": 2048,
+"faces": 63483,
+"size": [
+0.186,
+0.317,
+0.522
+]
+},
+{
+"id": "abo-B0742DNBGB",
+"src": "abo",
+"abo": "B/B0742DNBGB.glb",
+"role": "desk_lamp",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Avery Marble y Lat\u00f3n L\u00e1mpara de mesa ajustable co",
+"ex": [
+0.144,
+0.603,
+0.471
+],
+"tex": 2048,
+"faces": 9166,
+"size": [
+0.144,
+0.471,
+0.603
+]
+},
+{
+"id": "abo-B0742FHDJF",
+"src": "abo",
+"abo": "F/B0742FHDJF.glb",
+"role": "desk_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Pike Factory Industrial Table Lamp With Light Bul",
+"ex": [
+0.16,
+0.456,
+0.291
+],
+"tex": 2048,
+"faces": 23248,
+"size": [
+0.16,
+0.291,
+0.456
+]
+},
+{
+"id": "abo-B075WZVRWX",
+"src": "abo",
+"abo": "X/B075WZVRWX.glb",
+"role": "desk_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Caden Adjustable Task Table Lamp with Bulb, 28.5\"",
+"ex": [
+0.187,
+0.587,
+0.561
+],
+"tex": 2048,
+"faces": 41666,
+"size": [
+0.187,
+0.561,
+0.587
+]
+},
+{
+"id": "abo-B07B4VGZ9B",
+"src": "abo",
+"abo": "B/B07B4VGZ9B.glb",
+"role": "desk_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Curved Task Desk Table Lamp Wi",
+"ex": [
+0.189,
+0.647,
+0.292
+],
+"tex": 4096,
+"faces": 24471,
+"size": [
+0.189,
+0.292,
+0.647
+]
+},
+{
+"id": "abo-B075X2XZ8X",
+"src": "abo",
+"abo": "X/B075X2XZ8X.glb",
+"role": "desk_lamp",
+"tone": "neutral",
+"name": "Stone & Beam Walters Vintage Arbeitsleuchte mit Gl\u00fchbirne schwarz",
+"ex": [
+0.192,
+0.508,
+0.374
+],
+"tex": 2048,
+"faces": 55168,
+"size": [
+0.192,
+0.374,
+0.508
+]
+},
+{
+"id": "abo-B07374K536",
+"src": "abo",
+"abo": "6/B07374K536.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Caden Adjustable Task Floor Lamp with Bulb, 60\"H,",
+"ex": [
+0.235,
+1.628,
+0.618
+],
+"tex": 4096,
+"faces": 19546,
+"size": [
+0.235,
+0.618,
+1.628
+]
+},
+{
+"id": "abo-B07374SBFL",
+"src": "abo",
+"abo": "L/B07374SBFL.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Adjustable Arm Mid-Century Modern Living Room Sta",
+"ex": [
+0.25,
+1.526,
+0.431
+],
+"tex": 2048,
+"faces": 40130,
+"size": [
+0.25,
+0.431,
+1.526
+]
+},
+{
+"id": "abo-B073755HVS",
+"src": "abo",
+"abo": "S/B073755HVS.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Arc Living Room Floor Lamp With Lig",
+"ex": [
+0.493,
+1.927,
+1.424
+],
+"tex": 2048,
+"faces": 6620,
+"size": [
+0.493,
+1.424,
+1.927
+]
+},
+{
+"id": "abo-B07376VCCW",
+"src": "abo",
+"abo": "W/B07376VCCW.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Deco Metal Frame Living Room Standing Floo",
+"ex": [
+0.457,
+1.51,
+0.456
+],
+"tex": 2048,
+"faces": 17102,
+"size": [
+0.457,
+0.456,
+1.51
+]
+},
+{
+"id": "abo-B073772DH1",
+"src": "abo",
+"abo": "1/B073772DH1.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Brass Arc Mid-Century Modern Living Room Standing",
+"ex": [
+0.493,
+1.927,
+1.434
+],
+"tex": 2048,
+"faces": 9880,
+"size": [
+0.493,
+1.434,
+1.927
+]
+},
+{
+"id": "abo-B073P2CP5G",
+"src": "abo",
+"abo": "G/B073P2CP5G.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet Zoey Mid Century Modern Tripod Living Room Floor Lamp With Light",
+"ex": [
+0.542,
+1.472,
+0.539
+],
+"tex": 2048,
+"faces": 21262,
+"size": [
+0.542,
+0.539,
+1.472
+]
+},
+{
+"id": "abo-B073P39KQ8",
+"src": "abo",
+"abo": "8/B073P39KQ8.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Urban Living Adesso af43388ab l\u00e1mpara",
+"ex": [
+0.288,
+1.586,
+0.599
+],
+"tex": 2048,
+"faces": 63563,
+"size": [
+0.288,
+0.599,
+1.586
+]
+},
+{
+"id": "abo-B073P3HHFT",
+"src": "abo",
+"abo": "T/B073P3HHFT.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet Adjustable Tree-Style 3-Light Floor Lamp, 69\"H, with Bulbs, Bron",
+"ex": [
+0.415,
+1.716,
+0.428
+],
+"tex": 2048,
+"faces": 19914,
+"size": [
+0.415,
+0.428,
+1.716
+]
+},
+{
+"id": "abo-B073P3HHFV",
+"src": "abo",
+"abo": "V/B073P3HHFV.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet Mid Century L\u00e1mpara de pie de 3 brazos para sala de estar con bo",
+"ex": [
+0.653,
+1.804,
+0.75
+],
+"tex": 2048,
+"faces": 13868,
+"size": [
+0.653,
+0.75,
+1.804
+]
+},
+{
+"id": "abo-B073P3NL8C",
+"src": "abo",
+"abo": "C/B073P3NL8C.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet Harper Mid-Century Marble and Brass Floor Lamp, 71\"H, with Bulb",
+"ex": [
+0.232,
+1.813,
+0.229
+],
+"tex": 2048,
+"faces": 16832,
+"size": [
+0.232,
+0.229,
+1.813
+]
+},
+{
+"id": "abo-B073P3S1NX",
+"src": "abo",
+"abo": "X/B073P3S1NX.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet Olive 4 Wood Shelf Standing Floor Lamp With Light Bulb and USB C",
+"ex": [
+0.31,
+1.569,
+0.308
+],
+"tex": 4096,
+"faces": 20974,
+"size": [
+0.31,
+0.308,
+1.569
+]
+},
+{
+"id": "abo-B073P46SHL",
+"src": "abo",
+"abo": "L/B073P46SHL.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet L\u00e1mpara de pie ajustable de 3 brazos",
+"ex": [
+0.452,
+1.735,
+0.934
+],
+"tex": 2048,
+"faces": 14816,
+"size": [
+0.452,
+0.934,
+1.735
+]
+},
+{
+"id": "abo-B073P484RR",
+"src": "abo",
+"abo": "R/B073P484RR.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet Mid Century Modern Tripod Living Room Floor Lamp With Light Bulb",
+"ex": [
+0.667,
+1.624,
+0.522
+],
+"tex": 2048,
+"faces": 23852,
+"size": [
+0.667,
+0.522,
+1.624
+]
+},
+{
+"id": "abo-B0742D9X4R",
+"src": "abo",
+"abo": "R/B0742D9X4R.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet Mid-Century Modern Tripod D\u00e9cor Living Room Standing Floor Lamp ",
+"ex": [
+0.458,
+1.545,
+0.448
+],
+"tex": 2048,
+"faces": 38198,
+"size": [
+0.458,
+0.448,
+1.545
+]
+},
+{
+"id": "abo-B0742DNY41",
+"src": "abo",
+"abo": "1/B0742DNY41.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet Marble and Brass Floor Lamp, Avery, 63\"H, With Bulb",
+"ex": [
+0.194,
+1.594,
+0.653
+],
+"tex": 2048,
+"faces": 9476,
+"size": [
+0.194,
+0.653,
+1.594
+]
+},
+{
+"id": "abo-B0742F79TS",
+"src": "abo",
+"abo": "S/B0742F79TS.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Familia Moderna Adesso hw-f1292bk 5098\u00a0Tan\u00a0-\u00a0L\u00e1mpara de pie, color neg",
+"ex": [
+0.331,
+2.104,
+1.363
+],
+"tex": 2048,
+"faces": 18240,
+"size": [
+0.331,
+1.363,
+2.104
+]
+},
+{
+"id": "abo-B0742F7GT8",
+"src": "abo",
+"abo": "8/B0742F7GT8.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Stone & Beam Modern Tripod Floor Lamp, with Bulb, Ivory Shade, 19.0\" x",
+"ex": [
+0.483,
+1.553,
+0.483
+],
+"tex": 2048,
+"faces": 17412,
+"size": [
+0.483,
+0.483,
+1.553
+]
+},
+{
+"id": "abo-B0742FPL25",
+"src": "abo",
+"abo": "5/B0742FPL25.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Stone & Beam Lily Modern Arc Living Room Floor Lamp With Light Bulb An",
+"ex": [
+0.406,
+2.098,
+1.445
+],
+"tex": 4096,
+"faces": 3820,
+"size": [
+0.406,
+1.445,
+2.098
+]
+},
+{
+"id": "abo-B0742GG15D",
+"src": "abo",
+"abo": "D/B0742GG15D.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet - L\u00e1mpara de pie con tr\u00edpode, dise\u00f1o minimalista, Antique Brass",
+"ex": [
+0.449,
+1.545,
+0.46
+],
+"tex": 2048,
+"faces": 38198,
+"size": [
+0.449,
+0.46,
+1.545
+]
+},
+{
+"id": "abo-B075X12HW9",
+"src": "abo",
+"abo": "9/B075X12HW9.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivetto Lampada da terra moderna con lampadina, 58\"H, legno e ottone",
+"ex": [
+0.42,
+1.447,
+0.42
+],
+"tex": 2048,
+"faces": 15644,
+"size": [
+0.42,
+0.42,
+1.447
+]
+},
+{
+"id": "abo-B075X2XYX1",
+"src": "abo",
+"abo": "1/B075X2XYX1.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Boulevard Industrial Studio L\u00e1mpara de piso tr\u00edpo",
+"ex": [
+0.817,
+1.512,
+0.92
+],
+"tex": 4096,
+"faces": 196176,
+"size": [
+0.817,
+0.92,
+1.512
+]
+},
+{
+"id": "abo-B075X3S2X5",
+"src": "abo",
+"abo": "5/B075X3S2X5.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Concrete Task Floor Lamp With ",
+"ex": [
+0.223,
+1.43,
+0.508
+],
+"tex": 2048,
+"faces": 26357,
+"size": [
+0.223,
+0.508,
+1.43
+]
+},
+{
+"id": "abo-B07B4W24LB",
+"src": "abo",
+"abo": "B/B07B4W24LB.glb",
+"role": "floor_lamp",
+"tone": "neutral",
+"name": "Rivet Mid-Century L\u00e1mpara de trabajo moderna",
+"ex": [
+0.277,
+1.438,
+0.467
+],
+"tex": 2048,
+"faces": 24065,
+"size": [
+0.277,
+0.467,
+1.438
+]
+},
+{
+"id": "abo-B0711Q7WK7",
+"src": "abo",
+"abo": "7/B0711Q7WK7.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Industrial Geometric Cage Pendant Chandeli",
+"ex": [
+0.487,
+1.764,
+0.431
+],
+"tex": 4096,
+"faces": 40320,
+"size": [
+0.487,
+0.431,
+1.764
+]
+},
+{
+"id": "abo-B07149TB7Y",
+"src": "abo",
+"abo": "Y/B07149TB7Y.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Industrial Geometric Cage Pendant Chandeli",
+"ex": [
+0.487,
+1.764,
+0.431
+],
+"tex": 4096,
+"faces": 40320,
+"size": [
+0.487,
+0.431,
+1.764
+]
+},
+{
+"id": "abo-B0716WM8TJ",
+"src": "abo",
+"abo": "J/B0716WM8TJ.glb",
+"role": "pendant",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Dome Ceiling Mount Hanging Pendant ",
+"ex": [
+0.492,
+0.869,
+0.492
+],
+"tex": 4096,
+"faces": 13580,
+"size": [
+0.492,
+0.492,
+0.869
+]
+},
+{
+"id": "abo-B071F6VV2T",
+"src": "abo",
+"abo": "T/B071F6VV2T.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Caf&eacute; Ceiling Pendant Li",
+"ex": [
+0.569,
+1.446,
+0.568
+],
+"tex": 2048,
+"faces": 30474,
+"size": [
+0.569,
+0.568,
+1.446
+]
+},
+{
+"id": "abo-B071F6WK9K",
+"src": "abo",
+"abo": "K/B071F6WK9K.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid Century Modern Glass Ceiling Pendant Chandeli",
+"ex": [
+0.265,
+1.055,
+0.265
+],
+"tex": 4096,
+"faces": 16246,
+"size": [
+0.265,
+0.265,
+1.055
+]
+},
+{
+"id": "abo-B071F73XDB",
+"src": "abo",
+"abo": "B/B071F73XDB.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Hugh Mid-Century Modern Round Pendant Chandelier ",
+"ex": [
+0.336,
+1.538,
+0.336
+],
+"tex": 4096,
+"faces": 48000,
+"size": [
+0.336,
+0.336,
+1.538
+]
+},
+{
+"id": "abo-B071HSMS5T",
+"src": "abo",
+"abo": "T/B071HSMS5T.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Glass Bowl Pendant Lamp, Modern Textured, W/Bulb,",
+"ex": [
+0.496,
+1.511,
+0.5
+],
+"tex": 4096,
+"faces": 27794,
+"size": [
+0.496,
+0.5,
+1.511
+]
+},
+{
+"id": "abo-B071HSMWGB",
+"src": "abo",
+"abo": "B/B071HSMWGB.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Round Ceiling Pendant Chandelier Fi",
+"ex": [
+0.299,
+0.935,
+0.299
+],
+"tex": 4096,
+"faces": 148224,
+"size": [
+0.299,
+0.299,
+0.935
+]
+},
+{
+"id": "abo-B071NZ281W",
+"src": "abo",
+"abo": "W/B071NZ281W.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Farmhouse Glass Cylinder Pendant Li",
+"ex": [
+0.123,
+0.863,
+0.123
+],
+"tex": 4096,
+"faces": 8060,
+"size": [
+0.123,
+0.123,
+0.863
+]
+},
+{
+"id": "abo-B071VR5JSP",
+"src": "abo",
+"abo": "P/B071VR5JSP.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid Century Modern Glass Globe Pendant Chandelier",
+"ex": [
+0.43,
+1.606,
+0.43
+],
+"tex": 4096,
+"faces": 299392,
+"size": [
+0.43,
+0.43,
+1.606
+]
+},
+{
+"id": "abo-B0725NGTKK",
+"src": "abo",
+"abo": "K/B0725NGTKK.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Smoked Glass Hanging Pendant With L",
+"ex": [
+0.374,
+1.457,
+0.374
+],
+"tex": 4096,
+"faces": 19874,
+"size": [
+0.374,
+0.374,
+1.457
+]
+},
+{
+"id": "abo-B072LKKM3W",
+"src": "abo",
+"abo": "W/B072LKKM3W.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Pendant Light With Bulb, 19\"-60\"H, Chrome ",
+"ex": [
+0.303,
+1.535,
+0.303
+],
+"tex": 4096,
+"faces": 19426,
+"size": [
+0.303,
+0.303,
+1.535
+]
+},
+{
+"id": "abo-B07374K539",
+"src": "abo",
+"abo": "9/B07374K539.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ceiling Pendant Light Chandelier Fi",
+"ex": [
+0.292,
+1.145,
+0.292
+],
+"tex": 2048,
+"faces": 13014,
+"size": [
+0.292,
+0.292,
+1.145
+]
+},
+{
+"id": "abo-B07374M9ZW",
+"src": "abo",
+"abo": "W/B07374M9ZW.glb",
+"role": "pendant",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Rose Gold Dome Ceiling Pendant",
+"ex": [
+0.301,
+0.754,
+0.301
+],
+"tex": 4096,
+"faces": 41113,
+"size": [
+0.301,
+0.301,
+0.754
+]
+},
+{
+"id": "abo-B07374M9ZX",
+"src": "abo",
+"abo": "X/B07374M9ZX.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Concrete Globe Pendant Light Chandelier Fixture -",
+"ex": [
+0.139,
+0.764,
+0.139
+],
+"tex": 2048,
+"faces": 13216,
+"size": [
+0.139,
+0.139,
+0.764
+]
+},
+{
+"id": "abo-B07374QGD7",
+"src": "abo",
+"abo": "7/B07374QGD7.glb",
+"role": "pendant",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Concrete Dome Ceiling Hanging Pendant Chandelier ",
+"ex": [
+0.17,
+0.759,
+0.17
+],
+"tex": 2048,
+"faces": 7760,
+"size": [
+0.17,
+0.17,
+0.759
+]
+},
+{
+"id": "abo-B075X12HYP",
+"src": "abo",
+"abo": "P/B075X12HYP.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Mesh Pendant With Bulb, 39\"H, Black",
+"ex": [
+0.285,
+0.982,
+0.285
+],
+"tex": 2048,
+"faces": 30978,
+"size": [
+0.285,
+0.285,
+0.982
+]
+},
+{
+"id": "abo-B075X1KVHZ",
+"src": "abo",
+"abo": "Z/B075X1KVHZ.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Rivetto Diana Moderno Ciondolo Globo Bianco e Oro Con Lampadina penden",
+"ex": [
+0.147,
+0.51,
+0.146
+],
+"tex": 2048,
+"faces": 34096,
+"size": [
+0.147,
+0.146,
+0.51
+]
+},
+{
+"id": "abo-B07HK3F2NH",
+"src": "abo",
+"abo": "H/B07HK3F2NH.glb",
+"role": "pendant",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Industrial Open Rectangle Frame Chandelier",
+"ex": [
+0.312,
+1.366,
+0.315
+],
+"tex": 2048,
+"faces": 14416,
+"size": [
+0.312,
+0.315,
+1.366
+]
+},
+{
+"id": "abo-B07HK85JV8",
+"src": "abo",
+"abo": "8/B07HK85JV8.glb",
+"role": "pendant",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Rustic Natural Material Construction Pendant Ligh",
+"ex": [
+0.643,
+1.009,
+0.643
+],
+"tex": 2048,
+"faces": 169716,
+"size": [
+0.643,
+0.643,
+1.009
+]
+},
+{
+"id": "abo-B07HKC3S7C",
+"src": "abo",
+"abo": "C/B07HKC3S7C.glb",
+"role": "pendant",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Outer Frosted Glass Finish Pendant Li",
+"ex": [
+0.242,
+0.962,
+0.242
+],
+"tex": 2048,
+"faces": 13304,
+"size": [
+0.242,
+0.242,
+0.962
+]
+},
+{
+"id": "abo-B07HKCRWJH",
+"src": "abo",
+"abo": "H/B07HKCRWJH.glb",
+"role": "pendant",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Ceiling Hanging Pendant Fixtur",
+"ex": [
+0.408,
+0.758,
+0.408
+],
+"tex": 2048,
+"faces": 26250,
+"size": [
+0.408,
+0.408,
+0.758
+]
+},
+{
+"id": "abo-B071HSMPHL",
+"src": "abo",
+"abo": "L/B071HSMPHL.glb",
+"role": "chandelier",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Hugh Mid-Century Modern 3-Light Pendant Chandelie",
+"ex": [
+0.623,
+1.408,
+0.188
+],
+"tex": 4096,
+"faces": 119936,
+"size": [
+0.623,
+0.188,
+1.408
+]
+},
+{
+"id": "abo-B071LD87KZ",
+"src": "abo",
+"abo": "Z/B071LD87KZ.glb",
+"role": "chandelier",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Glass Mid Century Modern 3 Pendant Chandelier Fix",
+"ex": [
+0.608,
+1.41,
+0.605
+],
+"tex": 4096,
+"faces": 868256,
+"size": [
+0.608,
+0.605,
+1.41
+]
+},
+{
+"id": "abo-B07374K537",
+"src": "abo",
+"abo": "7/B07374K537.glb",
+"role": "chandelier",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Classic Ceiling Pendant Chandelier Fixture",
+"ex": [
+0.508,
+1.067,
+0.508
+],
+"tex": 4096,
+"faces": 12976,
+"size": [
+0.508,
+0.508,
+1.067
+]
+},
+{
+"id": "abo-B07374P5NP",
+"src": "abo",
+"abo": "P/B07374P5NP.glb",
+"role": "chandelier",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Eclipse Mid Century Modern 5-Globe Hanging Ceilin",
+"ex": [
+0.489,
+1.271,
+0.484
+],
+"tex": 2048,
+"faces": 35564,
+"size": [
+0.489,
+0.484,
+1.271
+]
+},
+{
+"id": "abo-B07376VCCS",
+"src": "abo",
+"abo": "S/B07376VCCS.glb",
+"role": "chandelier",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Eclipse Mid Century Modern 5-Globe Hanging Ceilin",
+"ex": [
+0.863,
+0.869,
+0.299
+],
+"tex": 2048,
+"faces": 16416,
+"size": [
+0.863,
+0.299,
+0.869
+]
+},
+{
+"id": "abo-B07DTLWMPR",
+"src": "abo",
+"abo": "R/B07DTLWMPR.glb",
+"role": "chandelier",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Opal Glass Globe Hanging Ceili",
+"ex": [
+0.815,
+1.331,
+0.785
+],
+"tex": 2048,
+"faces": 21032,
+"size": [
+0.815,
+0.785,
+1.331
+]
+},
+{
+"id": "abo-B07HKGY6CG",
+"src": "abo",
+"abo": "G/B07HKGY6CG.glb",
+"role": "chandelier",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Industrial Open Rectangle Frame Chandelier",
+"ex": [
+0.859,
+1.221,
+0.312
+],
+"tex": 2048,
+"faces": 51336,
+"size": [
+0.859,
+0.312,
+1.221
+]
+},
+{
+"id": "abo-B078JK89KM",
+"src": "abo",
+"abo": "M/B078JK89KM.glb",
+"role": "pot_floor",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Ceramic and Bamboo Planter Flo",
+"ex": [
+0.269,
+0.379,
+0.269
+],
+"tex": 2048,
+"faces": 9908,
+"size": [
+0.269,
+0.269,
+0.379
+]
+},
+{
+"id": "abo-B078JLC1LC",
+"src": "abo",
+"abo": "C/B078JLC1LC.glb",
+"role": "pot_floor",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid Century Modern Ceramic and Bamboo Planter Flo",
+"ex": [
+0.199,
+0.268,
+0.199
+],
+"tex": 2048,
+"faces": 9908,
+"size": [
+0.199,
+0.199,
+0.268
+]
+},
+{
+"id": "abo-B07BZB3HMH",
+"src": "abo",
+"abo": "H/B07BZB3HMH.glb",
+"role": "pot_floor",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Stand, 17\"H, Dar",
+"ex": [
+0.26,
+0.353,
+0.25
+],
+"tex": 2048,
+"faces": 3120,
+"size": [
+0.26,
+0.25,
+0.353
+]
+},
+{
+"id": "abo-B07BZB3HN7",
+"src": "abo",
+"abo": "7/B07BZB3HN7.glb",
+"role": "pot_floor",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Stand, 14\"H, Sal",
+"ex": [
+0.235,
+0.354,
+0.251
+],
+"tex": 2048,
+"faces": 4724,
+"size": [
+0.235,
+0.251,
+0.354
+]
+},
+{
+"id": "abo-B07BZR1KVN",
+"src": "abo",
+"abo": "N/B07BZR1KVN.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Stand, 18.9\"H, W",
+"ex": [
+0.359,
+0.484,
+0.368
+],
+"tex": 2048,
+"faces": 4416,
+"size": [
+0.359,
+0.368,
+0.484
+]
+},
+{
+"id": "abo-B07CBNZ6R9",
+"src": "abo",
+"abo": "9/B07CBNZ6R9.glb",
+"role": "pot_floor",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Stand, 18.9\"H, S",
+"ex": [
+0.345,
+0.465,
+0.354
+],
+"tex": 2048,
+"faces": 4324,
+"size": [
+0.345,
+0.354,
+0.465
+]
+},
+{
+"id": "abo-B07CF7B5S2",
+"src": "abo",
+"abo": "2/B07CF7B5S2.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Stand, 14\"H, Whi",
+"ex": [
+0.263,
+0.362,
+0.267
+],
+"tex": 2048,
+"faces": 4836,
+"size": [
+0.263,
+0.267,
+0.362
+]
+},
+{
+"id": "abo-B07HSGGNF6",
+"src": "abo",
+"abo": "6/B07HSGGNF6.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Vintage Farmhouse Raised Outdoor Garden Pl",
+"ex": [
+0.769,
+0.712,
+0.413
+],
+"tex": 2048,
+"faces": 18694,
+"off": true,
+"size": [
+0.769,
+0.413,
+0.712
+]
+},
+{
+"id": "abo-B07HSJKY8H",
+"src": "abo",
+"abo": "H/B07HSJKY8H.glb",
+"role": "pot_floor",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet planters",
+"ex": [
+0.35,
+0.504,
+0.35
+],
+"tex": 4096,
+"faces": 41312,
+"size": [
+0.35,
+0.35,
+0.504
+]
+},
+{
+"id": "abo-B07QB73ZCH",
+"src": "abo",
+"abo": "H/B07QB73ZCH.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Iron Stand, 18.9",
+"ex": [
+0.36,
+0.48,
+0.348
+],
+"tex": 4096,
+"faces": 10088,
+"size": [
+0.36,
+0.348,
+0.48
+]
+},
+{
+"id": "abo-B07QB748ZB",
+"src": "abo",
+"abo": "B/B07QB748ZB.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Iron Stand, 17\"H",
+"ex": [
+0.31,
+0.432,
+0.31
+],
+"tex": 4096,
+"faces": 10053,
+"size": [
+0.31,
+0.31,
+0.432
+]
+},
+{
+"id": "abo-B07QB8L3M9",
+"src": "abo",
+"abo": "9/B07QB8L3M9.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Stoneware Planter with Wood Stand, 10",
+"ex": [
+0.188,
+0.26,
+0.188
+],
+"tex": 4096,
+"faces": 5282,
+"size": [
+0.188,
+0.188,
+0.26
+]
+},
+{
+"id": "abo-B07QB8LPQ6",
+"src": "abo",
+"abo": "6/B07QB8LPQ6.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Stoneware Planter with Wood Stand, 15",
+"ex": [
+0.265,
+0.404,
+0.265
+],
+"tex": 4096,
+"faces": 8400,
+"size": [
+0.265,
+0.265,
+0.404
+]
+},
+{
+"id": "abo-B07QC6X16K",
+"src": "abo",
+"abo": "K/B07QC6X16K.glb",
+"role": "pot_floor",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Iron Stand, 17\"H",
+"ex": [
+0.31,
+0.432,
+0.31
+],
+"tex": 4096,
+"faces": 10053,
+"size": [
+0.31,
+0.31,
+0.432
+]
+},
+{
+"id": "abo-B07QC8CGKK",
+"src": "abo",
+"abo": "K/B07QC8CGKK.glb",
+"role": "pot_floor",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Stoneware Planter with Wood Stand, 10",
+"ex": [
+0.192,
+0.263,
+0.192
+],
+"tex": 4096,
+"faces": 5282,
+"size": [
+0.192,
+0.192,
+0.263
+]
+},
+{
+"id": "abo-B07QF8RJZN",
+"src": "abo",
+"abo": "N/B07QF8RJZN.glb",
+"role": "pot_floor",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Ceramic Planter with Iron Stand, 17\"H",
+"ex": [
+0.31,
+0.432,
+0.31
+],
+"tex": 4096,
+"faces": 10053,
+"size": [
+0.31,
+0.31,
+0.432
+]
+},
+{
+"id": "abo-B075HR7LHQ",
+"src": "abo",
+"abo": "Q/B075HR7LHQ.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Rustic Stoneware Crosshatch Indoor Flower Plant P",
+"ex": [
+0.16,
+0.156,
+0.16
+],
+"tex": 2048,
+"faces": 6880,
+"size": [
+0.16,
+0.16,
+0.156
+]
+},
+{
+"id": "abo-B075HWDS6P",
+"src": "abo",
+"abo": "P/B075HWDS6P.glb",
+"role": "pot_table",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Ceramic Floral Embossed Decorative ",
+"ex": [
+0.184,
+0.206,
+0.184
+],
+"tex": 2048,
+"faces": 9600,
+"size": [
+0.184,
+0.184,
+0.206
+]
+},
+{
+"id": "abo-B075HWDSZ1",
+"src": "abo",
+"abo": "1/B075HWDSZ1.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Rustic Stoneware Crosshatch Indoor Outdoor Flower",
+"ex": [
+0.109,
+0.096,
+0.109
+],
+"tex": 2048,
+"faces": 7600,
+"size": [
+0.109,
+0.109,
+0.096
+]
+},
+{
+"id": "abo-B075HWDTHP",
+"src": "abo",
+"abo": "P/B075HWDTHP.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Geometric Ceramic Planter, 6.5\"H, White and Grey",
+"ex": [
+0.186,
+0.144,
+0.186
+],
+"tex": 2048,
+"faces": 1920,
+"size": [
+0.186,
+0.186,
+0.144
+]
+},
+{
+"id": "abo-B075HX7JFC",
+"src": "abo",
+"abo": "C/B075HX7JFC.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Geometric Ceramic Planter, 8.7\"H, White and Grey",
+"ex": [
+0.255,
+0.223,
+0.255
+],
+"tex": 2048,
+"faces": 2160,
+"size": [
+0.255,
+0.255,
+0.223
+]
+},
+{
+"id": "abo-B075HXHKZ4",
+"src": "abo",
+"abo": "4/B075HXHKZ4.glb",
+"role": "pot_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Rustic Stoneware Crosshatch Indoor Outdoor Flower",
+"ex": [
+0.177,
+0.157,
+0.177
+],
+"tex": 2048,
+"faces": 120320,
+"size": [
+0.177,
+0.177,
+0.157
+]
+},
+{
+"id": "abo-B078JH73F4",
+"src": "abo",
+"abo": "4/B078JH73F4.glb",
+"role": "pot_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Ceramic Stoneware Indoor Plant",
+"ex": [
+0.23,
+0.202,
+0.23
+],
+"tex": 2048,
+"faces": 3920,
+"size": [
+0.23,
+0.23,
+0.202
+]
+},
+{
+"id": "abo-B078JHPRYY",
+"src": "abo",
+"abo": "Y/B078JHPRYY.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Concrete Indoor Outdoor Planter Pot With P",
+"ex": [
+0.122,
+0.128,
+0.122
+],
+"tex": 2048,
+"faces": 11200,
+"size": [
+0.122,
+0.122,
+0.128
+]
+},
+{
+"id": "abo-B07BZR1KWC",
+"src": "abo",
+"abo": "C/B07BZR1KWC.glb",
+"role": "pot_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Geometric Ceramic Planter, 8.6\"H, Rose",
+"ex": [
+0.273,
+0.237,
+0.273
+],
+"tex": 2048,
+"faces": 6240,
+"size": [
+0.273,
+0.273,
+0.237
+]
+},
+{
+"id": "abo-B07HSGSG47",
+"src": "abo",
+"abo": "7/B07HSGSG47.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Westline Modern Indoor Outdoor Hand Painted Stone",
+"ex": [
+0.204,
+0.214,
+0.204
+],
+"tex": 2048,
+"faces": 9760,
+"size": [
+0.204,
+0.204,
+0.214
+]
+},
+{
+"id": "abo-B07HSJP5N9",
+"src": "abo",
+"abo": "9/B07HSJP5N9.glb",
+"role": "pot_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Industrial Hexagonal Planter, 7.87\"H, Gold",
+"ex": [
+0.221,
+0.238,
+0.243
+],
+"tex": 4096,
+"faces": 552,
+"off": true,
+"size": [
+0.221,
+0.243,
+0.238
+]
+},
+{
+"id": "abo-B07HSKBHBT",
+"src": "abo",
+"abo": "T/B07HSKBHBT.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Westline Modern Indoor Outdoor Hand Painted Stone",
+"ex": [
+0.268,
+0.27,
+0.268
+],
+"tex": 2048,
+"faces": 9760,
+"size": [
+0.268,
+0.268,
+0.27
+]
+},
+{
+"id": "abo-B07HSLG6WN",
+"src": "abo",
+"abo": "N/B07HSLG6WN.glb",
+"role": "pot_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Emerick Rustic Stoneware Planter Pot - 6 I",
+"ex": [
+0.316,
+0.303,
+0.317
+],
+"tex": 2048,
+"faces": 3200,
+"size": [
+0.316,
+0.317,
+0.303
+]
+},
+{
+"id": "abo-B07JM1H7RS",
+"src": "abo",
+"abo": "S/B07JM1H7RS.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Westline Modern Indoor Outdoor Hand-Painted Stone",
+"ex": [
+0.268,
+0.27,
+0.268
+],
+"tex": 2048,
+"faces": 9760,
+"size": [
+0.268,
+0.268,
+0.27
+]
+},
+{
+"id": "abo-B07JM6H88P",
+"src": "abo",
+"abo": "P/B07JM6H88P.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Westline Modern Indoor Outdoor Hand-Painted Stone",
+"ex": [
+0.268,
+0.27,
+0.268
+],
+"tex": 2048,
+"faces": 9760,
+"size": [
+0.268,
+0.268,
+0.27
+]
+},
+{
+"id": "abo-B07QB8L1TK",
+"src": "abo",
+"abo": "K/B07QB8L1TK.glb",
+"role": "pot_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century Patterned Planter, 10.53\"H, Co",
+"ex": [
+0.266,
+0.27,
+0.266
+],
+"tex": 4096,
+"faces": 9760,
+"size": [
+0.266,
+0.266,
+0.27
+]
+},
+{
+"id": "abo-B07QB8L1WK",
+"src": "abo",
+"abo": "K/B07QB8L1WK.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century 2-Toned Stoneware Planter, 4.13\"H, Gr",
+"ex": [
+0.128,
+0.105,
+0.128
+],
+"tex": 4096,
+"faces": 38016,
+"size": [
+0.128,
+0.128,
+0.105
+]
+},
+{
+"id": "abo-B07QB8L7YC",
+"src": "abo",
+"abo": "C/B07QB8L7YC.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Rustic Chevron-Patterned Stoneware Planter, 8.85\"",
+"ex": [
+0.25,
+0.239,
+0.25
+],
+"tex": 4096,
+"faces": 5888,
+"size": [
+0.25,
+0.25,
+0.239
+]
+},
+{
+"id": "abo-B07QB8L7ZC",
+"src": "abo",
+"abo": "C/B07QB8L7ZC.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Stoneware Planter with Wood Stand, 11",
+"ex": [
+0.222,
+0.278,
+0.222
+],
+"tex": 4096,
+"faces": 31040,
+"size": [
+0.222,
+0.222,
+0.278
+]
+},
+{
+"id": "abo-B07QB8LPPF",
+"src": "abo",
+"abo": "F/B07QB8LPPF.glb",
+"role": "pot_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century 100% Stoneware Planter, 7.87\"H",
+"ex": [
+0.44,
+0.398,
+0.44
+],
+"tex": 4096,
+"faces": 12800,
+"size": [
+0.44,
+0.44,
+0.398
+]
+},
+{
+"id": "abo-B07QC8C7YX",
+"src": "abo",
+"abo": "X/B07QC8C7YX.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Diamond-Patterned Stoneware Planter, ",
+"ex": [
+0.224,
+0.203,
+0.224
+],
+"tex": 4096,
+"faces": 2320,
+"size": [
+0.224,
+0.224,
+0.203
+]
+},
+{
+"id": "abo-B07QC8CC1V",
+"src": "abo",
+"abo": "V/B07QC8CC1V.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century Two-Toned Planter, 10.53\"H, In",
+"ex": [
+0.266,
+0.27,
+0.266
+],
+"tex": 4096,
+"faces": 9760,
+"size": [
+0.266,
+0.266,
+0.27
+]
+},
+{
+"id": "abo-B07QC8CFBJ",
+"src": "abo",
+"abo": "J/B07QC8CFBJ.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century 100% Stoneware Planter, 7.87\"H",
+"ex": [
+0.221,
+0.201,
+0.221
+],
+"tex": 4096,
+"faces": 11360,
+"size": [
+0.221,
+0.221,
+0.201
+]
+},
+{
+"id": "abo-B07QC8CFBM",
+"src": "abo",
+"abo": "M/B07QC8CFBM.glb",
+"role": "pot_table",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Stone & Beam 100% Stoneware Planter, 7.87\"H, Blue",
+"ex": [
+0.221,
+0.201,
+0.221
+],
+"tex": 4096,
+"faces": 11360,
+"size": [
+0.221,
+0.221,
+0.201
+]
+},
+{
+"id": "abo-B07QC8CGK5",
+"src": "abo",
+"abo": "5/B07QC8CGK5.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Stoneware Planter with Wood Stand, 8.",
+"ex": [
+0.161,
+0.224,
+0.161
+],
+"tex": 4096,
+"faces": 31040,
+"size": [
+0.161,
+0.161,
+0.224
+]
+},
+{
+"id": "abo-B07QD6ZY71",
+"src": "abo",
+"abo": "1/B07QD6ZY71.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century Patterned Planter, 8.46\"H, Aqu",
+"ex": [
+0.198,
+0.214,
+0.198
+],
+"tex": 4096,
+"faces": 9760,
+"size": [
+0.198,
+0.198,
+0.214
+]
+},
+{
+"id": "abo-B07QFB4LWJ",
+"src": "abo",
+"abo": "J/B07QFB4LWJ.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Rustic Cross-Patterned Stoneware Planter, 6.3\"H, ",
+"ex": [
+0.19,
+0.181,
+0.19
+],
+"tex": 4096,
+"faces": 5888,
+"size": [
+0.19,
+0.19,
+0.181
+]
+},
+{
+"id": "abo-B07QFB5H65",
+"src": "abo",
+"abo": "5/B07QFB5H65.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Rustic Circle-Patterned Stoneware Planter, 6.3\"H,",
+"ex": [
+0.19,
+0.181,
+0.19
+],
+"tex": 4096,
+"faces": 5888,
+"size": [
+0.19,
+0.19,
+0.181
+]
+},
+{
+"id": "abo-B07QGG3PP7",
+"src": "abo",
+"abo": "7/B07QGG3PP7.glb",
+"role": "pot_table",
+"tone": "green",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century Patterned Planter, 10.53\"H, Da",
+"ex": [
+0.266,
+0.27,
+0.266
+],
+"tex": 4096,
+"faces": 9600,
+"size": [
+0.266,
+0.266,
+0.27
+]
+},
+{
+"id": "abo-B07QGG6C67",
+"src": "abo",
+"abo": "7/B07QGG6C67.glb",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century Two-Toned Planter, 8.46\"H, Tea",
+"ex": [
+0.195,
+0.214,
+0.195
+],
+"tex": 4096,
+"faces": 9760,
+"size": [
+0.195,
+0.195,
+0.214
+]
+},
+{
+"id": "abo-B071HBC338",
+"src": "abo",
+"abo": "8/B071HBC338.glb",
+"role": "mirror",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Round Layered Rustic Wood Hanging Wall Mir",
+"ex": [
+1.077,
+1.077,
+0.036
+],
+"tex": 2048,
+"faces": 6400,
+"size": [
+1.077,
+0.036,
+1.077
+]
+},
+{
+"id": "abo-B071KX42WG",
+"src": "abo",
+"abo": "G/B071KX42WG.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet 3x3 Tile Mirror Decor, 36 Inch Height, Gold Finis",
+"ex": [
+1.011,
+0.926,
+0.023
+],
+"tex": 2048,
+"faces": 13818,
+"off": true,
+"size": [
+1.011,
+0.023,
+0.926
+]
+},
+{
+"id": "abo-B0722L1N3X",
+"src": "abo",
+"abo": "X/B0722L1N3X.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Round Distressed Metal Mirror, 36\"H, Tin a",
+"ex": [
+0.907,
+0.907,
+0.111
+],
+"tex": 2048,
+"faces": 9488,
+"size": [
+0.907,
+0.111,
+0.907
+]
+},
+{
+"id": "abo-B073WGMTB8",
+"src": "abo",
+"abo": "8/B073WGMTB8.glb",
+"role": "mirror",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Rotating Metal Hanging Wall Mirror, 18.25 Inch He",
+"ex": [
+0.47,
+0.468,
+0.045
+],
+"tex": 2048,
+"faces": 16112,
+"size": [
+0.47,
+0.045,
+0.468
+]
+},
+{
+"id": "abo-B073WGMTCB",
+"src": "abo",
+"abo": "B/B073WGMTCB.glb",
+"role": "mirror",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Metal Lattice-Work Round Hanging Wall Mirr",
+"ex": [
+0.454,
+0.454,
+0.043
+],
+"tex": 2048,
+"faces": 32184,
+"size": [
+0.454,
+0.043,
+0.454
+]
+},
+{
+"id": "abo-B073WGMTCC",
+"src": "abo",
+"abo": "C/B073WGMTCC.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Industrial Hexagonal Floating Metal Wall M",
+"ex": [
+0.38,
+0.334,
+0.119
+],
+"tex": 2048,
+"faces": 14162,
+"size": [
+0.38,
+0.119,
+0.334
+]
+},
+{
+"id": "abo-B073WGSN2W",
+"src": "abo",
+"abo": "W/B073WGSN2W.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Industrial Square Floating Metal Wall Mirr",
+"ex": [
+0.306,
+0.303,
+0.107
+],
+"tex": 2048,
+"faces": 8612,
+"size": [
+0.306,
+0.107,
+0.303
+]
+},
+{
+"id": "abo-B073WH7PZ7",
+"src": "abo",
+"abo": "7/B073WH7PZ7.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Antique-Style Metal Frame Hanging Wall Mir",
+"ex": [
+0.462,
+0.811,
+0.066
+],
+"tex": 2048,
+"faces": 9808,
+"size": [
+0.462,
+0.066,
+0.811
+]
+},
+{
+"id": "abo-B073WHKXD4",
+"src": "abo",
+"abo": "4/B073WHKXD4.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Round Arc Iron Hanging Wall Mirror ",
+"ex": [
+0.51,
+0.77,
+0.137
+],
+"tex": 2048,
+"faces": 8560,
+"off": true,
+"size": [
+0.51,
+0.137,
+0.77
+]
+},
+{
+"id": "abo-B073WHZK9W",
+"src": "abo",
+"abo": "W/B073WHZK9W.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Ridged Metal Mirror, 24\" Diameter, ",
+"ex": [
+0.609,
+0.609,
+0.056
+],
+"tex": 4096,
+"faces": 24440,
+"size": [
+0.609,
+0.056,
+0.609
+]
+},
+{
+"id": "abo-B073WHZKBF",
+"src": "abo",
+"abo": "F/B073WHZKBF.glb",
+"role": "mirror",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Hexagon Wood Frame Hanging Wall Mirror, 30",
+"ex": [
+0.675,
+0.779,
+0.091
+],
+"tex": 4096,
+"faces": 708,
+"size": [
+0.675,
+0.091,
+0.779
+]
+},
+{
+"id": "abo-B073WJ2J8P",
+"src": "abo",
+"abo": "P/B073WJ2J8P.glb",
+"role": "mirror",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Wood Frame Hanging Wall Mirror, 39.",
+"ex": [
+0.651,
+1.01,
+0.047
+],
+"tex": 2048,
+"faces": 1296,
+"size": [
+0.651,
+0.047,
+1.01
+]
+},
+{
+"id": "abo-B07B8NW6GG",
+"src": "abo",
+"abo": "G/B07B8NW6GG.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic Farmhouse Round Wood Iron Mirror wi",
+"ex": [
+0.355,
+0.568,
+0.042
+],
+"tex": 2048,
+"faces": 31448,
+"size": [
+0.355,
+0.042,
+0.568
+]
+},
+{
+"id": "abo-B07B8W8FDD",
+"src": "abo",
+"abo": "D/B07B8W8FDD.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Metal Storage Mirror, 15.3\"H,",
+"ex": [
+0.386,
+0.386,
+0.126
+],
+"tex": 2048,
+"faces": 22532,
+"size": [
+0.386,
+0.126,
+0.386
+]
+},
+{
+"id": "abo-B07B92C9WT",
+"src": "abo",
+"abo": "T/B07B92C9WT.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Glass Mirror, 42\"H, Black",
+"ex": [
+0.724,
+1.075,
+0.037
+],
+"tex": 2048,
+"faces": 10500,
+"size": [
+0.724,
+0.037,
+1.075
+]
+},
+{
+"id": "abo-B07HSGPJLM",
+"src": "abo",
+"abo": "M/B07HSGPJLM.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Vintage Window Mirror -28 Inch, Antique Gr",
+"ex": [
+0.461,
+0.713,
+0.024
+],
+"tex": 2048,
+"faces": 13948,
+"size": [
+0.461,
+0.024,
+0.713
+]
+},
+{
+"id": "abo-B07HSLQYF1",
+"src": "abo",
+"abo": "1/B07HSLQYF1.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Industrial Round Metal Wall Mirror Set - Set of 3",
+"ex": [
+2.16,
+2.096,
+0.076
+],
+"tex": 2048,
+"faces": 15936,
+"off": true,
+"size": [
+2.16,
+0.076,
+2.096
+]
+},
+{
+"id": "abo-B07K8F2WPC",
+"src": "abo",
+"abo": "C/B07K8F2WPC.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Marque Amazon -\u00a0Alkove - Hayes Riva 2 - Miroir en bois massif, Ch\u00eane s",
+"ex": [
+0.8,
+0.8,
+0.02
+],
+"tex": 4096,
+"faces": 9496,
+"size": [
+0.8,
+0.02,
+0.8
+]
+},
+{
+"id": "abo-B07RNMNFQ5",
+"src": "abo",
+"abo": "5/B07RNMNFQ5.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Basics Rectangular Wall Mirror 30\" x 40\" - Standard Trim, Walnu",
+"ex": [
+0.762,
+1.016,
+0.04
+],
+"tex": 4096,
+"faces": 9328,
+"size": [
+0.762,
+0.04,
+1.016
+]
+},
+{
+"id": "abo-B07RNMNGYF",
+"src": "abo",
+"abo": "F/B07RNMNGYF.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Basics Rectangular Wall Mirror 24\" x 36\" - Standard Trim, Black",
+"ex": [
+0.609,
+0.915,
+0.04
+],
+"tex": 4096,
+"faces": 9328,
+"size": [
+0.609,
+0.04,
+0.915
+]
+},
+{
+"id": "abo-B07RPPBP7J",
+"src": "abo",
+"abo": "J/B07RPPBP7J.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Basics Rectangular Wall Mirror 16\" x 20\" - Peaked Trim, Brass",
+"ex": [
+0.406,
+0.509,
+0.041
+],
+"tex": 4096,
+"faces": 12952,
+"size": [
+0.406,
+0.041,
+0.509
+]
+},
+{
+"id": "abo-B07RQMQ1PZ",
+"src": "abo",
+"abo": "Z/B07RQMQ1PZ.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Basics Rectangular Wall Mirror 30\" x 40\" - Peaked Trim, Walnut",
+"ex": [
+0.762,
+1.016,
+0.041
+],
+"tex": 4096,
+"faces": 9400,
+"size": [
+0.762,
+0.041,
+1.016
+]
+},
+{
+"id": "abo-B084HTY39G",
+"src": "abo",
+"abo": "G/B084HTY39G.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Modern Rhombus Cutout Hanging Mirror, 26.75\"H, Go",
+"ex": [
+0.419,
+0.679,
+0.032
+],
+"tex": 4096,
+"faces": 10432,
+"size": [
+0.419,
+0.032,
+0.679
+]
+},
+{
+"id": "abo-B084HTZ2C6",
+"src": "abo",
+"abo": "6/B084HTZ2C6.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Modern Round Hanging Mirror with Shelf, 18\" Diame",
+"ex": [
+0.457,
+0.457,
+0.133
+],
+"tex": 4096,
+"faces": 9198,
+"size": [
+0.457,
+0.133,
+0.457
+]
+},
+{
+"id": "abo-B084HTZ8PW",
+"src": "abo",
+"abo": "W/B084HTZ8PW.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Modern Round Hanging Mirror with Shelf, 18\" Diame",
+"ex": [
+0.457,
+0.457,
+0.133
+],
+"tex": 4096,
+"faces": 9198,
+"size": [
+0.457,
+0.133,
+0.457
+]
+},
+{
+"id": "abo-B084HV148L",
+"src": "abo",
+"abo": "L/B084HV148L.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Modern Round Cutout Hanging Mirror, 22.25\" Diamet",
+"ex": [
+0.565,
+0.565,
+0.032
+],
+"tex": 4096,
+"faces": 15572,
+"size": [
+0.565,
+0.032,
+0.565
+]
+},
+{
+"id": "abo-B084HV67GW",
+"src": "abo",
+"abo": "W/B084HV67GW.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Modern Cutout Hanging Mirror, 23\"H, Gold",
+"ex": [
+0.584,
+0.254,
+0.032
+],
+"tex": 4096,
+"faces": 9938,
+"size": [
+0.584,
+0.032,
+0.254
+]
+},
+{
+"id": "abo-B084HV6KDL",
+"src": "abo",
+"abo": "L/B084HV6KDL.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Geometric Framed Hanging Mirror, 23.75\"H, ",
+"ex": [
+0.508,
+0.603,
+0.051
+],
+"tex": 4096,
+"faces": 9536,
+"size": [
+0.508,
+0.051,
+0.603
+]
+},
+{
+"id": "abo-B084HV6KDV",
+"src": "abo",
+"abo": "V/B084HV6KDV.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Round Cutout Hanging Mirror, 22.25\" Diamet",
+"ex": [
+0.565,
+0.565,
+0.032
+],
+"tex": 4096,
+"faces": 12120,
+"size": [
+0.565,
+0.032,
+0.565
+]
+},
+{
+"id": "abo-B084HV6L1H",
+"src": "abo",
+"abo": "H/B084HV6L1H.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Modern Cutout Hanging Mirror, 23\"H, Black",
+"ex": [
+0.584,
+0.254,
+0.032
+],
+"tex": 4096,
+"faces": 9938,
+"size": [
+0.584,
+0.032,
+0.254
+]
+},
+{
+"id": "abo-B084HV7BC3",
+"src": "abo",
+"abo": "3/B084HV7BC3.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Modern Oval Hanging Mirror, 39\"H, Black",
+"ex": [
+0.222,
+0.991,
+0.032
+],
+"tex": 4096,
+"faces": 5016,
+"size": [
+0.222,
+0.032,
+0.991
+]
+},
+{
+"id": "abo-B084HVB133",
+"src": "abo",
+"abo": "3/B084HVB133.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Geometric Framed Hanging Mirror, 23.75\"H, ",
+"ex": [
+0.508,
+0.603,
+0.051
+],
+"tex": 4096,
+"faces": 9536,
+"size": [
+0.508,
+0.051,
+0.603
+]
+},
+{
+"id": "abo-B084HVB14C",
+"src": "abo",
+"abo": "C/B084HVB14C.glb",
+"role": "mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Modern Rhombus Cutout Hanging Mirror, 26.75\"H, Bl",
+"ex": [
+0.419,
+0.679,
+0.032
+],
+"tex": 4096,
+"faces": 10432,
+"size": [
+0.419,
+0.032,
+0.679
+]
+},
+{
+"id": "abo-B0718ZKL8B",
+"src": "abo",
+"abo": "B/B0718ZKL8B.glb",
+"role": "tall_mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Classic Rectangular Flat Frame Mirror, 80\"",
+"ex": [
+0.812,
+2.031,
+0.026
+],
+"tex": 2048,
+"faces": 324,
+"size": [
+0.812,
+0.026,
+2.031
+]
+},
+{
+"id": "abo-B071RNV5PK",
+"src": "abo",
+"abo": "K/B071RNV5PK.glb",
+"role": "tall_mirror",
+"tone": "neutral",
+"name": "Stone & Beam Classic Rectangular Flat Frame Mirror, 80\"H, Bronze Finis",
+"ex": [
+0.812,
+2.02,
+0.221
+],
+"tex": 2048,
+"faces": 324,
+"size": [
+0.812,
+0.221,
+2.02
+]
+},
+{
+"id": "abo-B07255WMBH",
+"src": "abo",
+"abo": "H/B07255WMBH.glb",
+"role": "tall_mirror",
+"tone": "warm",
+"name": "Stone & Beam Classic Rectangular Flat Frame Mirror, 80\"H, Gold Finish",
+"ex": [
+0.812,
+2.031,
+0.025
+],
+"tex": 2048,
+"faces": 324,
+"size": [
+0.812,
+0.025,
+2.031
+]
+},
+{
+"id": "abo-B073WGN8PP",
+"src": "abo",
+"abo": "P/B073WGN8PP.glb",
+"role": "tall_mirror",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Wood and Iron Hanging Wall Mirror, 42.25\" ",
+"ex": [
+0.354,
+1.08,
+0.042
+],
+"tex": 2048,
+"faces": 13832,
+"size": [
+0.354,
+0.042,
+1.08
+]
+},
+{
+"id": "abo-B073WHZKB2",
+"src": "abo",
+"abo": "2/B073WHZKB2.glb",
+"role": "tall_mirror",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Wood and Iron Rectangular Hanging Wall Mirror, 44",
+"ex": [
+0.343,
+1.123,
+0.047
+],
+"tex": 2048,
+"faces": 660,
+"size": [
+0.343,
+0.047,
+1.123
+]
+},
+{
+"id": "abo-B084HV5LK3",
+"src": "abo",
+"abo": "3/B084HV5LK3.glb",
+"role": "tall_mirror",
+"tone": "neutral",
+"name": "Amazon Brand - Rivet Modern Oval Hanging Mirror, 39\"H, Gold",
+"ex": [
+0.222,
+0.991,
+0.032
+],
+"tex": 4096,
+"faces": 5016,
+"size": [
+0.222,
+0.032,
+0.991
+]
+},
+{
+"id": "abo-B07121ZVVT",
+"src": "abo",
+"abo": "T/B07121ZVVT.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Textured Pattern Farmhouse Wool Are",
+"ex": [
+2.28,
+0.015,
+1.521
+],
+"tex": 2048,
+"faces": 2672,
+"size": [
+2.28,
+1.521,
+0.015
+]
+},
+{
+"id": "abo-B07121ZWNC",
+"src": "abo",
+"abo": "C/B07121ZWNC.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Wave Cosmopolitan Area Rug, 5 x 7 Foot, Mo",
+"ex": [
+2.144,
+0.015,
+1.543
+],
+"tex": 2048,
+"faces": 1776,
+"size": [
+2.144,
+1.543,
+0.015
+]
+},
+{
+"id": "abo-B0714MJKZW",
+"src": "abo",
+"abo": "W/B0714MJKZW.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Stone & Beam Contemporary Floral Medallion Rug, 5' x 8', Grey",
+"ex": [
+2.447,
+0.021,
+1.527
+],
+"tex": 2048,
+"faces": 2036,
+"size": [
+2.447,
+1.527,
+0.021
+]
+},
+{
+"id": "abo-B071777YL9",
+"src": "abo",
+"abo": "9/B071777YL9.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Diamond Trellis Tassel Wool Rug, 5' x 8', Ivory",
+"ex": [
+2.755,
+0.021,
+1.524
+],
+"tex": 2048,
+"faces": 28876,
+"size": [
+2.755,
+1.524,
+0.021
+]
+},
+{
+"id": "abo-B071777YNX",
+"src": "abo",
+"abo": "X/B071777YNX.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Muted Boho Rug, 5' x 8', Off-white",
+"ex": [
+2.438,
+0.026,
+1.706
+],
+"tex": 2048,
+"faces": 1616,
+"size": [
+2.438,
+1.706,
+0.026
+]
+},
+{
+"id": "abo-B0719STDHT",
+"src": "abo",
+"abo": "T/B0719STDHT.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Rivet Modern Zebra Print Rug, 4' x 6', Grey",
+"ex": [
+1.827,
+0.008,
+1.225
+],
+"tex": 2048,
+"faces": 3072,
+"size": [
+1.827,
+1.225,
+0.008
+]
+},
+{
+"id": "abo-B0719STF8C",
+"src": "abo",
+"abo": "C/B0719STF8C.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand - Stone& Beam Vintage Area Rug, 4' x 6', Dark Blue",
+"ex": [
+1.819,
+0.005,
+1.2
+],
+"tex": 2048,
+"faces": 3200,
+"size": [
+1.819,
+1.2,
+0.005
+]
+},
+{
+"id": "abo-B0719STKTS",
+"src": "abo",
+"abo": "S/B0719STKTS.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Floral Medallion Area Rug, 7'",
+"ex": [
+2.925,
+0.026,
+2.343
+],
+"tex": 4096,
+"faces": 5312,
+"size": [
+2.925,
+2.343,
+0.026
+]
+},
+{
+"id": "abo-B0719STLKT",
+"src": "abo",
+"abo": "T/B0719STLKT.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Border Jute Rug, 4' x 6', Nat",
+"ex": [
+1.838,
+0.019,
+1.22
+],
+"tex": 4096,
+"faces": 110560,
+"size": [
+1.838,
+1.22,
+0.019
+]
+},
+{
+"id": "abo-B0719STLL8",
+"src": "abo",
+"abo": "8/B0719STLL8.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Charcoal Distressed Medallion Area Rug, 2' 8\" x 8",
+"ex": [
+2.452,
+0.017,
+0.855
+],
+"tex": 2048,
+"faces": 1408,
+"size": [
+2.452,
+0.855,
+0.017
+]
+},
+{
+"id": "abo-B0719STLSH",
+"src": "abo",
+"abo": "H/B0719STLSH.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Stone & Beam MFL nuLoom Rug B0719STLSH 5'X8' Cream",
+"ex": [
+2.438,
+0.011,
+1.524
+],
+"tex": 4096,
+"faces": 2496,
+"size": [
+2.438,
+1.524,
+0.011
+]
+},
+{
+"id": "abo-B0719STM26",
+"src": "abo",
+"abo": "6/B0719STM26.glb",
+"role": "rug",
+"tone": "warm",
+"name": "nuLOOM Rikki Braided Border Jute Area Rug, 8' Round, Off-white",
+"ex": [
+2.443,
+0.015,
+2.444
+],
+"tex": 2048,
+"faces": 4200,
+"size": [
+2.443,
+2.444,
+0.015
+]
+},
+{
+"id": "abo-B0719SX5NS",
+"src": "abo",
+"abo": "S/B0719SX5NS.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Ikat Inspired Wool Area Rug, ",
+"ex": [
+1.698,
+0.013,
+1.072
+],
+"tex": 2048,
+"faces": 5000,
+"size": [
+1.698,
+1.072,
+0.013
+]
+},
+{
+"id": "abo-B0719SX5T7",
+"src": "abo",
+"abo": "7/B0719SX5T7.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Woven Bordered Sisal Area Rug, 5 x 7 Foot, Charco",
+"ex": [
+2.133,
+0.012,
+1.523
+],
+"tex": 4096,
+"faces": 7136,
+"size": [
+2.133,
+1.523,
+0.012
+]
+},
+{
+"id": "abo-B071FJZVPH",
+"src": "abo",
+"abo": "H/B071FJZVPH.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Wave Cosmopolitan Area Rug, 8 x 10 Foot, B",
+"ex": [
+2.584,
+0.011,
+2.073
+],
+"tex": 4096,
+"faces": 2800,
+"size": [
+2.584,
+2.073,
+0.011
+]
+},
+{
+"id": "abo-B071J4VX71",
+"src": "abo",
+"abo": "1/B071J4VX71.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Hourglass Wool Rug, 7'6\" x 9'",
+"ex": [
+2.894,
+0.013,
+2.286
+],
+"tex": 2048,
+"faces": 380,
+"size": [
+2.894,
+2.286,
+0.013
+]
+},
+{
+"id": "abo-B071J4VX7B",
+"src": "abo",
+"abo": "B/B071J4VX7B.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Hourglass Wool Runner Rug, 2'",
+"ex": [
+2.275,
+0.009,
+0.684
+],
+"tex": 2048,
+"faces": 1248,
+"size": [
+2.275,
+0.684,
+0.009
+]
+},
+{
+"id": "abo-B071J4VX9H",
+"src": "abo",
+"abo": "H/B071J4VX9H.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Rivet Woven Bordered Sisal Area Rug, 5 x 7 Foot, Charcoal",
+"ex": [
+1.676,
+0.013,
+1.067
+],
+"tex": 4096,
+"faces": 7376,
+"size": [
+1.676,
+1.067,
+0.013
+]
+},
+{
+"id": "abo-B071J4VYGH",
+"src": "abo",
+"abo": "H/B071J4VYGH.glb",
+"role": "rug",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Modern Wave Cosmopolitan Area Rug, 8 x 10 Foot, M",
+"ex": [
+3.042,
+0.021,
+2.456
+],
+"tex": 2048,
+"faces": 1776,
+"size": [
+3.042,
+2.456,
+0.021
+]
+},
+{
+"id": "abo-B071J4VYK1",
+"src": "abo",
+"abo": "1/B071J4VYK1.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Textured Pattern Farmhouse Wool Are",
+"ex": [
+3.038,
+0.019,
+2.42
+],
+"tex": 2048,
+"faces": 42752,
+"size": [
+3.038,
+2.42,
+0.019
+]
+},
+{
+"id": "abo-B071J4VYN7",
+"src": "abo",
+"abo": "7/B071J4VYN7.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Hourglass Wool Rug, 7'6\" x 9'",
+"ex": [
+2.892,
+0.006,
+2.283
+],
+"tex": 4096,
+"faces": 448,
+"size": [
+2.892,
+2.283,
+0.006
+]
+},
+{
+"id": "abo-B071J4VYTS",
+"src": "abo",
+"abo": "S/B071J4VYTS.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Textured Pattern Farmhouse Wool Are",
+"ex": [
+2.283,
+0.006,
+1.521
+],
+"tex": 2048,
+"faces": 448,
+"size": [
+2.283,
+1.521,
+0.006
+]
+},
+{
+"id": "abo-B071LQFCVL",
+"src": "abo",
+"abo": "L/B071LQFCVL.glb",
+"role": "rug",
+"tone": "cool",
+"name": "Stone & Beam Modern Family nuLoom XMP20636-508 Rug",
+"ex": [
+2.441,
+0.01,
+1.532
+],
+"tex": 4096,
+"faces": 24298,
+"size": [
+2.441,
+1.532,
+0.01
+]
+},
+{
+"id": "abo-B071LQHVJT",
+"src": "abo",
+"abo": "T/B071LQHVJT.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Ikat Inspired Wool Area Rug, ",
+"ex": [
+1.652,
+0.006,
+1.035
+],
+"tex": 2048,
+"faces": 11864,
+"size": [
+1.652,
+1.035,
+0.006
+]
+},
+{
+"id": "abo-B071LQHVZB",
+"src": "abo",
+"abo": "B/B071LQHVZB.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Hourglass Wool Area Rug, 5 x ",
+"ex": [
+2.08,
+0.01,
+1.451
+],
+"tex": 4096,
+"faces": 4800,
+"size": [
+2.08,
+1.451,
+0.01
+]
+},
+{
+"id": "abo-B071LQHW1P",
+"src": "abo",
+"abo": "P/B071LQHW1P.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Textured Zen Hand-Woven Jute Area Rug, 5 x 7 Foot",
+"ex": [
+2.144,
+0.013,
+1.509
+],
+"tex": 2048,
+"faces": 8084,
+"size": [
+2.144,
+1.509,
+0.013
+]
+},
+{
+"id": "abo-B071SHHZVC",
+"src": "abo",
+"abo": "C/B071SHHZVC.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Charcoal Distressed Medallion Area Rug, 4 x 6 Foo",
+"ex": [
+1.833,
+0.013,
+1.215
+],
+"tex": 2048,
+"faces": 4160,
+"size": [
+1.833,
+1.215,
+0.013
+]
+},
+{
+"id": "abo-B071SHHZVG",
+"src": "abo",
+"abo": "G/B071SHHZVG.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Rivet Modern Intertwined Wool Rug, 5' x 8', Silver",
+"ex": [
+2.365,
+0.017,
+1.521
+],
+"tex": 2048,
+"faces": 3328,
+"size": [
+2.365,
+1.521,
+0.017
+]
+},
+{
+"id": "abo-B071SHLFHN",
+"src": "abo",
+"abo": "N/B071SHLFHN.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Motion Modern Grid Pop Area Rug, 3' 6\" x 5' 6\", S",
+"ex": [
+1.677,
+0.011,
+1.066
+],
+"tex": 4096,
+"faces": 3538,
+"size": [
+1.677,
+1.066,
+0.011
+]
+},
+{
+"id": "abo-B071SHLFHX",
+"src": "abo",
+"abo": "X/B071SHLFHX.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Motion Modern Grid Pop Area Rug, 7' 9\" x 10' 10\",",
+"ex": [
+3.294,
+0.018,
+2.382
+],
+"tex": 2048,
+"faces": 1280,
+"size": [
+3.294,
+2.382,
+0.018
+]
+},
+{
+"id": "abo-B071SHLFL6",
+"src": "abo",
+"abo": "6/B071SHLFL6.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Speckle Wool Area Rug, 4 x 6 ",
+"ex": [
+1.846,
+0.014,
+1.243
+],
+"tex": 2048,
+"faces": 1700,
+"size": [
+1.846,
+1.243,
+0.014
+]
+},
+{
+"id": "abo-B071SHLFLM",
+"src": "abo",
+"abo": "M/B071SHLFLM.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Textured Jute Area Rug, 5 x 7",
+"ex": [
+2.141,
+0.013,
+1.566
+],
+"tex": 2048,
+"faces": 2416,
+"size": [
+2.141,
+1.566,
+0.013
+]
+},
+{
+"id": "abo-B071ZJ3X28",
+"src": "abo",
+"abo": "8/B071ZJ3X28.glb",
+"role": "rug",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Geometric Color Blocking Rug, 5' x 8', Blue",
+"ex": [
+2.42,
+0.005,
+1.528
+],
+"tex": 2048,
+"faces": 2076,
+"size": [
+2.42,
+1.528,
+0.005
+]
+},
+{
+"id": "abo-B071ZJ5X4Y",
+"src": "abo",
+"abo": "Y/B071ZJ5X4Y.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Speckle Wool Area Rug, 5' x 7",
+"ex": [
+2.263,
+0.017,
+1.523
+],
+"tex": 2048,
+"faces": 1700,
+"size": [
+2.263,
+1.523,
+0.017
+]
+},
+{
+"id": "abo-B071ZJ6C8G",
+"src": "abo",
+"abo": "G/B071ZJ6C8G.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Hourglass Wool Area Rug, 5 x ",
+"ex": [
+2.134,
+0.01,
+1.524
+],
+"tex": 4096,
+"faces": 4800,
+"size": [
+2.134,
+1.524,
+0.01
+]
+},
+{
+"id": "abo-B0723DFX97",
+"src": "abo",
+"abo": "7/B0723DFX97.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Textured Pattern Farmhouse Wool Are",
+"ex": [
+2.272,
+0.015,
+1.498
+],
+"tex": 2048,
+"faces": 2672,
+"size": [
+2.272,
+1.498,
+0.015
+]
+},
+{
+"id": "abo-B0723DG6BR",
+"src": "abo",
+"abo": "R/B0723DG6BR.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Ikat Inspired Wool Area Rug, ",
+"ex": [
+2.261,
+0.013,
+1.676
+],
+"tex": 4096,
+"faces": 2880,
+"size": [
+2.261,
+1.676,
+0.013
+]
+},
+{
+"id": "abo-B0723DGNG5",
+"src": "abo",
+"abo": "5/B0723DGNG5.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Textured Pattern Farmhouse Wool Are",
+"ex": [
+3.048,
+0.013,
+2.438
+],
+"tex": 4096,
+"faces": 1344,
+"size": [
+3.048,
+2.438,
+0.013
+]
+},
+{
+"id": "abo-B0723DGNHQ",
+"src": "abo",
+"abo": "Q/B0723DGNHQ.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Ikat Inspired Wool Area Rug, ",
+"ex": [
+2.261,
+0.013,
+1.676
+],
+"tex": 4096,
+"faces": 2880,
+"size": [
+2.261,
+1.676,
+0.013
+]
+},
+{
+"id": "abo-B0723DGVR1",
+"src": "abo",
+"abo": "1/B0723DGVR1.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Hourglass Wool Area Rug, 7'6\"",
+"ex": [
+2.881,
+0.02,
+2.27
+],
+"tex": 2048,
+"faces": 416,
+"size": [
+2.881,
+2.27,
+0.02
+]
+},
+{
+"id": "abo-B0725Z73ZP",
+"src": "abo",
+"abo": "P/B0725Z73ZP.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Charcoal Distressed Medallion Area Rug, 8 x 10 Fo",
+"ex": [
+3.057,
+0.008,
+2.444
+],
+"tex": 2048,
+"faces": 3832,
+"size": [
+3.057,
+2.444,
+0.008
+]
+},
+{
+"id": "abo-B0725Z9MWX",
+"src": "abo",
+"abo": "X/B0725Z9MWX.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Speckle Wool Area Rug, 5' x 7",
+"ex": [
+2.283,
+0.013,
+1.547
+],
+"tex": 2048,
+"faces": 500,
+"size": [
+2.283,
+1.547,
+0.013
+]
+},
+{
+"id": "abo-B0725Z9MX3",
+"src": "abo",
+"abo": "3/B0725Z9MX3.glb",
+"role": "rug",
+"tone": "warm",
+"name": "Stone & Beam Contemporary Speckle Wool Area Rug, 5' x 7' 6\", Chestnut",
+"ex": [
+2.283,
+0.013,
+1.547
+],
+"tex": 2048,
+"faces": 500,
+"size": [
+2.283,
+1.547,
+0.013
+]
+},
+{
+"id": "abo-B072C5WNZF",
+"src": "abo",
+"abo": "F/B072C5WNZF.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Traditional Royal Area Rug, 5' 3\"x 7' 3\", ",
+"ex": [
+2.213,
+0.013,
+1.594
+],
+"tex": 4096,
+"faces": 1328,
+"size": [
+2.213,
+1.594,
+0.013
+]
+},
+{
+"id": "abo-B0719STKS9",
+"src": "abo",
+"abo": "9/B0719STKS9.glb",
+"role": "runner",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Border Jute Rug, 2'6\" x 8', N",
+"ex": [
+2.413,
+0.016,
+0.81
+],
+"tex": 2048,
+"faces": 3056,
+"size": [
+2.413,
+0.81,
+0.016
+]
+},
+{
+"id": "abo-B071J4VYKT",
+"src": "abo",
+"abo": "T/B071J4VYKT.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Stone & Beam Contemporary Speckle Wool Runner Rug, 2' 3\" x 7' 6\", Seaf",
+"ex": [
+3.201,
+0.014,
+2.437
+],
+"tex": 2048,
+"faces": 3204,
+"size": [
+3.201,
+2.437,
+0.014
+]
+},
+{
+"id": "abo-B071ZJ6BGG",
+"src": "abo",
+"abo": "G/B071ZJ6BGG.glb",
+"role": "runner",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Speckle Wool Runner Rug, 2' 3",
+"ex": [
+2.237,
+0.014,
+0.68
+],
+"tex": 2048,
+"faces": 440,
+"size": [
+2.237,
+0.68,
+0.014
+]
+},
+{
+"id": "abo-B071ZJ6BGN",
+"src": "abo",
+"abo": "N/B071ZJ6BGN.glb",
+"role": "rug",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Speckle Wool Runner Rug, 2' 3",
+"ex": [
+3.197,
+0.006,
+2.438
+],
+"tex": 2048,
+"faces": 404,
+"size": [
+3.197,
+2.438,
+0.006
+]
+},
+{
+"id": "abo-B0723DG6CM",
+"src": "abo",
+"abo": "M/B0723DG6CM.glb",
+"role": "runner",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Hourglass Wool Rug, 2'3\" x 7'",
+"ex": [
+2.289,
+0.013,
+0.691
+],
+"tex": 2048,
+"faces": 380,
+"size": [
+2.289,
+0.691,
+0.013
+]
+},
+{
+"id": "abo-B072C5WP17",
+"src": "abo",
+"abo": "7/B072C5WP17.glb",
+"role": "runner",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Contemporary Ikat Inspired Wool Runner Rug",
+"ex": [
+2.301,
+0.017,
+0.692
+],
+"tex": 2048,
+"faces": 3920,
+"size": [
+2.301,
+0.692,
+0.017
+]
+},
+{
+"id": "abo-B074VC69P9",
+"src": "abo",
+"abo": "9/B074VC69P9.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam French Laundry Stripe Decorative Throw Pil",
+"ex": [
+0.438,
+0.419,
+0.247
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.438,
+0.247,
+0.419
+]
+},
+{
+"id": "abo-B074VKVNQX",
+"src": "abo",
+"abo": "X/B074VKVNQX.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Medallion Decorative Throw Pillow, 17\" x 1",
+"ex": [
+0.438,
+0.421,
+0.167
+],
+"tex": 2048,
+"faces": 32768,
+"size": [
+0.438,
+0.167,
+0.421
+]
+},
+{
+"id": "abo-B074VKVP9L",
+"src": "abo",
+"abo": "L/B074VKVP9L.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Medallion Decorative Throw Pillow, 17\" x 1",
+"ex": [
+0.438,
+0.419,
+0.162
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.438,
+0.162,
+0.419
+]
+},
+{
+"id": "abo-B074VKWJWP",
+"src": "abo",
+"abo": "P/B074VKWJWP.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Striated Velvet Linen-Look Decorative Thro",
+"ex": [
+0.437,
+0.42,
+0.162
+],
+"tex": 2048,
+"faces": 32768,
+"size": [
+0.437,
+0.162,
+0.42
+]
+},
+{
+"id": "abo-B074VLPBZT",
+"src": "abo",
+"abo": "T/B074VLPBZT.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam French Laundry Decorative Throw Pillow, 17",
+"ex": [
+0.438,
+0.419,
+0.247
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.438,
+0.247,
+0.419
+]
+},
+{
+"id": "abo-B074VLPC1Q",
+"src": "abo",
+"abo": "Q/B074VLPC1Q.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam French Laundry Stripe Decorative Throw Pil",
+"ex": [
+0.438,
+0.419,
+0.247
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.438,
+0.247,
+0.419
+]
+},
+{
+"id": "abo-B074VLPC1Z",
+"src": "abo",
+"abo": "Z/B074VLPC1Z.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam French Laundry Stripe Decorative Throw Pil",
+"ex": [
+0.438,
+0.419,
+0.247
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.438,
+0.247,
+0.419
+]
+},
+{
+"id": "abo-B074VLPC2B",
+"src": "abo",
+"abo": "B/B074VLPC2B.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Striated Velvet Linen-Look Decorative Thro",
+"ex": [
+0.435,
+0.416,
+0.151
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.435,
+0.151,
+0.416
+]
+},
+{
+"id": "abo-B074VLRN76",
+"src": "abo",
+"abo": "6/B074VLRN76.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mudcloth-Inspired Decorative Throw Pillow, 17\" x ",
+"ex": [
+0.438,
+0.429,
+0.164
+],
+"tex": 2048,
+"faces": 131072,
+"size": [
+0.438,
+0.164,
+0.429
+]
+},
+{
+"id": "abo-B074VLRP5T",
+"src": "abo",
+"abo": "T/B074VLRP5T.glb",
+"role": "pillow",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Velvet Texture Decorative Throw Pillow, 17\" x 17\"",
+"ex": [
+0.432,
+0.414,
+0.246
+],
+"tex": 4096,
+"faces": 32768,
+"size": [
+0.432,
+0.246,
+0.414
+]
+},
+{
+"id": "abo-B074VLST1P",
+"src": "abo",
+"abo": "P/B074VLST1P.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Bohemian Stripe Decorative Pillow, 17\" x 17\", Fus",
+"ex": [
+0.437,
+0.419,
+0.136
+],
+"tex": 2048,
+"faces": 8462,
+"size": [
+0.437,
+0.136,
+0.419
+]
+},
+{
+"id": "abo-B074VLST62",
+"src": "abo",
+"abo": "2/B074VLST62.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Striated Velvet Linen-Look Decorative Thro",
+"ex": [
+0.452,
+0.439,
+0.204
+],
+"tex": 4096,
+"faces": 23072,
+"size": [
+0.452,
+0.204,
+0.439
+]
+},
+{
+"id": "abo-B074VLT2MB",
+"src": "abo",
+"abo": "B/B074VLT2MB.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Medallion Decorative Throw Pillow, 17\" x 1",
+"ex": [
+0.436,
+0.417,
+0.148
+],
+"tex": 2048,
+"faces": 32768,
+"size": [
+0.436,
+0.148,
+0.417
+]
+},
+{
+"id": "abo-B074VM1T62",
+"src": "abo",
+"abo": "2/B074VM1T62.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Bohemian Stripe Decorative Pillow, 17\" x 17\", Ink",
+"ex": [
+0.437,
+0.419,
+0.136
+],
+"tex": 2048,
+"faces": 8462,
+"size": [
+0.437,
+0.136,
+0.419
+]
+},
+{
+"id": "abo-B074VM8DGX",
+"src": "abo",
+"abo": "X/B074VM8DGX.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Bohemian Stripe Decorative Pillow, 17\" x 17\", Sun",
+"ex": [
+0.451,
+0.449,
+0.191
+],
+"tex": 2048,
+"faces": 16016,
+"size": [
+0.451,
+0.191,
+0.449
+]
+},
+{
+"id": "abo-B074VMBGCR",
+"src": "abo",
+"abo": "R/B074VMBGCR.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mudcloth-Inspired Decorative Throw Pillow, 17\" x ",
+"ex": [
+0.438,
+0.43,
+0.164
+],
+"tex": 2048,
+"faces": 10668,
+"size": [
+0.438,
+0.164,
+0.43
+]
+},
+{
+"id": "abo-B074VMD5DY",
+"src": "abo",
+"abo": "Y/B074VMD5DY.glb",
+"role": "pillow",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Stone & Beam Striated Velvet Linen-Look Decorative Thro",
+"ex": [
+0.433,
+0.415,
+0.151
+],
+"tex": 2048,
+"faces": 32768,
+"size": [
+0.433,
+0.151,
+0.415
+]
+},
+{
+"id": "abo-B074VMF3JW",
+"src": "abo",
+"abo": "W/B074VMF3JW.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Bohemian Stripe Decorative Pillow, 17\" x 17\", Ter",
+"ex": [
+0.437,
+0.419,
+0.136
+],
+"tex": 2048,
+"faces": 8462,
+"size": [
+0.437,
+0.136,
+0.419
+]
+},
+{
+"id": "abo-B079TXJCR5",
+"src": "abo",
+"abo": "5/B079TXJCR5.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Whipstitch Edge Decorative Throw Pillow, 1",
+"ex": [
+0.485,
+0.494,
+0.124
+],
+"tex": 1024,
+"faces": 44796,
+"size": [
+0.485,
+0.124,
+0.494
+]
+},
+{
+"id": "abo-B079TXJQS2",
+"src": "abo",
+"abo": "2/B079TXJQS2.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Velvet Geese Silhouette Decorative Throw P",
+"ex": [
+0.432,
+0.432,
+0.139
+],
+"tex": 2048,
+"faces": 17434,
+"size": [
+0.432,
+0.139,
+0.432
+]
+},
+{
+"id": "abo-B079TXJTY4",
+"src": "abo",
+"abo": "4/B079TXJTY4.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Transitional Tufted Dot Diamond Decorative Throw ",
+"ex": [
+0.51,
+0.51,
+0.145
+],
+"tex": 2048,
+"faces": 18546,
+"size": [
+0.51,
+0.145,
+0.51
+]
+},
+{
+"id": "abo-B079TXJXVX",
+"src": "abo",
+"abo": "X/B079TXJXVX.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Geo Print Cotton Decorative Throw Pil",
+"ex": [
+0.478,
+0.479,
+0.158
+],
+"tex": 2048,
+"faces": 4608,
+"size": [
+0.478,
+0.158,
+0.479
+]
+},
+{
+"id": "abo-B079V3575N",
+"src": "abo",
+"abo": "N/B079V3575N.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam 100% Cotton Textured Stripe Loop Decorativ",
+"ex": [
+0.437,
+0.427,
+0.145
+],
+"tex": 2048,
+"faces": 258756,
+"size": [
+0.437,
+0.145,
+0.427
+]
+},
+{
+"id": "abo-B079V39YYF",
+"src": "abo",
+"abo": "F/B079V39YYF.glb",
+"role": "pillow",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Modern Geometric Decorative Print Throw Pillow, 2",
+"ex": [
+0.517,
+0.508,
+0.158
+],
+"tex": 2048,
+"faces": 17436,
+"size": [
+0.517,
+0.158,
+0.508
+]
+},
+{
+"id": "abo-B079V39Z25",
+"src": "abo",
+"abo": "5/B079V39Z25.glb",
+"role": "pillow",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Modern 100% Cotton Triangle Loop Decorative Throw",
+"ex": [
+0.47,
+0.467,
+0.172
+],
+"tex": 2048,
+"faces": 118976,
+"size": [
+0.47,
+0.172,
+0.467
+]
+},
+{
+"id": "abo-B079V3WDY9",
+"src": "abo",
+"abo": "9/B079V3WDY9.glb",
+"role": "pillow",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Stone & Beam Transitional Woven Diamond Decorative Thro",
+"ex": [
+0.511,
+0.503,
+0.162
+],
+"tex": 2048,
+"faces": 10240,
+"size": [
+0.511,
+0.162,
+0.503
+]
+},
+{
+"id": "abo-B079V6QH9L",
+"src": "abo",
+"abo": "L/B079V6QH9L.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Whipstitch Edge Decorative Throw Pillow, 1",
+"ex": [
+0.482,
+0.491,
+0.124
+],
+"tex": 2048,
+"faces": 21236,
+"size": [
+0.482,
+0.124,
+0.491
+]
+},
+{
+"id": "abo-B079V7XFKW",
+"src": "abo",
+"abo": "W/B079V7XFKW.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Rustic 100% Top Grain Leather Decorative T",
+"ex": [
+0.532,
+0.523,
+0.236
+],
+"tex": 2048,
+"faces": 17658,
+"size": [
+0.532,
+0.236,
+0.523
+]
+},
+{
+"id": "abo-B079V8TSHW",
+"src": "abo",
+"abo": "W/B079V8TSHW.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Southwest-Inspired Versatile Decorative Th",
+"ex": [
+0.513,
+0.511,
+0.158
+],
+"tex": 2048,
+"faces": 17436,
+"size": [
+0.513,
+0.158,
+0.511
+]
+},
+{
+"id": "abo-B079V9CJB5",
+"src": "abo",
+"abo": "5/B079V9CJB5.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Yard-Dyed Shibori Decorative Throw Pillow ",
+"ex": [
+0.425,
+0.435,
+0.133
+],
+"tex": 2048,
+"faces": 16640,
+"size": [
+0.425,
+0.133,
+0.435
+]
+},
+{
+"id": "abo-B07BMQ64HR",
+"src": "abo",
+"abo": "R/B07BMQ64HR.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Abstract Geometric Throw Pillow Cover, 20\" x 20\",",
+"ex": [
+0.525,
+0.498,
+0.18
+],
+"tex": 2048,
+"faces": 10240,
+"size": [
+0.525,
+0.18,
+0.498
+]
+},
+{
+"id": "abo-B07BMQ657W",
+"src": "abo",
+"abo": "W/B07BMQ657W.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern and Casual Striped Decorative Throw Pillow",
+"ex": [
+0.512,
+0.506,
+0.178
+],
+"tex": 2048,
+"faces": 10688,
+"size": [
+0.512,
+0.178,
+0.506
+]
+},
+{
+"id": "abo-B07BMQXWX1",
+"src": "abo",
+"abo": "1/B07BMQXWX1.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Farmhouse Buffalo Check Plaid Decorative T",
+"ex": [
+0.511,
+0.509,
+0.161
+],
+"tex": 2048,
+"faces": 5124,
+"size": [
+0.511,
+0.161,
+0.509
+]
+},
+{
+"id": "abo-B07BMQY3Q2",
+"src": "abo",
+"abo": "2/B07BMQY3Q2.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century Modern Geometric Decorative Th",
+"ex": [
+0.511,
+0.503,
+0.182
+],
+"tex": 2048,
+"faces": 10240,
+"size": [
+0.511,
+0.182,
+0.503
+]
+},
+{
+"id": "abo-B07BMR3WZV",
+"src": "abo",
+"abo": "V/B07BMR3WZV.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Casual Striped Decorative Throw Pillow, 17",
+"ex": [
+0.439,
+0.427,
+0.182
+],
+"tex": 2048,
+"faces": 10314,
+"size": [
+0.439,
+0.182,
+0.427
+]
+},
+{
+"id": "abo-B07BMTXHZS",
+"src": "abo",
+"abo": "S/B07BMTXHZS.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Casual Woven Square Decorative Throw Pillo",
+"ex": [
+0.436,
+0.432,
+0.138
+],
+"tex": 2048,
+"faces": 13984,
+"size": [
+0.436,
+0.138,
+0.432
+]
+},
+{
+"id": "abo-B07BMTXJ12",
+"src": "abo",
+"abo": "2/B07BMTXJ12.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Casual Woven Square Decorative Throw Pillo",
+"ex": [
+0.435,
+0.432,
+0.138
+],
+"tex": 2048,
+"faces": 6632,
+"size": [
+0.435,
+0.138,
+0.432
+]
+},
+{
+"id": "abo-B07BMTXJ1V",
+"src": "abo",
+"abo": "V/B07BMTXJ1V.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Faux Fur Decorative Throw Pillow, S",
+"ex": [
+0.538,
+0.525,
+0.216
+],
+"tex": 4096,
+"faces": 198975,
+"size": [
+0.538,
+0.216,
+0.525
+]
+},
+{
+"id": "abo-B07BMTXL6H",
+"src": "abo",
+"abo": "H/B07BMTXL6H.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Southwestern Diamond Patterned Decorative ",
+"ex": [
+0.578,
+0.558,
+0.192
+],
+"tex": 2048,
+"faces": 4060,
+"size": [
+0.578,
+0.192,
+0.558
+]
+},
+{
+"id": "abo-B07BMTXRR1",
+"src": "abo",
+"abo": "1/B07BMTXRR1.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Farmhouse Buffalo Check Plaid Decorative T",
+"ex": [
+0.511,
+0.509,
+0.161
+],
+"tex": 2048,
+"faces": 5124,
+"size": [
+0.511,
+0.161,
+0.509
+]
+},
+{
+"id": "abo-B07C8MSCX6",
+"src": "abo",
+"abo": "6/B07C8MSCX6.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Casual Striped Throw Pillow - 17 x 17 Inch",
+"ex": [
+0.439,
+0.44,
+0.182
+],
+"tex": 2048,
+"faces": 11264,
+"size": [
+0.439,
+0.182,
+0.44
+]
+},
+{
+"id": "abo-B07C8MSZ2W",
+"src": "abo",
+"abo": "W/B07C8MSZ2W.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Mid-Century Modern Geometric Throw Pillow ",
+"ex": [
+0.496,
+0.491,
+0.219
+],
+"tex": 2048,
+"faces": 9077,
+"size": [
+0.496,
+0.219,
+0.491
+]
+},
+{
+"id": "abo-B07C8WMTZM",
+"src": "abo",
+"abo": "M/B07C8WMTZM.glb",
+"role": "pillow",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Glam Soft Faux Fur Throw Pillow - 20 x 20 Inch, B",
+"ex": [
+0.533,
+0.523,
+0.21
+],
+"tex": 2048,
+"faces": 16320,
+"size": [
+0.533,
+0.21,
+0.523
+]
+},
+{
+"id": "abo-B07JKJKDKM",
+"src": "abo",
+"abo": "M/B07JKJKDKM.glb",
+"role": "pillow",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Contemporary Outdoor Throw Pillow, 20\" x 20\", Lim",
+"ex": [
+0.56,
+0.487,
+0.229
+],
+"tex": 2048,
+"faces": 6850,
+"size": [
+0.56,
+0.229,
+0.487
+]
+},
+{
+"id": "abo-B07JKJKH43",
+"src": "abo",
+"abo": "3/B07JKJKH43.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Classic Ticking Stripe Throw Pillow - 17 x",
+"ex": [
+0.468,
+0.444,
+0.138
+],
+"tex": 2048,
+"faces": 10240,
+"size": [
+0.468,
+0.138,
+0.444
+]
+},
+{
+"id": "abo-B07JKJKJCC",
+"src": "abo",
+"abo": "C/B07JKJKJCC.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Contemporary Shiny Luxe Velvet Throw Pillow - 17 ",
+"ex": [
+0.47,
+0.464,
+0.175
+],
+"tex": 2048,
+"faces": 12992,
+"size": [
+0.47,
+0.175,
+0.464
+]
+},
+{
+"id": "abo-B07JKJP5N6",
+"src": "abo",
+"abo": "6/B07JKJP5N6.glb",
+"role": "pillow",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Contemporary Shiny Luxe Velvet Throw Pillow - 17 ",
+"ex": [
+0.47,
+0.464,
+0.175
+],
+"tex": 2048,
+"faces": 12992,
+"size": [
+0.47,
+0.175,
+0.464
+]
+},
+{
+"id": "abo-B07JKJP7Q9",
+"src": "abo",
+"abo": "9/B07JKJP7Q9.glb",
+"role": "pillow",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Contemporary Shiny Luxe Velvet Throw Pillow - 17 ",
+"ex": [
+0.436,
+0.43,
+0.138
+],
+"tex": 2048,
+"faces": 10240,
+"size": [
+0.436,
+0.138,
+0.43
+]
+},
+{
+"id": "abo-B07JKJSJ9F",
+"src": "abo",
+"abo": "F/B07JKJSJ9F.glb",
+"role": "pillow",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Round Velvet Throw Pillow - 16 x 16 I",
+"ex": [
+0.428,
+0.407,
+0.148
+],
+"tex": 2048,
+"faces": 307200,
+"size": [
+0.428,
+0.148,
+0.407
+]
+},
+{
+"id": "abo-B074VKVP98",
+"src": "abo",
+"abo": "8/B074VKVP98.glb",
+"role": "lumbar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mudcloth-Inspired Decorative Throw Pillow, 12\" x ",
+"ex": [
+0.667,
+0.322,
+0.135
+],
+"tex": 2048,
+"faces": 8452,
+"size": [
+0.667,
+0.135,
+0.322
+]
+},
+{
+"id": "abo-B074VL1JQC",
+"src": "abo",
+"abo": "C/B074VL1JQC.glb",
+"role": "lumbar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mudcloth-Inspired Decorative Throw Pillow, 12\" x ",
+"ex": [
+0.637,
+0.352,
+0.188
+],
+"tex": 2048,
+"faces": 32768,
+"size": [
+0.637,
+0.188,
+0.352
+]
+},
+{
+"id": "abo-B074VLPC13",
+"src": "abo",
+"abo": "3/B074VLPC13.glb",
+"role": "lumbar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam French Laundry Stripe Decorative Throw Pil",
+"ex": [
+0.64,
+0.353,
+0.21
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.64,
+0.21,
+0.353
+]
+},
+{
+"id": "abo-B074VLQ3GX",
+"src": "abo",
+"abo": "X/B074VLQ3GX.glb",
+"role": "lumbar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam French Laundry Stripe Decorative Throw Pil",
+"ex": [
+0.64,
+0.353,
+0.21
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.64,
+0.21,
+0.353
+]
+},
+{
+"id": "abo-B074VLQDJX",
+"src": "abo",
+"abo": "X/B074VLQDJX.glb",
+"role": "lumbar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam French Laundry Stripe Decorative Throw Pil",
+"ex": [
+0.64,
+0.353,
+0.21
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.64,
+0.21,
+0.353
+]
+},
+{
+"id": "abo-B074VLRP92",
+"src": "abo",
+"abo": "2/B074VLRP92.glb",
+"role": "lumbar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam French Laundry Stripe Decorative Throw Pil",
+"ex": [
+0.64,
+0.353,
+0.21
+],
+"tex": 2048,
+"faces": 8192,
+"size": [
+0.64,
+0.21,
+0.353
+]
+},
+{
+"id": "abo-B074VLST26",
+"src": "abo",
+"abo": "6/B074VLST26.glb",
+"role": "lumbar",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Velvet Texture Decorative Throw Pillow, 12\" x 24\"",
+"ex": [
+0.633,
+0.338,
+0.21
+],
+"tex": 2048,
+"faces": 8396,
+"size": [
+0.633,
+0.21,
+0.338
+]
+},
+{
+"id": "abo-B074VM1TLP",
+"src": "abo",
+"abo": "P/B074VM1TLP.glb",
+"role": "lumbar",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Velvet Texture Striated Decorative Throw Pillow, ",
+"ex": [
+0.633,
+0.338,
+0.21
+],
+"tex": 2048,
+"faces": 8396,
+"size": [
+0.633,
+0.21,
+0.338
+]
+},
+{
+"id": "abo-B074VMBGCP",
+"src": "abo",
+"abo": "P/B074VMBGCP.glb",
+"role": "lumbar",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mudcloth-Inspired Decorative Throw Pillow, 12\" x ",
+"ex": [
+0.64,
+0.352,
+0.13
+],
+"tex": 2048,
+"faces": 8452,
+"size": [
+0.64,
+0.13,
+0.352
+]
+},
+{
+"id": "abo-B074VMBGSZ",
+"src": "abo",
+"abo": "Z/B074VMBGSZ.glb",
+"role": "lumbar",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Velvet Texture Striated Decorative Throw Pillow, ",
+"ex": [
+0.633,
+0.338,
+0.21
+],
+"tex": 2048,
+"faces": 8396,
+"size": [
+0.633,
+0.21,
+0.338
+]
+},
+{
+"id": "abo-B07JKJKDLD",
+"src": "abo",
+"abo": "D/B07JKJKDLD.glb",
+"role": "lumbar",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Industrial Leather Detail Throw Pillow - 2",
+"ex": [
+0.612,
+0.308,
+0.148
+],
+"tex": 2048,
+"faces": 8408,
+"size": [
+0.612,
+0.148,
+0.308
+]
+},
+{
+"id": "abo-B07JKJKH4H",
+"src": "abo",
+"abo": "H/B07JKJKH4H.glb",
+"role": "lumbar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Casual Outdoor Stripe Throw Pillow - 24 x ",
+"ex": [
+0.61,
+0.287,
+0.151
+],
+"tex": 2048,
+"faces": 10464,
+"size": [
+0.61,
+0.151,
+0.287
+]
+},
+{
+"id": "abo-B07JKJSJB1",
+"src": "abo",
+"abo": "1/B07JKJSJB1.glb",
+"role": "lumbar",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Casual Pom-Pom Throw Pillow - 24 x 12 Inch",
+"ex": [
+0.709,
+0.322,
+0.201
+],
+"tex": 4096,
+"faces": 29736,
+"size": [
+0.709,
+0.201,
+0.322
+]
+},
+{
+"id": "abo-B07124WN22",
+"src": "abo",
+"abo": "2/B07124WN22.glb",
+"role": "pouf",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Ross Modern Tweed Lift-Top Storage Ottoman Pouf, ",
+"ex": [
+0.436,
+0.493,
+0.454
+],
+"tex": 2048,
+"faces": 14674,
+"size": [
+0.436,
+0.454,
+0.493
+]
+},
+{
+"id": "abo-B0714QGLVP",
+"src": "abo",
+"abo": "P/B0714QGLVP.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Madison Modern Round Lift-Top Storage Tray Ottoma",
+"ex": [
+0.52,
+0.43,
+0.52
+],
+"tex": 2048,
+"faces": 10376,
+"size": [
+0.52,
+0.52,
+0.43
+]
+},
+{
+"id": "abo-B071FMSY6Q",
+"src": "abo",
+"abo": "Q/B071FMSY6Q.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Ross Modern Tweed Lift-Top Storage Ottoman Pouf, ",
+"ex": [
+0.454,
+0.487,
+0.436
+],
+"tex": 2048,
+"faces": 10242,
+"size": [
+0.454,
+0.436,
+0.487
+]
+},
+{
+"id": "abo-B0728NWFGY",
+"src": "abo",
+"abo": "Y/B0728NWFGY.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Madison Modern Round Lift-Top Storage Tray Ottoma",
+"ex": [
+0.52,
+0.43,
+0.52
+],
+"tex": 2048,
+"faces": 10376,
+"size": [
+0.52,
+0.52,
+0.43
+]
+},
+{
+"id": "abo-B072M1WJTW",
+"src": "abo",
+"abo": "W/B072M1WJTW.glb",
+"role": "pouf",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Madison Modern Round Lift-Top Storage Tray Ottoma",
+"ex": [
+0.52,
+0.43,
+0.52
+],
+"tex": 2048,
+"faces": 10376,
+"size": [
+0.52,
+0.52,
+0.43
+]
+},
+{
+"id": "abo-B073G6T3GM",
+"src": "abo",
+"abo": "M/B073G6T3GM.glb",
+"role": "pouf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Six-Sided Modern Ottoman, 19\"W, Mustard",
+"ex": [
+0.443,
+0.502,
+0.494
+],
+"tex": 2048,
+"faces": 9552,
+"size": [
+0.443,
+0.494,
+0.502
+]
+},
+{
+"id": "abo-B073G8Q637",
+"src": "abo",
+"abo": "7/B073G8Q637.glb",
+"role": "pouf",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Six-Sided Modern Ottoman, 19\"W, Coal",
+"ex": [
+0.443,
+0.502,
+0.494
+],
+"tex": 2048,
+"faces": 9552,
+"size": [
+0.443,
+0.494,
+0.502
+]
+},
+{
+"id": "abo-B073G94FRB",
+"src": "abo",
+"abo": "B/B073G94FRB.glb",
+"role": "pouf",
+"tone": "green",
+"name": "Amazon Brand \u2013 Rivet Six-Sided Modern Ottoman, 19\"W, Emerald",
+"ex": [
+0.444,
+0.507,
+0.499
+],
+"tex": 2048,
+"faces": 5504,
+"size": [
+0.444,
+0.499,
+0.507
+]
+},
+{
+"id": "abo-B073GBFBWJ",
+"src": "abo",
+"abo": "J/B073GBFBWJ.glb",
+"role": "pouf",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Six-Sided Modern Ottoman, 19\"W, Midnight",
+"ex": [
+0.454,
+0.505,
+0.492
+],
+"tex": 2048,
+"faces": 10560,
+"size": [
+0.454,
+0.492,
+0.505
+]
+},
+{
+"id": "abo-B075X33QXP",
+"src": "abo",
+"abo": "P/B075X33QXP.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Upholstered Cube Ottoman Pouf, 20\"W, Bear",
+"ex": [
+0.521,
+0.453,
+0.512
+],
+"tex": 2048,
+"faces": 12460,
+"size": [
+0.521,
+0.512,
+0.453
+]
+},
+{
+"id": "abo-B075X33SC6",
+"src": "abo",
+"abo": "6/B075X33SC6.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Adrian Side Storage Pocket Cube Ottoman Pouf, 24.",
+"ex": [
+0.707,
+0.47,
+0.696
+],
+"tex": 2048,
+"faces": 39712,
+"size": [
+0.707,
+0.696,
+0.47
+]
+},
+{
+"id": "abo-B075X4J118",
+"src": "abo",
+"abo": "8/B075X4J118.glb",
+"role": "pouf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Upholstered Cube Ottoman Pouf, 20\"W, Linen",
+"ex": [
+0.508,
+0.432,
+0.508
+],
+"tex": 4096,
+"faces": 11392,
+"size": [
+0.508,
+0.508,
+0.432
+]
+},
+{
+"id": "abo-B075X4J16K",
+"src": "abo",
+"abo": "K/B075X4J16K.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Adrian Side Storage Pocket Cube Ottoman Pouf, 24.",
+"ex": [
+0.617,
+0.439,
+0.626
+],
+"tex": 2048,
+"faces": 40192,
+"size": [
+0.617,
+0.626,
+0.439
+]
+},
+{
+"id": "abo-B075X4JJPJ",
+"src": "abo",
+"abo": "J/B075X4JJPJ.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Upholstered Cube Ottoman Pouf, 20\"W, Sprin",
+"ex": [
+0.521,
+0.453,
+0.512
+],
+"tex": 2048,
+"faces": 12460,
+"size": [
+0.521,
+0.512,
+0.453
+]
+},
+{
+"id": "abo-B075X4PTMN",
+"src": "abo",
+"abo": "N/B075X4PTMN.glb",
+"role": "pouf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Upholstered Cube Ottoman Pouf, 20\"W, Charc",
+"ex": [
+0.519,
+0.453,
+0.512
+],
+"tex": 2048,
+"faces": 8856,
+"size": [
+0.519,
+0.512,
+0.453
+]
+},
+{
+"id": "abo-B075X4QMRF",
+"src": "abo",
+"abo": "F/B075X4QMRF.glb",
+"role": "pouf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Upholstered Cube Ottoman Pouf, 20\"W, Boho",
+"ex": [
+0.521,
+0.453,
+0.512
+],
+"tex": 2048,
+"faces": 9004,
+"size": [
+0.521,
+0.512,
+0.453
+]
+},
+{
+"id": "abo-B075X4YDJ6",
+"src": "abo",
+"abo": "6/B075X4YDJ6.glb",
+"role": "pouf",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Modern Upholstered Cube Ottoman Pouf, 20\"W, Black",
+"ex": [
+0.508,
+0.432,
+0.508
+],
+"tex": 4096,
+"faces": 11392,
+"size": [
+0.508,
+0.508,
+0.432
+]
+},
+{
+"id": "abo-B075X4YDJT",
+"src": "abo",
+"abo": "T/B075X4YDJT.glb",
+"role": "pouf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Upholstered Cube Ottoman Pouf, 20\"W, Gold ",
+"ex": [
+0.512,
+0.441,
+0.505
+],
+"tex": 2048,
+"faces": 9004,
+"size": [
+0.512,
+0.505,
+0.441
+]
+},
+{
+"id": "abo-B075X4YDPZ",
+"src": "abo",
+"abo": "Z/B075X4YDPZ.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Adrian Side Storage Pocket Cube Ottoman Pouf, 24.",
+"ex": [
+0.707,
+0.47,
+0.696
+],
+"tex": 2048,
+"faces": 39712,
+"size": [
+0.707,
+0.696,
+0.47
+]
+},
+{
+"id": "abo-B075X52BRW",
+"src": "abo",
+"abo": "W/B075X52BRW.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Upholstered Cube Ottoman Pouf, 20\"W, Plati",
+"ex": [
+0.521,
+0.453,
+0.512
+],
+"tex": 2048,
+"faces": 9004,
+"size": [
+0.521,
+0.512,
+0.453
+]
+},
+{
+"id": "abo-B075X5443L",
+"src": "abo",
+"abo": "L/B075X5443L.glb",
+"role": "pouf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Upholstered Cube Ottoman Pouf, 20\"W, Rain",
+"ex": [
+0.521,
+0.453,
+0.512
+],
+"tex": 2048,
+"faces": 9004,
+"size": [
+0.521,
+0.512,
+0.453
+]
+},
+{
+"id": "abo-B073G6GTQP",
+"src": "abo",
+"abo": "P/B073G6GTQP.glb",
+"role": "bench",
+"tone": "green",
+"name": "Amazon Brand \u2013 Stone & Beam Edgewood Modern Storage Ottoman, 36\"W, Eme",
+"ex": [
+0.957,
+0.471,
+0.483
+],
+"tex": 4096,
+"faces": 12804,
+"size": [
+0.957,
+0.483,
+0.471
+]
+},
+{
+"id": "abo-B073G7BVBP",
+"src": "abo",
+"abo": "P/B073G7BVBP.glb",
+"role": "bench",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Martin Modern Storage Bench, 39\"W, Sundried Velve",
+"ex": [
+1.016,
+0.471,
+0.492
+],
+"tex": 2048,
+"faces": 15456,
+"size": [
+1.016,
+0.492,
+0.471
+]
+},
+{
+"id": "abo-B073G82HBV",
+"src": "abo",
+"abo": "V/B073G82HBV.glb",
+"role": "bench",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Stone & Beam Union Modern Storage Bench, 38\"W, Teal",
+"ex": [
+0.995,
+0.474,
+0.476
+],
+"tex": 2048,
+"faces": 7268,
+"size": [
+0.995,
+0.476,
+0.474
+]
+},
+{
+"id": "abo-B073G8VWJX",
+"src": "abo",
+"abo": "X/B073G8VWJX.glb",
+"role": "bench",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Edgewood Modern Storage Ottoman, 36\"W, Mer",
+"ex": [
+0.948,
+0.454,
+0.497
+],
+"tex": 2048,
+"faces": 6810,
+"size": [
+0.948,
+0.497,
+0.454
+]
+},
+{
+"id": "abo-B073G947XM",
+"src": "abo",
+"abo": "M/B073G947XM.glb",
+"role": "bench",
+"tone": "green",
+"name": "Amazon Brand \u2013 Stone & Beam Union Modern Storage Bench, 38\"W, Emerald",
+"ex": [
+0.989,
+0.501,
+0.505
+],
+"tex": 2048,
+"faces": 6744,
+"size": [
+0.989,
+0.505,
+0.501
+]
+},
+{
+"id": "abo-B073GC43QZ",
+"src": "abo",
+"abo": "Z/B073GC43QZ.glb",
+"role": "bench",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Martin Modern Storage Bench, 39\"W, Scopic Blue",
+"ex": [
+1.016,
+0.477,
+0.492
+],
+"tex": 2048,
+"faces": 15296,
+"size": [
+1.016,
+0.492,
+0.477
+]
+},
+{
+"id": "abo-B073GCWSTH",
+"src": "abo",
+"abo": "H/B073GCWSTH.glb",
+"role": "bench",
+"tone": "cool",
+"name": "Amazon Brand \u2013 Rivet Martin Modern Storage Bench, 39\"W, Navy Velvet",
+"ex": [
+1.01,
+0.467,
+0.489
+],
+"tex": 2048,
+"faces": 15546,
+"size": [
+1.01,
+0.489,
+0.467
+]
+},
+{
+"id": "abo-B073GGGF7H",
+"src": "abo",
+"abo": "H/B073GGGF7H.glb",
+"role": "bench",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Martin Modern Storage Bench, 39\"W, Scopic Black",
+"ex": [
+1.016,
+0.477,
+0.492
+],
+"tex": 2048,
+"faces": 15456,
+"size": [
+1.016,
+0.492,
+0.477
+]
+},
+{
+"id": "abo-B073GGGF7X",
+"src": "abo",
+"abo": "X/B073GGGF7X.glb",
+"role": "bench",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Benton Square Ottoman, 35\"W, Merlot",
+"ex": [
+0.89,
+0.411,
+0.889
+],
+"tex": 2048,
+"faces": 6844,
+"size": [
+0.89,
+0.889,
+0.411
+]
+},
+{
+"id": "abo-B07124WMZZ",
+"src": "abo",
+"abo": "Z/B07124WMZZ.glb",
+"role": "ottoman",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Sloane Mid-Century Modern Ottoman with Tapered Le",
+"ex": [
+0.823,
+0.478,
+0.61
+],
+"tex": 2048,
+"faces": 13280,
+"size": [
+0.823,
+0.61,
+0.478
+]
+},
+{
+"id": "abo-B0719WQHLX",
+"src": "abo",
+"abo": "X/B0719WQHLX.glb",
+"role": "ottoman",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Ava Mid-Century Modern Upholstered Ottoman, 25.6\"",
+"ex": [
+0.655,
+0.399,
+0.648
+],
+"tex": 4096,
+"faces": 5616,
+"size": [
+0.655,
+0.648,
+0.399
+]
+},
+{
+"id": "abo-B071PDYXKC",
+"src": "abo",
+"abo": "C/B071PDYXKC.glb",
+"role": "ottoman",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Ava Mid-Century Modern Upholstered Ottoman, 25.6\"",
+"ex": [
+0.655,
+0.399,
+0.648
+],
+"tex": 2048,
+"faces": 5262,
+"size": [
+0.655,
+0.648,
+0.399
+]
+},
+{
+"id": "abo-B075X33S6Q",
+"src": "abo",
+"abo": "Q/B075X33S6Q.glb",
+"role": "ottoman",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Oversized Upholstered Square Ottoman, 38\"W",
+"ex": [
+0.736,
+0.303,
+0.835
+],
+"tex": 2048,
+"faces": 8418,
+"size": [
+0.736,
+0.835,
+0.303
+]
+},
+{
+"id": "abo-B075X463MJ",
+"src": "abo",
+"abo": "J/B075X463MJ.glb",
+"role": "ottoman",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Oversized Upholstered Square Ottoman, 38\"W",
+"ex": [
+0.973,
+0.381,
+0.982
+],
+"tex": 2048,
+"faces": 3072,
+"size": [
+0.973,
+0.982,
+0.381
+]
+},
+{
+"id": "abo-B075X4HZY8",
+"src": "abo",
+"abo": "8/B075X4HZY8.glb",
+"role": "ottoman",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Janelle Button Tufted Round Leather Wheele",
+"ex": [
+0.891,
+0.444,
+0.901
+],
+"tex": 2048,
+"faces": 131664,
+"size": [
+0.891,
+0.901,
+0.444
+]
+},
+{
+"id": "abo-B075X5T6BR",
+"src": "abo",
+"abo": "R/B075X5T6BR.glb",
+"role": "ottoman",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Norah Leather and Wood Square Ottoman",
+"ex": [
+1.016,
+0.442,
+1.013
+],
+"tex": 2048,
+"faces": 27080,
+"size": [
+1.016,
+1.013,
+0.442
+]
+},
+{
+"id": "abo-B075X61WKJ",
+"src": "abo",
+"abo": "J/B075X61WKJ.glb",
+"role": "ottoman",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Norah Leather and Wood Round Ottoman, 39.5",
+"ex": [
+1.006,
+0.445,
+0.999
+],
+"tex": 2048,
+"faces": 32788,
+"size": [
+1.006,
+0.999,
+0.445
+]
+},
+{
+"id": "abo-B072ZK887F",
+"src": "abo",
+"abo": "F/B072ZK887F.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Meeks Round Side Table with Fabric Storage Basket",
+"ex": [
+0.4,
+0.623,
+0.4
+],
+"tex": 2048,
+"faces": 22474,
+"size": [
+0.4,
+0.4,
+0.623
+]
+},
+{
+"id": "abo-B072ZKPK7J",
+"src": "abo",
+"abo": "J/B072ZKPK7J.glb",
+"role": "side_table",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Round Black Wood Nesting Side ",
+"ex": [
+0.399,
+0.46,
+0.399
+],
+"tex": 4096,
+"faces": 4852,
+"size": [
+0.399,
+0.399,
+0.46
+]
+},
+{
+"id": "abo-B072ZLCB3M",
+"src": "abo",
+"abo": "M/B072ZLCB3M.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Bristol Natural Edge Black Metal Side Table, Waln",
+"ex": [
+0.477,
+0.476,
+0.494
+],
+"tex": 2048,
+"faces": 912,
+"size": [
+0.477,
+0.494,
+0.476
+]
+},
+{
+"id": "abo-B072ZLMBH7",
+"src": "abo",
+"abo": "7/B072ZLMBH7.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Round Three-Shelf White Marble and Stainless Stee",
+"ex": [
+0.407,
+0.447,
+0.407
+],
+"tex": 2048,
+"faces": 6928,
+"size": [
+0.407,
+0.407,
+0.447
+]
+},
+{
+"id": "abo-B072ZMK68Y",
+"src": "abo",
+"abo": "Y/B072ZMK68Y.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Industrial Tilted Wood and Metal Side End Table, ",
+"ex": [
+0.425,
+0.578,
+0.433
+],
+"tex": 2048,
+"faces": 7040,
+"size": [
+0.425,
+0.433,
+0.578
+]
+},
+{
+"id": "abo-B072ZMSBQT",
+"src": "abo",
+"abo": "T/B072ZMSBQT.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Molly Round Marble and Stainless Steel Side End T",
+"ex": [
+0.445,
+0.479,
+0.445
+],
+"tex": 2048,
+"faces": 24120,
+"size": [
+0.445,
+0.445,
+0.479
+]
+},
+{
+"id": "abo-B072ZMT5R7",
+"src": "abo",
+"abo": "7/B072ZMT5R7.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Round Black Wood Nesting Side ",
+"ex": [
+0.5,
+0.531,
+0.5
+],
+"tex": 2048,
+"faces": 5840,
+"size": [
+0.5,
+0.5,
+0.531
+]
+},
+{
+"id": "abo-B072ZNMKG6",
+"src": "abo",
+"abo": "6/B072ZNMKG6.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Hairpin Wood and Metal Side End Table, Walnut and",
+"ex": [
+0.479,
+0.641,
+0.48
+],
+"tex": 2048,
+"faces": 2476,
+"size": [
+0.479,
+0.48,
+0.641
+]
+},
+{
+"id": "abo-B074KKMQHB",
+"src": "abo",
+"abo": "B/B074KKMQHB.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Hourglass White Marble Top and Metal Side ",
+"ex": [
+0.514,
+0.426,
+0.513
+],
+"tex": 2048,
+"faces": 15944,
+"size": [
+0.514,
+0.513,
+0.426
+]
+},
+{
+"id": "abo-B074KMVDPY",
+"src": "abo",
+"abo": "Y/B074KMVDPY.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Arie Rustic Octagonal End Table or Stand -",
+"ex": [
+0.458,
+0.543,
+0.458
+],
+"tex": 2048,
+"faces": 4256,
+"size": [
+0.458,
+0.458,
+0.543
+]
+},
+{
+"id": "abo-B074KMZGRP",
+"src": "abo",
+"abo": "P/B074KMZGRP.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Rustic Wood and Metal Side End Tabl",
+"ex": [
+0.418,
+0.664,
+0.414
+],
+"tex": 2048,
+"faces": 6784,
+"size": [
+0.418,
+0.414,
+0.664
+]
+},
+{
+"id": "abo-B074KN35MV",
+"src": "abo",
+"abo": "V/B074KN35MV.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Geometric Modern Glass and Metal Side End Table S",
+"ex": [
+0.393,
+0.584,
+0.393
+],
+"tex": 4096,
+"faces": 18980,
+"size": [
+0.393,
+0.393,
+0.584
+]
+},
+{
+"id": "abo-B075Z8FV7N",
+"src": "abo",
+"abo": "N/B075Z8FV7N.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Culver Reclaimed Wood Round Side End Table",
+"ex": [
+0.557,
+0.437,
+0.557
+],
+"tex": 2048,
+"faces": 4224,
+"size": [
+0.557,
+0.557,
+0.437
+]
+},
+{
+"id": "abo-B075Z8TDQ6",
+"src": "abo",
+"abo": "6/B075Z8TDQ6.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Rustic Reclaimed Elm Round Accent S",
+"ex": [
+0.432,
+0.46,
+0.431
+],
+"tex": 4096,
+"faces": 9248,
+"size": [
+0.432,
+0.431,
+0.46
+]
+},
+{
+"id": "abo-B075Z9KXZ1",
+"src": "abo",
+"abo": "1/B075Z9KXZ1.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Miramar Elm Wood Cutout Side End Table, 19",
+"ex": [
+0.527,
+0.551,
+0.527
+],
+"tex": 2048,
+"faces": 23448,
+"size": [
+0.527,
+0.527,
+0.551
+]
+},
+{
+"id": "abo-B075ZBW1S4",
+"src": "abo",
+"abo": "4/B075ZBW1S4.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Larson Industrial Wood & Metal Side End Ta",
+"ex": [
+0.323,
+0.718,
+0.414
+],
+"tex": 2048,
+"faces": 552,
+"size": [
+0.323,
+0.414,
+0.718
+]
+},
+{
+"id": "abo-B0768STTR7",
+"src": "abo",
+"abo": "7/B0768STTR7.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Stone & Beam Weston Wood & Metal Nesting Tables, Set of",
+"ex": [
+0.456,
+0.615,
+0.46
+],
+"tex": 2048,
+"faces": 10886,
+"size": [
+0.456,
+0.46,
+0.615
+]
+},
+{
+"id": "abo-B0792HBF59",
+"src": "abo",
+"abo": "9/B0792HBF59.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Meeks Round Side Table with Fabric Storage Basket",
+"ex": [
+0.4,
+0.623,
+0.4
+],
+"tex": 2048,
+"faces": 32470,
+"size": [
+0.4,
+0.4,
+0.623
+]
+},
+{
+"id": "abo-B0792HCFJR",
+"src": "abo",
+"abo": "R/B0792HCFJR.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Meeks Round Side Table with Fabric Storage Basket",
+"ex": [
+0.393,
+0.623,
+0.393
+],
+"tex": 2048,
+"faces": 37338,
+"size": [
+0.393,
+0.393,
+0.623
+]
+},
+{
+"id": "abo-B07B7DMNZC",
+"src": "abo",
+"abo": "C/B07B7DMNZC.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Round Metal Coffee Table, 18.5\"H, Gold and",
+"ex": [
+0.231,
+0.269,
+0.243
+],
+"tex": 2048,
+"faces": 17460,
+"size": [
+0.231,
+0.243,
+0.269
+]
+},
+{
+"id": "abo-B07B7GB7BZ",
+"src": "abo",
+"abo": "Z/B07B7GB7BZ.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern White Marble and Metal Side En",
+"ex": [
+0.455,
+0.431,
+0.455
+],
+"tex": 2048,
+"faces": 16168,
+"size": [
+0.455,
+0.455,
+0.431
+]
+},
+{
+"id": "abo-B07B7GV4P3",
+"src": "abo",
+"abo": "3/B07B7GV4P3.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern White Marble and Metal Side En",
+"ex": [
+0.455,
+0.559,
+0.455
+],
+"tex": 2048,
+"faces": 13568,
+"size": [
+0.455,
+0.455,
+0.559
+]
+},
+{
+"id": "abo-B07B7H9VMM",
+"src": "abo",
+"abo": "M/B07B7H9VMM.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Rustic Reclaimed Fir Wood Side End Table, 16.5\"W,",
+"ex": [
+0.425,
+0.604,
+0.441
+],
+"tex": 2048,
+"faces": 20,
+"size": [
+0.425,
+0.441,
+0.604
+]
+},
+{
+"id": "abo-B07B7J5XSQ",
+"src": "abo",
+"abo": "Q/B07B7J5XSQ.glb",
+"role": "side_table",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Modern Round Metal Side End Accent Table, 15\"W, B",
+"ex": [
+0.403,
+0.548,
+0.415
+],
+"tex": 2048,
+"faces": 8780,
+"size": [
+0.403,
+0.415,
+0.548
+]
+},
+{
+"id": "abo-B07B7J8FV9",
+"src": "abo",
+"abo": "9/B07B7J8FV9.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern White Marble and Wood Double Storage Wood ",
+"ex": [
+0.43,
+0.493,
+0.456
+],
+"tex": 2048,
+"faces": 12838,
+"size": [
+0.43,
+0.456,
+0.493
+]
+},
+{
+"id": "abo-B07B7J8J9M",
+"src": "abo",
+"abo": "M/B07B7J8J9M.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Round End or Side Table, Metal",
+"ex": [
+0.47,
+0.498,
+0.47
+],
+"tex": 4096,
+"faces": 30072,
+"size": [
+0.47,
+0.47,
+0.498
+]
+},
+{
+"id": "abo-B07B7N6JH3",
+"src": "abo",
+"abo": "3/B07B7N6JH3.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Nesting Side Table, Set of 2, Circular Modern, Ma",
+"ex": [
+0.507,
+0.55,
+0.4
+],
+"tex": 4096,
+"faces": 132736,
+"size": [
+0.507,
+0.4,
+0.55
+]
+},
+{
+"id": "abo-B07B7P51PW",
+"src": "abo",
+"abo": "W/B07B7P51PW.glb",
+"role": "side_table",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Mid-Century Modern Round Metal Side End Table, 15",
+"ex": [
+0.299,
+0.48,
+0.299
+],
+"tex": 2048,
+"faces": 10580,
+"size": [
+0.299,
+0.299,
+0.48
+]
+},
+{
+"id": "abo-B07GDKZWCK",
+"src": "abo",
+"abo": "K/B07GDKZWCK.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Marque Amazon -\u00a0Rivet - Table d'appoint triangulaire, en noyer et \u00e0 ba",
+"ex": [
+0.442,
+0.564,
+0.455
+],
+"tex": 4096,
+"faces": 5496,
+"size": [
+0.442,
+0.455,
+0.564
+]
+},
+{
+"id": "abo-B07GF51KS1",
+"src": "abo",
+"abo": "1/B07GF51KS1.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Marque Amazon -\u00a0Rivet - Table d'appoint \u00e0 1 tiroir en noyer, 45\u00a0x\u00a053\u00a0c",
+"ex": [
+0.45,
+0.525,
+0.45
+],
+"tex": 4096,
+"faces": 5260,
+"size": [
+0.45,
+0.45,
+0.525
+]
+},
+{
+"id": "abo-B07GF5DCJ2",
+"src": "abo",
+"abo": "2/B07GF5DCJ2.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Rivet Round side table with drawer and black metal frame, walnut and s",
+"ex": [
+0.45,
+0.53,
+0.45
+],
+"tex": 4096,
+"faces": 8464,
+"size": [
+0.45,
+0.45,
+0.53
+]
+},
+{
+"id": "abo-B07GF5DCJJ",
+"src": "abo",
+"abo": "J/B07GF5DCJJ.glb",
+"role": "side_table",
+"tone": "neutral",
+"name": "Marca Amazon -\u00a0Rivet - Mesa Auxiliar Hexagonal Con Patas Negras Met\u00e1li",
+"ex": [
+0.5,
+0.562,
+0.4
+],
+"tex": 4096,
+"faces": 4218,
+"size": [
+0.5,
+0.4,
+0.562
+]
+},
+{
+"id": "abo-B07B7GYMQ9",
+"src": "abo",
+"abo": "9/B07B7GYMQ9.glb",
+"role": "sideboard",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Stone & Beam Alan Casual Wood Media TV Console Table, 7",
+"ex": [
+1.878,
+0.715,
+0.471
+],
+"tex": 2048,
+"faces": 81802,
+"size": [
+1.878,
+0.471,
+0.715
+]
+},
+{
+"id": "abo-B07B7J5BC2",
+"src": "abo",
+"abo": "2/B07B7J5BC2.glb",
+"role": "sideboard",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Stone & Beam Alan Casual Wood Media TV Console Table, 6",
+"ex": [
+1.575,
+0.719,
+0.479
+],
+"tex": 2048,
+"faces": 12116,
+"size": [
+1.575,
+0.479,
+0.719
+]
+},
+{
+"id": "abo-B07GFDXXDL",
+"src": "abo",
+"abo": "L/B07GFDXXDL.glb",
+"role": "sideboard",
+"tone": "neutral",
+"name": "Amazon Brand -\u00a0Movian Adour 2-Door 2-Drawer TV Stand, 140 x 40 x 56cm,",
+"ex": [
+1.398,
+0.56,
+0.401
+],
+"tex": 4096,
+"faces": 2708,
+"size": [
+1.398,
+0.401,
+0.56
+]
+},
+{
+"id": "abo-B07GFFR1SC",
+"src": "abo",
+"abo": "C/B07GFFR1SC.glb",
+"role": "sideboard",
+"tone": "neutral",
+"name": "Amazon Brand -\u00a0Movian Adour 2-Door 2-Drawer TV Stand, 140 x 40 x 56cm,",
+"ex": [
+1.312,
+0.518,
+0.39
+],
+"tex": 2048,
+"faces": 1808,
+"size": [
+1.312,
+0.39,
+0.518
+]
+},
+{
+"id": "abo-B07GG2Q6JV",
+"src": "abo",
+"abo": "V/B07GG2Q6JV.glb",
+"role": "sideboard",
+"tone": "neutral",
+"name": "Amazon Brand -\u00a0Movian Adour 2-Door 2-Drawer TV Stand, 140 x 40 x 56cm,",
+"ex": [
+1.313,
+0.565,
+0.401
+],
+"tex": 2048,
+"faces": 1834,
+"size": [
+1.313,
+0.401,
+0.565
+]
+},
+{
+"id": "abo-B07H8NZHG9",
+"src": "abo",
+"abo": "9/B07H8NZHG9.glb",
+"role": "sideboard",
+"tone": "neutral",
+"name": "Movian Oker.",
+"ex": [
+1.49,
+0.78,
+0.4
+],
+"tex": 4096,
+"faces": 2576,
+"size": [
+1.49,
+0.4,
+0.78
+]
+},
+{
+"id": "abo-B07HSKW3D6",
+"src": "abo",
+"abo": "6/B07HSKW3D6.glb",
+"role": "sideboard",
+"tone": "dark",
+"name": "Amazon Brand \u2013 Rivet Stevens Modern Wood TV Media Center Cabinet, 51.1",
+"ex": [
+1.3,
+0.495,
+0.4
+],
+"tex": 2048,
+"faces": 6556,
+"size": [
+1.3,
+0.4,
+0.495
+]
+},
+{
+"id": "abo-B078JHPRZ3",
+"src": "abo",
+"abo": "3/B078JHPRZ3.glb",
+"role": "wall_shelf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Stone & Beam Modern Diamond Floating Wall Mounted Shelv",
+"ex": [
+0.609,
+0.774,
+0.234
+],
+"tex": 4096,
+"faces": 31676,
+"size": [
+0.609,
+0.234,
+0.774
+]
+},
+{
+"id": "abo-B07B8P1JCT",
+"src": "abo",
+"abo": "T/B07B8P1JCT.glb",
+"role": "wall_shelf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Metal Shelf, 24\"W, Black",
+"ex": [
+0.605,
+0.053,
+0.102
+],
+"tex": 2048,
+"faces": 6816,
+"size": [
+0.605,
+0.102,
+0.053
+]
+},
+{
+"id": "abo-B07B8PXMQT",
+"src": "abo",
+"abo": "T/B07B8PXMQT.glb",
+"role": "wall_shelf",
+"tone": "neutral",
+"name": "Rivet Modern Metal Shelf, 36\"W, Black",
+"ex": [
+0.924,
+0.049,
+0.092
+],
+"tex": 2048,
+"faces": 19840,
+"size": [
+0.924,
+0.092,
+0.049
+]
+},
+{
+"id": "abo-B07B8PXQ1Q",
+"src": "abo",
+"abo": "Q/B07B8PXQ1Q.glb",
+"role": "wall_shelf",
+"tone": "dark",
+"name": "Rivet Modern Metal Shelf, 18\"W, Black",
+"ex": [
+0.456,
+0.053,
+0.102
+],
+"tex": 2048,
+"faces": 6816,
+"size": [
+0.456,
+0.102,
+0.053
+]
+},
+{
+"id": "abo-B07B8PXSD2",
+"src": "abo",
+"abo": "2/B07B8PXSD2.glb",
+"role": "wall_shelf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Wood Shelf, 3.5\"H, Walnut",
+"ex": [
+0.457,
+0.088,
+0.152
+],
+"tex": 2048,
+"faces": 768,
+"size": [
+0.457,
+0.152,
+0.088
+]
+},
+{
+"id": "abo-B07HSGPG2D",
+"src": "abo",
+"abo": "D/B07HSGPG2D.glb",
+"role": "wall_shelf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Contemporary Round Floating Iron 4 Shelf Wall Uni",
+"ex": [
+0.888,
+0.888,
+0.202
+],
+"tex": 2048,
+"faces": 13406,
+"size": [
+0.888,
+0.202,
+0.888
+]
+},
+{
+"id": "abo-B07HSJYKXY",
+"src": "abo",
+"abo": "Y/B07HSJYKXY.glb",
+"role": "wall_shelf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Rustic Round Wood 2-Tier Shelf Floating Hanging W",
+"ex": [
+0.601,
+0.725,
+0.125
+],
+"tex": 2048,
+"faces": 5106,
+"size": [
+0.601,
+0.125,
+0.725
+]
+},
+{
+"id": "abo-B07HSLQY2F",
+"src": "abo",
+"abo": "F/B07HSLQY2F.glb",
+"role": "wall_shelf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Modern Corner Floating Triangle 5 Shelf Wall Unit",
+"ex": [
+0.564,
+0.913,
+0.294
+],
+"tex": 2048,
+"faces": 6212,
+"size": [
+0.564,
+0.294,
+0.913
+]
+},
+{
+"id": "abo-B07HSLTFWR",
+"src": "abo",
+"abo": "R/B07HSLTFWR.glb",
+"role": "wall_shelf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Floating Wall Mounted Shelving Decor - 9 I",
+"ex": [
+0.645,
+0.229,
+0.15
+],
+"tex": 2048,
+"faces": 5492,
+"size": [
+0.645,
+0.15,
+0.229
+]
+},
+{
+"id": "abo-B07HSM36J9",
+"src": "abo",
+"abo": "9/B07HSM36J9.glb",
+"role": "wall_shelf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Curved Frame Floating Wall Shelf, 25\"W, Go",
+"ex": [
+0.636,
+0.19,
+0.166
+],
+"tex": 2048,
+"faces": 5743,
+"size": [
+0.636,
+0.166,
+0.19
+]
+},
+{
+"id": "abo-B07HSPHZXD",
+"src": "abo",
+"abo": "D/B07HSPHZXD.glb",
+"role": "wall_shelf",
+"tone": "warm",
+"name": "Amazon Brand \u2013 Rivet Modern Hexagon Honeycomb Floating Wall Shelf Unit",
+"ex": [
+0.708,
+0.701,
+0.15
+],
+"tex": 2048,
+"faces": 13964,
+"size": [
+0.708,
+0.15,
+0.701
+]
+},
+{
+"id": "abo-B07HSCJZQM",
+"src": "abo",
+"abo": "M/B07HSCJZQM.glb",
+"role": "ladder_shelf",
+"tone": "neutral",
+"name": "Amazon Brand \u2013 Rivet Roxmere Modern Ladder Bookcase, 23.6\"W, Acacia Wo",
+"ex": [
+0.652,
+2.005,
+0.454
+],
+"tex": 2048,
+"faces": 17976,
+"size": [
+0.652,
+0.454,
+2.005
+]
+},
+{
+"id": "abo-B07PMK78R8",
+"src": "abo",
+"abo": "8/B07PMK78R8.glb",
+"role": "ladder_shelf",
+"tone": "warm",
+"name": "AmazonBasics Modern 5-Tier Ladder Bookshelf Organizer with Solid Rubbe",
+"ex": [
+0.6,
+1.77,
+0.35
+],
+"tex": 4096,
+"faces": 49264,
+"size": [
+0.6,
+0.35,
+1.77
+]
+},
+{
+"id": "abo-B07PNHSR4G",
+"src": "abo",
+"abo": "G/B07PNHSR4G.glb",
+"role": "ladder_shelf",
+"tone": "neutral",
+"name": "AmazonBasics Classic 5-Tier Open Bookcase with Solid Rubber Wood - Whi",
+"ex": [
+0.66,
+1.892,
+0.381
+],
+"tex": 4096,
+"faces": 31196,
+"size": [
+0.66,
+0.381,
+1.892
+]
+},
+{
+"id": "abo-B07PPNNCM2",
+"src": "abo",
+"abo": "2/B07PPNNCM2.glb",
+"role": "ladder_shelf",
+"tone": "neutral",
+"name": "AmazonBasics Modern 5-Tier Ladder Bookshelf Organizer with Solid Rubbe",
+"ex": [
+0.636,
+1.779,
+0.341
+],
+"tex": 4096,
+"faces": 15748,
+"size": [
+0.636,
+0.341,
+1.779
+]
+},
+{
+"id": "brass_vase_01",
+"src": "ph",
+"role": "vase",
+"tone": "warm",
+"name": "Brass Vase 01",
+"ex": [
+0.227,
+0.227,
+0.692
+],
+"faces": 21440,
+"size": [
+0.227,
+0.227,
+0.692
+]
+},
+{
+"id": "brass_vase_02",
+"src": "ph",
+"role": "vase",
+"tone": "warm",
+"name": "Brass Vase 02",
+"ex": [
+0.21,
+0.21,
+0.529
+],
+"faces": 6890,
+"off": true,
+"size": [
+0.21,
+0.21,
+0.529
+]
+},
+{
+"id": "brass_vase_03",
+"src": "ph",
+"role": "vase",
+"tone": "warm",
+"name": "Brass Vase 03",
+"ex": [
+0.083,
+0.083,
+0.2
+],
+"faces": 2616,
+"off": true,
+"size": [
+0.083,
+0.083,
+0.2
+]
+},
+{
+"id": "brass_vase_04",
+"src": "ph",
+"role": "vase",
+"tone": "warm",
+"name": "Brass Vase 04",
+"ex": [
+0.082,
+0.061,
+0.17
+],
+"faces": 2760,
+"off": true,
+"size": [
+0.082,
+0.061,
+0.17
+]
+},
+{
+"id": "ceramic_vase_01",
+"src": "ph",
+"role": "vase",
+"tone": "neutral",
+"name": "Ceramic Vase 01",
+"ex": [
+0.205,
+0.206,
+0.401
+],
+"faces": 2548,
+"size": [
+0.204,
+0.204,
+0.4
+]
+},
+{
+"id": "ceramic_vase_02",
+"src": "ph",
+"role": "vase",
+"tone": "neutral",
+"name": "Ceramic Vase 02",
+"ex": [
+0.22,
+0.221,
+0.309
+],
+"faces": 2756,
+"size": [
+0.218,
+0.218,
+0.309
+]
+},
+{
+"id": "ceramic_vase_03",
+"src": "ph",
+"role": "vase",
+"tone": "neutral",
+"name": "Ceramic Vase 03",
+"ex": [
+0.112,
+0.112,
+0.414
+],
+"faces": 2784,
+"size": [
+0.112,
+0.112,
+0.414
+]
+},
+{
+"id": "ceramic_vase_04",
+"src": "ph",
+"role": "vase",
+"tone": "neutral",
+"name": "Ceramic Vase 04",
+"ex": [
+0.183,
+0.182,
+0.342
+],
+"faces": 2224,
+"size": [
+0.181,
+0.181,
+0.342
+]
+},
+{
+"id": "antique_ceramic_vase_01",
+"src": "ph",
+"role": "vase",
+"tone": "neutral",
+"name": "Antique Ceramic Vase 01",
+"ex": [
+0.255,
+0.255,
+0.44
+],
+"faces": 9408,
+"size": [
+0.255,
+0.255,
+0.44
+]
+},
+{
+"id": "jug_01",
+"src": "ph",
+"role": "vase",
+"tone": "neutral",
+"name": "Jug 01",
+"ex": [
+0.275,
+0.168,
+0.211
+],
+"faces": 5770,
+"off": true,
+"size": [
+0.275,
+0.168,
+0.211
+]
+},
+{
+"id": "brass_candleholders",
+"src": "ph",
+"role": "candle",
+"tone": "warm",
+"name": "Brass Candleholders",
+"ex": [
+1.053,
+0.365,
+0.835
+],
+"faces": 41936,
+"size": [
+1.053,
+0.365,
+0.835
+]
+},
+{
+"id": "wooden_candlestick",
+"src": "ph",
+"role": "candle",
+"tone": "warm",
+"name": "Wooden Candlestick",
+"ex": [
+0.098,
+0.1,
+0.22
+],
+"faces": 3328,
+"size": [
+0.097,
+0.099,
+0.22
+]
+},
+{
+"id": "wooden_bowl_01",
+"src": "ph",
+"role": "bowl",
+"tone": "warm",
+"name": "Wooden Bowl 01",
+"ex": [
+0.313,
+0.309,
+0.094
+],
+"faces": 14122,
+"size": [
+0.313,
+0.309,
+0.094
+]
+},
+{
+"id": "wooden_bowl_02",
+"src": "ph",
+"role": "bowl",
+"tone": "warm",
+"name": "Wooden Bowl 02",
+"ex": [
+0.131,
+0.125,
+0.073
+],
+"faces": 4666,
+"size": [
+0.131,
+0.125,
+0.073
+]
+},
+{
+"id": "carved_wooden_plate",
+"src": "ph",
+"role": "bowl",
+"tone": "warm",
+"name": "Carved Wooden Plate",
+"ex": [
+0.272,
+0.269,
+0.038
+],
+"faces": 2112,
+"size": [
+0.272,
+0.269,
+0.038
+]
+},
+{
+"id": "carved_wooden_elephant",
+"src": "ph",
+"role": "sculpture",
+"tone": "warm",
+"name": "Carved Wooden Elephant",
+"ex": [
+0.109,
+0.058,
+0.096
+],
+"faces": 2752,
+"size": [
+0.109,
+0.058,
+0.096
+]
+},
+{
+"id": "horse_statue_01",
+"src": "ph",
+"role": "sculpture",
+"tone": "neutral",
+"name": "Horse Statue 01",
+"ex": [
+0.164,
+0.108,
+0.22
+],
+"faces": 22388,
+"size": [
+0.164,
+0.108,
+0.22
+]
+},
+{
+"id": "marble_bust_01",
+"src": "ph",
+"role": "sculpture",
+"tone": "neutral",
+"name": "Marble Bust 01",
+"ex": [
+0.272,
+0.3,
+0.515
+],
+"faces": 17456,
+"size": [
+0.272,
+0.3,
+0.515
+]
+},
+{
+"id": "concrete_cat_statue",
+"src": "ph",
+"role": "sculpture",
+"tone": "neutral",
+"name": "Concrete Cat Statue",
+"ex": [
+0.153,
+0.25,
+0.283
+],
+"faces": 11950,
+"size": [
+0.153,
+0.25,
+0.283
+]
+},
+{
+"id": "lambis_shell",
+"src": "ph",
+"role": "sculpture",
+"tone": "neutral",
+"name": "Lambis Shell",
+"ex": [
+0.139,
+0.075,
+0.047
+],
+"faces": 12498,
+"size": [
+0.139,
+0.075,
+0.047
+]
+},
+{
+"id": "horse_head",
+"src": "ph",
+"role": "sculpture",
+"tone": "neutral",
+"name": "Horse Head",
+"ex": [
+0.215,
+0.334,
+0.419
+],
+"faces": 12068,
+"size": [
+0.215,
+0.334,
+0.419
+]
+},
+{
+"id": "bronze_whale_statue",
+"src": "ph",
+"role": "sculpture",
+"tone": "neutral",
+"name": "Bronze Whale Statue",
+"ex": [
+0.932,
+1.366,
+1.073
+],
+"faces": 3816,
+"size": [
+0.932,
+1.366,
+1.073
+]
+},
+{
+"id": "mantel_clock_01",
+"src": "ph",
+"role": "clock_small",
+"tone": "neutral",
+"name": "Mantel Clock 01",
+"ex": [
+0.484,
+0.251,
+0.161
+],
+"faces": 29742,
+"size": [
+0.342,
+0.126,
+0.16
+]
+},
+{
+"id": "alarm_clock_01",
+"src": "ph",
+"role": "clock_small",
+"tone": "neutral",
+"name": "Alarm Clock 01",
+"ex": [
+0.228,
+0.168,
+0.174
+],
+"faces": 13006,
+"size": [
+0.132,
+0.067,
+0.174
+]
+},
+{
+"id": "chess_set",
+"src": "ph",
+"role": "curio",
+"tone": "neutral",
+"name": "Chess Set",
+"ex": [
+0.553,
+0.553,
+0.112
+],
+"faces": 76920,
+"size": [
+0.553,
+0.553,
+0.112
+]
+},
+{
+"id": "vintage_binocular",
+"src": "ph",
+"role": "curio",
+"tone": "neutral",
+"name": "Vintage Binoculars",
+"ex": [
+0.194,
+0.199,
+0.068
+],
+"faces": 19362,
+"size": [
+0.194,
+0.199,
+0.068
+]
+},
+{
+"id": "standing_picture_frame_01",
+"src": "ph",
+"role": "curio",
+"tone": "neutral",
+"name": "Standing Picture Frame 01",
+"ex": [
+0.201,
+0.1,
+0.25
+],
+"faces": 1634,
+"size": [
+0.1,
+0.201,
+0.25
+]
+},
+{
+"id": "standing_picture_frame_02",
+"src": "ph",
+"role": "curio",
+"tone": "neutral",
+"name": "Standing Picture Frame 02",
+"ex": [
+0.217,
+0.102,
+0.266
+],
+"faces": 2986,
+"size": [
+0.102,
+0.217,
+0.266
+]
+},
+{
+"id": "brass_goblets",
+"src": "ph",
+"role": "curio",
+"tone": "warm",
+"name": "Brass Goblets",
+"ex": [
+0.453,
+0.298,
+0.273
+],
+"faces": 9600,
+"size": [
+0.453,
+0.298,
+0.273
+]
+},
+{
+"id": "tea_set_01",
+"src": "ph",
+"role": "curio",
+"tone": "neutral",
+"name": "Tea Set 01",
+"ex": [
+0.918,
+0.484,
+0.165
+],
+"faces": 40296,
+"size": [
+0.918,
+0.484,
+0.165
+]
+},
+{
+"id": "Ukulele_01",
+"src": "ph",
+"role": "curio",
+"tone": "neutral",
+"name": "Ukulele 01",
+"ex": [
+0.178,
+0.051,
+0.527
+],
+"faces": 8912,
+"size": [
+0.178,
+0.051,
+0.527
+]
+},
+{
+"id": "book_encyclopedia_set_01",
+"src": "ph",
+"role": "book_row",
+"tone": "neutral",
+"name": "Book Encyclopedia Set 01",
+"ex": [
+0.551,
+0.163,
+0.237
+],
+"faces": 67306,
+"size": [
+0.551,
+0.163,
+0.237
+]
+},
+{
+"id": "decorative_book_set_01",
+"src": "ph",
+"role": "book_row",
+"tone": "neutral",
+"name": "Decorative Book Set 01",
+"ex": [
+2.505,
+0.321,
+0.286
+],
+"faces": 112560
+},
+{
+"id": "wine_bottles_01",
+"src": "ph",
+"role": "kitchen",
+"tone": "neutral",
+"name": "Wine Bottles 01",
+"ex": [
+0.676,
+0.081,
+0.331
+],
+"faces": 28848,
+"size": [
+0.676,
+0.081,
+0.331
+]
+},
+{
+"id": "vintage_electric_kettle",
+"src": "ph",
+"role": "kitchen",
+"tone": "neutral",
+"name": "Vintage Electric Kettle",
+"ex": [
+0.321,
+0.249,
+0.305
+],
+"faces": 14838,
+"size": [
+0.321,
+0.249,
+0.305
+]
+},
+{
+"id": "wooden_cutting_board",
+"src": "ph",
+"role": "kitchen",
+"tone": "warm",
+"name": "Wooden Cutting Board",
+"ex": [
+0.45,
+0.247,
+0.041
+],
+"faces": 3520,
+"size": [
+0.45,
+0.247,
+0.041
+]
+},
+{
+"id": "brass_pot_01",
+"src": "ph",
+"role": "kitchen",
+"tone": "warm",
+"name": "Brass Pot 01",
+"ex": [
+0.302,
+0.302,
+0.291
+],
+"faces": 3760,
+"size": [
+0.302,
+0.302,
+0.291
+]
+},
+{
+"id": "metal_jug",
+"src": "ph",
+"role": "kitchen",
+"tone": "neutral",
+"name": "Metal Jug",
+"ex": [
+0.197,
+0.195,
+0.288
+],
+"faces": 6040,
+"size": [
+0.197,
+0.195,
+0.288
+]
+},
+{
+"id": "bananas",
+"src": "ph",
+"role": "fruit",
+"tone": "neutral",
+"name": "Bananas",
+"ex": [
+0.6,
+0.244,
+0.179
+],
+"faces": 46868,
+"size": [
+0.6,
+0.244,
+0.179
+]
+},
+{
+"id": "food_pears_asian_01",
+"src": "ph",
+"role": "fruit",
+"tone": "neutral",
+"name": "Pears Asian 01",
+"ex": [
+0.156,
+0.178,
+0.11
+],
+"faces": 12572,
+"size": [
+0.156,
+0.178,
+0.11
+]
+},
+{
+"id": "stationery_supplies",
+"src": "ph",
+"role": "desk",
+"tone": "neutral",
+"name": "Stationery Supplies",
+"ex": [
+0.302,
+0.084,
+0.164
+],
+"faces": 4412,
+"size": [
+0.302,
+0.084,
+0.164
+]
+},
+{
+"id": "office_notepads",
+"src": "ph",
+"role": "desk",
+"tone": "neutral",
+"name": "Office Notepads",
+"ex": [
+1.103,
+0.66,
+0.022
+],
+"faces": 666,
+"size": [
+1.103,
+0.66,
+0.022
+]
+},
+{
+"id": "wicker_basket_01",
+"src": "ph",
+"role": "basket",
+"tone": "warm",
+"name": "Wicker Basket 01",
+"ex": [
+0.383,
+0.295,
+0.117
+],
+"faces": 22276,
+"size": [
+0.383,
+0.295,
+0.117
+]
+},
+{
+"id": "wicker_basket_02",
+"src": "ph",
+"role": "basket",
+"tone": "warm",
+"name": "Wicker Basket 02",
+"ex": [
+0.375,
+0.271,
+0.218
+],
+"faces": 17850,
+"size": [
+0.375,
+0.271,
+0.218
+]
+},
+{
+"id": "wooden_bucket_01",
+"src": "ph",
+"role": "basket",
+"tone": "warm",
+"name": "Wooden Bucket 01",
+"ex": [
+0.367,
+0.342,
+0.55
+],
+"faces": 5116,
+"size": [
+0.367,
+0.342,
+0.55
+]
+},
+{
+"id": "vintage_suitcase",
+"src": "ph",
+"role": "basket",
+"tone": "neutral",
+"name": "Vintage Suitcase",
+"ex": [
+1.608,
+0.239,
+0.568
+],
+"faces": 16474,
+"size": [
+1.608,
+0.239,
+0.568
+]
+},
+{
+"id": "pachira_aquatica_01",
+"src": "ph",
+"role": "plant",
+"tone": "neutral",
+"name": "Pachira Aquatica 01",
+"ex": [
+6.869,
+0.997,
+1.904
+],
+"faces": 76914,
+"tall": true,
+"size": [
+1.054,
+0.997,
+1.649
+]
+},
+{
+"id": "potted_plant_01",
+"src": "ph",
+"role": "plant",
+"tone": "neutral",
+"name": "Potted Plant 01",
+"ex": [
+0.589,
+0.637,
+1.351
+],
+"faces": 96030,
+"tall": true,
+"size": [
+0.371,
+0.393,
+0.856
+]
+},
+{
+"id": "potted_plant_02",
+"src": "ph",
+"role": "plant",
+"tone": "neutral",
+"name": "Potted Plant 02",
+"ex": [
+0.701,
+0.657,
+0.841
+],
+"faces": 69806,
+"size": [
+0.701,
+0.643,
+0.633
+]
+},
+{
+"id": "potted_plant_04",
+"src": "ph",
+"role": "plant",
+"tone": "neutral",
+"name": "Potted Plant 04",
+"ex": [
+0.17,
+0.186,
+0.268
+],
+"faces": 6097,
+"size": [
+0.168,
+0.168,
+0.155
+]
+},
+{
+"id": "anthurium_botany_01",
+"src": "ph",
+"role": "plant",
+"tone": "neutral",
+"name": "Anthurium Botany 01",
+"ex": [
+2.806,
+1.801,
+0.507
+],
+"faces": 4134,
+"size": [
+0.896,
+1.142,
+0.5
+]
+},
+{
+"id": "calathea_orbifolia_01",
+"src": "ph",
+"role": "plant",
+"tone": "neutral",
+"name": "Calathea Orbifolia 01",
+"ex": [
+2.492,
+1.194,
+0.424
+],
+"faces": 16688,
+"size": [
+0.601,
+0.526,
+0.424
+]
+},
+{
+"id": "fern_02",
+"src": "ph",
+"role": "plant",
+"tone": "neutral",
+"name": "Fern 02",
+"ex": [
+1.973,
+1.724,
+0.428
+],
+"faces": 6232,
+"size": [
+0.99,
+0.894,
+0.428
+]
+},
+{
+"id": "shrub_sorrel_01",
+"src": "ph",
+"role": "plant",
+"tone": "neutral",
+"name": "Shrub Sorrel 01",
+"ex": [
+0.352,
+0.146,
+0.058
+],
+"faces": 3319,
+"off": true
+},
+{
+"id": "planter_pot_clay",
+"src": "ph",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Planter Pot Clay",
+"ex": [
+0.266,
+0.263,
+0.222
+],
+"faces": 3080,
+"size": [
+0.266,
+0.263,
+0.222
+]
+},
+{
+"id": "ceramic_pot",
+"src": "ph",
+"role": "pot_table",
+"tone": "neutral",
+"name": "Ceramic Pot",
+"ex": [
+0.656,
+0.502,
+0.372
+],
+"faces": 3592,
+"off": true,
+"size": [
+0.656,
+0.502,
+0.372
+]
+},
+{
+"id": "wooden_stool_01",
+"src": "ph",
+"role": "pouf",
+"tone": "warm",
+"name": "Wooden Stool 01",
+"ex": [
+0.425,
+0.442,
+0.437
+],
+"faces": 10946,
+"size": [
+0.425,
+0.442,
+0.437
+]
+},
+{
+"id": "wooden_stool_02",
+"src": "ph",
+"role": "pouf",
+"tone": "warm",
+"name": "Wooden Stool 02",
+"ex": [
+0.265,
+0.183,
+0.182
+],
+"faces": 11146,
+"size": [
+0.265,
+0.183,
+0.182
+]
+},
+{
+"id": "folding_wooden_stool",
+"src": "ph",
+"role": "pouf",
+"tone": "warm",
+"name": "Folding Wooden Stool",
+"ex": [
+0.528,
+0.547,
+0.442
+],
+"faces": 6324,
+"size": [
+0.528,
+0.547,
+0.442
+]
+},
+{
+"id": "Ottoman_01",
+"src": "ph",
+"role": "pouf",
+"tone": "neutral",
+"name": "Ottoman 01",
+"ex": [
+0.885,
+0.621,
+0.624
+],
+"faces": 4240,
+"size": [
+0.885,
+0.621,
+0.624
+]
+},
+{
+"id": "side_table_01",
+"src": "ph",
+"role": "side_table",
+"tone": "neutral",
+"name": "Side Table 01",
+"ex": [
+0.55,
+0.45,
+0.551
+],
+"faces": 2756,
+"size": [
+0.55,
+0.45,
+0.551
+]
+},
+{
+"id": "side_table_tall_01",
+"src": "ph",
+"role": "side_table",
+"tone": "neutral",
+"name": "Side Table Tall 01",
+"ex": [
+0.384,
+0.384,
+0.761
+],
+"faces": 6408,
+"size": [
+0.384,
+0.384,
+0.761
+]
+},
+{
+"id": "coffee_table_round_01",
+"src": "ph",
+"role": "side_table",
+"tone": "neutral",
+"name": "Coffee Table Round 01",
+"ex": [
+1.301,
+1.301,
+0.491
+],
+"faces": 4044,
+"off": true,
+"size": [
+1.301,
+1.301,
+0.491
+]
+},
+{
+"id": "silver-1",
+"src": "made",
+"role": "stems",
+"tone": "green",
+"name": "silver",
+"size": [
+0.52,
+0.548,
+0.673
+]
+},
+{
+"id": "silver-2",
+"src": "made",
+"role": "stems",
+"tone": "green",
+"name": "silver",
+"size": [
+0.473,
+0.384,
+0.622
+]
+},
+{
+"id": "olive-1",
+"src": "made",
+"role": "stems",
+"tone": "green",
+"name": "olive",
+"size": [
+0.469,
+0.628,
+0.642
+]
+},
+{
+"id": "olive-2",
+"src": "made",
+"role": "stems",
+"tone": "green",
+"name": "olive",
+"size": [
+0.615,
+0.535,
+0.604
+]
+},
+{
+"id": "ruscus-1",
+"src": "made",
+"role": "stems",
+"tone": "green",
+"name": "ruscus",
+"size": [
+0.617,
+0.607,
+0.58
+]
+},
+{
+"id": "ruscus-2",
+"src": "made",
+"role": "stems",
+"tone": "green",
+"name": "ruscus",
+"size": [
+0.566,
+0.394,
+0.549
+]
+},
+{
+"id": "lunaria-1",
+"src": "made",
+"role": "stems",
+"tone": "neutral",
+"name": "lunaria",
+"size": [
+0.42,
+0.409,
+0.758
+]
+},
+{
+"id": "lunaria-2",
+"src": "made",
+"role": "stems",
+"tone": "neutral",
+"name": "lunaria",
+"size": [
+0.512,
+0.461,
+0.739
+]
+},
+{
+"id": "billy-1",
+"src": "made",
+"role": "stems",
+"tone": "warm",
+"name": "billy",
+"size": [
+0.262,
+0.349,
+0.657
+]
+},
+{
+"id": "billy-2",
+"src": "made",
+"role": "stems",
+"tone": "warm",
+"name": "billy",
+"size": [
+0.282,
+0.448,
+0.656
+]
+},
+{
+"id": "bunny-1",
+"src": "made",
+"role": "stems",
+"tone": "neutral",
+"name": "bunny",
+"size": [
+0.421,
+0.374,
+0.697
+]
+},
+{
+"id": "bunny-2",
+"src": "made",
+"role": "stems",
+"tone": "neutral",
+"name": "bunny",
+"size": [
+0.492,
+0.569,
+0.676
+]
+},
+{
+"id": "twig-1",
+"src": "made",
+"role": "stems",
+"tone": "neutral",
+"name": "twig",
+"size": [
+0.381,
+0.453,
+0.77
+]
+},
+{
+"id": "twig-2",
+"src": "made",
+"role": "stems",
+"tone": "neutral",
+"name": "twig",
+"size": [
+0.521,
+0.425,
+0.722
+]
+},
+{
+"id": "blossom-1",
+"src": "made",
+"role": "stems",
+"tone": "cool",
+"name": "blossom",
+"size": [
+0.606,
+0.486,
+0.81
+]
+},
+{
+"id": "blossom-2",
+"src": "made",
+"role": "stems",
+"tone": "cool",
+"name": "blossom",
+"size": [
+0.489,
+0.538,
+0.835
+]
+},
+{
+"id": "pampas-1",
+"src": "made",
+"role": "stems",
+"tone": "warm",
+"name": "pampas",
+"size": [
+0.426,
+0.437,
+0.727
+]
+},
+{
+"id": "pampas-2",
+"src": "made",
+"role": "stems",
+"tone": "warm",
+"name": "pampas",
+"size": [
+0.425,
+0.331,
+0.696
+]
+}
+]

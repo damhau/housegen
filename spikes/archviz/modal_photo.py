@@ -41,16 +41,19 @@ ROOMS = {**{n: ("gille", c) for n, c in CAMERAS.items()}, **{n: ("montelly", c) 
 
 KNOBS = ("CEILING", "TILE_TONE", "MOTTLE", "LIMEWASH", "SKIP", "THUMBS", "SUN_PICK", "PHOTO_SUN_POWER", "PHOTO_LAMPS",
          "RELIEF", "FLOOR_ROUGH", "CLIP_MAX", "FEATURE_TILE", "ADAPTIVE", "PREFILTER", "FLOOR", "STYLE_SKIP", "ART_SCALES", "NUDGE",
-         "FIXES", "PREVIEW_ONLY", "PREVIEW_W", "PREVIEW_SAMPLES", "ART_LIB")  # photo.py's environment knobs, forwarded to the containers
+         "FIXES", "PREVIEW_ONLY", "PREVIEW_W", "PREVIEW_SAMPLES", "ART_LIB", "OBJ_LIB")  # photo.py's environment knobs, forwarded to the containers
 
 app = modal.App("housegen-photo-test")
+# objlib's models (assets/objects, 1.2 GB), uploaded once rather than with every image:
+#   uvx modal volume create archviz-objects && uvx modal volume put archviz-objects assets/objects /   (-> /vol/objects)
+OBJECTS = modal.Volume.from_name("archviz-objects")
 image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("libx11-6", "libxrender1", "libxxf86vm1", "libxfixes3", "libxi6", "libxkbcommon0", "libsm6", "libgl1",
                  "libegl1", "libglib2.0-0")
     .pip_install("bpy==5.0.1", "numpy", "pillow")
-    .env({"NVIDIA_DRIVER_CAPABILITIES": "all"})
-    .add_local_dir(os.path.join(HERE, "assets"), f"{R}/assets")
+    .env({"NVIDIA_DRIVER_CAPABILITIES": "all", "OBJ_DIR": "/vol/objects"})
+    .add_local_dir(os.path.join(HERE, "assets"), f"{R}/assets", ignore=["objects", "objects/**"])
     .add_local_dir(os.path.join(HERE, "made"), f"{R}/made")
     .add_local_dir(os.path.join(HERE, "work", "cache"), f"{R}/work/cache")
     .add_local_file(os.path.join(HERE, "work", "house.blend"), f"{R}/work/house.blend")
@@ -63,10 +66,12 @@ image = (
     .add_local_file(os.path.join(HERE, "post.py"), f"{R}/post.py")
     .add_local_file(os.path.join(HERE, "style.py"), f"{R}/style.py")
     .add_local_file(os.path.join(HERE, "artlib.py"), f"{R}/artlib.py")
+    .add_local_file(os.path.join(HERE, "objlib.py"), f"{R}/objlib.py")
+    .add_local_file(os.path.join(HERE, "stage.py"), f"{R}/stage.py")
 )
 
 
-@app.function(image=image, gpu=GPU, cpu=4.0, memory=16384, timeout=3600)
+@app.function(image=image, gpu=GPU, cpu=4.0, memory=16384, timeout=3600, volumes={"/vol": OBJECTS})
 def shoot(name: str, house: str, camera: str, w: int, h: int, samples: int, env: dict) -> dict:
     import subprocess
     import sys
@@ -90,14 +95,48 @@ def shoot(name: str, house: str, camera: str, w: int, h: int, samples: int, env:
     return res
 
 
+@app.function(image=image, gpu=GPU, cpu=4.0, memory=16384, timeout=3600, volumes={"/vol": OBJECTS})
+def obj_sheet(roles: list) -> dict:
+    """objlib's catalogue sheets: each role's objects at their real size, and every object's measured size."""
+    import glob
+    import subprocess
+    import sys
+
+    t = time.time()
+    os.makedirs("/tmp/sheets", exist_ok=True)
+    p = subprocess.run([sys.executable, f"{R}/objlib.py", "sheet", "/tmp/sheets", *roles], capture_output=True, text=True, cwd=R)
+    text = p.stdout + p.stderr
+    res = {"seconds": time.time() - t, "log": "\n".join(line for line in text.splitlines() if "PHOTO" in line or "rror" in line), "files": {}}
+    if p.returncode:
+        res["log"] += "\n" + text[-3000:]
+    for path in glob.glob("/tmp/sheets/*"):
+        with open(path, "rb") as f:
+            res["files"][os.path.basename(path)] = f.read()
+    return res
+
+
 @app.local_entrypoint()
 def main(rooms: str = "dining,bedroom,bath", w: int = 2560, h: int = 1440, samples: int = 400, envs: str = "",
-         tag: str = ""):
+         tag: str = "", sheets: str = ""):
     """--envs <file.json>: {room: {knob: value}} on top of the knobs set here (each room its own FIXES, SUN_PICK);
-    --tag: a suffix for the files written (a loop step: -i1, -i2...)."""
+    --tag: a suffix for the files written (a loop step: -i1, -i2...);
+    --sheets role,role: objlib's catalogue sheets into work/sheets/ instead of a render."""
     import json
     os.makedirs(os.path.join(HERE, "work", "auto"), exist_ok=True)
     t = time.time()
+    if sheets:
+        res = obj_sheet.remote(sheets.split(","))
+        print(res["log"])
+        os.makedirs(os.path.join(HERE, "work", "sheets"), exist_ok=True)
+        for fname, data in res["files"].items():
+            with open(os.path.join(HERE, "work", "sheets", fname), "wb") as f:
+                f.write(data)
+        rooms, w, h, samples = "sheets", 1800, 1800, 48
+        seconds = [res["seconds"]]
+        with open(os.path.join(HERE, "work", "ledger.csv"), "a") as f:
+            f.write(f"{time.strftime('%Y-%m-%d %H:%M')},{rooms},{w}x{h},{samples},{GPU},{seconds[0]:.0f},{seconds[0] * PRICE:.2f}\n")
+        print(f"sheets done in {time.time() - t:.0f} s; about ${seconds[0] * PRICE:.2f}")
+        return
     env = {k: v for k, v in os.environ.items() if k in KNOBS}  # the experiment's knobs, as set here
     if env:
         print(f"knobs: {env}")

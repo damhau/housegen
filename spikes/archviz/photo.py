@@ -40,6 +40,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import artlib  # noqa: E402
 import dress  # noqa: E402
+import objlib  # noqa: E402
+import stage  # noqa: E402
 import style  # noqa: E402
 import still  # noqa: E402
 from dress import model, place, principled  # noqa: E402
@@ -630,8 +632,11 @@ def swap_rugs(scene, pieces):
         w, d = o["footprint"]
         t = o.matrix_world.translation
         hide(o)
-        r = dress.rug(scene, (t.x, -t.y), (w, d), floor=lo.z)
-        r.rotation_euler[2] = turn(o)
+        if objlib.LIB:
+            stage.rug(scene, stage.room_of(o), (t.x, -t.y), (w, d), lo.z, turn(o))
+        else:
+            r = dress.rug(scene, (t.x, -t.y), (w, d), floor=lo.z)
+            r.rotation_euler[2] = turn(o)
         n += 1
     return n
 
@@ -639,7 +644,7 @@ def swap_rugs(scene, pieces):
 def swap_plants(scene, pieces, sy):
     n = 0
     for o in pieces:
-        if not name(o).startswith("plant-"):
+        if not name(o).startswith("plant-") or o.hide_render:  # stage.swap_kit took it
             continue
         lo, hi = box(o)
         h = hi.z - lo.z
@@ -664,13 +669,41 @@ def art_room(x, y, z):
     return None
 
 
+def ledge_lift(scene, dg, at, n, w, z0, ph):
+    """How far a print (bottom centre `at` on the wall, facing `n`, `w` wide, bottom at z0, `ph` tall) goes up so it
+    doesn't sit on what stands in front of the wall (a half-wall, a high headboard): 0 when nothing's top is within
+    0.12 m below its bottom, else up to 0.2 m above that top; None when the ceiling is too close for that."""
+    side, top = Vector((-n.y, n.x, 0)), None
+
+    def standing(o):  # a half-wall or a piece on the floor (a low wardrobe), not a pendant
+        while o.parent is not None and o.get("kind") is None:
+            o = o.parent
+        return box(o)[0].z < z0 - 1.0
+
+    for d in (0.06, 0.15, 0.25, 0.4, 0.6, 0.8, 1.0, 1.2):
+        for s in (-w / 3, 0.0, w / 3):
+            p = Vector((at.x, at.y, z0 + 0.15)) + n * d + side * s
+            hit = trace(scene, dg, p, Vector((0, 0, -1)), far=0.5)
+            if hit and hit[1].z > 0.9 and not any(a.name.startswith("art.glb") for a in ancestors(hit[2])) \
+                    and (d < 0.45 or standing(hit[2])):
+                top = hit[0].z if top is None else max(top, hit[0].z)
+    if top is None or top < z0 - 0.12:
+        return 0.0
+    lift = top + 0.2 - z0
+    up = trace(scene, dg, Vector((at.x, at.y, z0 + ph)) + n * 0.1, Vector((0, 0, 1)), far=3.0)
+    if up is not None and up[0].z - (z0 + ph + lift) < 0.15:
+        return None
+    return lift
+
+
 def swap_art(scene, pieces):
     """The kit's wall art becomes the room's prints from the library (artlib), each fitted to the kit piece's
-    box (at most about 1 m on the long side)."""
+    box (at most about 1 m on the long side), lifted off a half-wall or headboard it would sit on."""
     n, per_room = 0, {}
+    dg = bpy.context.evaluated_depsgraph_get()
     for o in pieces:
         nm = name(o).lower()
-        if "wall art" not in nm and "wall-art" not in nm:
+        if "wall art" not in nm and "wall-art" not in nm and " art in " not in f" {nm} ":  # Montelly: "abstract art in oak frame"
             continue
         lo, hi = box(o)
         w, h = o["footprint"][0], hi.z - lo.z
@@ -680,8 +713,17 @@ def swap_art(scene, pieces):
         e = artlib.pick(room or "", f"swap{k}", y=lo.z)
         print(f"PHOTO art: kit print at ({c.x:.2f}, {lo.z:.2f}, {-c.y:.2f}) in {room['name'] if room else 'no room'}: swap{k}", flush=True)
         long = min(artlib.fit(e, w * 1.2, h * 1.2), 0.98)
-        artlib.build(scene, e, (c.x, lo.z + (h - artlib.size(e, long)[1]) / 2, -c.y), long, math.degrees(turn(o)) + 180)
+        pw, ph = artlib.size(e, long)
+        t = math.radians(math.degrees(turn(o)) + 180)
+        z0 = lo.z + (h - ph) / 2
         hide(o)
+        lift = ledge_lift(scene, dg, c, Vector((-math.sin(t), math.cos(t), 0)), pw, z0, ph)
+        if lift is None:
+            log("art: a kit print sits on a ledge under the ceiling, left out")
+            continue
+        if lift:
+            log(f"art: a kit print sits on a ledge, {lift:.2f} m up")
+        artlib.build(scene, e, (c.x, z0 + lift, -c.y), long, math.degrees(t))
         n += 1
     return n
 
@@ -1241,9 +1283,18 @@ def dress_tables(scene, pieces):
         along_d = fp[1] >= fp[0]
         rugs = [r for r in pieces if name(r) == "rug"]
         if not any(box(r)[0].x <= t.x <= box(r)[1].x and box(r)[0].y <= t.y <= box(r)[1].y for r in rugs):
-            r = dress.rug(scene, (t.x, -t.y), (fp[0] + 1.1, fp[1] + 1.1), floor=lo.z)  # the chairs stay on it
-            r.rotation_euler[2] = turn(o)
+            if objlib.LIB:
+                stage.rug(scene, stage.room_of(o), (t.x, -t.y), (fp[0] + 1.1, fp[1] + 1.1), lo.z, turn(o))
+            else:
+                r = dress.rug(scene, (t.x, -t.y), (fp[0] + 1.1, fp[1] + 1.1), floor=lo.z)  # the chairs stay on it
+                r.rotation_euler[2] = turn(o)
+        if objlib.LIB and objlib.choose(stage.room_of(o), "runner", [True, False]) is False:
+            n += 1
+            continue  # no runner in this room; stage.dining sets the table
         dress.runner(scene, (t.x, hi.z + 0.002, -t.y), (0.30, max(fp) - 0.3), turn(o) + (0 if along_d else math.pi / 2))
+        if objlib.LIB:
+            n += 1
+            continue
         vase = next((v for v in pieces if "vase" in name(v).lower() and within(v, lo, hi)), None)
         if vase is not None:
             vlo, vhi = box(vase)
@@ -1291,6 +1342,10 @@ def dress_counter(scene, pieces):
     if length * step < 0.35:
         return 0
     z = lo.z + top[0]
+    if objlib.LIB:
+        at = (0.5,) if length * step < 0.9 else (0.25, 0.72) if length * step < 1.6 else (0.18, 0.5, 0.82)
+        points = [f @ Vector((us[start] + length * step * k - step / 2, -0.05, 0)) for k in at]
+        return stage.counter(scene, stage.room_of(run), points, z, turn(run))
     a = f @ Vector((us[start] + length * step * (0.30 if length * step >= 0.9 else 0.5) - step / 2, -0.05, 0))
     _, bowl = place(scene, model("wooden_bowl_01"), (a.x, z, -a.y), height=0.09)
     for k, (dx, dz, fruit) in enumerate(((-0.05, 0.0, "food_apple_01"), (0.05, 0.03, "food_apple_01"),
@@ -1585,6 +1640,8 @@ def dress_basins(scene, dg, pieces, floor_z):
 
 def dress_storey(scene, sy):
     pieces = storey_pieces(scene, sy)
+    if objlib.LIB:
+        stage.swap_kit(scene, pieces)
     done = {
         "rugs": swap_rugs(scene, pieces),
         "plants": swap_plants(scene, pieces, sy),
@@ -2497,6 +2554,8 @@ def main():
     rooms = json.load(open(rooms_json, encoding="utf-8"))
     rooms = rooms["rooms"] if isinstance(rooms, dict) else rooms
     artlib.init(rooms)
+    objlib.init(rooms)
+    style.H = stage.H = sys.modules[__name__]
     bpy.ops.wm.open_mainfile(filepath=blend)
     device = use_gpu()
     scene = bpy.context.scene
@@ -2566,6 +2625,7 @@ def main():
         hide_pieces(scene, FIXES["hide"])
         rays = camera_rays(scene, scene.camera, rooms, sy)
     in_frame = pieces_in_frame(scene, scene.camera)
+    stage.report(scene, scene.camera)
     t = time.time()
     if os.environ.get("SUN_PICK") and FIXES.get("lamps") in ("on", "off"):
         # both fixed: the analysis (CPU ray casts, 112 s of a 556 s run) could only be overwritten; its share of the room in sun decides nothing

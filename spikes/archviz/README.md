@@ -157,6 +157,12 @@ sideboard) and `ceramic_vase_04` (the jug on it); `potted_plant_02` was already 
 renders are third-party marketing images, kept in `reference/`
 (git-ignored), as are `assets/`, `work/` and `sheets/` (the sheet contains the reference).
 
+The object library (2026-11-08, see "Object library" below) uses 3D models from **Amazon Berkeley Objects**,
+© Amazon.com, licensed under **CC BY 4.0** (https://amazon-berkeley-objects.s3.amazonaws.com/index.html): 488
+products, downloaded unchanged except that their textures were shrunk (`made/obj_fetch.py`), and listed by id in
+`made/objects.json`. The models are not in the repository (`assets/objects/`, git-ignored). Poly Haven models in it
+are CC0, and the branches in `made/stems/` are ours.
+
 ## Second room: the bedroom (Chambre 4, first floor), 2026-10-31
 
 The same pipeline in the room that opens onto the south balcony, judged blind against
@@ -760,3 +766,118 @@ prices from 2026-11-07:
 **Cost:** $5.02 for the 7 runs of this work.
 
 Spend so far: $17.27 for 36 Modal runs (T4 up to 2026-11-07, RTX PRO 6000 since).
+
+## Object library, 2026-11-08
+
+The judges of the wall art check all named the same eucalyptus vase, terracotta plant, mushroom lamp and bordered
+rug from photo to photo. The owner: "we need a lot more objects", "we need a lot more variety". The fixed props of
+the rules are now chosen from a catalogue of 561 models, a different set in each room of a house.
+
+**Blind result, the same listing check as for the art (median of 3 judges per round, fresh judges):**
+
+| Line | Gille, 6 rooms: fixed props | Library | Montelly, 4 unseen rooms: fixed props | Library |
+|---|---|---|---|---|
+| Decor | 6 | **7** | 6 | **7** |
+| Variety | 5 | **7** | 4 | **7** |
+| Overall | 6 | **7** | 5 | **6** |
+
+- **Variety:** every judge scored the library higher in both rounds (7/7/7 against 4/5/5, and 7/6/7 against 5/4/4).
+- **Overall:** higher from 5 of the 6 judges. The sixth scored both sets 6.
+- **Decor:** higher from 4 judges. One scored a tie, and one scored the control higher on Montelly (7 against 6). That
+  judge found the library's navy trellis rug "loud" and its blue vases on the dining table "busy", but still found it
+  "more like a lived-in home".
+- **What the judges listed as repeats:**
+  - **Fixed props:** "eucalyptus in a white vase in almost every photo, often twice", "the same white rug with a grey
+    border", mushroom lamps, terracotta pots, pillar candles.
+  - **The library:** "only similar items, not identical copies": dried stems, but "each time in a different vase".
+    What they still saw is the kit's furniture: the same bed and bedding, nightstand and ring pendant in both bedrooms.
+- **The sheet:** `rounds/obj-listing.jpg` shows both sets (`-o0` fixed, `-o4` library).
+
+**Repeats counted** (`repeats.py`, from `stage.report`'s list of what each frame shows over 0.05 % of its pixels;
+one house at a time with `--rooms`, since a repeat only matters within one listing):
+
+| | Gille, fixed | Gille, library | Montelly, fixed | Montelly, library |
+|---|---|---|---|---|
+| Objects seen | 93 | 115 | 47 | 60 |
+| Different | 48 | **88** | 34 | **54** |
+| Sightings of an object seen in another frame too | 70 (75 %) | **45 (39 %)** | 21 (45 %) | **9 (15 %)** |
+
+What is left in Gille's 45:
+- **Not real repeats:** the building, the grey curtains, and the open-plan dining room seen from two frames (its table,
+  chairs and rug).
+- **The kit's furniture:** bed and bedding, nightstand, ring pendant, sofa and its throw, coffee table, lounge chair.
+  These are next (below).
+- **Three library objects shared by two rooms of the second flat:** two small plant pots and a vase. Gille has 39
+  rooms, and the small roles run out (see the caveats).
+
+**The catalogue** (`made/objects.json`, one entry per model: id, role, tone, size, source, `off`):
+- **488 Amazon Berkeley Objects products (CC BY 4.0, see Licences).** Real products with their own textures:
+  vases, lamps, rugs, cushions, side tables, poufs, mirrors, clocks, sideboards and more. They are fetched by
+  `made/obj_fetch.py` with textures shrunk to 1k (2k for rugs, runners and sideboards), 1.2 GB in all.
+- **56 Poly Haven models (CC0):** plants, the earlier props.
+- **18 made branches** (`made/stems.py`: olive, blossom, lunaria, billy buttons, bunny tails), because there are no
+  CC0 models of stems for a vase.
+- **38 roles:** pillows 56, vases 52, rugs 46, side tables 39, mirrors 37, poufs 32, table lamps 31, small pots 30,
+  floor lamps 23, pendants 22, and so on.
+- **The review:** every role was rendered as a numbered sheet of its models at their real size (`objlib.py sheet`, on
+  Modal: `obj_sheet` in `modal_photo.py`).
+  - 16 models were turned off after looking at them (9 Amazon, 7 Poly Haven).
+  - Two runners were moved to the rugs.
+  - The sizes measured there were written into the catalogue.
+- **On Modal**, the models sit on a volume (`archviz-objects`, mounted at `/vol/objects`) rather than in every image.
+
+**How objects are chosen** (`objlib.py`, the same idea as the art):
+- **One allocation for the whole house,** from `rooms.json` alone, so every process agrees.
+  - Rooms are taken in order of how likely they are to be photographed.
+  - Each room gets a colour accent (warm, cool, green or none), and its objects are picked to go with it.
+  - Each room gets a short list per role (`SLOTS` by room use, two candidates per slot). First every room gets its
+    own count, then the spares.
+- **A rule asks for a role, not a model:** "a vase for this table", "a floor lamp for this corner". It takes the first
+  object on the room's list that fits the surface.
+- **Fallbacks:**
+  - A role missing from a room's list falls back to the objects held by the fewest rooms.
+  - An object never comes back in another room while its role lasts.
+- **`OBJ_LIB=0`** keeps the old fixed props everywhere, for A/B checks.
+
+**How rooms are dressed** (`stage.py`, called by `style.py` and `photo.py` when the library is on):
+- **The kit's own pieces are swapped first, on the whole storey:** its lamps, pendants, plants, vases, benches and
+  mirrors become library pieces where the kit put them, and its rugs become library rugs at the size of the old one.
+- **Surface arrangements:** nightstand, coffee table, dining table, sideboard, desk, sill and counter. Each is one of a
+  few layouts, each slot a role, each object scaled to the place it lands.
+- **The floor:** more pieces in a larger room (a plant, a floor lamp, a pouf, a basket, a tall vase), on free floor in
+  front of a real wall.
+- **By the furniture:** side tables by sofas and benches at the foot of beds.
+- **On the walls:** a mirror, a clock or a wall shelf on a plain wall, with room around it and away from the prints.
+
+**Bugs found and fixed on the way:**
+- **Rules skipped in a room after a plant was taken out.** The rule that takes out a prop cut by the frame or right
+  in front of the lens ran after the camera's samples of the floor were taken. The plant hid the floor, so the room
+  showed too little of it, and the rules for its sofa, coffee table and floor were skipped: the Montelly sofa had no
+  cushions. The samples are now taken again after that rule removes something.
+- **The print on the half-wall in the second bedroom** (all three art judges noticed it): a kit print standing on a
+  ledge or a low piece in front of the wall is lifted above it, or left out if there is no room under the ceiling.
+- **The floor rule put objects across door openings.** It trusted the plan's wall line. It now checks for a real wall
+  behind the spot. This also changes the old path; the fixed-props control was rendered before it, and no frame showed
+  the difference.
+- **Montelly's kit prints were never swapped for library prints.** The swap looked for "wall art" in the piece's name,
+  and Montelly's are called "abstract art in oak frame", so its three-oval print hung in both the living room and the
+  bedroom. All three Montelly judges saw it, in both sets alike. It is fixed and checked on a local render of both
+  rooms. The judged sets were rendered before the fix.
+- **A rug sheet rendered rugs edge-on.** Rugs and runners now stand up on the sheet to face the camera.
+
+**The caveats:**
+- **Two houses, three judges per round, preview quality** (1280 px, 64 samples).
+- **The wall rule placed nothing in the judged frames.** Every room's plain walls were taken by prints or too close to
+  them. The local check after the Montelly print fix shows a mirror where a print had been.
+- **The small roles run out in a big house.** 24 of Gille's 39 rooms take objects (stairs and storage take none), and
+  some roles are short: candles 10, jars 6, trays and bowls 4 each, branches 18. They are shared across rooms. The next fix: one pool of "surface decor" a
+  rule draws from instead of a fixed role, so a tray can stand in for a bowl.
+- **Toys and children's rooms:** none in the catalogue yet; no CC0 or CC BY source was found.
+
+**Next: the furniture.** The kit's sofas, chairs, dining sets, beds, nightstands and sideboards are what the judges
+now name as repeats. Amazon Berkeley Objects has them (sofas, armchairs, dining chairs, beds, nightstands), so this
+is the same work on larger pieces, with collisions checked against the room.
+
+**Cost:** $9.36 for the 5 runs of this work (10 rooms each, RTX PRO 6000), plus the sheets on Modal.
+
+Spend so far: $26.63 for 41 Modal runs.

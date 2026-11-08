@@ -37,7 +37,11 @@ def main():
         print(d)
     elif cmd == "prompt":
         tpl = open(os.path.join(HERE, "listing_prompt.md")).read().split("```")[1].strip("\n")
-        print(tpl.replace("{dir}", os.path.join(d, f"j{args[0]}")))
+        n = len(json.load(open(os.path.join(d, f"j{args[0]}", "key.json")))["rooms"])
+        word = {3: "three", 4: "four", 5: "five", 6: "six", 7: "seven", 8: "eight"}[n]
+        twice = {3: "six", 4: "eight", 5: "ten", 6: "twelve", 7: "fourteen", 8: "sixteen"}[n]
+        print(tpl.replace("{dir}", os.path.join(d, f"j{args[0]}")).replace("{n}", str(n)).replace("{rooms}", word)
+              .replace("{files}", twice))
     elif cmd == "tab":
         scores = {}
         for k, path in enumerate(args, 1):

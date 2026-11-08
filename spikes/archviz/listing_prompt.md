@@ -6,9 +6,9 @@ cameras, A and B in a random order per judge. Each judge is a fresh general-purp
 key; `listing.py tab <round> <answers...>` unblinds.
 
 ```
-You are judging two sets of interior photos for an estate agency's listing of one house. Each set shows the same six rooms. Open all twelve files with the Read tool and look at them carefully, one set after the other:
-- {dir}/A1.jpg ... {dir}/A6.jpg
-- {dir}/B1.jpg ... {dir}/B6.jpg
+You are judging two sets of interior photos for an estate agency's listing of one house. Each set shows the same {rooms} rooms. Open all {files} files with the Read tool and look at them carefully, one set after the other:
+- {dir}/A1.jpg ... {dir}/A{n}.jpg
+- {dir}/B1.jpg ... {dir}/B{n}.jpg
 
 Do not open any other file and do not run commands. Judge each SET as a whole, as a buyer scrolling through the listing would see it. Score each set from 1 to 10 on each line (10 = flawless, 8 = an agency would publish it as is, 6 = decent but visibly lacking, 4 = amateur):
 
