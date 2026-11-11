@@ -330,7 +330,7 @@ Every render_views and check_scene result ends with the scene audit, measured on
   your floorPlan calls, lowest storey first); "plan-section-1" is storey 1 seen as a floor plan.
 """.strip()
 
-# decor by role (#90): only renderers from v35 on have it (kit/objects.js), so only their jobs are told
+# decor and furniture by role (#90): only renderers from v35 on have them (kit/objects.js), so only their jobs are told
 DECOR_ROLES_REFERENCE = r"""
 Decor by role (await fx.model(role, { height | width | length, room })): one of several real pieces of the role, at its
   real size scaled as a whole to the one size you give, a different piece each time in a house; pass `room` (the room's
@@ -342,6 +342,14 @@ Decor by role (await fx.model(role, { height | width | length, room })): one of 
   (1.0 x 1.0) · "bench" (1.0 x 0.5) · "sideboard" (1.5 x 0.4 x 0.71) · on a wall: "mirror" (0.65) · "clock" (0.31) ·
   "wall-shelf" (0.6 x 0.15 x 0.72) · "tall-mirror" (0.8 x 2.0, standing on the floor against a wall) · small:
   "basket" · "tray" · "bowl" · "candle" · "jar" · "canister" (a kitchen worktop)
+Furniture by role, the same way (await fx.model(role, { width, length, room })): a real piece near the size you give,
+  stretched no more than a quarter to it, at its own height; p.userData.footprint is the size you get, place from it.
+  Prefer these to the named models and the parametric pieces. A room's dining chairs, its nightstands and its armchairs
+  are one piece repeated when you pass the same `room`. Usual sizes (width x depth x height, facing +z): "sofa" (2.1 x
+  0.95, from 1.5 to 2.6 wide) · "armchair" (0.8 x 0.85) · "dining-chair" (0.5 x 0.58) · "dining-table" (1.65 x 0.93
+  x 0.76, from 1.0 to 2.2: its long side is the width, along x) · "coffee-table" (1.1 x 0.7 x 0.45) · "bed" (give the
+  plan's mattress size, { width: 1.6, length: 2.0 }: made up with a duvet, its frame round the mattress; a single bed
+  under 1.2 m is the kit's own) · "nightstand" (0.45 x 0.38 x 0.56) · "desk" (1.2 x 0.56 x 0.76)
 """.lstrip("\n")
 _DECOR_ANCHOR = "  Put small decor on a surface with fx.place(p, [x, z], rot, surfaceY).\n"
 

@@ -127,3 +127,26 @@ test("the decor catalogue: every role has pieces, every piece a real size, no ro
   }
   await assert.rejects(fx.model("dragon"), /unknown model/);
 });
+
+test("furniture: a matched role draws one piece per room, a piece near the size asked, the kit's bed for a single", async () => {
+  const { ROLES, pickObject, resetObjects } = await import("../furnish.js");
+  globalThis.__housekitSeed = "furniture";
+  resetObjects();
+  const chairs = new Set(Array.from({ length: 6 }, () => pickObject("dining-chair", { room: "Séjour" }).piece.id));
+  assert.equal(chairs.size, 1, "the chairs round one table differ");
+  const nightstands = new Set(Array.from({ length: 2 }, () => pickObject("nightstand", { room: "Chambre 1" }).piece.id));
+  assert.equal(nightstands.size, 1);
+  for (const [role, width, length] of [["sofa", 2.4, 0.95], ["bed", 1.6, 2.0], ["bed", 1.4, 2.0], ["dining-table", 1.8, 0.9]]) {
+    resetObjects();
+    const o = pickObject(role, { width, length }).piece;
+    const [w, l] = o.nominal ?? o.size;
+    assert.ok(Math.max(Math.abs(Math.log(width / w)), Math.abs(Math.log(length / l))) <= Math.log(1.25), `${role} ${o.id} ${w}×${l} for ${width}×${length}`);
+  }
+  for (const o of ROLES.bed) assert.ok(o.nominal && o.mattress && o.mattress.top > 0.2, `${o.id} has no measured mattress`);
+  resetObjects();
+  const single = await fx.model("bed", { width: 0.9, length: 2.0 });
+  assert.equal(single.userData.model, undefined, "a double bed squeezed to a single");
+  assert.deepEqual(single.userData.footprint.map((v) => +v.toFixed(2)), [0.96, 2.08]);
+  delete globalThis.__housekitSeed;
+  resetObjects();
+});

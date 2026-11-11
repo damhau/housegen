@@ -116,7 +116,7 @@ export function sofa({ width = 2.2, depth = 0.92, color = "#a3a49e" } = {}) {
   return piece(g, "sofa", width, depth);
 }
 
-/** Double bed: oak frame and headboard, mattress, duvet folded back, two pillows, a throw. */
+/** Bed: oak frame and headboard, mattress, duvet folded back, pillows, a throw. */
 export function bed({ width = 1.6, length = 2.05, throwColor } = {}) {
   const g = new THREE.Group();
   const oak = finish.oak(), linen = finish.linen();
@@ -131,9 +131,10 @@ export function bed({ width = 1.6, length = 2.05, throwColor } = {}) {
   block(g, [width + 0.1, 0.22, 0.03], [0, top - 0.2, duvetZ + duvetL / 2], linen, 0.012);
   // a folded throw across the foot
   block(g, [width + 0.12, 0.05, 0.45], [0, top + 0.045, length / 2 - 0.3], finish.wool(throwColor), 0.02);
-  // two pillows leaning on the headboard
-  for (const s of [-1, 1]) {
-    const p = block(g, [width / 2 - 0.08, 0.13, 0.5], [s * width / 4, top - 0.03, -length / 2 + 0.24], linen, 0.045);
+  // pillows leaning on the headboard, one on a single bed
+  const n = width < 1.2 ? 1 : 2;
+  for (let i = 0; i < n; i++) {
+    const p = block(g, [width / n - 0.08, 0.13, 0.5], [-width / 2 + width / n * (i + 0.5), top - 0.03, -length / 2 + 0.24], linen, 0.045);
     p.rotation.x = -0.4;
   }
   return piece(g, "bed", width + 0.06, length + 0.08);
@@ -921,7 +922,18 @@ const POTTED = { "pot-plant": 0.45, "floor-plant": 1.3 };
 const NOT_LEAVES = /_(pot|dirt|pebbles|soil|ground)$/;
 // stretched to the size asked on each side; every other piece keeps its proportions
 const FLAT = new Set(["rug", "runner"]);
-const BASE = new Set(["rug", "runner", "sideboard", "ottoman", "bench"]);
+// furniture keeps its real height and is stretched no more than STRETCH to the width and length asked: a sofa 10 cm
+// longer still reads as that sofa, a taller one does not
+const FURNITURE = new Set(["sofa", "armchair", "dining-chair", "dining-table", "coffee-table", "bed", "nightstand", "desk"]);
+const STRETCH = 1.25;
+// one piece for the whole room: the chairs round a table, the nightstands either side of a bed, a pair of armchairs
+const MATCHED = new Set(["dining-chair", "nightstand", "armchair"]);
+const PARAMETRIC = {
+  bed: ({ width, length }) => bed({ width, length }),
+  sofa: ({ width, length }) => sofa({ width, depth: length }),
+  nightstand: ({ width, length }) => nightstand({ width, depth: length }),
+};
+const BASE = new Set(["rug", "runner", "sideboard", "ottoman", "bench", ...FURNITURE].filter((r) => r !== "armchair"));
 const ACCENTS = ["warm", "cool", "green", null];
 const TOO_FAR = Math.log(1.6); // a piece scaled further than this from its real size looks wrong
 
@@ -958,13 +970,25 @@ function before(a, b) {
   return false;
 }
 
+// furniture is stretched to the width and length asked, from its mattress for a bed: 0 within 10 %, 1 within
+// STRETCH, 2 beyond
+function misfit(o, width, length) {
+  const dims = o.nominal ?? o.size;
+  return [[width, 0], [length, 1]].reduce((m, [v, i]) => {
+    const r = v ? Math.abs(Math.log(v / dims[i])) : 0;
+    return Math.max(m, r <= Math.log(1.1) ? 0 : r <= Math.log(STRETCH) ? 1 : 2);
+  }, 0);
+}
+
 const _decks = new Map();
 const _taken = new Map();
+const _matched = new Map();
 
 /** Forget the pieces drawn so far (a new scene on the same page, the tests). */
 export function resetObjects() {
   _decks.clear();
   _taken.clear();
+  _matched.clear();
 }
 
 /**
@@ -978,12 +1002,14 @@ export function pickObject(role, { width, length, height, room } = {}) {
   const key = sceneKey();
   if (!_decks.has(role)) _decks.set(role, shuffled(deck, hash(`${key}|${role}`)));
   const accent = room == null ? undefined : ACCENTS[hash(`${key}|room|${room}`) % ACCENTS.length];
+  const set = MATCHED.has(role) && room != null ? `${role}|${room}` : null;
+  if (set && _matched.has(set)) return { piece: _matched.get(set), accent: accent ?? null };
   const [want, axis] = height ? [height, 2] : width ? [width, 0] : length ? [length, 1] : [0, 0];
   // a stager keeps the large pieces quiet and lets the small ones carry the room's colour
   const tone = (o) => ["neutral", "dark"].includes(o.tone) ? 0 : o.tone === accent ? (BASE.has(role) ? 1 : 0) : 2;
   const score = (o, i) => [
     _taken.get(o.id) ?? 0,
-    want && !FLAT.has(role) && Math.abs(Math.log(want / o.size[axis])) > TOO_FAR ? 1 : 0,
+    FURNITURE.has(role) ? misfit(o, width, length) : want && !FLAT.has(role) && Math.abs(Math.log(want / o.size[axis])) > TOO_FAR ? 1 : 0,
     tone(o),
     i,
   ];
@@ -993,6 +1019,7 @@ export function pickObject(role, { width, length, height, room } = {}) {
     if (!best || before(s, best.s)) best = { o, s };
   });
   _taken.set(best.o.id, (_taken.get(best.o.id) ?? 0) + 1);
+  if (set) _matched.set(set, best.o);
   return { piece: best.o, accent: accent ?? null };
 }
 
@@ -1065,10 +1092,45 @@ async function pottedPlant(role, { height, room } = {}) {
   return piece(new THREE.Group(), role, 0, 0);
 }
 
+// the duvet's colour, by the room's accent: quiet linen mostly, a muted colour now and then
+const DUVETS = { null: ["#ece8e0", "#e4ddd0", "#d9d8d4"], warm: ["#ece8e0", "#d8c7b0"], cool: ["#e6e8ea", "#c9d0d6"], green: ["#ece8e0", "#c8cdbd"] };
+const THROWS = { null: ["#8a8379", "#5b5e60"], warm: ["#b4734f", "#a08a6a"], cool: ["#5d6f80", "#7f8c96"], green: ["#7d8a6a", "#5f6b55"] };
+
+/**
+ * The bed of a catalogue model made up: a duvet over the foot two thirds of its mattress (`mattress`: its top and
+ * outline in the model, measured from above), hanging over the sides and the foot (unless a footboard is there),
+ * a folded throw across it, and pillows when the model has none. The models come with a sheet and pillows only.
+ */
+function dressBed(wrap, o, s, room) {
+  const { top, x: [x0, x1], z: [head, foot], footboard } = o.mattress;
+  const accent = room == null ? null : ACCENTS[hash(`${sceneKey()}|room|${room}`) % ACCENTS.length];
+  const pick = (list, salt) => list[hash(`${sceneKey()}|${room ?? ""}|${o.id}|${salt}`) % list.length];
+  const linen = finish.linen(pick(DUVETS[accent], "duvet")), wool = finish.wool(pick(THROWS[accent], "throw"));
+  const g = new THREE.Group();
+  g.add(wrap);
+  const w = (x1 - x0) * s[0], cx = (x0 + x1) / 2 * s[0], y = top * s[1];
+  const zf = foot * s[2], len = (foot - head) * s[2] * 0.68, zc = zf - len / 2 + 0.03;
+  block(g, [w + 0.08, 0.06, len + 0.04], [cx, y - 0.02, zc], linen, 0.03);
+  const drop = Math.min(0.22, y - 0.12);
+  for (const k of [-1, 1]) block(g, [0.025, drop, len + 0.04], [cx + k * (w / 2 + 0.04), y + 0.03 - drop, zc], linen, 0.01);
+  if (!footboard) block(g, [w + 0.08, drop, 0.025], [cx, y + 0.03 - drop, zc + len / 2 + 0.02], linen, 0.01);
+  block(g, [w + 0.1, 0.045, 0.42], [cx, y + 0.035, zf - 0.32], wool, 0.02);
+  if (o.pillows === false) {
+    const n = w < 1.2 ? 1 : 2;
+    for (let i = 0; i < n; i++) {
+      const p = block(g, [w / n - 0.08, 0.13, 0.5], [cx - w / 2 + w / n * (i + 0.5), y - 0.03, head * s[2] + 0.24], linen, 0.045);
+      p.rotation.x = -0.4;
+    }
+  }
+  return g;
+}
+
 async function roleModel(role, { width, length, height, room, stems } = {}) {
   if (POTTED[role]) return pottedPlant(role, { height, room });
   for (let attempt = 0; attempt < 3; attempt++) {
     const { piece: o } = pickObject(role, { width, length, height, room });
+    // no model near the size (the catalogue has no single bed): the kit's own piece, drawn at it
+    if (FURNITURE.has(role) && PARAMETRIC[role] && misfit(o, width, length) === 2) return PARAMETRIC[role]({ width, length });
     const gltf = await loadPiece(o);
     if (!gltf) continue;
     const inner = gltf.scene.clone(true);
@@ -1076,7 +1138,11 @@ async function roleModel(role, { width, length, height, room, stems } = {}) {
     const [wrap, size] = grounded(inner);
     let s;
     if (FLAT.has(role)) s = [width ? width / size.x : 1, 1, length ? length / size.z : 1];
-    else {
+    else if (FURNITURE.has(role)) {
+      const [nw, nl] = o.nominal ?? [size.x, size.z];
+      const fit = (k) => Math.min(STRETCH, Math.max(1 / STRETCH, k));
+      s = [width ? fit(width / nw) : 1, height ? height / size.y : 1, length ? fit(length / nl) : 1];
+    } else {
       const k = height ? height / size.y : width ? width / size.x : length ? length / size.z : 1;
       s = [k, k, k];
     }
@@ -1092,6 +1158,8 @@ async function roleModel(role, { width, length, height, room, stems } = {}) {
       tall = Math.max(tall, tall * 0.8 + b.userData.height);
       return piece(g, role, size.x * s[0], size.z * s[2], { height: tall, model: `${o.id}+${b.userData.model}` });
     }
+    if (role === "bed" && o.mattress) return piece(dressBed(wrap, o, s, room), role, size.x * s[0], size.z * s[2],
+      { height: tall, model: o.id, nominal: [o.nominal[0] * s[0], o.nominal[1] * s[2]] });
     return piece(wrap, role, size.x * s[0], size.z * s[2], { height: tall, model: o.id, ...(FLAT.has(role) ? { flat: true } : {}) });
   }
   return piece(new THREE.Group(), role, 0, 0);
