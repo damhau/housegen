@@ -17,13 +17,26 @@ from httpx import ASGITransport, AsyncClient
 from housegen.core import db
 from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
+from housegen.core.exceptions import LLMError
 from housegen.listing import job as listing_job
 from housegen.listing.client import PhotoClient, PhotoServiceError
+from housegen.listing.pick import parse_choice
 from housegen.listing.shots import pick, room_name_parts, unit_of
+from housegen.llm import Completion, ImagePart, Message, Usage
 from housegen.projects import crud
 from housegen.projects.storage import ProjectStorage
 
 CAM = "1,1.3,1>2,1,2@58"
+VIEWS = [CAM, "3,1.3,1>2,1,2@58", "1,1.3,3>2,1,2@58"]
+PIECE = {
+    "id": "vase-1",
+    "name": "vase",
+    "share": 0.02,
+    "x": [0.1, 0.2],
+    "y": [0.5, 0.7],
+    "cut_by": ["left"],
+    "distance_m": 1.2,
+}
 
 # TestVillaGille's habitable rooms as its scene page reports them (use, name, m²)
 GILLE = [
@@ -168,7 +181,14 @@ class FakeService:
         if call["camera"] in self.fail:
             return httpx.Response(200, json={"status": "failed", "error": "CUDA out of memory"})
         jpeg = base64.b64encode(f"jpeg {call['camera']}".encode()).decode()
-        meta = {"camera": call["camera"] + "!", "sun": {"azimuth": 200}}
+        meta = {
+            "camera": call["camera"] + "!",
+            "sun": {"azimuth": 200},
+            "sun_deg": [200.0, 30.0],
+            "room_lamps": False,
+            "pieces": [PIECE],
+            "removed": call.get("remove") or [],
+        }
         return httpx.Response(
             200,
             json={
@@ -321,3 +341,130 @@ async def test_listing_needs_an_interior_and_a_service(
     get_settings.cache_clear()
     assert (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()["available"] is False
     assert (await app_client.post(f"/api/v1/projects/{pid}/listing")).status_code == 409
+
+
+class FakeEditor:
+    """The picture editor's provider: one answer (or exception) for every call."""
+
+    def __init__(self, answer: str | Exception) -> None:
+        self.answer = answer
+        self.calls: list[dict[str, Any]] = []
+
+    async def complete(self, **kw: Any) -> Completion:
+        self.calls.append(kw)
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return Completion(
+            message=Message.assistant(self.answer),
+            stop_reason="end_turn",
+            usage=Usage(input_tokens=6000, output_tokens=400),
+            model="claude-opus-5",
+        )
+
+
+def _salon_with_views() -> list[dict[str, Any]]:
+    rooms = _rooms(MONTELLY)
+    rooms[5]["views"] = VIEWS  # Salon, the set's first photo
+    return rooms
+
+
+def _set_doc(pid: str) -> dict[str, Any]:
+    doc: dict[str, Any] = json.loads(
+        (ProjectStorage(pid).versions_dir / "1" / "listing" / "set.json").read_text()
+    )
+    return doc
+
+
+async def test_the_editor_picks_a_previewed_viewpoint_and_a_piece_to_remove(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_salon_with_views())
+    _fake_service(monkeypatch, svc)
+    answer = {"best": 2, "remove": "vase-1", "problem": "a bare wall", "why": "the long view"}
+    editor = FakeEditor(json.dumps(answer))
+    monkeypatch.setattr(listing_job, "get_provider", lambda name=None: editor)
+    pid = await _furnished_project()
+    r = await app_client.post(f"/api/v1/projects/{pid}/listing")
+    assert await _wait_job(r.json()["id"]) == "done"
+
+    shoots = [c for c in svc.calls.values() if c["path"] == "/shoot"]
+    previews = [c for c in shoots if c["width"] == 1280]
+    assert sorted(c["camera"] for c in previews) == sorted(VIEWS)
+    assert {c["samples"] for c in previews} == {64}
+    finals = [c for c in shoots if c["width"] == 3840]
+    assert len(finals) == 5  # one room had viewpoints to choose from; the others shoot their camera
+    salon = next(c for c in finals if c["camera"] == VIEWS[1])
+    assert (salon["sun"], salon["room_lamps"], salon["remove"]) == (
+        [200.0, 30.0],
+        False,
+        ["vase-1"],
+    )
+    assert all("sun" not in c for c in finals if c is not salon)
+
+    assert len(editor.calls) == 1
+    shown = editor.calls[0]["messages"][0].content
+    assert sum(isinstance(p, ImagePart) for p in shown) == 3
+    doc = _set_doc(pid)
+    assert doc["choices"]["01"]["view"] == 2
+    assert doc["choices"]["01"]["by"] == "editor"
+    assert doc["photos"]["01"]["removed"] == ["vase-1"]
+    assert doc["cost"]["previews_usd"] > 0
+    assert doc["cost"]["editor_usd"] > 0
+    ls = (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()["listing"]
+    assert (ls["previews_done"], ls["previews_total"]) == (3, 3)
+    assert ls["photos"][0]["why"] == "the long view"
+
+
+async def test_without_an_answer_the_best_scored_viewpoint_is_shot(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_salon_with_views())
+    _fake_service(monkeypatch, svc)
+    monkeypatch.setattr(
+        listing_job, "get_provider", lambda name=None: FakeEditor(RuntimeError("no API key"))
+    )
+    pid = await _furnished_project()
+    r = await app_client.post(f"/api/v1/projects/{pid}/listing")
+    assert await _wait_job(r.json()["id"]) == "done"
+    finals = [c for c in svc.calls.values() if c["path"] == "/shoot" and c["width"] == 3840]
+    salon = next(c for c in finals if c["camera"] == VIEWS[0] and "sun" in c)
+    assert "remove" not in salon
+    choice = _set_doc(pid)["choices"]["01"]
+    assert (choice["view"], choice["by"]) == (1, "score")
+    assert "no API key" in choice["error"]
+
+
+async def test_without_the_editor_no_viewpoint_is_previewed(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LISTING_PICK", "false")
+    get_settings.cache_clear()
+    svc = FakeService(_salon_with_views())
+    _fake_service(monkeypatch, svc)
+    editor = FakeEditor("{}")
+    monkeypatch.setattr(listing_job, "get_provider", lambda name=None: editor)
+    pid = await _furnished_project()
+    r = await app_client.post(f"/api/v1/projects/{pid}/listing")
+    assert await _wait_job(r.json()["id"]) == "done"
+    widths = [c["width"] for c in svc.calls.values() if c["path"] == "/shoot"]
+    assert widths == [3840] * 5
+    assert editor.calls == []
+
+
+def test_shots_carry_their_viewpoints_best_first() -> None:
+    shots = pick(_salon_with_views())
+    assert shots[0].views == VIEWS
+    assert shots[1].views == [CAM]  # a room prepared before #92: its one camera
+
+
+def test_the_editors_answer_is_checked() -> None:
+    previews = [(Path("a.jpg"), [PIECE]), (Path("b.jpg"), [])]
+    c = parse_choice('{"best": 1, "remove": "vase-1", "problem": "p", "why": "w"}', 2, previews)
+    assert (c.best, c.remove) == (1, "vase-1")
+    # a piece the chosen frame does not show is not removed
+    c = parse_choice('{"best": 2, "remove": "vase-1", "problem": "p", "why": "w"}', 2, previews)
+    assert (c.best, c.remove) == (2, None)
+    with pytest.raises(LLMError, match="viewpoint 3 of 2"):
+        parse_choice('{"best": 3, "remove": null, "problem": "p", "why": "w"}', 2, previews)
+    with pytest.raises(LLMError, match="invalid JSON"):
+        parse_choice("the second one", 2, previews)

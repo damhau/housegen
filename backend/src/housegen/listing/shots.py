@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 # kit/plan2d.js FLAT_LABEL, FLAT_FIRST and roomNameParts: the backend reads names the way the viewer does
@@ -33,7 +33,10 @@ class Shot:
     use: str
     area: float
     caption: str
-    camera: str
+    camera: str  # the best-scored viewpoint
+    views: list[str] = field(
+        default_factory=list
+    )  # the distinct viewpoints worth a preview, best first
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -121,6 +124,7 @@ def pick(rooms: list[dict[str, Any]]) -> list[Shot]:
                     area=round(r["area"], 1),
                     caption=caption(title, r["area"]),
                     camera=r["camera"],
+                    views=list(r.get("views") or [r["camera"]]),
                 )
             )
     return shots

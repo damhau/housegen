@@ -115,15 +115,25 @@ with the room's area ("Salon, 19 m²"). A `listing` job runs beside the scene's 
 service, `deploy/modal_photo.py` on Modal:
 
 1. `prepare` (a T4) loads the version's scene page headless (`photo/export.py`), exports the house to GLB, imports
-   it into Blender and scores corner cameras for every room. The `.blend` is cached per version on the
-   `housegen-photo` volume.
+   it into Blender and finds up to six distinct viewpoints per room (its corners, along its long axis, from its
+   doorways; a lower, wider lens in a small room). The `.blend` is cached per version on the `housegen-photo`
+   volume.
 2. `shoot` (an RTX PRO 6000, one container per photo, `LISTING_PARALLEL` at a time) renders one room in Cycles
    with `photo/blender/main.py shoot`. The pipeline keeps the scene's finishes (a finish's scan at full
-   resolution, its colour kept) and adds the staging: decor, art, objects.
+   resolution, its colour kept) and adds the staging: decor, art, objects. The light is a listing
+   photographer's: daylight, the room's lamps where the sun does not reach, and a flash bounced off the ceiling
+   so that white tiles and ceilings stay white in mixed light.
 
-The set lands in `versions/<n>/listing/` (`<k>.jpg` and `set.json`: unit, room, caption, camera, sun, cost) and
-shows in the tab, as a ZIP (`GET /api/v1/projects/<id>/listing/<n>/zip`) and on the share page. A later version
-marks the set out of date; **Shoot again** reuses its cameras.
+A room with several viewpoints is previewed from each of them, fully dressed and lit (1280 px, 64 samples). One
+vision call per room (the project's critic model and effort, either provider) picks the viewpoint an agency would
+publish and may name one piece to take out of it (#92). The chosen one is then shot at full size with the
+preview's sun and lamps. Without an answer, the best-scored viewpoint is shot; `LISTING_PICK=false` skips the
+previews and the call.
+
+The set lands in `versions/<n>/listing/` (`<k>.jpg`, `previews/<k>-<i>.jpg` and `set.json`: unit, room, caption,
+viewpoints, the editor's choice and reason, camera, sun, cost) and shows in the tab, as a ZIP
+(`GET /api/v1/projects/<id>/listing/<n>/zip`) and on the share page. A later version marks the set out of date;
+**Shoot again** reuses its choices (viewpoint, light, removed piece).
 
 The service uses the render service's token, so the app needs no new secret: it derives the URL from
 `RENDER_SERVICE_URL` (`housegen-render-web` → `housegen-photo-web`) unless `PHOTO_SERVICE_URL` is set.
@@ -165,8 +175,10 @@ every job snapshots the settings it started with.
 | `RENDER_ANGLE` | `swiftshader` | WebGL backend: `swiftshader` (software), `gl-egl` or `vulkan` (an NVIDIA GPU) |
 | `RENDER_SERVICE_URL`, `RENDER_SERVICE_TOKEN` | | render on the GPU service instead of in-process (see above); `RENDER_SERVICE_FALLBACK=false` fails the render instead of drawing locally when it is unreachable |
 | `PHOTO_SERVICE_URL`, `PHOTO_SERVICE_TOKEN` | next to the render service | the listing photo service (see above); empty = `RENDER_SERVICE_URL` with `housegen-photo-web`, `RENDER_SERVICE_TOKEN` |
-| `LISTING_WIDTH`, `LISTING_HEIGHT`, `LISTING_SAMPLES` | `2560`, `1440`, `400` | a listing photo's size and Cycles samples |
-| `LISTING_PARALLEL` | `8` | listing photos in flight at once, one GPU container each |
+| `LISTING_WIDTH`, `LISTING_HEIGHT`, `LISTING_SAMPLES` | `3840`, `2160`, `512` | a listing photo's size and Cycles samples |
+| `LISTING_PICK` | `true` | preview every viewpoint of a room and let the picture editor choose (#92) |
+| `LISTING_PREVIEW_WIDTH`, `LISTING_PREVIEW_HEIGHT`, `LISTING_PREVIEW_SAMPLES` | `1280`, `720`, `64` | a preview's size and samples |
+| `LISTING_PARALLEL` | `16` | photos and previews in flight at once, one GPU container each |
 | `RENDER_BASE_URL` | `http://HOST:PORT` | where the renderer loads scenes from; the app's public URL when a render service is used |
 | `RENDER_KIT` | pinned in `kit/versions/index.json` | the renderer snapshot the build path draws with (builder, critic, version pictures); the viewer picks its own |
 | `MODEL_PRICES` | list prices for `claude-opus-5`, `gpt-6-astra` | JSON `{model: {input, cached, output[, cache_write]}}` in USD per million tokens, for the cost in each run's summary |

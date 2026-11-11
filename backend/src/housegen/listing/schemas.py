@@ -12,6 +12,7 @@ class ListingPhotoOut(BaseModel):
     area: float
     url: str | None  # None until rendered, or when it failed
     error: str | None = None
+    why: str | None = None  # why the picture editor chose this viewpoint (#92)
 
 
 class ListingOut(BaseModel):
@@ -22,6 +23,8 @@ class ListingOut(BaseModel):
     width: int
     height: int
     cost_usd: float
+    previews_done: int = 0  # viewpoints previewed so far for the picture editor (#92)
+    previews_total: int = 0  # 0: the set was shot without previews
     photos: list[ListingPhotoOut]  # in listing order, grouped by unit
 
 

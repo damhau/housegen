@@ -110,8 +110,18 @@ def prepare(scene_url: str, key: str) -> dict:
 
 
 @app.function(image=image, gpu=SHOOT_GPU, cpu=4.0, memory=16384, timeout=3600, volumes=volumes)
-def shoot(key: str, camera: str, width: int, height: int, samples: int) -> dict:
-    """One photo from the prepared version: the JPEG bytes and what the pipeline decided."""
+def shoot(
+    key: str,
+    camera: str,
+    width: int,
+    height: int,
+    samples: int,
+    sun: list[float] | None = None,
+    room_lamps: bool | None = None,
+    remove: list[str] | None = None,
+) -> dict:
+    """One photo from the prepared version: the JPEG bytes and what the pipeline decided. `sun` ([azimuth, elevation])
+    and `room_lamps` repeat a preview's light instead of searching it again; `remove` hides those dressing pieces."""
     import json
 
     t0 = time.time()
@@ -121,7 +131,8 @@ def shoot(key: str, camera: str, width: int, height: int, samples: int) -> dict:
         raise RuntimeError(f"version {key} is not prepared")
     out = Path("/tmp", f"{key}-{int(t0 * 1000)}.jpg")
     spec = {"blend": str(d / "house.blend"), "rooms": str(d / "rooms.json"), "camera": camera, "out": str(out),
-            "width": width, "height": height, "samples": samples}
+            "width": width, "height": height, "samples": samples, "sun": sun, "room_lamps": room_lamps,
+            "remove": remove or []}
     spec_path = out.with_suffix(".spec.json")
     spec_path.write_text(json.dumps(spec))
     _run(["main.py", "shoot", str(spec_path)])
@@ -157,6 +168,9 @@ def web():
         width: int = 1920
         height: int = 1080
         samples: int = 256
+        sun: list[float] | None = None
+        room_lamps: bool | None = None
+        remove: list[str] = []
 
     @api.get("/health")
     def health() -> dict:
@@ -168,7 +182,9 @@ def web():
 
     @api.post("/shoot", dependencies=[Depends(auth)])
     def start_shoot(body: ShootIn) -> dict:
-        call = shoot.spawn(body.key, body.camera, body.width, body.height, body.samples)
+        call = shoot.spawn(
+            body.key, body.camera, body.width, body.height, body.samples, body.sun, body.room_lamps, body.remove
+        )
         return {"call_id": call.object_id}
 
     @api.post("/calls/{call_id}/cancel", dependencies=[Depends(auth)])

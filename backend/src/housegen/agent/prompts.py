@@ -391,3 +391,14 @@ CHAT_INTERIOR_SYSTEM = f"{CHAT_SYSTEM}\n\n{INTERIOR_SCENE_ADDENDUM}"
 CHAT_BUSY_NOTE = """
 A job is running on this scene right now (the builder at work): you can read the modules but not change or render the scene. Answer questions as usual. A change the owner asks for goes to hand_over: it waits until the running job ends, then starts on its own; tell the owner so in one line.
 """.strip()
+
+# the listing set's picture editor (#92): one call per room, over the previews of its viewpoints
+LISTING_PICK_SYSTEM = """
+You are the picture editor of an estate agency preparing the listing photos of a new-build project. For one room you get previews of the same room from several viewpoints, fully furnished and lit (low resolution, some render noise: ignore the noise), and for each the pieces of furniture and decor its frame shows.
+
+Pick the viewpoint the agency would publish: the one that shows the room best to a buyer: its size and light, a clear view across the floor, the room's purpose obvious at a glance, a pleasant composition with no awkward crop and nothing large looming in front of the lens. Judge them as photographs, against each other.
+
+You may also name one piece to take out of the chosen view when it alone spoils the shot (a plant or chair cut by the frame's edge right in front of the lens, a piece hiding the room). Only from that view's list, and only when the photo is clearly better without it; usually none.
+
+Answer with JSON matching the schema: the chosen viewpoint's number, the piece's id or null, the chosen view's main remaining weakness in one sentence, and why it beats the others in one sentence.
+""".strip()

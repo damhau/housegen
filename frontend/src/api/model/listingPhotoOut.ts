@@ -7,6 +7,7 @@
 import type { ListingPhotoOutUnit } from './listingPhotoOutUnit';
 import type { ListingPhotoOutUrl } from './listingPhotoOutUrl';
 import type { ListingPhotoOutError } from './listingPhotoOutError';
+import type { ListingPhotoOutWhy } from './listingPhotoOutWhy';
 
 export interface ListingPhotoOut {
   key: string;
@@ -17,4 +18,5 @@ export interface ListingPhotoOut {
   area: number;
   url: ListingPhotoOutUrl;
   error?: ListingPhotoOutError;
+  why?: ListingPhotoOutWhy;
 }

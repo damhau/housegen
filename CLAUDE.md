@@ -18,7 +18,8 @@ backend/   FastAPI + SQLite + Playwright (uv, Python 3.12). Domain-first: src/ho
   jobs/      in-process job runner + SSE fan-out (persisted events vs transient progress events)
   projects/  models, crud, router, storage (data/projects/<id>/{plans/<k>,photos,scene,versions}), migrations (one-off, at startup)
   listing/   listing photo sets (#91): shots.py (units from room names, listing order, captions), client.py (the
-             photo service), job.py (the `listing` job: beside scene jobs, never blocks them), router.py
+             photo service), pick.py (the picture editor: one vision call per room over its previews, #92),
+             job.py (the `listing` job: beside scene jobs, never blocks them), router.py
   geo/       Swiss public geodata around the plot (#39): swiss.py (search, swissALTI3D, SWISSIMAGE, swissBUILDINGS3D 3D Tiles),
              context.py (data/projects/<id>/context/), router.py. Viewer only: kit/context.js on presentation pages
 frontend/  Vite + React 19 + TS strict + Tailwind v4 + shadcn-style ui + TanStack Router/Query. API client is

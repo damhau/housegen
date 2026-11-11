@@ -2,10 +2,12 @@
 
     python main.py prepare <house.glb> <rooms.json> <out_dir> [--blend]
         <out_dir>/house.blend (the GLB imported; with --blend the first argument is already a .blend, copied) and
-        <out_dir>/cameras.json: per room, corner cameras scored by ray casts on the bare import, the best one first.
+        <out_dir>/cameras.json: per room, viewpoints (corners, the long axis both ways, the doorways) scored by ray
+        casts on the bare import; `views` holds up to MAX_VIEWS distinct ones, best first.
     python main.py shoot <spec.json>
-        spec: {"blend", "rooms", "camera", "out" (.jpg), "width", "height", "samples"}; writes the photo and
-        <out>.json (the room, the final camera, the sun, the lamps, the device, the seconds per phase).
+        spec: {"blend", "rooms", "camera", "out" (.jpg), "width", "height", "samples"[, "sun", "room_lamps",
+        "remove"]}; writes the photo and <out>.json (the room, the final camera, the sun, the lamps, the pieces in
+        the frame, the device, the seconds per phase).
 """
 
 import json
@@ -19,7 +21,11 @@ from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-EYE, FOV = 1.3, 58.0
+EYE, FOV = 1.3, 58.0  # 58 deg vertical at 16:9 is an 18 mm lens on full frame
+SMALL_EYE, SMALL_FOV = 1.2, 64.0  # agencies shoot bathrooms and small rooms at 16 mm, a little lower
+SMALL_AREA = 9.0
+MAX_VIEWS = 6
+APART_M, APART_DEG = 0.7, 30.0  # two viewpoints closer than this, looking the same way, are one
 GRID = (32, 18)
 NEAR, NEAR_PENALTY = 1.2, 0.5  # a camera with something closer than this in the middle of its frame
 ASPECT = (1920, 1080)
@@ -43,11 +49,14 @@ def inside(poly, x, z):
     return c
 
 
+def centre_of(poly):
+    return Vector((sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly)))
+
+
 def corner_cameras(room):
-    """frame_cands.py's cameras: one per convex corner, 0.5 m from both walls, at eye height, looking past the centre."""
-    poly, y = room["polygon"], room["y"]
-    cx, cz = sum(p[0] for p in poly) / len(poly), sum(p[1] for p in poly) / len(poly)
-    centre = Vector((cx, cz))
+    """frame_cands.py's cameras: one per convex corner, 0.5 m from both walls, looking past the centre."""
+    poly = room["polygon"]
+    centre = centre_of(poly)
     out = []
     for k in range(len(poly)):
         p, a, b = Vector(poly[k]), Vector(poly[k - 1]), Vector(poly[(k + 1) % len(poly)])
@@ -58,9 +67,114 @@ def corner_cameras(room):
         c = p + inward * 0.5 * math.sqrt(2)
         if (centre - c).dot(inward) <= 0:  # a reflex corner: its bisector points out of the room
             continue
-        t = centre + (centre - c) * 0.4
-        out.append(f"{c.x:.2f},{y + EYE:.2f},{c.y:.2f}>{t.x:.2f},{y + 1.0:.2f},{t.y:.2f}@{FOV:.0f}")
+        out.append(("corner", c, centre + (centre - c) * 0.4))
     return out
+
+
+def to_wall(poly, origin, d):
+    """The distance from `origin` along `d` to the polygon's boundary, or None."""
+    best = None
+    for i in range(len(poly)):
+        a, b = Vector(poly[i - 1]), Vector(poly[i])
+        e = b - a
+        den = d.x * e.y - d.y * e.x
+        if abs(den) < 1e-9:
+            continue
+        w = a - origin
+        t = (w.x * e.y - w.y * e.x) / den
+        u = (w.x * d.y - w.y * d.x) / den
+        if t > 1e-6 and 0.0 <= u <= 1.0 and (best is None or t < best):
+            best = t
+    return best
+
+
+def axis_cameras(room):
+    """From near one end of the room's long axis, looking along it: the depth of the room in one frame."""
+    poly = room["polygon"]
+    centre = centre_of(poly)
+    pts = [Vector(p) - centre for p in poly]
+    xx, zz, xz = (sum(p.x * p.x for p in pts), sum(p.y * p.y for p in pts), sum(p.x * p.y for p in pts))
+    a = 0.5 * math.atan2(2 * xz, xx - zz)
+    axis = Vector((math.cos(a), math.sin(a)))
+    out = []
+    for d in (axis, -axis):
+        reach = to_wall(poly, centre, -d)
+        if reach is None or reach < 1.2:
+            continue
+        c = centre - d * (reach - 0.4)
+        if inside(poly, c.x, c.y):
+            out.append(("axis", c, centre + d))
+    return out
+
+
+def door_cameras(room, doors):
+    """In each doorway of the room, a step in, looking across it: where a visitor first sees the room."""
+    poly = room["polygon"]
+    centre = centre_of(poly)
+    out = []
+    for x, z, bottom in doors:
+        if abs(bottom - room["y"]) > 0.3:
+            continue
+        p = Vector((x, z))
+        best = None
+        for i in range(len(poly)):
+            a, b = Vector(poly[i - 1]), Vector(poly[i])
+            e = b - a
+            t = max(0.0, min(1.0, (p - a).dot(e) / max(e.length_squared, 1e-9)))
+            foot = a + e * t
+            if best is None or (p - foot).length < best[0]:
+                best = ((p - foot).length, foot, Vector((-e.y, e.x)).normalized())
+        if best is None or best[0] > 0.35:
+            continue
+        _, foot, n = best
+        if not inside(poly, *(foot + n * 0.1)):
+            n = -n
+        c = foot + n * 0.35
+        if inside(poly, c.x, c.y):
+            out.append(("door", c, centre + (centre - c) * 0.4))
+    return out
+
+
+def door_positions(scene):
+    """(x, z, bottom) in scene metres of every door: interior doors and the house's own."""
+    out = []
+    for o in scene.objects:
+        if o.get("kind") not in ("interiorDoor", "door") or (o.parent and o.parent.get("kind") == o.get("kind")):
+            continue
+        ps = [o.matrix_world @ Vector(c) for c in o.bound_box] if o.type == "MESH" else []
+        for c in o.children_recursive:
+            if c.type == "MESH":
+                ps += [c.matrix_world @ Vector(v) for v in c.bound_box]
+        if ps:
+            out.append((sum(p.x for p in ps) / len(ps), -sum(p.y for p in ps) / len(ps), min(p.z for p in ps)))
+    return out
+
+
+def room_cameras(room, doors):
+    """Every viewpoint of the room as (kind, camera spec)."""
+    small = room["use"] in ("bath", "wc") or area(room["polygon"]) < SMALL_AREA
+    eye, fov = (SMALL_EYE, SMALL_FOV) if small else (EYE, FOV)
+    y = room["y"]
+    return [(kind, f"{c.x:.2f},{y + eye:.2f},{c.y:.2f}>{t.x:.2f},{y + 1.0:.2f},{t.y:.2f}@{fov:.0f}")
+            for kind, c, t in corner_cameras(room) + axis_cameras(room) + door_cameras(room, doors)]
+
+
+def distinct(cands):
+    """The best candidates that are really different viewpoints (another place or another direction)."""
+    def pose(spec):
+        p, t = spec.split(">")
+        (px, _, pz), (tx, _, tz) = ([float(v) for v in p.split(",")], [float(v) for v in t.split("@")[0].split(",")])
+        return Vector((px, pz)), math.degrees(math.atan2(tz - pz, tx - px))
+
+    kept = []
+    for c in cands:
+        if c["score"] <= 0 or len(kept) == MAX_VIEWS:
+            continue
+        p, yaw = pose(c["camera"])
+        if all((p - q).length > APART_M or abs((yaw - w + 180) % 360 - 180) > APART_DEG
+               for q, w in (pose(k["camera"]) for k in kept)):
+            kept.append(c)
+    return kept
 
 
 def score_camera(scene, dg, spec, room):
@@ -117,18 +231,20 @@ def prepare(src, rooms_json, out_dir, from_blend=False):
                 c.hide_render = True
     bpy.context.view_layer.update()
     dg = bpy.context.evaluated_depsgraph_get()
+    doors = door_positions(scene)
     out = []
     for room in load_rooms(rooms_json):
         cands = []
-        for spec in corner_cameras(room):
+        for kind, spec in room_cameras(room, doors):
             floor, ahead = score_camera(scene, dg, spec, room)
             score = floor - (NEAR_PENALTY if ahead < NEAR else 0.0)
-            cands.append({"camera": spec, "score": round(score, 4), "floor": round(floor, 4),
+            cands.append({"camera": spec, "kind": kind, "score": round(score, 4), "floor": round(floor, 4),
                           "ahead": None if math.isinf(ahead) else round(ahead, 2)})
         cands.sort(key=lambda c: -c["score"])
         best = cands[0] if cands and cands[0]["floor"] > 0 else None
         out.append({"name": room["name"], "use": room["use"], "y": room["y"], "area": round(area(room["polygon"]), 2),
-                    "camera": best and best["camera"], "score": best["score"] if best else 0.0, "candidates": cands})
+                    "camera": best and best["camera"], "score": best["score"] if best else 0.0,
+                    "views": [c["camera"] for c in distinct(cands)], "candidates": cands})
         print(f"PREPARE {room['name']}: {len(cands)} candidates, best {best and best['camera']} "
               f"({best and best['score']})", flush=True)
     with open(os.path.join(out_dir, "cameras.json"), "w", encoding="utf-8") as f:
@@ -141,7 +257,8 @@ def shoot(spec_json):
 
     spec = json.load(open(spec_json, encoding="utf-8"))
     photo.run(spec["blend"], load_rooms(spec["rooms"]), spec["camera"], spec["out"],
-              int(spec.get("width", 1920)), int(spec.get("height", 1080)), int(spec.get("samples", 256)))
+              int(spec.get("width", 1920)), int(spec.get("height", 1080)), int(spec.get("samples", 256)),
+              sun=spec.get("sun"), room_lamps=spec.get("room_lamps"), remove=spec.get("remove") or ())
 
 
 def main(argv):

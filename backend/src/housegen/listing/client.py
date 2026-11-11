@@ -104,12 +104,32 @@ class PhotoClient:
         return await self.wait(call, timeout_s)
 
     async def shoot(
-        self, key: str, camera: str, width: int, height: int, samples: int, timeout_s: float
+        self,
+        key: str,
+        camera: str,
+        width: int,
+        height: int,
+        samples: int,
+        timeout_s: float,
+        sun: list[float] | None = None,
+        room_lamps: bool | None = None,
+        remove: list[str] | None = None,
     ) -> tuple[bytes, dict[str, Any]]:
-        """The photo's JPEG and what the service reports with it (meta, gpu, seconds)."""
-        call = await self.start(
-            "/shoot",
-            {"key": key, "camera": camera, "width": width, "height": height, "samples": samples},
-        )
+        """The photo's JPEG and what the service reports with it (meta, gpu, seconds). `sun` and `room_lamps`
+        repeat a preview's light; `remove` hides those dressing pieces."""
+        body: dict[str, Any] = {
+            "key": key,
+            "camera": camera,
+            "width": width,
+            "height": height,
+            "samples": samples,
+        }
+        if sun is not None:
+            body["sun"] = sun
+        if room_lamps is not None:
+            body["room_lamps"] = room_lamps
+        if remove:
+            body["remove"] = remove
+        call = await self.start("/shoot", body)
         res = await self.wait(call, timeout_s)
         return base64.b64decode(res.pop("jpeg")), res

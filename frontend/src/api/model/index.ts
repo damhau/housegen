@@ -52,6 +52,7 @@ export * from './listingPhotoOut';
 export * from './listingPhotoOutError';
 export * from './listingPhotoOutUnit';
 export * from './listingPhotoOutUrl';
+export * from './listingPhotoOutWhy';
 export * from './listingRequest';
 export * from './listingRequestVersion';
 export * from './listingStatusOut';

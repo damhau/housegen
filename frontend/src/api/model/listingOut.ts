@@ -14,5 +14,7 @@ export interface ListingOut {
   width: number;
   height: number;
   cost_usd: number;
+  previews_done?: number;
+  previews_total?: number;
   photos: ListingPhotoOut[];
 }

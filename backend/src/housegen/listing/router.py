@@ -13,6 +13,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import Response
 
 from housegen.agent import pipeline
+from housegen.agent.run_settings import RunSettings, resolve
 from housegen.core.config import get_settings
 from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
@@ -61,6 +62,7 @@ def listing_out(st: ProjectStorage, version: int, current: int) -> ListingOut | 
                 area=shot["area"],
                 url=url,
                 error=None if url else doc.get("errors", {}).get(shot["key"]),
+                why=doc.get("choices", {}).get(shot["key"], {}).get("why"),
             )
         )
     cost = doc.get("cost", {})
@@ -71,7 +73,13 @@ def listing_out(st: ProjectStorage, version: int, current: int) -> ListingOut | 
         created_at=str(doc.get("created_at", "")),
         width=int(doc.get("settings", {}).get("width", 0)),
         height=int(doc.get("settings", {}).get("height", 0)),
-        cost_usd=round(float(cost.get("prepare_usd", 0)) + float(cost.get("photos_usd", 0)), 2),
+        cost_usd=round(sum(float(v or 0) for v in cost.values()), 2),
+        previews_done=sum(len(v) for v in doc.get("previews", {}).values()),
+        previews_total=sum(
+            len(x.get("views") or []) for x in doc.get("shots", []) if len(x.get("views") or []) > 1
+        )
+        if doc.get("settings", {}).get("editor")
+        else 0,
         photos=photos,
     )
 
@@ -115,7 +123,14 @@ async def start_listing(
     if await crud.active_job(session, project_id, ("listing",)):
         raise ConflictError("a listing set is already being shot")
     request = json.dumps({"version": version, "reuse": body.reuse})
-    job = await crud.create_job(session, project_id, "listing", request)
+    stored = RunSettings.model_validate(project.settings) if project.settings else RunSettings()
+    job = await crud.create_job(
+        session,
+        project_id,
+        "listing",
+        request,
+        settings=resolve(get_settings(), stored).model_dump(),
+    )
     await session.commit()
     job_manager.submit(job.id, project_id, pipeline.JOB_BODIES["listing"])
     logger.info(

@@ -130,10 +130,17 @@ class Settings(BaseSettings):
     # (RENDER_SERVICE_URL with housegen-render → housegen-photo), with RENDER_SERVICE_TOKEN.
     PHOTO_SERVICE_URL: str = ""
     PHOTO_SERVICE_TOKEN: str = ""
-    LISTING_WIDTH: int = 2560
-    LISTING_HEIGHT: int = 1440
-    LISTING_SAMPLES: int = 400
-    LISTING_PARALLEL: int = 8  # photos in flight at once, one GPU container each
+    LISTING_WIDTH: int = 3840
+    LISTING_HEIGHT: int = 2160
+    LISTING_SAMPLES: int = 512
+    # #92: every distinct viewpoint of a room is previewed fully dressed and lit, a vision call
+    # (the critic's model and effort) picks one, and only that one is shot at full size.
+    # Off = the best-scored viewpoint, no previews and no LLM.
+    LISTING_PICK: bool = True
+    LISTING_PREVIEW_WIDTH: int = 1280
+    LISTING_PREVIEW_HEIGHT: int = 720
+    LISTING_PREVIEW_SAMPLES: int = 64
+    LISTING_PARALLEL: int = 16  # photos and previews in flight at once, one GPU container each
     LISTING_SHOT_TIMEOUT_S: float = 2400.0  # one photo, cold start and queueing included
 
     @property

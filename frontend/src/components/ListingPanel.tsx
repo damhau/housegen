@@ -89,6 +89,9 @@ export function ListingPanel({
   const ready = photos.filter((p) => p.url)
   const jobOn = job ? jobVersion(job) : null
   const shootingThis = job !== null && set !== null && jobOn === set.version
+  const previewsDone = set?.previews_done ?? 0
+  const previewsTotal = set?.previews_total ?? 0
+  const previewing = shootingThis && previewsTotal > 0 && previewsDone < previewsTotal && ready.length === 0
   const viewedHasSet = data?.sets.includes(version) ?? false
 
   if (listing.isPending) return <div className="p-3 text-sm text-muted-foreground">Loading…</div>
@@ -98,7 +101,8 @@ export function ListingPanel({
     <div className="space-y-3 p-3 text-sm">
       <p className="text-xs text-muted-foreground">
         Photos of the interior for a listing: each flat's living room, dining room or kitchen, bedrooms and bathroom, rendered in
-        Blender Cycles with the project's finishes. The app picks the rooms and the cameras.
+        Blender Cycles with the project's finishes. The app picks the rooms; for each it previews several viewpoints, a picture
+        editor (the project's critic model) keeps one, and that one is shot at full size.
       </p>
       {!data?.available && <p className="text-xs text-amber-700 dark:text-amber-300">No photo service is configured on this server.</p>}
       <div className="flex flex-wrap items-center gap-2">
@@ -121,7 +125,11 @@ export function ListingPanel({
           <>
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="size-3 animate-spin" />
-              {shootingThis ? `Shooting v${jobOn}: ${ready.length} of ${photos.length} photos` : `Preparing v${jobOn ?? "?"} in Blender…`}
+              {previewing
+                ? `Previewing v${jobOn}: ${previewsDone} of ${previewsTotal} viewpoints`
+                : shootingThis
+                  ? `Shooting v${jobOn}: ${ready.length} of ${photos.length} photos`
+                  : `Preparing v${jobOn ?? "?"} in Blender…`}
             </span>
             <Button size="sm" variant="outline" onClick={() => void stop()} disabled={cancel.isPending || job.status === "interrupted"}>
               <Square /> Stop
@@ -186,7 +194,7 @@ function SetView({ set, currentVersion, live, onOpen }: { set: ListingOut; curre
                     {p.error ? <ImageOff className="size-4" /> : live ? <Loader2 className="size-4 animate-spin" /> : <ImageOff className="size-4" />}
                   </div>
                 )}
-                <figcaption className="truncate text-xs" title={p.error ? `${p.caption}: ${p.error}` : p.caption}>
+                <figcaption className="truncate text-xs" title={p.error ? `${p.caption}: ${p.error}` : p.why ? `${p.caption}. ${p.why}` : p.caption}>
                   {p.caption}
                 </figcaption>
               </figure>
