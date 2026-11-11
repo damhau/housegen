@@ -174,6 +174,9 @@ def glass(scene):
             continue
         for slot in o.material_slots:
             p = slot.material and slot.material.node_tree and slot.material.node_tree.nodes.get("Principled BSDF")
+            # a textured one is a finish seen through (glass blocks, coloured inserts), not a pane: it stays as drawn
+            if p and p.inputs["Base Color"].is_linked:
+                continue
             if p and (p.inputs["Alpha"].default_value < 1 or p.inputs["Transmission Weight"].default_value > 0):
                 slot.material = clear
                 n += 1
