@@ -81,9 +81,23 @@ def _run(args: list[str]) -> None:
 GPU_SCALEDOWN_S = 10
 
 
+@app.function(image=web_image, cpu=0.25, memory=512, timeout=3600, volumes={DATA: volume})
+def prepare(scene_url: str, key: str, context_url: str | None = None, site: list[float] | None = None) -> dict:
+    """The cached house of `key`, else `build`'s. A "Shoot again" finds it cached; reading it here keeps it from
+    waiting for a GPU, which Modal took up to 19 minutes to hand out."""
+    import json
+
+    t0 = time.time()
+    volume.reload()
+    out = Path(DATA, "cache", key)
+    if (out / "cameras.json").exists() and (out / "house.blend").exists():
+        return {**json.loads((out / "cameras.json").read_text()), "cached": True, "seconds": round(time.time() - t0, 1)}
+    return build.remote(scene_url, key, context_url, site)
+
+
 @app.function(image=image, gpu=PREPARE_GPU, cpu=4.0, memory=16384, timeout=1800, volumes=volumes,
               scaledown_window=GPU_SCALEDOWN_S)
-def prepare(scene_url: str, key: str, context_url: str | None = None, site: list[float] | None = None) -> dict:
+def build(scene_url: str, key: str, context_url: str | None = None, site: list[float] | None = None) -> dict:
     """The version's house in Blender, its rooms' cameras and its exteriors', cached on the volume by `key`."""
     import json
     import subprocess

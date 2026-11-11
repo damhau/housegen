@@ -114,9 +114,10 @@ outside first (#93), then each flat's living room, dining room (or kitchen), mai
 bedrooms, in that order, captioned with the room's area ("Salon, 19 m²"). A `listing` job runs beside the scene's own jobs and calls the photo
 service, `deploy/modal_photo.py` on Modal:
 
-1. `prepare` (a T4) loads the version's scene page headless (`photo/export.py`), exports the house to GLB, imports
-   it into Blender and finds up to six distinct viewpoints per room (its corners, along its long axis, from its
-   doorways; a lower, wider lens in a small room). Door leaves are left out of the scoring: the shoot swings a
+1. `prepare` returns the version's house from the volume's cache when it has it (a "Shoot again" waits for no GPU);
+   otherwise `build` (a T4) loads the version's scene page headless (`photo/export.py`), exports the house to GLB,
+   imports it into Blender and finds up to six distinct viewpoints per room (its corners, along its long axis, from
+   its doorways; a lower, wider lens in a small room). Door leaves are left out of the scoring: the shoot swings a
    leaf that stands in the frame out of it. Then `photo/blender/outside.py` builds the house in its
    surroundings (the project's context files, fetched from the app: the land, the aerial photo, the
    neighbouring buildings, the lidar trees, the far landscape) and scores up to six exterior viewpoints around
@@ -155,7 +156,8 @@ unless you pick another:
 
 `photo/blender/staging.py` sorts the pieces by their names. The exteriors are shot the same way at every level.
 The kit's catalogue furniture (#90) is kept as the builder placed it: the pipeline swaps its own bed and armchair
-only for the kit's parametric and named pieces.
+only for the kit's parametric and named pieces. A catalogue bed keeps its frame and pillows, and gets the same
+cloth-simulated duvet and throw as the pipeline's own beds instead of the kit's block bedding.
 
 The service uses the render service's token, so the app needs no new secret: it derives the URL from
 `RENDER_SERVICE_URL` (`housegen-render-web` → `housegen-photo-web`) unless `PHOTO_SERVICE_URL` is set.

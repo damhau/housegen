@@ -748,7 +748,8 @@ def swap_beds(scene, pieces, decor=True):
             continue
         lo, _ = box(o)
         frame = frame_of(o, lo.z) @ Matrix.Translation((0, fp[1] / 2, 0))
-        if o.get("model"):  # a catalogue bed (#90), made up by the kit: one of many, it stays
+        if o.get("model"):  # a catalogue bed (#90): one of many, its frame stays
+            n += make_up(scene, o, frame, linen, wool, decor)
             BEDS.append((frame, float(next(iter(o.get("nominal") or fp)))))
             continue
         w = max([s for s in BED_SIZES if s + 0.2 <= fp[0]] or [BED_SIZES[0]])
@@ -789,6 +790,58 @@ def swap_beds(scene, pieces, decor=True):
         n += 1
         log(f"bed: {nm} {fp[0]:.2f} x {fp[1]:.2f} -> {w} x {length}")
     return n
+
+
+def make_up(scene, o, frame, linen, wool, decor):
+    """A catalogue bed made up as the kit's beds are: the kit's bedding (rounded blocks, the piece's own meshes; the
+    model is under a child) gives way to a bedset's cloth duvet and throw on its mattress, cushions with `decor`.
+    The blocks read as a bare white box in Cycles, and the judges marked the bedroom down for it (#94)."""
+    blocks = [c for c in o.children if c.type == "MESH"]
+    if not blocks:
+        return 0
+    inv = frame.inverted()
+    spans = {}
+    for c in blocks:
+        ps = [inv @ (c.matrix_world @ Vector(v)) for v in c.bound_box]
+        spans[c] = (Vector([min(p[i] for p in ps) for i in range(3)]), Vector([max(p[i] for p in ps) for i in range(3)]))
+    lo, hi = max(spans.values(), key=lambda s: (s[1].x - s[0].x) * (s[1].y - s[0].y))
+    # furnish.js dressBed: the duvet is the mattress's width + 8 cm by 68 % of its length + 4 cm, from 2 cm under its
+    # top and 5 cm past its foot
+    w, length = hi.x - lo.x - 0.08, (hi.y - lo.y - 0.04) / 0.68
+    top, head, cx = lo.z + 0.02, lo.y + 0.05 + length, (lo.x + hi.x) / 2
+    pillowed = all(s[1].y < head - 0.3 for s in spans.values())
+    for c in blocks:
+        hide(c)
+    size = (max(0.9, round(w * 10) / 10), round(length * 10) / 10)
+    # the bedset's mattress starts 13 cm from its head wall, its top 52 cm up
+    at = frame @ Matrix.Translation((cx, head + 0.13, top - 0.52))
+    root = bpy.data.objects.new("bedset", None)
+    scene.collection.objects.link(root)
+    root.matrix_world = at
+    before = set(bpy.data.objects)
+    bpy.ops.import_scene.gltf(filepath=bedset(*size))
+    for c in [c for c in bpy.data.objects if c not in before]:
+        if c.name.startswith("bed-"):
+            bpy.data.objects.remove(c, do_unlink=True)
+            continue
+        if c.parent is None:
+            c.parent = root
+            c.matrix_parent_inverse.identity()
+        if c.type == "MESH":
+            c.data.materials.clear()
+            c.data.materials.append(wool if c.name.startswith("throw") else linen)
+    rot = turn(o)
+    if not pillowed:
+        pillows, _ = place(scene, model("throw_pillows_01"), to_scene(at @ Vector((0, -0.30, 0.52))), height=0.52,
+                           turn_deg=math.degrees(rot))
+        recolour(pillows, linen)
+        pillows.scale = (pillows.scale[0] * 1.45 * size[0] / 1.6, pillows.scale[1], pillows.scale[2])
+    if decor:
+        cushions, _ = place(scene, model("throw_pillows_01"), to_scene(at @ Vector((0, -0.68, 0.55))), height=0.38,
+                            turn_deg=math.degrees(rot))
+        recolour(cushions, velvet((0.16, 0.19, 0.13)))
+    log(f"bed: {o.get('model')} made up, mattress {w:.2f} x {length:.2f} top {top:.2f} -> bedset {size}")
+    return 1
 
 
 CUSHION_OAT, CUSHION_RUST = (0.50, 0.45, 0.37), (0.28, 0.11, 0.05)  # linear albedo: an oatmeal boucle, a muted rust

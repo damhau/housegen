@@ -113,7 +113,8 @@ export function ListingPanel({
         Photos for a listing: the building from outside in its surroundings, then each flat's living room, dining room or
         kitchen, bedrooms and bathroom, rendered in Blender Cycles with the project's finishes. The app previews several
         viewpoints of the building and of each room; a picture editor (the project's critic model) keeps the best, and those
-        are shot at full size.
+        are shot at full size. The staging sets how much of the furnishing the rooms show: furnished, light (no decor) or
+        empty (the architecture and its finishes).
       </p>
       {!data?.available && <p className="text-xs text-amber-700 dark:text-amber-300">No photo service is configured on this server.</p>}
       <div className="flex flex-wrap items-center gap-2">
