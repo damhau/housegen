@@ -314,7 +314,7 @@ async def _start_job(
         # the conversation goes on while the builder works (#35): one answer at a time
         if await crud.active_job(session, project_id, ("chat",)):
             raise ConflictError("wait for the answer to your last message")
-    elif await crud.active_job(session, project_id):
+    elif await crud.active_job(session, project_id, pipeline.SCENE_KINDS):
         raise ConflictError("a job is already running for this project")
     # the job runs with a snapshot of the project's settings taken now (#18)
     resolved = resolve(get_settings(), _run_settings(project))
@@ -672,7 +672,7 @@ async def chat_history(session: DbSession, project_id: str) -> list[ChatMessageO
 @router.post("/{project_id}/versions/{number}/restore")
 async def restore_version(session: DbSession, project_id: str, number: int) -> ProjectOut:
     project = await crud.get_project(session, project_id)
-    if await crud.active_job(session, project_id):
+    if await crud.active_job(session, project_id, pipeline.SCENE_KINDS):
         raise ConflictError("a job is running for this project")
     n = await pipeline.restore_to(session, project_id, number)
     await session.commit()

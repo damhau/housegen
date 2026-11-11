@@ -38,6 +38,8 @@ provider-agnostic: **Anthropic** (Messages API) or **OpenAI-compatible** (Chat C
 backend/     FastAPI + SQLite + Playwright   (uv)
 frontend/    Vite + React 19 + TS + Tailwind v4 + shadcn-style UI + TanStack Router/Query (orval client)
 kit/         housekit: runtime.js (scene boot, views, headless hooks) + house.js (parametric components) + template/
+photo/       listing photos: export.py (scene page → GLB) + blender/ (the Cycles pipeline, Python 3.11 + bpy, on Modal)
+deploy/      k8s.yaml, modal_render.py (GPU render service), modal_photo.py (listing photo service)
 ```
 
 ## Run
@@ -105,6 +107,28 @@ build); its docstring is the runbook. The service loads scenes from the app's `R
 must then be the app's public URL. `GET /health` on the service reports the WebGL renderer string:
 `ANGLE (NVIDIA, …` means the GPU draws, `SwiftShader` means it does not.
 
+### Listing photos (optional)
+
+The **Listing** tab shoots a saved, furnished version's interiors as photos for a real-estate listing (#91): each
+flat's living room, dining room (or kitchen), main bedroom, bathroom and other bedrooms, in that order, captioned
+with the room's area ("Salon, 19 m²"). A `listing` job runs beside the scene's own jobs and calls the photo
+service, `deploy/modal_photo.py` on Modal:
+
+1. `prepare` (a T4) loads the version's scene page headless (`photo/export.py`), exports the house to GLB, imports
+   it into Blender and scores corner cameras for every room. The `.blend` is cached per version on the
+   `housegen-photo` volume.
+2. `shoot` (an RTX PRO 6000, one container per photo, `LISTING_PARALLEL` at a time) renders one room in Cycles
+   with `photo/blender/main.py shoot`. The pipeline keeps the scene's finishes (a finish's scan at full
+   resolution, its colour kept) and adds the staging: decor, art, objects.
+
+The set lands in `versions/<n>/listing/` (`<k>.jpg` and `set.json`: unit, room, caption, camera, sun, cost) and
+shows in the tab, as a ZIP (`GET /api/v1/projects/<id>/listing/<n>/zip`) and on the share page. A later version
+marks the set out of date; **Shoot again** reuses its cameras.
+
+The service uses the render service's token, so the app needs no new secret: it derives the URL from
+`RENDER_SERVICE_URL` (`housegen-render-web` → `housegen-photo-web`) unless `PHOTO_SERVICE_URL` is set.
+The runbook (the volume, the asset upload, the deploy) is the docstring of `deploy/modal_photo.py`.
+
 ### Renderer versions
 
 `kit/versions/<name>/` holds snapshots of `house.js` + `runtime.js`; `kit/versions/index.json` lists them and names
@@ -140,6 +164,9 @@ every job snapshots the settings it started with.
 | `BROWSER_CHANNEL` | `chrome` | `chrome`, `msedge`, or empty for Playwright's Chromium |
 | `RENDER_ANGLE` | `swiftshader` | WebGL backend: `swiftshader` (software), `gl-egl` or `vulkan` (an NVIDIA GPU) |
 | `RENDER_SERVICE_URL`, `RENDER_SERVICE_TOKEN` | | render on the GPU service instead of in-process (see above); `RENDER_SERVICE_FALLBACK=false` fails the render instead of drawing locally when it is unreachable |
+| `PHOTO_SERVICE_URL`, `PHOTO_SERVICE_TOKEN` | next to the render service | the listing photo service (see above); empty = `RENDER_SERVICE_URL` with `housegen-photo-web`, `RENDER_SERVICE_TOKEN` |
+| `LISTING_WIDTH`, `LISTING_HEIGHT`, `LISTING_SAMPLES` | `2560`, `1440`, `400` | a listing photo's size and Cycles samples |
+| `LISTING_PARALLEL` | `8` | listing photos in flight at once, one GPU container each |
 | `RENDER_BASE_URL` | `http://HOST:PORT` | where the renderer loads scenes from; the app's public URL when a render service is used |
 | `RENDER_KIT` | pinned in `kit/versions/index.json` | the renderer snapshot the build path draws with (builder, critic, version pictures); the viewer picks its own |
 | `MODEL_PRICES` | list prices for `claude-opus-5`, `gpt-6-astra` | JSON `{model: {input, cached, output[, cache_write]}}` in USD per million tokens, for the cost in each run's summary |

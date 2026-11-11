@@ -53,6 +53,7 @@ from housegen.agent.workspace import Workspace
 from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
 from housegen.jobs.manager import JobContext, JobManager
+from housegen.listing.job import listing
 from housegen.llm import Completion, ImagePart, Message, Usage, get_provider
 from housegen.projects import crud
 from housegen.projects.models import Job
@@ -1329,6 +1330,8 @@ async def interior(ctx: JobContext) -> None:
 
 # the jobs that change the scene: while one runs, the chat only reads, and a change waits for it
 BUILD_KINDS = ("intake", "generate", "modify", "interior")
+# the jobs that change the scene: one at a time per project (a listing job only reads a saved version)
+SCENE_KINDS = (*BUILD_KINDS, "chat")
 CHAT_END_TOOLS = frozenset({"hand_over", "restore_version"})
 CHAT_PICTURES = ("aerial", "south-photo", "south")  # the current version's, two at most
 
@@ -1812,6 +1815,8 @@ async def resume(ctx: JobContext) -> None:
         await _resume_generate(ctx, progress)
     elif job.kind == "chat":
         await _resume_chat(ctx, progress)
+    elif job.kind == "listing":
+        await listing(ctx)  # the photos already saved are kept
     else:
         await _resume_modify(ctx, job, progress)
 
@@ -1933,4 +1938,5 @@ JOB_BODIES = {
     "modify": modify,
     "interior": interior,
     "chat": chat,
+    "listing": listing,
 }

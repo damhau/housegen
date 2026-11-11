@@ -17,6 +17,8 @@ backend/   FastAPI + SQLite + Playwright (uv, Python 3.12). Domain-first: src/ho
              HTTP service for a GPU box, deploy/modal_render.py), remote.py (its client + the local/remote dispatcher)
   jobs/      in-process job runner + SSE fan-out (persisted events vs transient progress events)
   projects/  models, crud, router, storage (data/projects/<id>/{plans/<k>,photos,scene,versions}), migrations (one-off, at startup)
+  listing/   listing photo sets (#91): shots.py (units from room names, listing order, captions), client.py (the
+             photo service), job.py (the `listing` job: beside scene jobs, never blocks them), router.py
   geo/       Swiss public geodata around the plot (#39): swiss.py (search, swissALTI3D, SWISSIMAGE, swissBUILDINGS3D 3D Tiles),
              context.py (data/projects/<id>/context/), router.py. Viewer only: kit/context.js on presentation pages
 frontend/  Vite + React 19 + TS strict + Tailwind v4 + shadcn-style ui + TanStack Router/Query. API client is
@@ -24,7 +26,11 @@ frontend/  Vite + React 19 + TS strict + Tailwind v4 + shadcn-style ui + TanStac
 kit/       housekit: runtime.js (scene boot, views, effects, headless hooks), house.js (parametric components),
            template/ (starting scene), versions/<name>/ (renderer snapshots; index.json names the one PINNED for the
            build path). three.js vendored via npm in kit/node_modules.
-deploy/    k8s.yaml, modal_render.py (GPU render service). Root Dockerfile = single image, GHCR workflow on v* tags.
+photo/     listing photos on Modal: export.py (scene page → GLB, Python 3.11 + Playwright) and blender/ (the Cycles
+           pipeline ported from spikes/archviz: main.py prepare|shoot). Not part of the backend's gates; it runs with
+           bpy==5.0.1 (Python 3.11 only). Changes under photo/ need `uvx modal deploy deploy/modal_photo.py`.
+deploy/    k8s.yaml, modal_render.py (GPU render service), modal_photo.py (listing photo service). Root Dockerfile =
+           single image, GHCR workflow on v* tags.
 ```
 
 ## Decisions already made (don't relitigate)
@@ -51,6 +57,9 @@ deploy/    k8s.yaml, modal_render.py (GPU render service). Root Dockerfile = sin
   pages as `?kit=<name>` (`render/kits.py`). `kit/` is the working copy ("dev"): change it freely, judge it on a saved
   version next to the newest snapshot (viewer Compare, `look_sheet.py --kit`), copy it to `kit/versions/<date-name>/`
   when it is right, and move the pin when it is better.
+- **Listing photos keep the project's finishes** (owner, 2026-11-09): agencies publish them. `photo/blender/` may make
+  a finish render better (its scan at full resolution, relief, roughness) and add staging and decor; it never swaps a
+  floor, wall or ceiling material for looks. Look experiments happen in `spikes/archviz/`, the lab.
 - **No build-path freeze** (decided 2026-09-23: the tool has no users yet, iteration speed comes first). Prompts, tool
   descriptions, views and the pinned kit may change without a measured run. Measure against an earlier run of the same
   project when a change could plausibly hurt generation quality; `docs/build-path-2026-09-07.md` keeps the history.

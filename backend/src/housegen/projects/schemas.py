@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from housegen.agent.metrics import RunSummary
 from housegen.agent.run_settings import ResolvedRunSettings, RunSettings
 from housegen.agent.schemas import Critique, Intake
+from housegen.listing.schemas import ListingOut
 
 Side = Literal["north", "south", "east", "west", "other"]
 # elevated wide shots (massing, roof) + photo-like eye-level views (what the critic pairs with the photos)
@@ -163,6 +164,8 @@ class SharedProjectOut(BaseModel):
     created_at: datetime
     # the real surroundings (#39), once the owner aligned the house on them
     context_url: str | None = None
+    # the shared version's listing photos (#91), when it has a set
+    listing: ListingOut | None = None
 
 
 class ProjectSummaryOut(BaseModel):

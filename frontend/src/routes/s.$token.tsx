@@ -1,6 +1,8 @@
+import { useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { Home } from "lucide-react"
 import { useSharedProject } from "@/api/endpoints/shared/shared"
+import { PhotoViewer } from "@/components/ListingPanel"
 import { SceneViewer } from "@/components/SceneViewer"
 import { errorMessage } from "@/lib/utils"
 
@@ -14,6 +16,7 @@ export const Route = createFileRoute("/s/$token")({ component: SharedPage })
 function SharedPage() {
   const { token } = Route.useParams()
   const shared = useSharedProject(token, { query: { retry: false } })
+  const [open, setOpen] = useState<number | null>(null)
   if (shared.isPending) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>
   if (shared.error || !shared.data)
     return (
@@ -26,8 +29,9 @@ function SharedPage() {
     )
   const s = shared.data
   const renders = Object.entries(s.render_urls)
+  const listing = (s.listing?.photos ?? []).filter((p) => p.url)
   return (
-    <div className="grid h-full grid-rows-[auto_1fr_auto] gap-3 p-3">
+    <div className="grid h-full grid-rows-[auto_1fr_auto_auto] gap-3 p-3">
       <div className="flex items-center gap-3">
         <h1 className="text-lg font-semibold tracking-tight">{s.name}</h1>
         <span className="text-xs text-muted-foreground">
@@ -46,6 +50,17 @@ function SharedPage() {
         autoTour={window.location.hash.includes("autoplay")}
         coverUrl={s.render_urls.southeast ?? Object.values(s.render_urls)[0] ?? null}
       />
+      {listing.length > 0 && (
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {listing.map((p, i) => (
+            <button key={p.key} onClick={() => setOpen(i)} title={p.unit ? `${p.unit} · ${p.caption}` : p.caption} className="shrink-0 text-left">
+              <img src={p.url ?? undefined} alt={p.caption} className="h-24 rounded border object-cover" />
+              <span className="block max-w-40 truncate text-xs text-muted-foreground">{p.caption}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {open !== null && <PhotoViewer photos={listing} index={open} onIndex={setOpen} onClose={() => setOpen(null)} />}
       {(renders.length > 0 || s.photo_urls.length > 0) && (
         <div className="flex gap-1.5 overflow-x-auto pb-1">
           {renders.map(([view, url]) => (

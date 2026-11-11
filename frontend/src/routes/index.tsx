@@ -14,6 +14,7 @@ const JOB_LABEL: Record<string, string> = {
   modify: "modifying",
   interior: "furnishing",
   intake: "reading plans",
+  listing: "shooting photos",
 }
 
 function HomePage() {

@@ -28,6 +28,7 @@ import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
 import { ConversationPanel } from "@/components/ConversationPanel"
 import { FurnishDialog } from "@/components/FurnishDialog"
+import { ListingPanel } from "@/components/ListingPanel"
 import { PlansPanel } from "@/components/PlansPanel"
 import { fmtUsd } from "@/components/RunSummaryCard"
 import { SceneViewer } from "@/components/SceneViewer"
@@ -40,7 +41,7 @@ import { StatusBadge } from "@/routes/index"
 
 export const Route = createFileRoute("/projects/$projectId")({ component: ProjectPage })
 
-type Tab = "conversation" | "compare" | "plans" | "versions" | "code"
+type Tab = "conversation" | "compare" | "plans" | "versions" | "listing" | "code"
 
 /** "m:ss" since an ISO timestamp, ticking every second; null when no timestamp. */
 function useElapsed(sinceIso: string | null) {
@@ -77,6 +78,9 @@ function ProjectPage() {
   const navigate = useNavigate()
   const project = useGetProject(projectId)
   const jobs = useListJobs(projectId)
+  // a listing job only reads a saved version (#91): the page's scene logic never follows it
+  const sceneJobs = useMemo(() => jobs.data?.filter((j) => j.kind !== "listing"), [jobs.data])
+  const listingJobs = useMemo(() => jobs.data?.filter((j) => j.kind === "listing") ?? [], [jobs.data])
   const chat = useChatHistory(projectId)
   const generate = useGenerate()
   const intake = useIntake()
@@ -101,16 +105,16 @@ function ProjectPage() {
   // the job to follow: the most recent one that is still running (or interrupted by a server
   // restart: it resumes with the same id), else the most recent one at all
   const activeJob = useMemo(
-    () => jobs.data?.find((j) => j.status === "running" || j.status === "queued" || j.status === "interrupted") ?? null,
-    [jobs.data],
+    () => sceneJobs?.find((j) => j.status === "running" || j.status === "queued" || j.status === "interrupted") ?? null,
+    [sceneJobs],
   )
-  const latestJob = jobs.data?.[0] ?? null
+  const latestJob = sceneJobs?.[0] ?? null
   const followed = activeJob ?? latestJob
   // the conversation goes on while the builder works (#35): only a turn waiting for its answer
   // holds the composer
   const isRunning = (s: string) => s === "running" || s === "queued" || s === "interrupted"
-  const chatRunning = jobs.data?.some((j) => j.kind === "chat" && isRunning(j.status)) ?? false
-  const building = jobs.data?.some((j) => j.kind !== "chat" && isRunning(j.status)) ?? false
+  const chatRunning = sceneJobs?.some((j) => j.kind === "chat" && isRunning(j.status)) ?? false
+  const building = sceneJobs?.some((j) => j.kind !== "chat" && isRunning(j.status)) ?? false
 
   // a conversation's turn reloads the viewer only when it saved a version (its `version` event
   // does that): an answer leaves the scene, and the owner's view of it, alone (#35)
@@ -274,6 +278,7 @@ function ProjectPage() {
     { id: "compare", label: hasPhotos ? "Photo vs render" : "Plan vs render" },
     { id: "plans", label: `Plans (${p.plans.length})` },
     { id: "versions", label: `Versions (${p.versions.length})` },
+    { id: "listing", label: "Listing" },
     { id: "code", label: "Code" },
   ]
 
@@ -427,7 +432,7 @@ function ProjectPage() {
             {tab === "conversation" && (
               <ConversationPanel
                 projectId={projectId}
-                jobs={jobs.data ?? []}
+                jobs={sceneJobs ?? []}
                 messages={chat.data ?? []}
                 versions={p.versions}
                 currentVersion={p.current_version}
@@ -450,7 +455,7 @@ function ProjectPage() {
             {tab === "versions" && (
               <VersionList
                 versions={p.versions}
-                jobs={jobs.data ?? []}
+                jobs={sceneJobs ?? []}
                 current={p.current_version}
                 selected={selectedVersion}
                 onSelect={setSelectedVersion}
@@ -458,6 +463,9 @@ function ProjectPage() {
                 onFix={(n) => void onFix(n)}
                 busy={restore.isPending || fix.isPending || busy}
               />
+            )}
+            {tab === "listing" && p.current_version > 0 && (
+              <ListingPanel projectId={projectId} jobs={listingJobs} version={selectedVersion ?? p.current_version} currentVersion={p.current_version} />
             )}
             {tab === "code" && <CodePanel projectId={projectId} version={selectedVersion} />}
           </div>

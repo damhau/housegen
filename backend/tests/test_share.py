@@ -94,6 +94,7 @@ async def test_share_create_is_idempotent_pins_and_revokes(client: AsyncClient) 
         "photo_urls",
         "created_at",
         "context_url",  # the public surroundings (swisstopo), once aligned (#39)
+        "listing",  # the version's listing photos (#91)
     }
     assert "private" not in r.text
     # unpinned → the current version

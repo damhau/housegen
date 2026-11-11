@@ -126,6 +126,16 @@ class Settings(BaseSettings):
     # failing the job. Off = the call raises RenderError.
     RENDER_SERVICE_FALLBACK: bool = True
 
+    # listing photos (#91): deploy/modal_photo.py. Empty = next to the render service
+    # (RENDER_SERVICE_URL with housegen-render → housegen-photo), with RENDER_SERVICE_TOKEN.
+    PHOTO_SERVICE_URL: str = ""
+    PHOTO_SERVICE_TOKEN: str = ""
+    LISTING_WIDTH: int = 2560
+    LISTING_HEIGHT: int = 1440
+    LISTING_SAMPLES: int = 400
+    LISTING_PARALLEL: int = 8  # photos in flight at once, one GPU container each
+    LISTING_SHOT_TIMEOUT_S: float = 2400.0  # one photo, cold start and queueing included
+
     @property
     def database_url(self) -> str:
         return self.DATABASE_URL or f"sqlite+aiosqlite:///{self.DATA_DIR / 'housegen.db'}"
@@ -137,6 +147,20 @@ class Settings(BaseSettings):
     @property
     def render_base_url(self) -> str:
         return self.RENDER_BASE_URL or f"http://{self.HOST}:{self.PORT}"
+
+    @property
+    def photo_service_url(self) -> str:
+        if self.PHOTO_SERVICE_URL:
+            return self.PHOTO_SERVICE_URL.rstrip("/")
+        if "housegen-render-web" in self.RENDER_SERVICE_URL:
+            return self.RENDER_SERVICE_URL.replace(
+                "housegen-render-web", "housegen-photo-web"
+            ).rstrip("/")
+        return ""
+
+    @property
+    def photo_service_token(self) -> str:
+        return self.PHOTO_SERVICE_TOKEN or self.RENDER_SERVICE_TOKEN
 
     def price_for(self, model: str) -> dict[str, float] | None:
         """The price row of a model, matched by exact name then by prefix ("gpt-6-astra-2026…")."""

@@ -8,6 +8,8 @@ from housegen.core.config import get_settings
 from housegen.core.db import DbSession
 from housegen.geo import context as geo_context
 from housegen.geo.router import router as geo_router
+from housegen.listing.router import listing_out
+from housegen.listing.router import router as listing_router
 from housegen.llm.models import ModelsOut, list_models
 from housegen.projects import crud
 from housegen.projects.router import router as projects_router
@@ -20,6 +22,7 @@ router = APIRouter(prefix="/api/v1")
 router.include_router(projects_router)
 router.include_router(geo_router)
 router.include_router(report_router)
+router.include_router(listing_router)
 
 
 @router.get("/shared/{token}", tags=["shared"])
@@ -41,6 +44,7 @@ async def shared_project(session: DbSession, token: str) -> SharedProjectOut:
         photo_urls=[st.photo_url(p.filename) for p in project.photos],
         created_at=project.created_at,
         context_url=_aligned_context_url(st),
+        listing=listing_out(st, version, project.current_version) if version else None,
     )
 
 
