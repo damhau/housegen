@@ -46,6 +46,11 @@ SKY = 0.55  # the hand-tuned rooms' value (0.5-0.6)
 # the sun lamp against the sky: at 16 a patch on the floor or a wall is 5-8x the sky's light around it (5.5, the
 # hand-tuned rooms' value, gave 2-3x: patches the judges did not see, "flat light")
 SUN_POWER = 16.0
+# Listing photos show the finishes as specified (#91). Lit by daylight and warm room lamps only, the white balance that
+# keeps the lamp-lit walls white turns white tiles in the window's light blue, and a white ceiling above windows that
+# stop short of it goes dark. Listing photographers add a flash bounced off the ceiling (flambient); 150 W makes both
+# neutral (2026-11-11: Montelly Bain tiles b-r +38 -> 0, attic ceiling 64 -> ~120 sRGB). Env override for tuning only.
+FLASH_W = float(os.environ.get("PHOTO_FLASH_W", "150"))
 LAMPS = 0.4  # the lamps of a room without sun, x their full strength
 THUMBS = 10  # candidate suns rendered as thumbnails
 LOOK = "AgX - High Contrast"
@@ -1571,6 +1576,24 @@ def next_rooms_lit(scene, rays, rooms, room, sy):
 HDRI_WOOD = -50.0  # the HDRI's direction (degrees from +x, its own frame) where it shows only the wood
 
 
+def bounce_flash(scene, cam):
+    """Flambient, as listing photographers shoot: a soft flash at the camera aimed at the ceiling, which lifts
+    the ceiling and the shadows under the window's light and neutralises the floor's warm bounce. Out of the
+    camera's sight and its reflections."""
+    if FLASH_W <= 0:
+        return
+    d = bpy.data.lights.new("archviz-flash", "AREA")
+    d.shape, d.size = "DISK", 0.5
+    d.energy, d.color = FLASH_W, (1.0, 0.97, 0.94)
+    o = bpy.data.objects.new("archviz-flash", d)
+    o.location = cam.matrix_world.translation + Vector((0, 0, 0.25))
+    o.rotation_euler = (math.pi, 0.0, 0.0)  # an area light shines down its -Z: turned over, up
+    o.visible_camera = False
+    o.visible_glossy = False
+    scene.collection.objects.link(o)
+    log(f"flash: {FLASH_W:.0f} W at the camera, bounced off the ceiling")
+
+
 def aim_sun(scene, lamp, az, el):
     """Turn the sun lamp and the sky's sun (its glow and colour) to a compass azimuth and elevation."""
     sky = next(n for n in scene.world.node_tree.nodes if n.bl_idname == "ShaderNodeTexSky")
@@ -1817,9 +1840,79 @@ def lit_lamps(scene, sun):
     return sorted(out)
 
 
-def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256):
+def piece_top(o):
+    """The removable piece an object belongs to, or None for the building: a kit piece (its outermost
+    `furniture` ancestor) or a prop this pipeline added (a top-level object other than the house)."""
+    top, furn = o, None
+    while top.parent is not None:
+        if top.get("kind") == "furniture":
+            furn = top
+        top = top.parent
+    if top.get("kind") == "furniture":
+        furn = top
+    if furn is not None:
+        return furn
+    return top if top.name != "house" and top.get("kind") is None and not top.name.startswith("still") else None
+
+
+def piece_label(o):
+    return str(o.get("name") or o.name)
+
+
+def hide_pieces(scene, names):
+    """Pieces by id (the object's unique name, one piece) or by label (every piece of that name)."""
+    names = set(names)
+    gone = []
+    for o in scene.objects:
+        if o.hide_render or piece_top(o) is not o or not (o.name in names or piece_label(o) in names):
+            continue
+        hide(o)
+        gone.append(o.name)
+    if gone:
+        log(f"took out {sorted(set(gone))}")
+    return sorted(set(gone))
+
+
+def pieces_in_frame(scene, cam, nx=64, ny=36, least=0.005):
+    """What a critic can name: the pieces the camera sees, their share of the frame, where, and the edges cutting them."""
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    fr = cam.data.view_frame(scene=scene)
+    x0, x1 = min(c.x for c in fr), max(c.x for c in fr)
+    y0, y1 = min(c.y for c in fr), max(c.y for c in fr)
+    rot, origin = cam.matrix_world.to_3x3(), cam.matrix_world.translation
+    seen = {}
+    for j in range(ny):
+        for i in range(nx):
+            fx, fy = (i + 0.5) / nx, (j + 0.5) / ny
+            d = (rot @ Vector((x0 + fx * (x1 - x0), y1 - fy * (y1 - y0), fr[0].z))).normalized()
+            hit = trace(scene, dg, origin, d)
+            top = hit and piece_top(hit[2])
+            if top is None:
+                continue
+            e = seen.setdefault(top.name, {"label": piece_label(top), "n": 0, "x": [], "y": [], "cut": set(), "dist": []})
+            e["n"] += 1
+            e["x"].append(fx)
+            e["y"].append(fy)
+            e["dist"].append((hit[0] - origin).length)
+            for edge, on in (("left", i == 0), ("right", i == nx - 1), ("top", j == 0), ("bottom", j == ny - 1)):
+                if on:
+                    e["cut"].add(edge)
+    out = []
+    for nm, e in sorted(seen.items(), key=lambda kv: -kv[1]["n"]):
+        share = e["n"] / (nx * ny)
+        if share < least:
+            continue
+        out.append({"id": nm, "name": e["label"], "share": round(share, 3), "x": [round(min(e["x"]), 2), round(max(e["x"]), 2)],
+                    "y": [round(min(e["y"]), 2), round(max(e["y"]), 2)], "cut_by": sorted(e["cut"]),
+                    "distance_m": round(sorted(e["dist"])[len(e["dist"]) // 2], 1)})
+    return out
+
+
+def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=None, room_lamps=None, remove=()):
     """Photograph the room the camera `cam_spec` stands in to the JPEG `out`; what was decided goes to `<out>.json`
-    and is returned. `rooms`: rooms.json's list."""
+    and is returned. `rooms`: rooms.json's list. A final from a preview replays its choices: `sun` (azimuth,
+    elevation) and `room_lamps` skip the sun search; `remove` takes pieces (ids from the preview's `pieces`) out."""
     t0 = time.time()
     seconds = {}
     artlib.init(rooms)
@@ -1859,13 +1952,22 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256):
         rays = camera_rays(scene, scene.camera, rooms, sy)
     style.style(scene, scene.camera, rays, rooms, sy, storey_pieces(scene, sy))
     rays = camera_rays(scene, scene.camera, rooms, sy)
+    removed = hide_pieces(scene, remove) if remove else []
+    if removed:
+        rays = camera_rays(scene, scene.camera, rooms, sy)
     stage.report(scene, scene.camera)
+    pieces = pieces_in_frame(scene, scene.camera)
     seconds["setup"] = round(time.time() - t0, 1)
     t = time.time()
-    az, el, frac = pick_sun(scene, rays)
-    log(f"sun: azimuth {az:.0f}, elevation {el:.0f}, {frac * 100:.0f} % of the room in sun ({time.time() - t:.0f} s)")
+    if sun is not None:
+        az, el = (float(v) for v in sun)
+        frac = 0.0
+        log(f"sun: pinned at {az:.0f}/{el:.0f}, room lamps {'on' if room_lamps else 'off'}")
+    else:
+        az, el, frac = pick_sun(scene, rays)
+        log(f"sun: azimuth {az:.0f}, elevation {el:.0f}, {frac * 100:.0f} % of the room in sun ({time.time() - t:.0f} s)")
     lamp = set_sun(scene, az, el)
-    cands = spread(RANKED, THUMBS)
+    cands = spread(RANKED, THUMBS) if sun is None else []
     with tempfile.TemporaryDirectory() as tmp:
         if THUMBS and len(cands) > 1:
             t1 = time.time()
@@ -1875,9 +1977,11 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256):
                 aim_sun(scene, lamp, az, el)
                 log(f"sun: thumbnails pick {az:.0f}/{el:.0f}, sun patches on {frac * 100:.0f} % of the room, x{contrast:.1f} "
                     f"the sky's light there ({len(cands)} candidates, {time.time() - t1:.0f} s)")
-        if frac < 0.05 and not (THUMBS and len(cands) > 1 and frac >= 0.03):
+        lit = room_lamps if room_lamps is not None else frac < 0.05 and not (THUMBS and len(cands) > 1 and frac >= 0.03)
+        if lit:
             lamps_on(scene, room)
         next_rooms_lit(scene, rays, rooms, room, sy)
+        bounce_flash(scene, scene.camera)
         seconds["sun"] = round(time.time() - t, 1)
         t = time.time()
         scene.render.resolution_x, scene.render.resolution_y = PREVIEW_W, round(PREVIEW_W * height / width)
@@ -1897,6 +2001,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256):
     sky = next(n for n in scene.world.node_tree.nodes if n.bl_idname == "ShaderNodeTexSky")
     info = {"room": room["name"], "use": room["use"], "camera": final_spec,
             "sun": f"{math.degrees(sky.sun_rotation) % 360:.1f}/{math.degrees(sky.sun_elevation):.1f}",
+            "sun_deg": [round(az, 2), round(el, 2)], "room_lamps": bool(lit), "removed": removed, "pieces": pieces,
             "lamps": lit_lamps(scene, lamp), "device": device, "seconds": seconds}
     with open(out + ".json", "w", encoding="utf-8") as f:
         json.dump(info, f, indent=1, ensure_ascii=False)
