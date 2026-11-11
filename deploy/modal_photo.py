@@ -19,7 +19,6 @@ The app finds the service next to the render service (RENDER_SERVICE_URL with ho
 PHOTO_SERVICE_URL, and sends RENDER_SERVICE_TOKEN.
 """
 
-from __future__ import annotations
 
 import os
 import time
@@ -67,7 +66,7 @@ def _run(args: list[str]) -> None:
     import subprocess
     import sys
 
-    p = subprocess.run([sys.executable, *args], cwd=f"{CODE}/blender", capture_output=True, text=True)
+    p = subprocess.run([sys.executable, *args], cwd=f"{CODE}/blender", capture_output=True, text=True, check=False)
     print(p.stdout[-20000:])
     if p.returncode:
         print(p.stderr[-20000:])
@@ -87,7 +86,7 @@ def prepare(scene_url: str, key: str) -> dict:
     if (out / "cameras.json").exists() and (out / "house.blend").exists():
         return {**json.loads((out / "cameras.json").read_text()), "cached": True, "seconds": round(time.time() - t0, 1)}
     tmp = Path("/tmp", key)
-    p = subprocess.run([sys.executable, f"{CODE}/export.py", scene_url, str(tmp)], capture_output=True, text=True)
+    p = subprocess.run([sys.executable, f"{CODE}/export.py", scene_url, str(tmp)], capture_output=True, text=True, check=False)
     if p.returncode:
         raise RuntimeError(f"export failed: {p.stderr[-2000:]}")
     exported = json.loads(p.stdout.strip().splitlines()[-1])
@@ -184,7 +183,7 @@ def web():
             res = call.get(timeout=0)
         except TimeoutError:
             return {"status": "running"}
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - whatever the call raised is its failure, reported to the app
             return {"status": "failed", "error": str(exc)[-2000:]}
         if isinstance(res, dict) and isinstance(res.get("jpeg"), bytes):
             res = {**res, "jpeg": base64.b64encode(res["jpeg"]).decode()}
