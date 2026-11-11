@@ -14,8 +14,8 @@ from housegen.core.config import get_settings
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
-LATEST = "2026-10-30-v34"  # the newest snapshot
-VIEWER = "2026-10-30-v34"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
+LATEST = "2026-11-11-v35"  # the newest snapshot
+VIEWER = "2026-11-11-v35"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
 
 
 @pytest.fixture
@@ -147,3 +147,16 @@ async def test_bought_models_are_served_masked(client: AsyncClient) -> None:
     assert r.status_code == 200
     assert r.content[:4] == b"HGX1"
     assert (await client.get(f"/kit/assets/licensed/{files[0].parent.name}/")).status_code == 404
+
+
+def test_only_renderers_with_decor_roles_are_told_about_them() -> None:
+    from housegen.agent.prompts import BUILDER_SYSTEM, INTERIOR_SYSTEM, for_kit
+
+    with_roles, without = kits.kit_dir(LATEST), kits.kit_dir("2026-10-30-v34")
+    assert (with_roles / "objects.js").exists()
+    assert not (without / "objects.js").exists()
+    told = for_kit(INTERIOR_SYSTEM, with_roles)
+    assert "fx.model(role" in told
+    assert told.index("Put small decor") < told.index("Decor by role")
+    assert for_kit(INTERIOR_SYSTEM, without) == INTERIOR_SYSTEM
+    assert for_kit(BUILDER_SYSTEM, with_roles) == BUILDER_SYSTEM

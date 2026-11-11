@@ -23,7 +23,13 @@ RUN npm run api:gen && npm run build
 
 WORKDIR /kit
 COPY kit/package.json kit/package-lock.json* ./
-RUN npm install --omit=dev                  # node_modules/three
+# node_modules/three for the scenes; glTF-Transform, meshoptimizer and sharp compress the decor models
+RUN npm install
+# decor by role (objects.js): Amazon Berkeley Objects (CC BY 4.0), about 300 MB fetched and compressed to
+# 14 MB; its own layer, rebuilt only when the catalogue changes
+COPY kit/objects.js ./
+COPY kit/scripts/fetch_objects.mjs ./scripts/
+RUN node scripts/fetch_objects.mjs
 # furniture models and surface textures: Poly Haven (CC0) always, Sketchfab (CC BY) when the build
 # is given the token (docker build --secret id=sketchfab_token,env=SKETCHFAB_TOKEN); without it the
 # scenes fall back to the kit's parametric pieces
@@ -34,6 +40,8 @@ COPY kit/scripts ./scripts
 ARG SKETCHFAB=off
 RUN --mount=type=secret,id=sketchfab_token \
     SKETCHFAB_TOKEN="$(cat /run/secrets/sketchfab_token 2>/dev/null || true)" node scripts/fetch_models.mjs
+# the plants the decor's pots take, compressed from the Poly Haven models just fetched
+RUN node scripts/fetch_objects.mjs
 
 
 # ---------------------------------------------------------------------------
@@ -77,6 +85,8 @@ COPY --from=web /kit/assets ./kit/assets
 COPY kit/assets/licensed ./kit/assets/licensed
 # real sanitary ware (kit/scripts/sanitary.mjs: simplified from manufacturers' CAD files) for wc() and basin()
 COPY kit/assets/sanitary ./kit/assets/sanitary
+# decor made in the repo (fetch_objects.mjs --made): the branches the vases take
+COPY kit/assets/made ./kit/assets/made
 COPY kit/template ./kit/template
 # the presentation look's photographed sky (scripts/make_sky.py, Poly Haven CC0)
 COPY kit/sky ./kit/sky

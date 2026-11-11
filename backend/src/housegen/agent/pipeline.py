@@ -38,6 +38,7 @@ from housegen.agent.prompts import (
     MODIFY_INTERIOR_SYSTEM,
     PLAN_ONLY_ADDENDUM,
     RESUME_ADDENDUM,
+    for_kit,
 )
 from housegen.agent.run_settings import ResolvedRunSettings, RunSettings, resolve
 from housegen.agent.schemas import Critique, Intake, Verification
@@ -410,7 +411,7 @@ class _Run:
         run = await run_builder(
             self.provider,
             self.rs.model,
-            system or self.system,
+            for_kit(system or self.system, kit_dir(self.kit, self.settings)),
             messages,
             self.tools,
             max_steps=max_steps or self.rs.max_steps,

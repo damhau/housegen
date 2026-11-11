@@ -79,3 +79,51 @@ test("a bought model that cannot be loaded falls back to the parametric piece, a
     console.warn = warn;
   }
 });
+
+test("a role draws each of its pieces once before any comes back, the same ones for the same scene", async () => {
+  const { ROLES, pickObject, resetObjects } = await import("../furnish.js");
+  const draw = (seed, n) => {
+    globalThis.__housekitSeed = seed;
+    resetObjects();
+    return Array.from({ length: n }, () => pickObject("vase").piece.id);
+  };
+  const n = ROLES.vase.length;
+  const a = draw("house-a", n);
+  assert.equal(new Set(a).size, n);
+  assert.deepEqual(draw("house-a", n), a);
+  assert.notDeepEqual(draw("house-b", n), a);
+  const twice = draw("house-a", 2 * n);
+  assert.equal(new Set(twice.slice(n)).size, n);
+  delete globalThis.__housekitSeed;
+  resetObjects();
+});
+
+test("a role prefers a piece near the size asked, one that goes with the room's accent, and quiet large pieces", async () => {
+  const { ROLES, pickObject, resetObjects } = await import("../furnish.js");
+  globalThis.__housekitSeed = "sizes";
+  resetObjects();
+  const tall = Math.max(...ROLES.vase.map((o) => o.size[2]));
+  const o = pickObject("vase", { height: tall }).piece;
+  assert.ok(Math.abs(Math.log(tall / o.size[2])) <= Math.log(1.6), `${o.id} ${o.size[2]} m for ${tall} m`);
+  for (const room of ["Séjour", "Chambre 1", "Chambre 2", "Bureau", "Cuisine"]) {
+    resetObjects();
+    const { piece, accent } = pickObject("cushion", { room });
+    assert.ok(["neutral", "dark", accent].includes(piece.tone), `${room} (${accent}) drew a ${piece.tone} cushion`);
+  }
+  resetObjects();
+  const quiet = ROLES.rug.filter((o) => ["neutral", "dark"].includes(o.tone)).length;
+  const rugs = ["Séjour", "Chambre 1", "Chambre 2", "Bureau"].slice(0, quiet).map((room) => pickObject("rug", { room }).piece);
+  assert.deepEqual(rugs.filter((o) => !["neutral", "dark"].includes(o.tone)), [], "a rug in an accent while quiet ones were left");
+  delete globalThis.__housekitSeed;
+  resetObjects();
+});
+
+test("the decor catalogue: every role has pieces, every piece a real size, no role named like a catalogue model", async () => {
+  const { ROLES, MODELS } = await import("../furnish.js");
+  assert.ok(Object.keys(ROLES).length >= 20);
+  for (const [role, list] of Object.entries(ROLES)) {
+    assert.ok(!(role in MODELS), role);
+    for (const o of list) assert.ok(o.size.length === 3 && o.size.every((v) => v > 0.001 && v < 4), `${o.id} ${o.size}`);
+  }
+  await assert.rejects(fx.model("dragon"), /unknown model/);
+});

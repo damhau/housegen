@@ -1,5 +1,7 @@
 """System prompts for the agents. Kept stable so provider prompt caches hit."""
 
+from pathlib import Path
+
 KIT_REFERENCE = r"""
 ## housekit API (import * as house from "housekit", or use ctx.house)
 
@@ -327,6 +329,29 @@ Every render_views and check_scene result ends with the scene audit, measured on
 - Views: render_views(["room-1", "room-2", …]) are eye-height views of each room (1-based, in the order of the rooms of
   your floorPlan calls, lowest storey first); "plan-section-1" is storey 1 seen as a floor plan.
 """.strip()
+
+# decor by role (#90): only renderers from v35 on have it (kit/objects.js), so only their jobs are told
+DECOR_ROLES_REFERENCE = r"""
+Decor by role (await fx.model(role, { height | width | length, room })): one of several real pieces of the role, at its
+  real size scaled as a whole to the one size you give, a different piece each time in a house; pass `room` (the room's
+  name) and that room's pieces share an accent colour. Prefer a role to a named decor model: houses stop looking alike.
+  Usual sizes (width x depth x height, facing +z): "vase" (0.15 x 0.27 high; { stems: true } puts dry branches in it) ·
+  "pot-plant" (a plant in its pot, 0.45 high in all: a table, a shelf, a sill) · "floor-plant" (1.3 high, on the floor) ·
+  "rug" (2.45 x 1.6: give the width and length you want, it is stretched to them) · "runner" (2.3 x 0.7, a hall) ·
+  "cushion" (0.5) · "lumbar-cushion" (0.63 x 0.34) · "side-table" (0.45, 0.56 high) · "pouf" (0.5) · "ottoman"
+  (1.0 x 1.0) · "bench" (1.0 x 0.5) · "sideboard" (1.5 x 0.4 x 0.71) · on a wall: "mirror" (0.65) · "clock" (0.31) ·
+  "wall-shelf" (0.6 x 0.15 x 0.72) · "tall-mirror" (0.8 x 2.0, standing on the floor against a wall) · small:
+  "basket" · "tray" · "bowl" · "candle" · "jar" · "canister" (a kitchen worktop)
+""".lstrip("\n")
+_DECOR_ANCHOR = "  Put small decor on a surface with fx.place(p, [x, z], rot, surfaceY).\n"
+
+
+def for_kit(system: str, kit: Path) -> str:
+    """The system prompt as the job's renderer `kit` (its directory) reads: decor by role when it has it."""
+    if _DECOR_ANCHOR in system and (kit / "objects.js").exists():
+        return system.replace(_DECOR_ANCHOR, _DECOR_ANCHOR + DECOR_ROLES_REFERENCE, 1)
+    return system
+
 
 INTERIOR_SYSTEM = f"""
 You furnish the inside of a house whose exterior three.js model already exists, from its architectural floor plans. You write JavaScript modules in the scene's workspace and look at renders of your own work.

@@ -1,6 +1,6 @@
 {
   "pinned": "2026-09-12-baseline",
-  "viewer": "2026-10-30-v34",
+  "viewer": "2026-11-11-v35",
   "versions": [
     {
       "name": "2026-09-12-baseline",
@@ -175,7 +175,12 @@
     {
       "name": "2026-10-30-v34",
       "date": "2026-10-30",
-      "note": "v33 with \"3D near\" drawing everything within the 3D radius (#74): the finishes no longer take the aerial photo's colour pixel by pixel (its shadows, a crane's, the cars, a building site's patches printed through the lawn) but each survey surface's own colour (tint.png: its lit pixels' median, or around each place in a large surface), and fields, woods, water and pools get finishes too (cover2.png), what the survey leaves out a field; far from the camera the textures give way to their mean colour (no tiling from the air). Surroundings fetched before (cover.png alone) draw as with v33: the viewer's \"Fetch again\" brings the new ones. The viewer's default. Not pinned."
+      "note": "v33 with \"3D near\" drawing everything within the 3D radius (#74): the finishes no longer take the aerial photo's colour pixel by pixel (its shadows, a crane's, the cars, a building site's patches printed through the lawn) but each survey surface's own colour (tint.png: its lit pixels' median, or around each place in a large surface), and fields, woods, water and pools get finishes too (cover2.png), what the survey leaves out a field; far from the camera the textures give way to their mean colour (no tiling from the air). Surroundings fetched before (cover.png alone) draw as with v33: the viewer's \"Fetch again\" brings the new ones. Not pinned."
+    },
+    {
+      "name": "2026-11-11-v35",
+      "date": "2026-11-11",
+      "note": "v34 with decor by role (#90): fx.model(\"vase\", { height }) and 22 other roles (rugs, runners, cushions, plants in pots, side tables, poufs, ottomans, benches, sideboards, mirrors, clocks, wall shelves, baskets, trays, candles, jars…) draw one of 178 real pieces (objects.js: 153 Amazon Berkeley Objects scans, CC BY 4.0, credited in the viewer; 18 branch sets made in the repo; 7 Poly Haven plants put in a pot of the catalogue), at real size, never the same piece twice in a house, a room's pieces sharing an accent colour; a vase takes branches with { stems: true }. Builds that use the interior kit are told about the roles only with this renderer or a later one. Pictures of houses that name no role: unchanged from v34. The viewer's default (looked at on Montelly dressed with roles, 2026-11-11). Not pinned."
     }
   ]
 }

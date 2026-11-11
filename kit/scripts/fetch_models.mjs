@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { MODELS } from "../furnish.js";
 import { TEXTURES } from "../finishes.js";
+import { OBJECTS } from "../objects.js";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "polyhaven");
 const UA = { "User-Agent": "housegen-kit" };
@@ -17,7 +18,8 @@ const get = async (url) => {
   return Buffer.from(await r.arrayBuffer());
 };
 
-for (const id of new Set(Object.values(MODELS).filter((m) => m.id).map((m) => m.id))) {
+// the catalogue's models and the plants the decor's pots take (objects.js, `ph`)
+for (const id of new Set([...Object.values(MODELS).filter((m) => m.id).map((m) => m.id), ...OBJECTS.filter((o) => o.ph).map((o) => o.id)])) {
   const main = join(OUT, id, `${id}.gltf`);
   if (await access(main).then(() => true, () => false)) { console.log(`${id}: present`); continue; }
   const files = JSON.parse((await get(`https://api.polyhaven.com/files/${id}`)).toString());

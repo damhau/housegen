@@ -209,7 +209,13 @@ async def test_a_modification_of_a_house_with_interiors_knows_the_interior_kit(
     # the builder: the interior kit, its tools, the rooms, the room the request names
     system, tools, messages = provider.builder[0]
     assert system.startswith(BUILDER_SYSTEM)
-    assert INTERIOR_KIT_REFERENCE in system
+    # the interior kit, with the decor roles of the kit the job draws with (v35 on)
+    head, tail = INTERIOR_KIT_REFERENCE.split(
+        "Put small decor on a surface with fx.place(p, [x, z], rot, surfaceY).\n"
+    )
+    assert head in system
+    assert tail in system
+    assert "Decor by role" in system
     assert {"check_plan", "measure"} <= {t.name for t in tools}
     first = messages[0]
     assert "## The rooms" in first.text

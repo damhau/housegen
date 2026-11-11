@@ -14,6 +14,7 @@ import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { finishMaterial, metricUV, tileMaterial, track } from "./finishes.js";
 import * as lighting from "./lighting.js";
+import { OBJECTS } from "./objects.js";
 
 // --------------------------------------------------------------------------
 // Materials
@@ -896,12 +897,204 @@ async function loadGLTF(spec, file) {
   return loader.parseAsync(maskLicensed(new Uint8Array(await r.arrayBuffer()), true).buffer, "");
 }
 const _used = new Set();
+let _abo = false;
+const ABO_CREDIT = "Amazon Berkeley Objects, © Amazon.com, CC BY 4.0";
 // shared with the runtime (it sends the page's credits to the app) without importing this module
 globalThis.__housekitCredits = () => credits();
 
 /** Credit lines of the attribution-licensed models this page has loaded (for the page's credits). */
 export function credits() {
-  return [..._used].map((n) => MODELS[n].credit).filter(Boolean);
+  const lines = [..._used].map((n) => MODELS[n].credit).filter(Boolean);
+  return [...new Set(_abo ? [...lines, ABO_CREDIT] : lines)];
+}
+
+// --------------------------------------------------------------------------
+// Decor by role (#90): fx.model("vase", { height }) draws one of the role's pieces (objects.js)
+// --------------------------------------------------------------------------
+
+/** The decor roles `model` takes besides the catalogue names: role -> its pieces. */
+export const ROLES = OBJECTS.filter((o) => o.role !== "foliage").reduce((m, o) => ((m[o.role] ??= []).push(o), m), {});
+// floor pots take the tall plants only: a low, wide one scaled to 1.3 m would spread over two metres
+const FOLIAGE = { foliage: OBJECTS.filter((o) => o.role === "foliage" && !o.tall), "tall-foliage": OBJECTS.filter((o) => o.role === "foliage" && o.tall) };
+// a plant in a pot of the catalogue: its total height by default, and the Poly Haven parts that are not its leaves
+const POTTED = { "pot-plant": 0.45, "floor-plant": 1.3 };
+const NOT_LEAVES = /_(pot|dirt|pebbles|soil|ground)$/;
+// stretched to the size asked on each side; every other piece keeps its proportions
+const FLAT = new Set(["rug", "runner"]);
+const BASE = new Set(["rug", "runner", "sideboard", "ottoman", "bench"]);
+const ACCENTS = ["warm", "cool", "green", null];
+const TOO_FAR = Math.log(1.6); // a piece scaled further than this from its real size looks wrong
+
+function hash(s) {
+  let h = 2166136261;
+  for (const c of s) h = Math.imul(h ^ c.codePointAt(0), 16777619);
+  return h >>> 0;
+}
+
+function shuffled(list, seed) {
+  const a = [...list];
+  let t = seed;
+  const rnd = () => { // mulberry32
+    t = (t + 0x6d2b79f5) >>> 0;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// the same scene draws the same pieces: its project (scenes/<id>/… in the page's path) seeds the decks, so its
+// versions and the photo export agree; __housekitSeed overrides it
+function sceneKey() {
+  return String(globalThis.__housekitSeed ?? String(globalThis.location?.pathname ?? "").match(/scenes\/([^/]+)/)?.[1] ?? "");
+}
+
+function before(a, b) {
+  for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k] < b[k];
+  return false;
+}
+
+const _decks = new Map();
+const _taken = new Map();
+
+/** Forget the pieces drawn so far (a new scene on the same page, the tests). */
+export function resetObjects() {
+  _decks.clear();
+  _taken.clear();
+}
+
+/**
+ * The piece a role call draws, and the room's accent: the least drawn piece of the role in this scene (no piece
+ * twice while the role has others), then one near the size asked, then one that goes with the room's accent
+ * (`room`: its name; warm, cool, green or none, from the scene and the name), in the scene's own shuffled order.
+ */
+export function pickObject(role, { width, length, height, room } = {}) {
+  const deck = FOLIAGE[role] ?? ROLES[role];
+  if (!deck) throw new Error(`unknown role ${role}. Roles: ${Object.keys(ROLES).join(", ")}`);
+  const key = sceneKey();
+  if (!_decks.has(role)) _decks.set(role, shuffled(deck, hash(`${key}|${role}`)));
+  const accent = room == null ? undefined : ACCENTS[hash(`${key}|room|${room}`) % ACCENTS.length];
+  const [want, axis] = height ? [height, 2] : width ? [width, 0] : length ? [length, 1] : [0, 0];
+  // a stager keeps the large pieces quiet and lets the small ones carry the room's colour
+  const tone = (o) => ["neutral", "dark"].includes(o.tone) ? 0 : o.tone === accent ? (BASE.has(role) ? 1 : 0) : 2;
+  const score = (o, i) => [
+    _taken.get(o.id) ?? 0,
+    want && !FLAT.has(role) && Math.abs(Math.log(want / o.size[axis])) > TOO_FAR ? 1 : 0,
+    tone(o),
+    i,
+  ];
+  let best = null;
+  _decks.get(role).forEach((o, i) => {
+    const s = score(o, i);
+    if (!best || before(s, best.s)) best = { o, s };
+  });
+  _taken.set(best.o.id, (_taken.get(best.o.id) ?? 0) + 1);
+  return { piece: best.o, accent: accent ?? null };
+}
+
+async function loadPiece(o) {
+  const file = o.abo || o.ph ? `objects/${o.id}.glb` : `made/${o.id}.glb`;
+  if (!_loaded.has(file)) _loaded.set(file, loadGLTF({}, file).catch(() => null));
+  const gltf = await _loaded.get(file);
+  if (!gltf) console.warn(`housekit: ${o.role} ${o.id} (${file}) not available`);
+  else if (o.abo) _abo = true;
+  return gltf;
+}
+
+// bottom-centred on the origin: the group and its size
+function grounded(object) {
+  const wrap = new THREE.Group();
+  wrap.add(object);
+  wrap.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(object);
+  const c = box.getCenter(new THREE.Vector3());
+  object.position.set(-c.x, -box.min.y, -c.z);
+  return [wrap, box.getSize(new THREE.Vector3())];
+}
+
+/**
+ * A plant of the catalogue's foliage in a pot of the role, `height` tall in all: the pot at its real size (no more
+ * than half the plant's height), the leaves from its rim, a little soil. The spike's potted() (stage.py).
+ */
+async function pottedPlant(role, { height, room } = {}) {
+  const total = height ?? POTTED[role];
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { piece: o } = pickObject(role, { height: total * 0.4, room });
+    const { piece: f } = pickObject(total >= 1.2 ? "tall-foliage" : "foliage", { room, height: total - total * 0.4 });
+    const [pot, leaves] = await Promise.all([loadPiece(o), loadPiece(f)]);
+    if (!pot || !leaves) continue;
+    const g = new THREE.Group();
+    const [p, ps] = grounded(pot.scene.clone(true));
+    const k = Math.min(1, (total * 0.5) / ps.y);
+    p.scale.setScalar(k);
+    g.add(p);
+    const rim = ps.y * k * 0.93;
+    const plant = leaves.scene.clone(true);
+    const parts = [];
+    plant.traverse((m) => { if (m.isMesh) parts.push(m); });
+    // a file holding variants side by side (leaves_a, bark_a …, or _a, _b …): the one the scene draws
+    // the glTF node's name: a mesh of several primitives is a group named after the node
+    const tag = (m) => {
+      for (let o = m; o && o !== plant; o = o.parent) if (NOT_LEAVES.test(o.name) || /_[a-z]$/.test(o.name)) return o.name;
+      return m.name;
+    };
+    const letter = (m) => (tag(m).match(/_([a-z])$/) ?? [])[1];
+    const variants = [...new Set(parts.map(letter).filter(Boolean))].sort();
+    const chosen = variants.length ? variants[hash(`${sceneKey()}|${room ?? ""}|${f.id}|${_taken.get(f.id)}`) % variants.length] : null;
+    for (const m of parts) if (NOT_LEAVES.test(tag(m)) || (chosen && letter(m) && letter(m) !== chosen)) m.parent.remove(m);
+    plant.traverse((m) => { if (m.isMesh) shade(m); });
+    const [l, ls] = grounded(plant);
+    l.scale.setScalar(Math.min(Math.max(total - rim, 0.12) / ls.y, total * 1.2 / Math.max(ls.x, ls.z)));
+    l.rotation.y = (hash(`${f.id}|${o.id}`) % 360) * Math.PI / 180;
+    l.position.y = rim - 0.01;
+    g.add(l);
+    const soil = new THREE.Mesh(new THREE.CircleGeometry(Math.min(ps.x, ps.z) * k * 0.44, 24),
+      new THREE.MeshStandardMaterial({ color: "#3b2f26", roughness: 1 }));
+    soil.rotation.x = -Math.PI / 2;
+    soil.position.y = rim;
+    g.add(soil);
+    p.traverse((m) => { if (m.isMesh) shade(m); });
+    g.updateMatrixWorld(true);
+    const size = new THREE.Box3().setFromObject(g).getSize(new THREE.Vector3());
+    return piece(g, role, ps.x * k, ps.z * k, { height: size.y, model: `${o.id}+${f.id}` });
+  }
+  return piece(new THREE.Group(), role, 0, 0);
+}
+
+async function roleModel(role, { width, length, height, room, stems } = {}) {
+  if (POTTED[role]) return pottedPlant(role, { height, room });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const { piece: o } = pickObject(role, { width, length, height, room });
+    const gltf = await loadPiece(o);
+    if (!gltf) continue;
+    const inner = gltf.scene.clone(true);
+    inner.traverse((m) => { if (m.isMesh) shade(m); });
+    const [wrap, size] = grounded(inner);
+    let s;
+    if (FLAT.has(role)) s = [width ? width / size.x : 1, 1, length ? length / size.z : 1];
+    else {
+      const k = height ? height / size.y : width ? width / size.x : length ? length / size.z : 1;
+      s = [k, k, k];
+    }
+    wrap.scale.set(...s);
+    let tall = size.y * s[1];
+    if (role === "vase" && stems) {
+      // branches from the vase's mouth, half as tall again as the vase: the spike's vase_with (stage.py)
+      const b = await roleModel("stems", { height: Math.max(tall * 1.5, 0.3), room });
+      b.position.y = tall * 0.8;
+      b.rotation.y = (hash(o.id) % 360) * Math.PI / 180;
+      const g = new THREE.Group();
+      g.add(wrap, b);
+      tall = Math.max(tall, tall * 0.8 + b.userData.height);
+      return piece(g, role, size.x * s[0], size.z * s[2], { height: tall, model: `${o.id}+${b.userData.model}` });
+    }
+    return piece(wrap, role, size.x * s[0], size.z * s[2], { height: tall, model: o.id, ...(FLAT.has(role) ? { flat: true } : {}) });
+  }
+  return piece(new THREE.Group(), role, 0, 0);
 }
 const _loaded = new Map();
 
@@ -910,10 +1103,14 @@ const _loaded = new Map();
  * loaded once). `width` / `length` / `height` (m) stretch it along x / z / y, each on its own: a bed
  * given the plan's mattress size, a curtain the room's height. Width and length count from the
  * piece's `nominal` size when the catalogue gives one (a bed: its mattress), else from its box.
+ * A role instead of a name (ROLES: "vase", "rug", "cushion"…) draws one of the role's pieces (pickObject;
+ * `room` gives the room's accent) at its real size, scaled as a whole to the `height`, else `width`, else
+ * `length` asked; a rug or a runner is stretched to its width and length; a vase with `stems: true` holds branches.
  */
-export async function model(name, { width, length, height } = {}) {
+export async function model(name, { width, length, height, room, stems } = {}) {
   const spec = MODELS[name];
-  if (!spec) throw new Error(`unknown model ${name}. Known: ${Object.keys(MODELS).join(", ")}`);
+  if (!spec && ROLES[name]) return roleModel(name, { width, length, height, room, stems });
+  if (!spec) throw new Error(`unknown model ${name}. Roles: ${Object.keys(ROLES).join(", ")}. Known: ${Object.keys(MODELS).join(", ")}`);
   const file = spec.licensed ? `licensed/${spec.licensed}` : spec.file ?? `polyhaven/${spec.id}/${spec.id}.gltf`;
   // models are fetched compressed (meshopt geometry, WebP textures at 1k: scripts/fetch_models.mjs)
   if (!_loaded.has(file)) _loaded.set(file, loadGLTF(spec, file).catch(() => null));
@@ -988,7 +1185,7 @@ export function onWall(room, edge, at, p, { y = 0, gap, out = 0 } = {}) {
 export default {
   finish, sofa, bed, nightstand, chair, diningSet, wardrobe, kitchenRun, wc, basin, bathtub, shower, towelRail,
   coatHooks, bench, washer, bathAccessories, towelStack, laundryBasket, rug, ceilingLight,
-  MODELS, model, credits, place, onWall,
+  MODELS, ROLES, model, credits, place, onWall,
   // light fixtures that carry their own light (lighting.js): fx.fixture("downlight", { mount: "recessed" })
   fixture: lighting.fixture, FIXTURES: lighting.FIXTURES, lighting,
 };
