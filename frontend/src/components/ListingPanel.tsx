@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Camera, ChevronLeft, ChevronRight, Download, ImageOff, Loader2, RefreshCw, Square, X } from "lucide-react"
 import { getGetListingQueryKey, useGetListing, useStartListing } from "@/api/endpoints/listing/listing"
 import { getListJobsQueryKey, useCancelJob } from "@/api/endpoints/projects/projects"
-import type { JobOut, ListingOut, ListingPhotoOut } from "@/api/model"
+import { ListingOutStaging, type JobOut, type ListingOut, type ListingPhotoOut } from "@/api/model"
 import { fmtUsd } from "@/components/RunSummaryCard"
 import { Button } from "@/components/ui/button"
 import { errorMessage, relTime } from "@/lib/utils"
@@ -19,6 +19,13 @@ function jobVersion(j: JobOut): number | null {
     return null
   }
 }
+
+/** How much of the furnishing the rooms show (#94); the exteriors are shot as they are. */
+const STAGINGS: { value: ListingOutStaging; label: string; title: string }[] = [
+  { value: "furnished", label: "Furnished", title: "The rooms dressed and staged, as agencies publish them" },
+  { value: "light", label: "Light", title: "The furniture without the decor: no accessories, art or plants" },
+  { value: "empty", label: "Empty", title: "The architecture alone: finishes and light, the fitted kitchen and bathrooms, the fixed lights" },
+]
 
 /** The photos grouped by unit, in listing order; the exteriors lead as the building. */
 function byUnit(photos: ListingPhotoOut[]): [string | null, ListingPhotoOut[]][] {
@@ -59,6 +66,7 @@ export function ListingPanel({
   const start = useStartListing()
   const cancel = useCancelJob()
   const [open, setOpen] = useState<number | null>(null)
+  const [picked, setPicked] = useState<ListingOutStaging | null>(null)
 
   const jobId = job?.id ?? null
   useEffect(() => {
@@ -72,7 +80,7 @@ export function ListingPanel({
   }, [jobId, projectId, qc])
 
   async function shoot(reuse: boolean) {
-    await start.mutateAsync({ projectId, data: { version, reuse } })
+    await start.mutateAsync({ projectId, data: { version, reuse, staging } })
     setShown(version)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getGetListingQueryKey(projectId) })
@@ -93,6 +101,8 @@ export function ListingPanel({
   const previewsTotal = set?.previews_total ?? 0
   const previewing = shootingThis && previewsTotal > 0 && previewsDone < previewsTotal && ready.length === 0
   const viewedHasSet = data?.sets.includes(version) ?? false
+  // a set shot again keeps its staging unless another is picked
+  const staging = picked ?? set?.staging ?? ListingOutStaging.furnished
 
   if (listing.isPending) return <div className="p-3 text-sm text-muted-foreground">Loading…</div>
   if (listing.error) return <div className="p-3 text-sm text-destructive">{errorMessage(listing.error)}</div>
@@ -121,6 +131,22 @@ export function ListingPanel({
           <Button size="sm" variant="outline" onClick={() => void shoot(true)} disabled={!data?.available || start.isPending} title="Shoot the set again from the same cameras">
             <RefreshCw /> Shoot again
           </Button>
+        )}
+        {!job && (
+          <div role="radiogroup" aria-label="Staging" className="flex items-center rounded-md border p-0.5 text-xs">
+            {STAGINGS.map((o) => (
+              <button
+                key={o.value}
+                role="radio"
+                aria-checked={staging === o.value}
+                title={o.title}
+                onClick={() => setPicked(o.value)}
+                className={`rounded px-2 py-0.5 hover:bg-accent ${staging === o.value ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
         )}
         {job && (
           <>
@@ -172,7 +198,8 @@ function SetView({ set, currentVersion, live, onOpen }: { set: ListingOut; curre
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        v{set.version} · {ready.length} photo{ready.length === 1 ? "" : "s"} · {set.width}×{set.height}
+        v{set.version} · {STAGINGS.find((o) => o.value === (set.staging ?? "furnished"))?.label} · {ready.length} photo
+        {ready.length === 1 ? "" : "s"} · {set.width}×{set.height}
         {set.created_at && ` · ${relTime(set.created_at)}`} · ≈ {fmtUsd(set.cost_usd)}
       </p>
       {set.out_of_date && (

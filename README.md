@@ -144,6 +144,19 @@ viewpoints, the editor's choice and reason, camera, sun, cost) and shows in the 
 (`GET /api/v1/projects/<id>/listing/<n>/zip`) and on the share page. A later version marks the set out of date;
 **Shoot again** reuses its choices (viewpoint, light, removed piece).
 
+A set has a staging (#94), picked next to the shoot buttons and stored with the set, so **Shoot again** keeps it
+unless you pick another:
+
+- **Furnished** (the default, for agencies): the project's pieces, dressed and staged as above.
+- **Light**: the furniture without the decor. Accessories, art, plants and cushions are left out, and the
+  pipeline adds no staging.
+- **Empty**: the architecture alone, its finishes and light. Only what is fitted stays: the kitchen, the
+  bathrooms, wardrobes, radiators and the fixed lights.
+
+`photo/blender/staging.py` sorts the pieces by their names. The exteriors are shot the same way at every level.
+The kit's catalogue furniture (#90) is kept as the builder placed it: the pipeline swaps its own bed and armchair
+only for the kit's parametric and named pieces.
+
 The service uses the render service's token, so the app needs no new secret: it derives the URL from
 `RENDER_SERVICE_URL` (`housegen-render-web` → `housegen-photo-web`) unless `PHOTO_SERVICE_URL` is set.
 The runbook (the volume, the asset upload, the deploy) is the docstring of `deploy/modal_photo.py`.

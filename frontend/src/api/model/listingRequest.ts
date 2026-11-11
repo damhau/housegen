@@ -5,10 +5,13 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ListingRequestVersion } from './listingRequestVersion';
+import type { ListingRequestStaging } from './listingRequestStaging';
 
 export interface ListingRequest {
   /** the saved version to photograph (default: the current one) */
   version?: ListingRequestVersion;
   /** shoot again from the cameras of the version's last set */
   reuse?: boolean;
+  /** furnished (dressed and staged), light (the furniture without the decor) or empty (the architecture, its finishes and light); default: the set's own when shot again, else furnished */
+  staging?: ListingRequestStaging;
 }

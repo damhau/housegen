@@ -336,6 +336,32 @@ async def test_shooting_again_reuses_the_cameras(
     assert shot_cameras == [CAM] * 10
 
 
+async def test_a_staging_is_kept_when_the_set_is_shot_again(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_rooms(MONTELLY))
+    _fake_service(monkeypatch, svc)
+    pid = await _furnished_project()
+
+    async def shoot(body: dict[str, Any]) -> list[str | None]:
+        before = len(svc.calls)
+        r = await app_client.post(f"/api/v1/projects/{pid}/listing", json=body)
+        assert await _wait_job(r.json()["id"]) == "done"
+        calls = list(svc.calls.values())[before:]
+        return [c.get("staging") for c in calls if c["path"] == "/shoot"]
+
+    assert set(await shoot({})) == {None}  # furnished: nothing to ask
+    listing = (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()["listing"]
+    assert listing["staging"] == "furnished"
+    assert set(await shoot({"reuse": True, "staging": "empty"})) == {"empty"}
+    assert set(await shoot({"reuse": True})) == {"empty"}
+    listing = (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()["listing"]
+    assert listing["staging"] == "empty"
+    assert set(await shoot({"reuse": True, "staging": "light"})) == {"light"}
+    r = await app_client.post(f"/api/v1/projects/{pid}/listing", json={"staging": "bare"})
+    assert r.status_code == 422
+
+
 async def test_listing_needs_an_interior_and_a_service(
     app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

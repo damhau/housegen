@@ -9,8 +9,9 @@
         (--site: the plot's latitude and longitude).
     python main.py shoot <spec.json>
         spec: {"blend", "rooms", "camera", "out" (.jpg), "width", "height", "samples"[, "sun", "room_lamps",
-        "remove"]}; writes the photo and <out>.json (the room, the final camera, the sun, the lamps, the pieces in
-        the frame, the device, the seconds per phase). With "kind": "exterior", "blend" is outside.blend.
+        "remove", "staging" (furnished | light | empty, staging.py; exteriors are shot as they are)]}; writes the
+        photo and <out>.json (the room, the final camera, the sun, the lamps, the pieces in the frame, the device,
+        the seconds per phase). With "kind": "exterior", "blend" is outside.blend.
 """
 
 import json
@@ -273,7 +274,8 @@ def shoot(spec_json):
         return
     photo.run(spec["blend"], load_rooms(spec["rooms"]), spec["camera"], spec["out"],
               int(spec.get("width", 1920)), int(spec.get("height", 1080)), int(spec.get("samples", 256)),
-              sun=spec.get("sun"), room_lamps=spec.get("room_lamps"), remove=spec.get("remove") or ())
+              sun=spec.get("sun"), room_lamps=spec.get("room_lamps"), remove=spec.get("remove") or (),
+              staging_level=spec.get("staging") or "furnished")
 
 
 def main(argv):

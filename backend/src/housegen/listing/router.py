@@ -74,6 +74,7 @@ def listing_out(st: ProjectStorage, version: int, current: int) -> ListingOut | 
         width=int(doc.get("settings", {}).get("width", 0)),
         height=int(doc.get("settings", {}).get("height", 0)),
         cost_usd=round(sum(float(v or 0) for v in cost.values()), 2),
+        staging=doc.get("settings", {}).get("staging") or "furnished",
         previews_done=sum(len(v) for v in doc.get("previews", {}).values()),
         previews_total=sum(
             len(x.get("views") or []) for x in doc.get("shots", []) if len(x.get("views") or []) > 1
@@ -123,7 +124,7 @@ async def start_listing(
         raise InvalidInputError("this version has no set to shoot again")
     if await crud.active_job(session, project_id, ("listing",)):
         raise ConflictError("a listing set is already being shot")
-    request = json.dumps({"version": version, "reuse": body.reuse})
+    request = json.dumps({"version": version, "reuse": body.reuse, "staging": body.staging})
     stored = RunSettings.model_validate(project.settings) if project.settings else RunSettings()
     job = await crud.create_job(
         session,
@@ -135,7 +136,13 @@ async def start_listing(
     await session.commit()
     job_manager.submit(job.id, project_id, pipeline.JOB_BODIES["listing"])
     logger.info(
-        "listing.started", extra={"job_id": job.id, "version": version, "reuse": body.reuse}
+        "listing.started",
+        extra={
+            "job_id": job.id,
+            "version": version,
+            "reuse": body.reuse,
+            "staging": body.staging,
+        },
     )
     return JobOut.model_validate(job)
 

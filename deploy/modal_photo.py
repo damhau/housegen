@@ -155,10 +155,12 @@ def shoot(
     room_lamps: bool | None = None,
     remove: list[str] | None = None,
     kind: str | None = None,
+    staging: str | None = None,
 ) -> dict:
     """One photo from the prepared version: the JPEG bytes and what the pipeline decided. `sun` ([azimuth, elevation])
     and `room_lamps` repeat a preview's light instead of searching it again; `remove` hides those dressing pieces;
-    `kind` "exterior" shoots the house in its surroundings (outside.blend)."""
+    `kind` "exterior" shoots the house in its surroundings (outside.blend); `staging` (furnished | light | empty)
+    is how much of the furnishing a room shows (#94)."""
     import json
 
     t0 = time.time()
@@ -170,7 +172,7 @@ def shoot(
     out = Path("/tmp", f"{key}-{int(t0 * 1000)}.jpg")
     spec = {"blend": str(blend), "rooms": str(d / "rooms.json"), "camera": camera, "out": str(out),
             "width": width, "height": height, "samples": samples, "sun": sun, "room_lamps": room_lamps,
-            "remove": remove or [], "kind": kind}
+            "remove": remove or [], "kind": kind, "staging": staging}
     spec_path = out.with_suffix(".spec.json")
     spec_path.write_text(json.dumps(spec))
     _run(["main.py", "shoot", str(spec_path)])
@@ -212,6 +214,7 @@ def web():
         room_lamps: bool | None = None
         remove: list[str] = []
         kind: str | None = None
+        staging: str | None = None
 
     @api.get("/health")
     def health() -> dict:
@@ -225,7 +228,7 @@ def web():
     def start_shoot(body: ShootIn) -> dict:
         call = shoot.spawn(
             body.key, body.camera, body.width, body.height, body.samples, body.sun, body.room_lamps, body.remove,
-            body.kind,
+            body.kind, body.staging,
         )
         return {"call_id": call.object_id}
 

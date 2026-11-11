@@ -36,6 +36,7 @@ import dress  # noqa: E402
 import objlib  # noqa: E402
 import paths  # noqa: E402
 import stage  # noqa: E402
+import staging
 import style  # noqa: E402
 import still  # noqa: E402
 from dress import model, place, principled  # noqa: E402
@@ -647,16 +648,17 @@ def swap_art(scene, pieces):
     return n
 
 
-def swap_armchairs(scene, pieces):
+def swap_armchairs(scene, pieces, decor=True):
     n = 0
     for o in pieces:
-        if "armchair" not in name(o).lower():
+        # a catalogue piece (#90, its `model`) is already a real chair, one of many: it stays
+        if "armchair" not in name(o).lower() or o.get("model"):
             continue
         lo, _ = box(o)
         t = o.matrix_world.translation
         hide(o)
         root, _ = place(scene, model("mid_century_lounge_chair"), (t.x, lo.z, -t.y), turn_deg=math.degrees(turn(o)))
-        if n == 0:  # one throw in the room, not one per chair
+        if decor and n == 0:  # one throw in the room, not one per chair
             dress.attach(root, THROW, dress.wool_material())
         n += 1
     return n
@@ -736,7 +738,7 @@ def upholster_chairs(scene):
 BEDS = []  # (frame at the head of the bed, facing -y; width) of the beds made
 
 
-def swap_beds(scene, pieces):
+def swap_beds(scene, pieces, decor=True):
     n = 0
     linen, fabric = dress.linen_material(), upholstery_material()
     wool = dress.wool_material((0.5, 2.2), (0.62, 0.61, 0.6))
@@ -744,13 +746,16 @@ def swap_beds(scene, pieces):
         nm, fp = name(o).lower(), list(o.get("footprint", ()))
         if "bed" not in nm or "bedside" in nm or len(fp) < 2 or fp[1] < 1.8:
             continue
+        lo, _ = box(o)
+        frame = frame_of(o, lo.z) @ Matrix.Translation((0, fp[1] / 2, 0))
+        if o.get("model"):  # a catalogue bed (#90), made up by the kit: one of many, it stays
+            BEDS.append((frame, float(next(iter(o.get("nominal") or fp)))))
+            continue
         w = max([s for s in BED_SIZES if s + 0.2 <= fp[0]] or [BED_SIZES[0]])
         length = 2.0
-        lo, _ = box(o)
         rot = turn(o)
         hide(o)
         path = bedset(w, length)
-        frame = frame_of(o, lo.z) @ Matrix.Translation((0, fp[1] / 2, 0))
         root = bpy.data.objects.new("bedset", None)
         scene.collection.objects.link(root)
         root.matrix_world = frame
@@ -776,9 +781,10 @@ def swap_beds(scene, pieces):
                            turn_deg=math.degrees(rot))
         recolour(pillows, linen)
         pillows.scale = (pillows.scale[0] * 1.45 * w / 1.6, pillows.scale[1], pillows.scale[2])
-        cushions, _ = place(scene, model("throw_pillows_01"), to_scene(frame @ Vector((0, -0.68, top + 0.03))), height=0.38,
-                            turn_deg=math.degrees(rot))
-        recolour(cushions, velvet((0.16, 0.19, 0.13)))
+        if decor:
+            cushions, _ = place(scene, model("throw_pillows_01"), to_scene(frame @ Vector((0, -0.68, top + 0.03))),
+                                height=0.38, turn_deg=math.degrees(rot))
+            recolour(cushions, velvet((0.16, 0.19, 0.13)))
         BEDS.append((frame, w))
         n += 1
         log(f"bed: {nm} {fp[0]:.2f} x {fp[1]:.2f} -> {w} x {length}")
@@ -1263,7 +1269,9 @@ def dress_basins(scene, dg, pieces, floor_z):
     return n
 
 
-def dress_storey(scene, sy):
+def dress_storey(scene, sy, decor=True):
+    """The kit's pieces made photographic (swaps, materials) and, with `decor`, dressed (table settings, counters,
+    towels and bottles, a throw, cushions)."""
     pieces = storey_pieces(scene, sy)
     if objlib.LIB:
         stage.swap_kit(scene, pieces)
@@ -1271,18 +1279,34 @@ def dress_storey(scene, sy):
         "rugs": swap_rugs(scene, pieces),
         "plants": swap_plants(scene, pieces, sy),
         "art": swap_art(scene, pieces),
-        "armchairs": swap_armchairs(scene, pieces),
-        "beds": swap_beds(scene, pieces),
+        "armchairs": swap_armchairs(scene, pieces, decor),
+        "beds": swap_beds(scene, pieces, decor),
     }
     bpy.context.view_layer.update()
-    done["sofas"] = sofa_measure(scene, pieces)
-    done["tables"] = dress_tables(scene, pieces)
-    done["counters"] = dress_counter(scene, pieces)
     sanitaryware(scene, pieces)
-    dg = bpy.context.evaluated_depsgraph_get()
-    done["tubs"] = dress_tubs(scene, dg, pieces)
-    done["basins"] = dress_basins(scene, dg, pieces, sy)
+    if decor:
+        done["sofas"] = sofa_measure(scene, pieces)
+        done["tables"] = dress_tables(scene, pieces)
+        done["counters"] = dress_counter(scene, pieces)
+        dg = bpy.context.evaluated_depsgraph_get()
+        done["tubs"] = dress_tubs(scene, dg, pieces)
+        done["basins"] = dress_basins(scene, dg, pieces, sy)
     log("dressing:", done)
+
+
+def strip_to(scene, rooms, level):
+    """What `level` (staging.LEVELS) leaves out of the project's pieces, hidden before anything is dressed."""
+    if level == "furnished":
+        return []
+
+    def wet(o):
+        r = room_at(rooms, *to_scene(o.matrix_world.translation))
+        return r is not None and r.get("use") in staging.WET
+
+    tops = [o for o in scene.objects if o.get("kind") == "furniture" and not o.hide_render and piece_top(o) is o]
+    gone = staging.strip(tops, level, piece_label, wet, hide)
+    log(f"staging {level}: {len(gone)} of {len(tops)} pieces out ({', '.join(sorted(set(gone))[:40])})")
+    return gone
 
 
 def door_leaf(o):
@@ -1948,10 +1972,12 @@ def pieces_in_frame(scene, cam, nx=64, ny=36, least=0.005):
     return out
 
 
-def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=None, room_lamps=None, remove=()):
+def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=None, room_lamps=None, remove=(),
+        staging_level="furnished"):
     """Photograph the room the camera `cam_spec` stands in to the JPEG `out`; what was decided goes to `<out>.json`
     and is returned. `rooms`: rooms.json's list. A final from a preview replays its choices: `sun` (azimuth,
-    elevation) and `room_lamps` skip the sun search; `remove` takes pieces (ids from the preview's `pieces`) out."""
+    elevation) and `room_lamps` skip the sun search; `remove` takes pieces (ids from the preview's `pieces`) out.
+    `staging_level`: how much of the furnishing shows (staging.LEVELS)."""
     t0 = time.time()
     seconds = {}
     artlib.init(rooms)
@@ -1979,19 +2005,22 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     dress.plaster(scene)
     glaze_tiles(scene)
     paint(scene)
+    stripped = strip_to(scene, rooms, staging_level)
+    decor = staging_level == "furnished"
     dress.linen(scene)
     upholster_chairs(scene)
-    dress_storey(scene, sy)
+    dress_storey(scene, sy, decor)
     scene.render.resolution_x, scene.render.resolution_y = width, height  # view_frame() reads the aspect from it
     still.camera(scene, cam_spec, width, height)
     doors = open_doors(scene, scene.camera)
     clear_edges(scene, scene.camera)
     final_spec = camera_spec(scene, scene.camera, max(0.5, math.hypot(tgt[0] - pos[0], tgt[2] - pos[2])))
     rays = camera_rays(scene, scene.camera, rooms, sy)
-    if hang_art(scene, rays, sy):
+    if decor:
+        if hang_art(scene, rays, sy):
+            rays = camera_rays(scene, scene.camera, rooms, sy)
+        style.style(scene, scene.camera, rays, rooms, sy, storey_pieces(scene, sy))
         rays = camera_rays(scene, scene.camera, rooms, sy)
-    style.style(scene, scene.camera, rays, rooms, sy, storey_pieces(scene, sy))
-    rays = camera_rays(scene, scene.camera, rooms, sy)
     removed = hide_pieces(scene, remove) if remove else []
     if removed:
         rays = camera_rays(scene, scene.camera, rooms, sy)
@@ -2042,6 +2071,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     info = {"room": room["name"], "use": room["use"], "camera": final_spec,
             "sun": f"{math.degrees(sky.sun_rotation) % 360:.1f}/{math.degrees(sky.sun_elevation):.1f}",
             "sun_deg": [round(az, 2), round(el, 2)], "room_lamps": bool(lit), "removed": removed, "doors": doors, "pieces": pieces,
+            "staging": staging_level, "staged_out": len(stripped),
             "lamps": lit_lamps(scene, lamp), "device": device, "seconds": seconds}
     with open(out + ".json", "w", encoding="utf-8") as f:
         json.dump(info, f, indent=1, ensure_ascii=False)

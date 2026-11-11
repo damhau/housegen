@@ -124,6 +124,9 @@ async def listing(ctx: JobContext) -> None:
     previous = read_set(st, version)
     resumed = previous is not None and previous.get("job_id") == ctx.job_id
     reuse = previous is not None and (resumed or bool(req.get("reuse")))
+    # a set shot again keeps its staging unless another is asked (#94)
+    kept_staging = (previous or {}).get("settings", {}).get("staging") if reuse else None
+    staging = str(req.get("staging") or kept_staging or "furnished")
     client = PhotoClient(s)
     t0 = time.time()
     try:
@@ -151,6 +154,7 @@ async def listing(ctx: JobContext) -> None:
                 "width": s.LISTING_WIDTH,
                 "height": s.LISTING_HEIGHT,
                 "samples": s.LISTING_SAMPLES,
+                "staging": staging,
                 "preview": [
                     s.LISTING_PREVIEW_WIDTH,
                     s.LISTING_PREVIEW_HEIGHT,
@@ -235,6 +239,7 @@ async def listing(ctx: JobContext) -> None:
                         s.LISTING_PREVIEW_HEIGHT,
                         s.LISTING_PREVIEW_SAMPLES,
                         s.LISTING_SHOT_TIMEOUT_S,
+                        staging=staging,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -331,6 +336,7 @@ async def listing(ctx: JobContext) -> None:
                         room_lamps=choice.get("room_lamps"),
                         remove=[choice["remove"]] if choice.get("remove") else [],
                         kind="exterior" if shot.use == "exterior" else None,
+                        staging=None if shot.use == "exterior" else staging,
                     )
                 except Exception as exc:
                     logger.warning(

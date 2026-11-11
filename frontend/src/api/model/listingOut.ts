@@ -4,6 +4,7 @@
  * housegen
  * OpenAPI spec version: 0.1.0
  */
+import type { ListingOutStaging } from './listingOutStaging';
 import type { ListingPhotoOut } from './listingPhotoOut';
 
 export interface ListingOut {
@@ -14,6 +15,7 @@ export interface ListingOut {
   width: number;
   height: number;
   cost_usd: number;
+  staging?: ListingOutStaging;
   previews_done?: number;
   previews_total?: number;
   photos: ListingPhotoOut[];

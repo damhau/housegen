@@ -1,6 +1,12 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+# how much of the furnishing the rooms show (#94): dressed and staged, the furniture without the decor, the
+# architecture alone (finishes, fitted kitchen and bathrooms, fixed lights)
+Staging = Literal["furnished", "light", "empty"]
 
 
 class ListingPhotoOut(BaseModel):
@@ -23,6 +29,7 @@ class ListingOut(BaseModel):
     width: int
     height: int
     cost_usd: float
+    staging: Staging = "furnished"
     previews_done: int = 0  # viewpoints previewed so far for the picture editor (#92)
     previews_total: int = 0  # 0: the set was shot without previews
     photos: list[ListingPhotoOut]  # in listing order, grouped by unit
@@ -39,3 +46,8 @@ class ListingRequest(BaseModel):
         None, description="the saved version to photograph (default: the current one)"
     )
     reuse: bool = Field(False, description="shoot again from the cameras of the version's last set")
+    staging: Staging | None = Field(
+        None,
+        description="furnished (dressed and staged), light (the furniture without the decor) or empty (the "
+        "architecture, its finishes and light); default: the set's own when shot again, else furnished",
+    )
