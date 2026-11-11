@@ -30,7 +30,7 @@ from housegen.render.kits import viewer_kit
 logger = logging.getLogger(__name__)
 
 # bump when the export or the Blender import changes what a prepared version holds on the service
-PREPARE_REV = "p3"
+PREPARE_REV = "p4"
 # $ per container second (Modal list prices 2026-11-07): the GPU + 4 cores + 16 GiB
 _HOST = 4 * 0.0000131 + 16 * 0.00000222
 PRICE_PER_S = {"T4": 0.000164 + _HOST, "L4": 0.000222 + _HOST, "RTX-PRO-6000": 0.000842 + _HOST}

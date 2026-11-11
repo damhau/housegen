@@ -172,15 +172,22 @@ def surroundings(scene, ctx):
     cover = np.asarray(Image.open(os.path.join(ctx, meta["cover"]["file"]))) if meta.get("cover") else None
     ext = meta["cover"]["extent"] if cover is not None else 1.0
 
-    def soft_at(lx, lz):  # neither asphalt, paving nor gravel in the survey's land cover: grass can grow
+    def cover_at(lx, lz):
+        """The survey's land cover in a cell: None beyond the map, else 1 asphalt, 2 paving, 3 gravel, 0 the rest."""
         if cover is None:
-            return False
+            return None
         n = cover.shape[0]
         i, j = int((lx / (2 * ext) + 0.5) * n), int((lz / (2 * ext) + 0.5) * n)
         if not (0 <= i < n and 0 <= j < n):
-            return False
+            return None
         px = cover[j, i]
-        return px[0] < 128 and px[2] < 128 and (len(px) < 4 or px[3] < 128)
+        for k, ch in ((1, 0), (2, 2), (3, 3)):
+            if ch < len(px) and px[ch] >= 128:
+                return k
+        return 0
+
+    def soft_at(lx, lz):  # neither asphalt, paving nor gravel in the survey's land cover: grass can grow
+        return cover_at(lx, lz) == 0
 
     own = Heights(scene)
     box = (site[0] - Vector((SITE_MARGIN, SITE_MARGIN)), site[1] + Vector((SITE_MARGIN, SITE_MARGIN)))
@@ -190,15 +197,19 @@ def surroundings(scene, ctx):
             v = place(-R + i * step, float(alt[j, i]), -R + j * step)
             v.z = joined(v, box, own)
             verts.append(v)
-    faces, soft = [], []
+    faces, soft, hard = [], [], []
     for j in range(N - 1):
         for i in range(N - 1):
             lx, lz = -R + (i + 0.5) * step, -R + (j + 0.5) * step
             if math.hypot(lx, lz) > R - step:
                 continue
             a = j * N + i
-            faces.append((a, a + 1, a + N + 1, a + N))
-            soft.append(soft_at(lx, lz))
+            quad = (a, a + N, a + N + 1, a + 1)  # counter-clockwise from above once in Blender's axes
+            faces.append(quad)
+            zs = [verts[k].z for k in quad]
+            bank = max(zs) - min(zs) > BANK * step
+            soft.append(soft_at(lx, lz) and not bank)
+            hard.append(len(HARD) + 1 if bank else cover_at(lx, lz) or 0)
     me = bpy.data.meshes.new("real-ground")
     me.from_pydata([tuple(v) for v in verts], [], faces)
     uv = me.uv_layers.new(name="UVMap")
@@ -208,7 +219,11 @@ def surroundings(scene, ctx):
             uv.data[li].uv = ((k % N) / (N - 1), 1 - (k // N) / (N - 1))
     me.attributes.new("soft", "INT", "FACE").data.foreach_set("value", [int(x) for x in soft])
     me.materials.append(aerial_material(os.path.join(ctx, meta["photo"]["file"])))
-    me.materials.append(lawn_material())
+    for spec in (*HARD, BANK_FINISH):
+        me.materials.append(hard_material(*spec))
+    # the survey's roads, paving and gravel in their finish, its walls and banks in concrete: the photo's leaning
+    # roofs, cars and shadows stay off them
+    me.polygons.foreach_set("material_index", hard)
     scene.collection.objects.link(bpy.data.objects.new("real-ground", me))
 
     n_b = neighbours(scene, ctx, meta, place, site)
@@ -234,7 +249,9 @@ def smoothstep(x, a, b):
 
 
 class Heights:
-    """The builder's ground height at a point (its terrain meshes; 0 where it has none)."""
+    """The builder's ground (its terrain meshes' top): the height at a point and how far the point is from the
+    ground's outline. Past the outline, the height at its nearest point: kit terrain() has a height everywhere in its
+    site box, an exported mesh stops at its outline."""
 
     def __init__(self, scene):
         bm = bmesh.new()
@@ -248,29 +265,49 @@ class Heights:
                 bm.from_mesh(t)
                 bpy.data.meshes.remove(t)
                 tmp.free()
-        self.bvh = BVHTree.FromBMesh(bm) if bm.faces else None
+        bm.normal_update()
+        bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.normal.z < 0.3], context="FACES")  # skirts, undersides
+        self.bvh = self.flat = self.rim = None
+        if not bm.faces:
+            bm.free()
+            return
+        self.bvh = BVHTree.FromBMesh(bm)
+        rim = [(e.verts[0].co.xy.to_3d(), e.verts[1].co.xy.to_3d()) for e in bm.edges if len(e.link_faces) == 1]
+        for v in bm.verts:
+            v.co.z = 0.0
+        self.flat = BVHTree.FromBMesh(bm)
         bm.free()
+        # the outline as sliver triangles: find_nearest on them is the distance to the outline
+        self.rim = BVHTree.FromPolygons([c for a, b in rim for c in (a, b, b + Vector((0, 0, 1e-3)))],
+                                        [(3 * k, 3 * k + 1, 3 * k + 2) for k in range(len(rim))]) if rim else None
 
     def __call__(self, x, y):
-        if self.bvh is None:
-            return 0.0
+        """(height, distance to the outline, whether the point is on the ground)."""
+        p = Vector((x, y, 0.0))
+        edge = self.rim.find_nearest(p)[3] if self.rim else 0.0
         loc = self.bvh.ray_cast(Vector((x, y, 500.0)), Vector((0, 0, -1)))[0]
-        return loc.z if loc is not None else 0.0
+        if loc is not None:
+            return loc.z, edge, True
+        near = self.flat.find_nearest(p)[0]
+        inward = (near - p).normalized() * 0.02
+        loc = self.bvh.ray_cast(Vector((near.x + inward.x, near.y + inward.y, 500.0)), Vector((0, 0, -1)))[0]
+        return (loc.z if loc is not None else 0.0), edge, False
 
 
 def joined(v, box, own):
-    """context.js joined(): the surveyed ground's height at `v`, sunk under the builder's site and eased into the
-    rim of its ground over RING, so the two meet without a step."""
-    lo, hi = box
-    dx, dy = max(lo.x - v.x, v.x - hi.x, 0.0), max(lo.y - v.y, v.y - hi.y, 0.0)
-    d = math.hypot(dx, dy)
-    if d <= 0:
-        inside = min(v.x - lo.x, hi.x - v.x, v.y - lo.y, hi.y - v.y)
-        return own(v.x, v.y) - 0.05 - SINK * smoothstep(inside, 1.5, 4)
+    """context.js joined(): the surveyed ground's height at `v`, sunk under the builder's ground and eased into its
+    rim over RING, so the two meet without a step. Measured from the ground's outline, not its box: an exported
+    terrain does not fill its box, and a box would sink the land beside it into a pit."""
+    if own.bvh is None:
+        lo, hi = box
+        d = math.hypot(max(lo.x - v.x, v.x - hi.x, 0.0), max(lo.y - v.y, v.y - hi.y, 0.0))
+        return -0.03 * (1 - smoothstep(d, 0, RING)) + v.z * smoothstep(d, 0, RING)
+    h, d, under = own(v.x, v.y)
+    if under:
+        return h - 0.05 - SINK * smoothstep(d, 1.5, 4)
     if d < RING:
-        cx, cy = min(hi.x, max(lo.x, v.x)), min(hi.y, max(lo.y, v.y))
         t = smoothstep(d, 0, RING)
-        return (own(cx, cy) - 0.03) * (1 - t) + v.z * t
+        return (h - 0.03) * (1 - t) + v.z * t
     return v.z
 
 
@@ -293,8 +330,79 @@ def aerial_material(path):
     return m
 
 
-def facade_material(name, rgb, bay=3.0, storey=2.9, window=(1.3, 1.3), sill=0.9):
-    """Render with a grid of dark windows (`bay` and `storey` apart, `window` wide and high): no blank boxes behind."""
+# the survey's asphalt, paving and gravel as the viewer lays them (context.js COVER_FINISHES: the kit's asphalt,
+# concrete and gravel scans at their real size), brought to a linear albedo; a flat colour reads as snow from afar
+HARD = (("asphalt", "clean_asphalt", 2.1, 0.08), ("paving", "plaster_grey_04", 1.5, 0.2),
+        ("gravel", "gravel_floor_02", 2.0, 0.18))
+BANK, BANK_FINISH = 1.2, ("bank", "concrete_wall_008", 2.0, 0.22)  # a cell rising more than 1.2 m per metre: a wall
+
+
+def hard_material(name, scan, size, albedo):
+    """A ground finish of the survey's land cover: its scan (or a grey without it), mottled every few metres, matte."""
+    import dress
+
+    m = bpy.data.materials.new(f"cover-{name}")
+    nt = m.node_tree
+    p = nt.nodes["Principled BSDF"]
+    coord = nt.nodes.new("ShaderNodeTexCoord")
+    noise = nt.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 1.0 / 6.0
+    noise.inputs["Detail"].default_value = 3.0
+    nt.links.new(coord.outputs["Object"], noise.inputs["Vector"])
+    mottle = nt.nodes.new("ShaderNodeMapRange")
+    mottle.inputs["To Min"].default_value, mottle.inputs["To Max"].default_value = 0.75, 1.2
+    nt.links.new(noise.outputs["Fac"], mottle.inputs["Value"])
+    tint = nt.nodes.new("ShaderNodeMixRGB")
+    tint.blend_type = "MULTIPLY"
+    tint.inputs[0].default_value = 1.0
+    nt.links.new(tint.outputs[0], p.inputs["Base Color"])
+    d = os.path.join(dress.TEX, scan)
+    if os.path.exists(os.path.join(d, "diff.jpg")):
+        scale = nt.nodes.new("ShaderNodeVectorMath")
+        scale.operation = "SCALE"
+        scale.inputs["Scale"].default_value = 1.0 / size
+        nt.links.new(coord.outputs["Object"], scale.inputs[0])
+        maps = {}
+        for k, data in (("diff", False), ("rough", True), ("nor_gl", True)):
+            tex = nt.nodes.new("ShaderNodeTexImage")
+            tex.image = dress.image(os.path.join(d, f"{k}.jpg"), data)
+            nt.links.new(scale.outputs["Vector"], tex.inputs["Vector"])
+            maps[k] = tex
+        gain = albedo / max(float(dress.mean_linear(maps["diff"].image).mean()), 1e-3)
+        nt.links.new(maps["diff"].outputs["Color"], tint.inputs[1])
+        grey = nt.nodes.new("ShaderNodeMath")
+        grey.operation = "MULTIPLY"
+        grey.inputs[1].default_value = gain
+        nt.links.new(mottle.outputs["Result"], grey.inputs[0])
+        nt.links.new(grey.outputs["Value"], tint.inputs[2])
+        matte = nt.nodes.new("ShaderNodeMapRange")  # walls' scans are glossier than worn ground: no sky in it at grazing
+        matte.inputs["To Min"].default_value = 0.85
+        nt.links.new(maps["rough"].outputs["Color"], matte.inputs["Value"])
+        nt.links.new(matte.outputs["Result"], p.inputs["Roughness"])
+        bump = nt.nodes.new("ShaderNodeNormalMap")
+        nt.links.new(maps["nor_gl"].outputs["Color"], bump.inputs["Color"])
+        nt.links.new(bump.outputs["Normal"], p.inputs["Normal"])
+    else:
+        tint.inputs[1].default_value = (albedo, albedo, albedo, 1)
+        nt.links.new(mottle.outputs["Result"], tint.inputs[2])
+        p.inputs["Roughness"].default_value = 0.9
+    p.inputs["Specular IOR Level"].default_value = 0.2
+    return m
+
+
+def srgb(hex_):
+    c = [int(hex_[k:k + 2], 16) / 255 for k in (1, 3, 5)]
+    return tuple(v / 12.92 if v <= 0.04045 else ((v + 0.055) / 1.055) ** 2.4 for v in c)
+
+
+# context.js: the neighbours' renders (a Swiss palette), and their windows, as the viewer draws them
+RENDERS = [srgb(h) for h in ("#efe7d6", "#e7dcc6", "#f2efe8", "#dddcd6", "#efe4c2", "#e3d6bd")]
+PLASTER = 0.82  # the render finish's own grey under the tint
+
+
+def facade_material(name, rgb, shutters):
+    """A render with rows of windows (1.4 x 1.5 m every 3 m, a storey every 2.8 m): a light frame around glass that
+    reflects the sky, a mullion, painted shutters either side on some houses; a little darker toward the foot."""
     m = bpy.data.materials.new(name)
     nt = m.node_tree
     p = nt.nodes["Principled BSDF"]
@@ -309,24 +417,69 @@ def facade_material(name, rgb, bay=3.0, storey=2.9, window=(1.3, 1.3), sill=0.9)
                 nt.links.new(v, n.inputs[k])
         return n.outputs[0]
 
+    def between(v, lo, hi):
+        return op("MULTIPLY", op("GREATER_THAN", v, lo), op("LESS_THAN", v, hi))
+
+    def either(a, b):
+        return op("MAXIMUM", a, b)
+
+    def mix(fac, a, b):
+        n = nt.nodes.new("ShaderNodeMix")
+        n.data_type = "RGBA"
+        for sock, v in (("A", a), ("B", b)):
+            if isinstance(v, tuple):
+                n.inputs[sock].default_value = (*v, 1)
+            else:
+                nt.links.new(v, n.inputs[sock])
+        nt.links.new(fac, n.inputs["Factor"])
+        return n.outputs["Result"]
+
     sep = nt.nodes.new("ShaderNodeSeparateXYZ")
     nt.links.new(nt.nodes.new("ShaderNodeUVMap").outputs["UV"], sep.inputs[0])
-    fu = op("FRACT", op("DIVIDE", sep.outputs["X"], bay))
-    fv = op("FRACT", op("DIVIDE", op("SUBTRACT", sep.outputs["Y"], sill), storey))
-    half = (1 - window[0] / bay) / 2
-    in_u = op("MULTIPLY", op("GREATER_THAN", fu, half), op("LESS_THAN", fu, 1 - half))
-    in_v = op("LESS_THAN", fv, window[1] / storey)
-    glass = op("MULTIPLY", op("MULTIPLY", in_u, in_v), op("GREATER_THAN", sep.outputs["Y"], sill))
-    mix = nt.nodes.new("ShaderNodeMix")
-    mix.data_type = "RGBA"
-    mix.inputs["A"].default_value = (*rgb, 1)
-    mix.inputs["B"].default_value = (0.02, 0.025, 0.03, 1)
-    nt.links.new(glass, mix.inputs["Factor"])
-    nt.links.new(mix.outputs["Result"], p.inputs["Base Color"])
-    rough = op("MULTIPLY_ADD", glass, -0.75)
-    rough.node.inputs[2].default_value = 0.9
+    along, h = sep.outputs["X"], sep.outputs["Y"]
+    cell = op("MULTIPLY", op("FRACT", op("DIVIDE", along, 3.0)), 3.0)
+    y = op("MULTIPLY", op("FRACT", op("DIVIDE", h, 2.8)), 2.8)
+    rows = between(y, 0.8, 2.3)
+    window = op("MULTIPLY", between(cell, 0.8, 2.2), rows)
+    frame = op("MULTIPLY", window, either(either(op("LESS_THAN", cell, 0.87), op("GREATER_THAN", cell, 2.13)),
+                                          either(either(op("LESS_THAN", y, 0.87), op("GREATER_THAN", y, 2.23)),
+                                                 op("LESS_THAN", op("ABSOLUTE", op("SUBTRACT", cell, 1.5)), 0.03))))
+    glass = op("SUBTRACT", window, frame)
+    shade = op("MULTIPLY_ADD", op("MINIMUM", op("DIVIDE", h, 0.7), 1.0), 0.2)
+    shade.node.inputs[2].default_value = 0.8
+    wall = nt.nodes.new("ShaderNodeMix")
+    wall.data_type = "RGBA"
+    wall.blend_type = "MULTIPLY"
+    wall.inputs["Factor"].default_value = 1.0
+    wall.inputs["A"].default_value = (*(c * PLASTER for c in rgb), 1)
+    grey = nt.nodes.new("ShaderNodeCombineXYZ")
+    for k in ("X", "Y", "Z"):
+        nt.links.new(shade, grey.inputs[k])
+    nt.links.new(grey.outputs[0], wall.inputs["B"])
+    colour = wall.outputs["Result"]
+    if shutters:
+        leaf = op("MULTIPLY", either(between(cell, 0.28, 0.78), between(cell, 2.22, 2.72)), rows)
+        slat = op("MULTIPLY_ADD", op("GREATER_THAN", op("FRACT", op("MULTIPLY", y, 14.0)), 0.5), 0.15)
+        slat.node.inputs[2].default_value = 0.85
+        paint = nt.nodes.new("ShaderNodeMix")
+        paint.data_type = "RGBA"
+        paint.blend_type = "MULTIPLY"
+        paint.inputs["Factor"].default_value = 1.0
+        paint.inputs["A"].default_value = (0.30, 0.38, 0.32, 1)
+        comb = nt.nodes.new("ShaderNodeCombineXYZ")
+        for k in ("X", "Y", "Z"):
+            nt.links.new(slat, comb.inputs[k])
+        nt.links.new(comb.outputs[0], paint.inputs["B"])
+        colour = mix(leaf, colour, paint.outputs["Result"])
+    colour = mix(frame, colour, (0.9, 0.9, 0.9))
+    colour = mix(glass, colour, (0.1, 0.13, 0.17))
+    nt.links.new(colour, p.inputs["Base Color"])
+    rough = op("MULTIPLY_ADD", glass, -0.87)
+    rough.node.inputs[2].default_value = 0.95
     nt.links.new(rough, p.inputs["Roughness"])
-    p.inputs["Specular IOR Level"].default_value = 0.3
+    spec = op("MULTIPLY_ADD", glass, 0.4)
+    spec.node.inputs[2].default_value = 0.1
+    nt.links.new(spec, p.inputs["Specular IOR Level"])
     return m
 
 
@@ -348,10 +501,9 @@ def roof_colour(photo, R, local):
 
 
 def neighbours(scene, ctx, meta, place, site):
-    """The swissBUILDINGS3D houses around the plot: each roof in its colour on the aerial photo, the walls rendered
-    in pale tones with rows of windows."""
-    renders = [(0.78, 0.76, 0.70), (0.80, 0.78, 0.74), (0.74, 0.70, 0.62), (0.82, 0.80, 0.77), (0.70, 0.68, 0.64)]
-    mats = [facade_material(f"facade-{k}", rgb) for k, rgb in enumerate(renders)]
+    """The swissBUILDINGS3D houses around the plot: each roof in its colour on the aerial photo, the walls as the
+    viewer draws them (context.js): a render from a Swiss palette, rows of windows, shutters on a third of them."""
+    mats = [facade_material(f"facade-{k}-{sh}", rgb, sh) for sh in (0, 1) for k, rgb in enumerate(RENDERS)]
     photo = np.asarray(Image.open(os.path.join(ctx, meta["photo"]["file"])).convert("RGB"))
     R = meta["radius"]
     verts, faces, which, uvs = [], [], [], []
@@ -364,7 +516,8 @@ def neighbours(scene, ctx, meta, place, site):
         base = len(verts)
         foot = min(q.z for q in pts)
         verts.extend(tuple(q) for q in pts)
-        wall = sum(ord(ch) for ch in str(b["id"])) % len(renders)
+        key = sum(ord(ch) * 31 ** k for k, ch in enumerate(str(b["id"])))
+        wall = key % len(RENDERS) + (len(RENDERS) if (key >> 8) % 3 == 0 else 0)
         roof = len(mats)
         mats.append(material(f"roof-{b['id']}", roof_colour(photo, R, local), 0.75, 0.3))
         for t in range(0, len(b["roof"]), 3):
@@ -379,7 +532,7 @@ def neighbours(scene, ctx, meta, place, site):
             along = Vector((-nrm.y, nrm.x, 0.0)).normalized() if nrm.xy.length > 1e-9 else Vector((1, 0, 0))
             faces.append(tuple(base + k for k in ids))
             which.append(wall)
-            uvs.append([(pts[k].dot(along), pts[k].z - foot - 0.6) for k in ids])
+            uvs.append([(pts[k].dot(along), pts[k].z - foot) for k in ids])
         n += 1
     me = bpy.data.meshes.new("neighbours")
     me.from_pydata(verts, [], faces)
@@ -479,6 +632,59 @@ def far_land(scene, ctx, meta, place, R):
     nt.links.new(math_node("MULTIPLY", haze, 0.9), p.inputs["Emission Strength"])
     me.materials.append(m)
     scene.collection.objects.link(bpy.data.objects.new("far", me))
+
+
+def separate_coplanar(scene, step=0.001):
+    """The kit's walls meet by overlapping at the corners: two coplanar faces there render black in Cycles (the
+    shading point's rays start inside the other piece). The smaller face of each overlapping pair steps back `step`."""
+    planes = {}
+    for o in scene.objects:
+        if o.type != "MESH" or not is_shell(o) or len(o.data.vertices) > 2000:
+            continue
+        mw = o.matrix_world
+        nm = mw.inverted_safe().transposed().to_3x3()
+        for poly in o.data.polygons:
+            n = (nm @ poly.normal).normalized()
+            if poly.area < 1e-4 or n.length < 0.5:
+                continue
+            c = mw @ poly.center
+            key = (round(n.x, 3), round(n.y, 3), round(n.z, 3), round(n.dot(c), 3))
+            u = n.cross(Vector((0, 0, 1)) if abs(n.z) < 0.9 else Vector((1, 0, 0))).normalized()
+            w = n.cross(u)
+            pts = [mw @ o.data.vertices[i].co for i in poly.vertices]
+            box = (min(p.dot(u) for p in pts), max(p.dot(u) for p in pts), min(p.dot(w) for p in pts),
+                   max(p.dot(w) for p in pts))
+            planes.setdefault(key, {}).setdefault(o.name, []).append((poly.index, box, poly.area * mw.median_scale ** 2))
+    moved = {}
+    for key, by in planes.items():
+        if len(by) < 2:
+            continue
+        def span(faces):
+            return (min(b[0] for _, b, _ in faces), max(b[1] for _, b, _ in faces),
+                    min(b[2] for _, b, _ in faces), max(b[3] for _, b, _ in faces))
+        ranked = sorted(by.items(), key=lambda kv: -sum(a for _, _, a in kv[1]))
+        kept = [span(ranked[0][1])]
+        for name, faces in ranked[1:]:
+            b = span(faces)
+            depth = sum(1 for k in kept if min(b[1], k[1]) - max(b[0], k[0]) > step and min(b[3], k[3]) - max(b[2], k[2]) > step)
+            kept.append(b)
+            if depth:
+                n = Vector(key[:3]) * (-step * depth)
+                for idx, _, _ in faces:
+                    moved.setdefault(name, {})[idx] = n
+    for name, faces in moved.items():
+        o = scene.objects[name]
+        if o.data.users > 1:
+            o.data = o.data.copy()
+        back = o.matrix_world.inverted_safe().to_3x3()
+        shift = {}
+        for idx, n in faces.items():
+            for v in o.data.polygons[idx].vertices:
+                shift[v] = shift.get(v, Vector()) + back @ n
+        for v, dv in shift.items():
+            o.data.vertices[v].co += dv
+        o.data.update()
+    return sum(len(f) for f in moved.values())
 
 
 def hedge_mass(scene):
@@ -790,6 +996,7 @@ def build(blend, out_dir, ctx=None, site=None):
     for o in scene.objects:  # the interiors' camera scoring hid these in house.blend
         if o.get("kind") in ("terrain",):
             o.hide_render = False
+    stepped = separate_coplanar(scene)
     trees = kit_trees(scene)
     area = hedge_mass(scene)
     north = 0.0
@@ -798,12 +1005,18 @@ def build(blend, out_dir, ctx=None, site=None):
         trees += more
         north = float(al.get("rotation") or 0.0)
     views = viewpoints(scene, trees, site, north)
+    if ctx:  # the context files live in prepare's /tmp; the shoot runs in another container
+        root = os.path.realpath(ctx)
+        for im in bpy.data.images:
+            if im.source == "FILE" and not im.packed_file and os.path.realpath(bpy.path.abspath(im.filepath)).startswith(root):
+                im.pack()
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out_dir, "outside.blend"))
     doc = {"views": views, "trees": trees, "hedge_m2": round(area), "north": north, "context": bool(ctx),
            "seconds": round(time.time() - t0, 1)}
     with open(os.path.join(out_dir, "outside.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1)
-    log(f"outside: {len(views)} viewpoints, {len(trees)} trees, hedges {area:.0f} m2 ({doc['seconds']} s)")
+    log(f"outside: {len(views)} viewpoints, {len(trees)} trees, hedges {area:.0f} m2, {stepped} overlapping faces "
+        f"stepped back ({doc['seconds']} s)")
     return doc
 
 
