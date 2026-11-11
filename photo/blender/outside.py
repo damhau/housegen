@@ -44,7 +44,12 @@ MAX_VIEWS = 6
 GRID = (40, 22)
 LEAVES_PER_M2, GRASS_PER_M2, GRASS_RADIUS = 220.0, 200.0, 30.0
 TREES_RADIUS = 260.0  # the surroundings' trees farther than this from the camera stay out (the far photo has them)
-SUN_POWER, SKY_GAIN = 4.5, 0.55
+SUN_POWER, SKY_GAIN, SKY_CLAMP = 4.5, 0.55, 4.0
+# the physical sky's share of the light outdoors: at the interiors' 1 it lit a lawn 4.5 times as much as the sun did
+# (a clear day is the other way round), and the house came out flat, blue and frosty (#93, Gille)
+SKY_FILL = 0.15
+# post()'s glow is the interiors': on a sunlit white façade that fills the frame it reads as haze
+BLOOM = 0.04
 LOOK = "AgX - Medium High Contrast"
 # the season agencies shoot in, the hours with the sun high enough to model the façades
 DATES = ((4, 25), (5, 25), (6, 21), (7, 20), (8, 20), (9, 10))
@@ -1203,19 +1208,30 @@ def sky(scene, az, el):
     physical = nt.nodes["Background"].inputs[0].links[0].from_socket
     env = nt.nodes.new("ShaderNodeTexEnvironment")
     env.image = bpy.data.images.load(os.path.join(PLANTS, SKY_HDRI[0], SKY_HDRI[1]))
+    # the photo's own sun (74,752 at its peak) would shine a second sun, in the wrong place, off every glossy surface;
+    # its clouds stay under 4
+    clamp = nt.nodes.new("ShaderNodeVectorMath")
+    clamp.operation = "MINIMUM"
+    clamp.inputs[1].default_value = (SKY_CLAMP, SKY_CLAMP, SKY_CLAMP)
+    nt.links.new(env.outputs[0], clamp.inputs[0])
     gain = nt.nodes.new("ShaderNodeMixRGB")
     gain.blend_type = "MULTIPLY"
     gain.inputs[0].default_value = 1.0
     gain.inputs[2].default_value = (SKY_GAIN, SKY_GAIN, SKY_GAIN, 1)
-    nt.links.new(env.outputs[0], gain.inputs[1])
+    nt.links.new(clamp.outputs[0], gain.inputs[1])
     path = nt.nodes.new("ShaderNodeLightPath")
     seen = nt.nodes.new("ShaderNodeMath")
     seen.operation = "MAXIMUM"
     nt.links.new(path.outputs["Is Camera Ray"], seen.inputs[0])
     nt.links.new(path.outputs["Is Glossy Ray"], seen.inputs[1])
+    fill = nt.nodes.new("ShaderNodeMixRGB")
+    fill.blend_type = "MULTIPLY"
+    fill.inputs[0].default_value = 1.0
+    fill.inputs[2].default_value = (SKY_FILL, SKY_FILL, SKY_FILL, 1)
+    nt.links.new(physical, fill.inputs[1])
     mix = nt.nodes.new("ShaderNodeMixRGB")
     nt.links.new(seen.outputs[0], mix.inputs[0])
-    nt.links.new(physical, mix.inputs[1])
+    nt.links.new(fill.outputs[0], mix.inputs[1])
     nt.links.new(gain.outputs[0], mix.inputs[2])
     nt.links.new(mix.outputs[0], nt.nodes["Background"].inputs[0])
 
@@ -1254,7 +1270,7 @@ def run(blend, cam_spec, out, width=WIDTH, height=HEIGHT, samples=256, sun=None)
     with tempfile.TemporaryDirectory() as tmp:
         raw = os.path.join(tmp, "raw.png")
         bpy.data.images["Render Result"].save_render(raw, scene=scene)
-        post(raw, out)
+        post(raw, out, bloom=BLOOM)
     seconds["total"] = round(time.time() - t0, 1)
     info = {"room": None, "use": "exterior", "camera": cam_spec, "sun": f"{az:.1f}/{el:.1f}",
             "sun_deg": [round(az, 2), round(el, 2)], "room_lamps": False, "removed": [], "pieces": [], "lamps": [],
