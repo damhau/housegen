@@ -142,6 +142,10 @@ class Settings(BaseSettings):
     LISTING_PREVIEW_SAMPLES: int = 64
     LISTING_PARALLEL: int = 16  # photos and previews in flight at once, one GPU container each
     LISTING_SHOT_TIMEOUT_S: float = 2400.0  # one photo, cold start and queueing included
+    # #93: the building from outside, in its surroundings (the project's context), the sun at a real date and
+    # hour; every scored viewpoint is previewed and the editor keeps 2 to LISTING_EXTERIOR_MAX of them.
+    LISTING_EXTERIORS: bool = True
+    LISTING_EXTERIOR_MAX: int = 4
 
     @property
     def database_url(self) -> str:

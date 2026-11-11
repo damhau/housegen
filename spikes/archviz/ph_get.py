@@ -1,5 +1,7 @@
 """Download a Poly Haven asset (CC0) as glTF with its files: ph_get.py <id> [res=2k] -> assets/models/<id>/<id>.gltf
-(textures: ph_get.py --tex <id> [res=2k] -> assets/textures/<id>/{diff,nor_gl,rough,disp}.jpg)"""
+(textures: ph_get.py --tex <id> [res=2k] -> assets/textures/<id>/{diff,nor_gl,rough,disp}.jpg;
+the exteriors' plants and sky, #93: ph_get.py --blend <id> -> assets/outside/<id>/<id>_2k.blend with its textures,
+ph_get.py --hdri <id> -> assets/outside/<id>/<id>_4k.exr)"""
 
 import json
 import sys
@@ -29,6 +31,19 @@ def model(asset: str, res: str) -> None:
     print(out / f"{asset}.gltf")
 
 
+def outside(asset: str, kind: str) -> None:
+    files = json.loads(get(f"https://api.polyhaven.com/files/{asset}"))
+    out = HERE / "assets" / "outside" / asset
+    out.mkdir(parents=True, exist_ok=True)
+    f = files["hdri"]["4k"]["exr"] if kind == "hdri" else files["blend"]["2k"]["blend"]
+    pairs = [(f["url"], out / f["url"].rsplit("/", 1)[1]), *((g["url"], out / rel) for rel, g in f.get("include", {}).items())]
+    for url, p in pairs:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if not p.exists():
+            p.write_bytes(get(url))
+    print(out)
+
+
 def texture(asset: str, res: str) -> None:
     files = json.loads(get(f"https://api.polyhaven.com/files/{asset}"))
     out = HERE / "assets" / "textures" / asset
@@ -46,5 +61,7 @@ if __name__ == "__main__":
     args = sys.argv[1:]
     if args[0] == "--tex":
         texture(args[1], args[2] if len(args) > 2 else "2k")
+    elif args[0] in ("--blend", "--hdri"):
+        outside(args[1], args[0][2:])
     else:
         model(args[0], args[1] if len(args) > 1 else "2k")

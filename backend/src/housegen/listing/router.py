@@ -78,6 +78,7 @@ def listing_out(st: ProjectStorage, version: int, current: int) -> ListingOut | 
         previews_total=sum(
             len(x.get("views") or []) for x in doc.get("shots", []) if len(x.get("views") or []) > 1
         )
+        + (len(doc.get("exteriors") or []) if len(doc.get("exteriors") or []) > 1 else 0)
         if doc.get("settings", {}).get("editor")
         else 0,
         photos=photos,

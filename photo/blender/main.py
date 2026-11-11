@@ -1,13 +1,16 @@
 """The listing photo pipeline's entry points, in Blender's Python (bpy 5.0.1).
 
-    python main.py prepare <house.glb> <rooms.json> <out_dir> [--blend]
+    python main.py prepare <house.glb> <rooms.json> <out_dir> [--blend] [--context <dir>] [--site <lat>,<lon>]
         <out_dir>/house.blend (the GLB imported; with --blend the first argument is already a .blend, copied) and
         <out_dir>/cameras.json: per room, viewpoints (corners, the long axis both ways, the doorways) scored by ray
-        casts on the bare import; `views` holds up to MAX_VIEWS distinct ones, best first.
+        casts on the bare import; `views` holds up to MAX_VIEWS distinct ones, best first. Then the exteriors (#93,
+        outside.py): <out_dir>/outside.blend (the house in its surroundings, the project's context.json and files in
+        --context) and `exteriors` in cameras.json, viewpoints around the house with a sun at a real date and hour
+        (--site: the plot's latitude and longitude).
     python main.py shoot <spec.json>
         spec: {"blend", "rooms", "camera", "out" (.jpg), "width", "height", "samples"[, "sun", "room_lamps",
         "remove"]}; writes the photo and <out>.json (the room, the final camera, the sun, the lamps, the pieces in
-        the frame, the device, the seconds per phase).
+        the frame, the device, the seconds per phase). With "kind": "exterior", "blend" is outside.blend.
 """
 
 import json
@@ -210,8 +213,8 @@ def score_camera(scene, dg, spec, room):
     return floor / (nx * ny), ahead
 
 
-def prepare(src, rooms_json, out_dir, from_blend=False):
-    """Import the house, save it as house.blend and write cameras.json next to it."""
+def prepare(src, rooms_json, out_dir, from_blend=False, context=None, site=None):
+    """Import the house, save it as house.blend and write cameras.json next to it; then outside.blend."""
     os.makedirs(out_dir, exist_ok=True)
     blend = os.path.join(out_dir, "house.blend")
     if from_blend:
@@ -224,8 +227,11 @@ def prepare(src, rooms_json, out_dir, from_blend=False):
         bpy.ops.wm.save_as_mainfile(filepath=blend)
     scene = bpy.context.scene
     scene.render.resolution_x, scene.render.resolution_y = ASPECT
+    import photo
+
     for o in scene.objects:
-        if o.get("kind") in ("terrain", "context"):
+        # door leaves too: the shoot swings those in the frame out of it (photo.open_doors)
+        if o.get("kind") in ("terrain", "context") or photo.door_leaf(o) is o:
             o.hide_render = True
             for c in o.children_recursive:
                 c.hide_render = True
@@ -247,8 +253,11 @@ def prepare(src, rooms_json, out_dir, from_blend=False):
                     "views": [c["camera"] for c in distinct(cands)], "candidates": cands})
         print(f"PREPARE {room['name']}: {len(cands)} candidates, best {best and best['camera']} "
               f"({best and best['score']})", flush=True)
+    import outside
+
+    exteriors = outside.build(blend, out_dir, context, site)["views"]
     with open(os.path.join(out_dir, "cameras.json"), "w", encoding="utf-8") as f:
-        json.dump({"rooms": out}, f, indent=1, ensure_ascii=False)
+        json.dump({"rooms": out, "exteriors": exteriors}, f, indent=1, ensure_ascii=False)
 
 
 def shoot(spec_json):
@@ -256,6 +265,12 @@ def shoot(spec_json):
     import photo
 
     spec = json.load(open(spec_json, encoding="utf-8"))
+    if spec.get("kind") == "exterior":
+        import outside
+
+        outside.run(spec["blend"], spec["camera"], spec["out"], int(spec.get("width", 1920)),
+                    int(spec.get("height", 1080)), int(spec.get("samples", 256)), sun=spec.get("sun"))
+        return
     photo.run(spec["blend"], load_rooms(spec["rooms"]), spec["camera"], spec["out"],
               int(spec.get("width", 1920)), int(spec.get("height", 1080)), int(spec.get("samples", 256)),
               sun=spec.get("sun"), room_lamps=spec.get("room_lamps"), remove=spec.get("remove") or ())
@@ -263,7 +278,15 @@ def shoot(spec_json):
 
 def main(argv):
     if len(argv) >= 4 and argv[0] == "prepare":
-        prepare(argv[1], argv[2], argv[3], from_blend="--blend" in argv[4:])
+        opts = argv[4:]
+
+        def opt(name):
+            return opts[opts.index(name) + 1] if name in opts and opts.index(name) + 1 < len(opts) else None
+
+        site = opt("--site")
+        lat_lon = [float(v) for v in site.split(",")] if site else None
+        prepare(argv[1], argv[2], argv[3], from_blend="--blend" in opts, context=opt("--context"),
+                site={"lat": lat_lon[0], "lon": lat_lon[1]} if lat_lon else None)
     elif len(argv) == 2 and argv[0] == "shoot":
         shoot(argv[1])
     else:

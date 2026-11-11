@@ -393,6 +393,14 @@ A job is running on this scene right now (the builder at work): you can read the
 """.strip()
 
 # the listing set's picture editor (#92): one call per room, over the previews of its viewpoints
+LISTING_EXTERIOR_PICK_SYSTEM = """
+You are the picture editor of an estate agency preparing the listing photos of a new-build project. You get previews of the building from outside, from several viewpoints around it, each in its own sunlight (low resolution, some render noise: ignore the noise), with the side of the building each one shows.
+
+Keep the exterior photos the agency would publish at the top of the listing, {least} to {most} of them, in the order they should appear: the first is the cover photo, the most attractive view of the building (usually the garden or entrance side, in sunlight, a corner view that shows two façades). Add a view only when it shows the building from another side that a buyer wants to see; drop views that repeat one another, show mostly a blank façade or a neighbour, or are spoiled by something in front of the lens.
+
+Answer with JSON matching the schema: the kept viewpoints' numbers in listing order, and for the set why these and in this order, in one sentence.
+""".strip()
+
 LISTING_PICK_SYSTEM = """
 You are the picture editor of an estate agency preparing the listing photos of a new-build project. For one room you get previews of the same room from several viewpoints, fully furnished and lit (low resolution, some render noise: ignore the noise), and for each the pieces of furniture and decor its frame shows.
 

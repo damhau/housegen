@@ -109,20 +109,29 @@ must then be the app's public URL. `GET /health` on the service reports the WebG
 
 ### Listing photos (optional)
 
-The **Listing** tab shoots a saved, furnished version's interiors as photos for a real-estate listing (#91): each
-flat's living room, dining room (or kitchen), main bedroom, bathroom and other bedrooms, in that order, captioned
-with the room's area ("Salon, 19 m²"). A `listing` job runs beside the scene's own jobs and calls the photo
+The **Listing** tab shoots a saved, furnished version as photos for a real-estate listing (#91): the building from
+outside first (#93), then each flat's living room, dining room (or kitchen), main bedroom, bathroom and other
+bedrooms, in that order, captioned with the room's area ("Salon, 19 m²"). A `listing` job runs beside the scene's own jobs and calls the photo
 service, `deploy/modal_photo.py` on Modal:
 
 1. `prepare` (a T4) loads the version's scene page headless (`photo/export.py`), exports the house to GLB, imports
    it into Blender and finds up to six distinct viewpoints per room (its corners, along its long axis, from its
-   doorways; a lower, wider lens in a small room). The `.blend` is cached per version on the `housegen-photo`
-   volume.
+   doorways; a lower, wider lens in a small room). Door leaves are left out of the scoring: the shoot swings a
+   leaf that stands in the frame out of it. Then `photo/blender/outside.py` builds the house in its
+   surroundings (the project's context files, fetched from the app: the land, the aerial photo, the
+   neighbouring buildings, the lidar trees, the far landscape) and scores up to six exterior viewpoints around
+   it, each with a sun at a real date and hour at the plot that lights the façades in view. The `.blend` files
+   are cached per version on the `housegen-photo` volume.
 2. `shoot` (an RTX PRO 6000, one container per photo, `LISTING_PARALLEL` at a time) renders one room in Cycles
    with `photo/blender/main.py shoot`. The pipeline keeps the scene's finishes (a finish's scan at full
    resolution, its colour kept) and adds the staging: decor, art, objects. The light is a listing
    photographer's: daylight, the room's lamps where the sun does not reach, and a flash bounced off the ceiling
    so that white tiles and ceilings stay white in mixed light.
+
+Each exterior viewpoint is previewed, and one vision call keeps two to `LISTING_EXTERIOR_MAX` of them in listing
+order, the cover photo first ("Vue extérieure, côté sud-ouest", in the language of the room names). Without an
+answer, the three best-scored viewpoints lead the set. A project without surroundings is shot on the builder's
+own ground under a Swiss sun.
 
 A room with several viewpoints is previewed from each of them, fully dressed and lit (1280 px, 64 samples). One
 vision call per room (the project's critic model and effort, either provider) picks the viewpoint an agency would
@@ -179,6 +188,7 @@ every job snapshots the settings it started with.
 | `LISTING_PICK` | `true` | preview every viewpoint of a room and let the picture editor choose (#92) |
 | `LISTING_PREVIEW_WIDTH`, `LISTING_PREVIEW_HEIGHT`, `LISTING_PREVIEW_SAMPLES` | `1280`, `720`, `64` | a preview's size and samples |
 | `LISTING_PARALLEL` | `16` | photos and previews in flight at once, one GPU container each |
+| `LISTING_EXTERIORS`, `LISTING_EXTERIOR_MAX` | `true`, `4` | lead the set with the building from outside, at most this many views (#93) |
 | `RENDER_BASE_URL` | `http://HOST:PORT` | where the renderer loads scenes from; the app's public URL when a render service is used |
 | `RENDER_KIT` | pinned in `kit/versions/index.json` | the renderer snapshot the build path draws with (builder, critic, version pictures); the viewer picks its own |
 | `MODEL_PRICES` | list prices for `claude-opus-5`, `gpt-6-astra` | JSON `{model: {input, cached, output[, cache_write]}}` in USD per million tokens, for the cost in each run's summary |

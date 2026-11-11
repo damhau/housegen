@@ -99,8 +99,22 @@ class PhotoClient:
                 raise _TookTooLong(f"the photo call took more than {timeout_s:.0f} s")
             await asyncio.sleep(self.poll_s)
 
-    async def prepare(self, scene_url: str, key: str, timeout_s: float = 1800.0) -> dict[str, Any]:
-        call = await self.start("/prepare", {"scene_url": scene_url, "key": key})
+    async def prepare(
+        self,
+        scene_url: str,
+        key: str,
+        context_url: str | None = None,
+        site: tuple[float, float] | None = None,
+        timeout_s: float = 1800.0,
+    ) -> dict[str, Any]:
+        """The prepared version: its rooms' viewpoints and its exteriors' (#93). `context_url`: the project's
+        surroundings (a folder with context.json); `site`: the plot's latitude and longitude, for the sun."""
+        body: dict[str, Any] = {"scene_url": scene_url, "key": key}
+        if context_url:
+            body["context_url"] = context_url
+        if site:
+            body["site"] = list(site)
+        call = await self.start("/prepare", body)
         return await self.wait(call, timeout_s)
 
     async def shoot(
@@ -114,9 +128,11 @@ class PhotoClient:
         sun: list[float] | None = None,
         room_lamps: bool | None = None,
         remove: list[str] | None = None,
+        kind: str | None = None,
     ) -> tuple[bytes, dict[str, Any]]:
         """The photo's JPEG and what the service reports with it (meta, gpu, seconds). `sun` and `room_lamps`
-        repeat a preview's light; `remove` hides those dressing pieces."""
+        repeat a preview's light; `remove` hides those dressing pieces; `kind` "exterior" shoots the house from
+        outside (#93)."""
         body: dict[str, Any] = {
             "key": key,
             "camera": camera,
@@ -130,6 +146,8 @@ class PhotoClient:
             body["room_lamps"] = room_lamps
         if remove:
             body["remove"] = remove
+        if kind:
+            body["kind"] = kind
         call = await self.start("/shoot", body)
         res = await self.wait(call, timeout_s)
         return base64.b64decode(res.pop("jpeg")), res

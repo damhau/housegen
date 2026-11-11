@@ -1,14 +1,17 @@
-"""The listing photo service on Modal (#91): a saved version's interiors in Blender Cycles, one GPU per photo.
+"""The listing photo service on Modal (#91): a saved version's rooms and exteriors in Blender Cycles, one GPU per photo.
 
 `prepare` loads the version's scene page on a T4 (headless Chromium, as the render service draws), exports the house
-to GLB, imports it into Blender and scores the candidate cameras of every room; the .blend is kept per version on the
-`housegen-photo` volume. `shoot` renders one photo from that .blend on an RTX PRO 6000 (the owner's choice, 2026-11-07).
+to GLB, imports it into Blender and scores the candidate cameras of every room; then it builds the house in its
+surroundings (the project's context files, fetched from the app) and scores the exterior viewpoints (#93). The .blend
+files are kept per version on the `housegen-photo` volume. `shoot` renders one photo from them on an RTX PRO 6000
+(the owner's choice, 2026-11-07).
 The app calls `web`: POST /prepare and /shoot start a call and return its id, GET /calls/<id> is its result once done,
 so a photo of several minutes never has to fit in one HTTP request.
 
 Once (the token is the render service's, so the app needs no new secret):
     uvx modal volume create housegen-photo
-    uvx modal run deploy/modal_photo.py::upload          # the scans, the HDRI, the made pieces, the bed cache
+    uvx modal run deploy/modal_photo.py::upload          # the scans, the HDRI, the made pieces, the bed cache, the
+                                                         # exteriors' plants and sky (spikes/archviz/ph_get.py --blend/--hdri)
     # the objects (#90's catalogue) are the spike's archviz-objects volume
 
 Deploy (again after a change under photo/):
@@ -44,7 +47,7 @@ image = (
         "libx11-6", "libxrender1", "libxxf86vm1", "libxfixes3", "libxi6", "libxkbcommon0", "libsm6",
         "libgl1", "libegl1", "libgles2", "libglvnd0", "libglib2.0-0",
     )
-    .pip_install("bpy==5.0.1", "numpy", "pillow", "playwright==1.62.0")
+    .pip_install("bpy==5.0.1", "numpy", "pillow", "playwright==1.62.0", "astral==3.2")
     .run_commands("playwright install --with-deps chromium-headless-shell")
     .env(
         {
@@ -73,9 +76,15 @@ def _run(args: list[str]) -> None:
         raise RuntimeError(f"{args[0]} {args[1]} failed ({p.returncode}): {(p.stderr or p.stdout)[-1500:]}")
 
 
-@app.function(image=image, gpu=PREPARE_GPU, cpu=4.0, memory=16384, timeout=1800, volumes=volumes)
-def prepare(scene_url: str, key: str) -> dict:
-    """The version's house in Blender and its rooms' cameras, cached on the volume by `key`."""
+# a GPU container idles before it stops (Modal bills it): 60 s by default, a minute of an RTX PRO 6000 for each
+# of a set's 16 parallel containers. The job queues its next call within a second, so a short window keeps the reuse.
+GPU_SCALEDOWN_S = 10
+
+
+@app.function(image=image, gpu=PREPARE_GPU, cpu=4.0, memory=16384, timeout=1800, volumes=volumes,
+              scaledown_window=GPU_SCALEDOWN_S)
+def prepare(scene_url: str, key: str, context_url: str | None = None, site: list[float] | None = None) -> dict:
+    """The version's house in Blender, its rooms' cameras and its exteriors', cached on the volume by `key`."""
     import json
     import subprocess
     import sys
@@ -92,7 +101,12 @@ def prepare(scene_url: str, key: str) -> dict:
     exported = json.loads(p.stdout.strip().splitlines()[-1])
     t1 = time.time()
     out.mkdir(parents=True, exist_ok=True)
-    _run(["main.py", "prepare", str(tmp / "house.glb"), str(tmp / "rooms.json"), str(out)])
+    args = ["main.py", "prepare", str(tmp / "house.glb"), str(tmp / "rooms.json"), str(out)]
+    if context_url and _fetch_context(context_url, tmp / "context"):
+        args += ["--context", str(tmp / "context")]
+    if site:
+        args += ["--site", f"{site[0]},{site[1]}"]
+    _run(args)
     page = {r["name"]: r for r in json.loads((tmp / "rooms.json").read_text())}
     cams = json.loads((out / "cameras.json").read_text())
     for r in cams["rooms"]:  # the page's own figure, the one its SIA 416 report lists
@@ -109,7 +123,28 @@ def prepare(scene_url: str, key: str) -> dict:
     }
 
 
-@app.function(image=image, gpu=SHOOT_GPU, cpu=4.0, memory=16384, timeout=3600, volumes=volumes)
+def _fetch_context(url: str, to: Path) -> bool:
+    """The project's surroundings (context.json and the files it names) into `to`; False when it has none."""
+    import json
+    import urllib.error
+    import urllib.request
+
+    base = url if url.endswith("/") else url + "/"
+    try:
+        meta = json.loads(urllib.request.urlopen(base + "context.json", timeout=60).read())
+    except (urllib.error.URLError, ValueError):
+        return False
+    files = [meta[k]["file"] for k in ("terrain", "photo", "buildings", "trees", "cover", "far") if meta.get(k)]
+    files += [p["file"] for p in (meta.get("far") or {}).get("photos", [])]
+    to.mkdir(parents=True, exist_ok=True)
+    (to / "context.json").write_text(json.dumps(meta))
+    for name in files:
+        (to / name).write_bytes(urllib.request.urlopen(base + name, timeout=120).read())
+    return True
+
+
+@app.function(image=image, gpu=SHOOT_GPU, cpu=4.0, memory=16384, timeout=3600, volumes=volumes,
+              scaledown_window=GPU_SCALEDOWN_S)
 def shoot(
     key: str,
     camera: str,
@@ -119,20 +154,23 @@ def shoot(
     sun: list[float] | None = None,
     room_lamps: bool | None = None,
     remove: list[str] | None = None,
+    kind: str | None = None,
 ) -> dict:
     """One photo from the prepared version: the JPEG bytes and what the pipeline decided. `sun` ([azimuth, elevation])
-    and `room_lamps` repeat a preview's light instead of searching it again; `remove` hides those dressing pieces."""
+    and `room_lamps` repeat a preview's light instead of searching it again; `remove` hides those dressing pieces;
+    `kind` "exterior" shoots the house in its surroundings (outside.blend)."""
     import json
 
     t0 = time.time()
     volume.reload()
     d = Path(DATA, "cache", key)
-    if not (d / "house.blend").exists():
+    blend = d / ("outside.blend" if kind == "exterior" else "house.blend")
+    if not blend.exists():
         raise RuntimeError(f"version {key} is not prepared")
     out = Path("/tmp", f"{key}-{int(t0 * 1000)}.jpg")
-    spec = {"blend": str(d / "house.blend"), "rooms": str(d / "rooms.json"), "camera": camera, "out": str(out),
+    spec = {"blend": str(blend), "rooms": str(d / "rooms.json"), "camera": camera, "out": str(out),
             "width": width, "height": height, "samples": samples, "sun": sun, "room_lamps": room_lamps,
-            "remove": remove or []}
+            "remove": remove or [], "kind": kind}
     spec_path = out.with_suffix(".spec.json")
     spec_path.write_text(json.dumps(spec))
     _run(["main.py", "shoot", str(spec_path)])
@@ -161,6 +199,8 @@ def web():
     class PrepareIn(BaseModel):
         scene_url: str
         key: str
+        context_url: str | None = None
+        site: list[float] | None = None
 
     class ShootIn(BaseModel):
         key: str
@@ -171,6 +211,7 @@ def web():
         sun: list[float] | None = None
         room_lamps: bool | None = None
         remove: list[str] = []
+        kind: str | None = None
 
     @api.get("/health")
     def health() -> dict:
@@ -178,12 +219,13 @@ def web():
 
     @api.post("/prepare", dependencies=[Depends(auth)])
     def start_prepare(body: PrepareIn) -> dict:
-        return {"call_id": prepare.spawn(body.scene_url, body.key).object_id}
+        return {"call_id": prepare.spawn(body.scene_url, body.key, body.context_url, body.site).object_id}
 
     @api.post("/shoot", dependencies=[Depends(auth)])
     def start_shoot(body: ShootIn) -> dict:
         call = shoot.spawn(
-            body.key, body.camera, body.width, body.height, body.samples, body.sun, body.room_lamps, body.remove
+            body.key, body.camera, body.width, body.height, body.samples, body.sun, body.room_lamps, body.remove,
+            body.kind,
         )
         return {"call_id": call.object_id}
 
@@ -217,6 +259,7 @@ def upload() -> None:
         (SPIKE / "assets" / "hdri", "/assets/hdri"),
         (SPIKE / "made", "/made"),
         (SPIKE / "work" / "cache", "/cache/made"),
+        (SPIKE / "assets" / "outside", "/assets/outside"),
     ]
     with volume.batch_upload(force=True) as batch:
         for local, remote in pairs:

@@ -1285,6 +1285,45 @@ def dress_storey(scene, sy):
     log("dressing:", done)
 
 
+def door_leaf(o):
+    """The swinging part of an interior door `o` belongs to (the kit's pivot under the door), or None."""
+    while o is not None and o.parent is not None:
+        if o.type == "EMPTY" and o.parent.get("kind") == "interiorDoor":
+            return o
+        o = o.parent
+    return None
+
+
+def open_doors(scene, cam, nx=48, ny=27, most=0.03, near=1.2):
+    """A photographer swings a door leaf that stands in the picture out of it: hide every leaf that takes more
+    than `most` of the frame or stands closer than `near` metres. The casing stays: the doorway reads open."""
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    fr = cam.data.view_frame(scene=scene)
+    x0, x1 = min(c.x for c in fr), max(c.x for c in fr)
+    y0, y1 = min(c.y for c in fr), max(c.y for c in fr)
+    rot, origin = cam.matrix_world.to_3x3(), cam.matrix_world.translation
+    seen = {}
+    for j in range(ny):
+        for i in range(nx):
+            d = (rot @ Vector((x0 + (i + 0.5) / nx * (x1 - x0), y1 - (j + 0.5) / ny * (y1 - y0), fr[0].z))).normalized()
+            hit = trace(scene, dg, origin, d)
+            leaf = hit and door_leaf(hit[2])
+            if leaf is not None:
+                n, dist = seen.get(leaf.name, (0, math.inf))
+                seen[leaf.name] = (n + 1, min(dist, (hit[0] - origin).length))
+    gone = []
+    for nm, (n, dist) in seen.items():
+        if n / (nx * ny) > most or dist < near:
+            leaf = scene.objects[nm]
+            for o in [leaf, *leaf.children_recursive]:
+                o.hide_render = True
+            gone.append(nm)
+    if gone:
+        log(f"swung {len(gone)} door leaves out of the frame")
+    return gone
+
+
 def clear_edges(scene, cam, widest=0.03):
     """A sliver of something right in front of the lens at a side edge of the frame (a wall end, a door jamb)
     reads as a bright or dark bar: turn the camera just enough to lose it. Only for slivers narrower than
@@ -1945,6 +1984,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     dress_storey(scene, sy)
     scene.render.resolution_x, scene.render.resolution_y = width, height  # view_frame() reads the aspect from it
     still.camera(scene, cam_spec, width, height)
+    doors = open_doors(scene, scene.camera)
     clear_edges(scene, scene.camera)
     final_spec = camera_spec(scene, scene.camera, max(0.5, math.hypot(tgt[0] - pos[0], tgt[2] - pos[2])))
     rays = camera_rays(scene, scene.camera, rooms, sy)
@@ -2001,7 +2041,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     sky = next(n for n in scene.world.node_tree.nodes if n.bl_idname == "ShaderNodeTexSky")
     info = {"room": room["name"], "use": room["use"], "camera": final_spec,
             "sun": f"{math.degrees(sky.sun_rotation) % 360:.1f}/{math.degrees(sky.sun_elevation):.1f}",
-            "sun_deg": [round(az, 2), round(el, 2)], "room_lamps": bool(lit), "removed": removed, "pieces": pieces,
+            "sun_deg": [round(az, 2), round(el, 2)], "room_lamps": bool(lit), "removed": removed, "doors": doors, "pieces": pieces,
             "lamps": lit_lamps(scene, lamp), "device": device, "seconds": seconds}
     with open(out + ".json", "w", encoding="utf-8") as f:
         json.dump(info, f, indent=1, ensure_ascii=False)

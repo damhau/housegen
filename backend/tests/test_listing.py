@@ -1,4 +1,4 @@
-"""Listing photo sets (#91): the shot list, the photo service client, the job and its routes."""
+"""Listing photo sets (#91): the shot list, the photo service client, the job and its routes; the exteriors (#93)."""
 
 from __future__ import annotations
 
@@ -18,10 +18,11 @@ from housegen.core import db
 from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
 from housegen.core.exceptions import LLMError
+from housegen.geo import context as geo_context
 from housegen.listing import job as listing_job
 from housegen.listing.client import PhotoClient, PhotoServiceError
-from housegen.listing.pick import parse_choice
-from housegen.listing.shots import pick, room_name_parts, unit_of
+from housegen.listing.pick import parse_choice, parse_exteriors
+from housegen.listing.shots import exterior_caption, language, pick, room_name_parts, unit_of
 from housegen.llm import Completion, ImagePart, Message, Usage
 from housegen.projects import crud
 from housegen.projects.storage import ProjectStorage
@@ -147,8 +148,14 @@ def test_the_photo_service_sits_next_to_the_render_service() -> None:
 class FakeService:
     """deploy/modal_photo.py's web API: calls finish on their second poll."""
 
-    def __init__(self, rooms: list[dict[str, Any]], fail: set[str] | None = None) -> None:
+    def __init__(
+        self,
+        rooms: list[dict[str, Any]],
+        fail: set[str] | None = None,
+        exteriors: list[dict[str, Any]] | None = None,
+    ) -> None:
         self.rooms = rooms
+        self.exteriors = exteriors or []
         self.fail = fail or set()
         self.calls: dict[str, dict[str, Any]] = {}
         self.polls: dict[str, int] = {}
@@ -175,9 +182,8 @@ class FakeService:
             return httpx.Response(200, json={"status": "running"})
         call = self.calls[cid]
         if call["path"] == "/prepare":
-            return httpx.Response(
-                200, json={"status": "done", "result": {"rooms": self.rooms, "seconds": 60}}
-            )
+            result = {"rooms": self.rooms, "exteriors": self.exteriors, "seconds": 60}
+            return httpx.Response(200, json={"status": "done", "result": result})
         if call["camera"] in self.fail:
             return httpx.Response(200, json={"status": "failed", "error": "CUDA out of memory"})
         jpeg = base64.b64encode(f"jpeg {call['camera']}".encode()).decode()
@@ -468,3 +474,104 @@ def test_the_editors_answer_is_checked() -> None:
         parse_choice('{"best": 3, "remove": null, "problem": "p", "why": "w"}', 2, previews)
     with pytest.raises(LLMError, match="invalid JSON"):
         parse_choice("the second one", 2, previews)
+
+
+# outside.viewpoints' records, best-scored first
+EXTERIORS = [
+    {"camera": f"{x},4.5,20>0,4,0@46", "side": side, "sun": [az, 35.0], "when": "2026-09-10 16:00"}
+    for x, side, az in ((-14, "south-west", 250.0), (0, "south", 200.0), (14, "south-east", 150.0))
+]
+
+
+async def test_the_building_from_outside_leads_the_set(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_rooms(MONTELLY), exteriors=EXTERIORS)
+    _fake_service(monkeypatch, svc)
+    editor = FakeEditor(json.dumps({"keep": [3, 1], "why": "the garden side first"}))
+    monkeypatch.setattr(listing_job, "get_provider", lambda name=None: editor)
+    pid = await _furnished_project()
+    st = ProjectStorage(pid)
+    geo_context.context_dir(st.root).mkdir(parents=True)
+    geo_context.save(st.root, {"version": 1, "place": {"e": 2537559, "n": 1157053}})
+    r = await app_client.post(f"/api/v1/projects/{pid}/listing")
+    assert await _wait_job(r.json()["id"]) == "done"
+
+    prep = next(c for c in svc.calls.values() if c["path"] == "/prepare")
+    assert prep["context_url"].endswith(f"/scenes/{pid}/context/")
+    assert prep["site"] == pytest.approx([46.5618, 6.6243], abs=1e-3)
+    shoots = [c for c in svc.calls.values() if c["path"] == "/shoot"]
+    previews = [c for c in shoots if c["width"] == 1280]
+    assert sorted(c["camera"] for c in previews) == sorted(v["camera"] for v in EXTERIORS)
+    assert {c["kind"] for c in previews} == {"exterior"}
+    outside = [c for c in shoots if c["width"] == 3840 and c.get("kind") == "exterior"]
+    assert sorted((c["camera"], tuple(c["sun"])) for c in outside) == sorted(
+        (EXTERIORS[i]["camera"], tuple(EXTERIORS[i]["sun"])) for i in (2, 0)
+    )
+    assert (
+        len(editor.calls) == 1
+    )  # the rooms have one viewpoint each: only the exteriors are chosen
+
+    ls = (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()["listing"]
+    assert [p["caption"] for p in ls["photos"]][:3] == [
+        "Vue extérieure, côté sud-est",
+        "Vue extérieure, côté sud-ouest",
+        "Salon, 21 m²",
+    ]
+    assert ls["photos"][0]["why"] == "the garden side first"
+    assert all(p["url"] for p in ls["photos"])
+    assert (ls["previews_done"], ls["previews_total"]) == (3, 3)
+    doc = _set_doc(pid)
+    assert doc["choices"]["E1"]["view"] == 3
+    assert doc["cost"]["editor_usd"] > 0
+    z = await app_client.get(f"/api/v1/projects/{pid}/listing/1/zip")
+    assert zipfile.ZipFile(io.BytesIO(z.content)).namelist()[0] == (
+        "E1 Vue extérieure, côté sud-est.jpg"
+    )
+
+    # shot again: the same exterior cameras, no new previews and no editor
+    r = await app_client.post(f"/api/v1/projects/{pid}/listing", json={"reuse": True})
+    assert await _wait_job(r.json()["id"]) == "done"
+    assert len(editor.calls) == 1
+    again = [c for c in list(svc.calls.values())[len(shoots) + 1 :] if c["path"] == "/shoot"]
+    assert [c["camera"] for c in again if c.get("kind") == "exterior"] == [
+        EXTERIORS[2]["camera"],
+        EXTERIORS[0]["camera"],
+    ]
+    assert {c["width"] for c in again} == {3840}
+
+
+async def test_without_the_editor_the_best_scored_exteriors_lead(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("LISTING_PICK", "false")
+    get_settings.cache_clear()
+    four = [*EXTERIORS, {**EXTERIORS[0], "camera": "0,4.5,-20>0,4,0@46", "side": "north"}]
+    svc = FakeService(_rooms(MONTELLY), exteriors=four)
+    _fake_service(monkeypatch, svc)
+    pid = await _furnished_project()
+    r = await app_client.post(f"/api/v1/projects/{pid}/listing")
+    assert await _wait_job(r.json()["id"]) == "done"
+    shoots = [c for c in svc.calls.values() if c["path"] == "/shoot"]
+    assert {c["width"] for c in shoots} == {3840}
+    assert sorted(c["camera"] for c in shoots if c.get("kind") == "exterior") == sorted(
+        v["camera"] for v in EXTERIORS
+    )
+    assert "context_url" not in next(c for c in svc.calls.values() if c["path"] == "/prepare")
+
+
+def test_the_editors_exterior_answer_is_checked() -> None:
+    assert parse_exteriors('{"keep": [2, 2, 9, 1], "why": "w"}', 3, 2, 4).keep == [2, 1]
+    assert parse_exteriors('{"keep": [3], "why": "w"}', 3, 2, 4).keep == [3, 1]  # padded by score
+    assert parse_exteriors('{"keep": [5, 4, 3, 2, 1], "why": "w"}', 5, 2, 4).keep == [5, 4, 3, 2]
+    with pytest.raises(LLMError, match="none of the 3"):
+        parse_exteriors('{"keep": [7], "why": "w"}', 3, 2, 4)
+
+
+def test_exterior_captions_follow_the_rooms_language() -> None:
+    assert language([n for _, n, _ in GILLE]) == "fr"
+    assert language(["Wohnzimmer", "Küche", "Bad"]) == "de"
+    assert language(["Living room", "Bedroom 1"]) == "en"
+    assert exterior_caption("south-west", "fr") == "Vue extérieure, côté sud-ouest"
+    assert exterior_caption("north", "de") == "Aussenansicht von Norden"
+    assert exterior_caption("east", "en") == "View from the east"

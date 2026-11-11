@@ -1,4 +1,4 @@
-"""Which rooms a listing set photographs, in which order, with which caption (#91)."""
+"""Which rooms a listing set photographs, in which order, with which caption (#91); the exterior views' captions (#93)."""
 
 from __future__ import annotations
 
@@ -128,3 +128,75 @@ def pick(rooms: list[dict[str, Any]]) -> list[Shot]:
                 )
             )
     return shots
+
+
+_FRENCH = re.compile(
+    r"\b(?:salon|séjour|sejour|chambre|cuisine|salle|bain|sdb|douche|cave|entrée|buanderie)\b",
+    re.IGNORECASE,
+)
+_GERMAN = re.compile(
+    r"\b(?:wohnen|wohnzimmer|zimmer|küche|kueche|bad|schlafen|keller|eingang|essen)\b",
+    re.IGNORECASE,
+)
+_SIDES = {
+    "fr": {
+        "north": "nord",
+        "north-east": "nord-est",
+        "east": "est",
+        "south-east": "sud-est",
+        "south": "sud",
+        "south-west": "sud-ouest",
+        "west": "ouest",
+        "north-west": "nord-ouest",
+    },
+    "de": {
+        "north": "Norden",
+        "north-east": "Nordosten",
+        "east": "Osten",
+        "south-east": "Südosten",
+        "south": "Süden",
+        "south-west": "Südwesten",
+        "west": "Westen",
+        "north-west": "Nordwesten",
+    },
+}
+
+
+def language(room_names: list[str]) -> str:
+    """The language the plans name their rooms in: fr, de or en (the captions follow it)."""
+    text = " ".join(room_names)
+    fr, de = len(_FRENCH.findall(text)), len(_GERMAN.findall(text))
+    if fr == de == 0:
+        return "en"
+    return "fr" if fr >= de else "de"
+
+
+def exterior_caption(side: str, lang: str) -> str:
+    """'View from the south-west', in the rooms' language."""
+    if lang == "fr":
+        return f"Vue extérieure, côté {_SIDES['fr'].get(side, side)}"
+    if lang == "de":
+        return f"Aussenansicht von {_SIDES['de'].get(side, side)}"
+    return f"View from the {side}"
+
+
+def exterior_shots(views: list[dict[str, Any]], keep: list[int], lang: str) -> list[Shot]:
+    """The set's exterior shots E1… from the kept viewpoints (numbered from 1 in `views`), in that order."""
+    out = []
+    for n, i in enumerate(keep, 1):
+        v = views[i - 1]
+        title = exterior_caption(str(v.get("side") or ""), lang)
+        out.append(
+            Shot(
+                key=f"E{n}",
+                unit=None,
+                room="exterior",
+                title=title,
+                use="exterior",
+                area=0.0,
+                caption=title,
+                camera=v["camera"],
+                views=[v["camera"]],
+            )
+        )
+    return out

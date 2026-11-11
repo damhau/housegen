@@ -1,4 +1,5 @@
-"""The picture editor (#92): which of a room's viewpoints the set keeps, from their previews."""
+"""The picture editor (#92): which of a room's viewpoints the set keeps, from their previews; which exterior views
+lead the set (#93)."""
 
 from __future__ import annotations
 
@@ -9,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
-from housegen.agent.prompts import LISTING_PICK_SYSTEM
+from housegen.agent.prompts import LISTING_EXTERIOR_PICK_SYSTEM, LISTING_PICK_SYSTEM
 from housegen.core.exceptions import LLMError
 from housegen.llm import Completion, ImagePart, Message, Provider
 
@@ -82,4 +83,61 @@ def parse_choice(
     if c.remove is not None and c.remove not in {p["id"] for p in previews[c.best - 1][1]}:
         logger.info("listing.pick.unknown_piece", extra={"piece": c.remove})
         c.remove = None
+    return c
+
+
+class ExteriorChoice(BaseModel):
+    keep: list[int] = Field(description="the kept viewpoints' numbers, the cover photo first")
+    why: str = Field(description="why these views in this order, one sentence")
+
+
+async def pick_exteriors(
+    provider: Provider,
+    model: str,
+    previews: list[tuple[Path, str]],
+    least: int,
+    most: int,
+    max_tokens: int,
+    effort: str | None = None,
+) -> tuple[ExteriorChoice, Completion]:
+    """Which of `previews` (each a picture and the side of the building it shows) lead the set, in order."""
+    if not previews:
+        raise LLMError("no preview to choose from")
+    parts: list[ImagePart | str] = [f"{len(previews)} viewpoints around the building."]
+    for i, (path, side) in enumerate(previews, 1):
+        parts.append(ImagePart.from_file(path, label=f"VIEWPOINT {i}"))
+        parts.append(f"Viewpoint {i} shows the {side} side.")
+    parts.append("Return the choice as JSON matching the schema.")
+    completion = await provider.complete(
+        model=model,
+        system=LISTING_EXTERIOR_PICK_SYSTEM.format(least=least, most=most),
+        messages=[Message.user(*parts)],
+        response_schema=ExteriorChoice.model_json_schema(),
+        max_tokens=max_tokens,
+        effort=effort,
+    )
+    return parse_exteriors(completion.message.text, len(previews), least, most), completion
+
+
+def parse_exteriors(text: str, n: int, least: int, most: int) -> ExteriorChoice:
+    """The editor's views, valid and distinct, at most `most`; padded in score order up to `least`."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0]
+    try:
+        c = ExteriorChoice.model_validate(json.loads(text))
+    except (json.JSONDecodeError, ValidationError) as e:
+        raise LLMError(f"the picture editor returned invalid JSON: {e}") from e
+    keep: list[int] = []
+    for i in c.keep:
+        if 1 <= i <= n and i not in keep:
+            keep.append(i)
+    if not keep:
+        raise LLMError(f"the picture editor kept none of the {n} exterior views")
+    for i in range(1, n + 1):
+        if len(keep) >= min(least, n):
+            break
+        if i not in keep:
+            keep.append(i)
+    c.keep = keep[:most]
     return c
