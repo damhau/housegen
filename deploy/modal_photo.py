@@ -1,10 +1,11 @@
 """The listing photo service on Modal (#91): a saved version's rooms and exteriors in Blender Cycles, one GPU per photo.
 
-`prepare` loads the version's scene page on a T4 (headless Chromium, as the render service draws), exports the house
-to GLB, imports it into Blender and scores the candidate cameras of every room; then it builds the house in its
-surroundings (the project's context files, fetched from the app) and scores the exterior viewpoints (#93). The .blend
-files are kept per version on the `housegen-photo` volume. `shoot` renders one photo from them on an RTX PRO 6000
-(the owner's choice, 2026-11-07).
+`prepare` reads a version's prepared house from the `housegen-photo` volume, else makes it in two steps (#95):
+`export` loads the scene page in headless Chromium on a GPU (T4, else L4, else A10G: the first one free) and writes
+the house as GLB; `blender` imports it on a CPU machine and, side by side, scores the candidate cameras of the rooms
+a set can use (#96, the app's rule) and builds the exteriors the set asked for (#97): the house in its surroundings
+(the project's context files, fetched from the app) or on its own plot. The .blend files are kept per version, the
+exterior builds side by side. `shoot` renders one photo from them on an RTX PRO 6000 (the owner's choice, 2026-11-07).
 The app calls `web`: POST /prepare and /shoot start a call and return its id, GET /calls/<id> is its result once done,
 so a photo of several minutes never has to fit in one HTTP request.
 
@@ -32,7 +33,13 @@ import modal
 ROOT = Path(__file__).resolve().parent.parent
 SPIKE = ROOT / "spikes" / "archviz"
 SHOOT_GPU = os.environ.get("PHOTO_GPU", "RTX-PRO-6000")
-PREPARE_GPU = "T4"
+# Chrome's export is the only step of a prepare that draws (about a minute): the first of these that is free. Waiting
+# for a T4 alone took 19 minutes once.
+EXPORT_GPU = ["T4", "L4", "A10G"]
+# Blender's import, room scoring and exterior build use the CPU only: 8 cores run the scoring and the surroundings
+# side by side in ~70 s on Montelly v14 (measured pinned to 8 cores, 2026-11-12); two .blend files in memory at once
+BLENDER_CPU, BLENDER_MEMORY = 8.0, 32768
+OUTSIDE = {"surroundings": "outside", "house": "outside-house"}  # photo/blender/main.py OUTSIDE
 CODE = "/root/photo"
 DATA = "/data"
 
@@ -81,64 +88,159 @@ def _run(args: list[str]) -> None:
 GPU_SCALEDOWN_S = 10
 
 
-@app.function(image=web_image, cpu=0.25, memory=512, timeout=3600, volumes={DATA: volume})
-def prepare(scene_url: str, key: str, context_url: str | None = None, site: list[float] | None = None) -> dict:
-    """The cached house of `key`, else `build`'s. A "Shoot again" finds it cached; reading it here keeps it from
-    waiting for a GPU, which Modal took up to 19 minutes to hand out."""
+def _cameras_name(score: dict | None) -> str:
+    """The rooms' cameras under a set's rule: every room in cameras.json, else one file per rule."""
+    import hashlib
     import json
 
+    if score is None:
+        return "cameras.json"
+    return f"cameras-{hashlib.sha1(json.dumps(score, sort_keys=True).encode()).hexdigest()[:8]}.json"
+
+
+def _cameras(d: Path, score: dict | None) -> Path | None:
+    """The cameras file that answers `score`: its own, or cameras.json, which scored every room."""
+    return next((d / n for n in (_cameras_name(score), "cameras.json") if (d / n).exists()), None)
+
+
+def _outside(d: Path, exteriors: str | None) -> tuple[str | None, bool]:
+    """The exterior build `exteriors` asks for (None for no exteriors) and whether the volume holds it."""
+    name = OUTSIDE.get(exteriors or "surroundings")
+    return name, bool(name) and (d / f"{name}.blend").exists() and (d / f"{name}.json").exists()
+
+
+def _ready(d: Path, score: dict | None, exteriors: str | None) -> dict | None:
+    import json
+
+    cams, (name, built) = _cameras(d, score), _outside(d, exteriors)
+    if cams is None or not (d / "house.blend").exists() or (name and not built):
+        return None
+    views = json.loads((d / f"{name}.json").read_text())["views"] if name else []
+    return {"rooms": json.loads(cams.read_text())["rooms"], "exteriors": views}
+
+
+@app.function(image=web_image, cpu=0.25, memory=512, timeout=3600, volumes={DATA: volume})
+def prepare(
+    scene_url: str,
+    key: str,
+    context_url: str | None = None,
+    site: list[float] | None = None,
+    exteriors: str | None = None,
+    score: dict | None = None,
+) -> dict:
+    """The prepared house of `key`: its rooms' cameras and the viewpoints of the exterior build `exteriors`
+    (surroundings | house | none; None: surroundings when `context_url` is given). From the volume when it holds
+    them; else `export` (once per version, on a GPU) and `blender` (what is missing, on the CPU). `score`
+    ({use: minimum area}) is the rule of the rooms a set can use: only those are scored."""
     t0 = time.time()
     volume.reload()
-    out = Path(DATA, "cache", key)
-    if (out / "cameras.json").exists() and (out / "house.blend").exists():
-        return {**json.loads((out / "cameras.json").read_text()), "cached": True, "seconds": round(time.time() - t0, 1)}
-    return build.remote(scene_url, key, context_url, site)
+    d = Path(DATA, "cache", key)
+    ready = _ready(d, score, exteriors)
+    if ready:
+        return {**ready, "cached": True, "seconds": round(time.time() - t0, 1)}
+    exported = None if (d / "house.blend").exists() else export.remote(scene_url, key)
+    built = blender.remote(key, context_url, site, exteriors, score)
+    return {
+        **built,
+        "export": exported,
+        "cached": False,
+        "seconds": {"export": exported["seconds"] if exported else 0.0, "blender": built.pop("seconds")},
+    }
 
 
-@app.function(image=image, gpu=PREPARE_GPU, cpu=4.0, memory=16384, timeout=1800, volumes=volumes,
+def _gpu(gl: str) -> str:
+    return next((g for g in EXPORT_GPU if g in gl), EXPORT_GPU[0])
+
+
+@app.function(image=image, gpu=EXPORT_GPU, cpu=4.0, memory=16384, timeout=1800, volumes=volumes,
               scaledown_window=GPU_SCALEDOWN_S)
-def build(scene_url: str, key: str, context_url: str | None = None, site: list[float] | None = None) -> dict:
-    """The version's house in Blender, its rooms' cameras and its exteriors', cached on the volume by `key`."""
+def export(scene_url: str, key: str) -> dict:
+    """The version's house as GLB and its rooms (export.py), onto the volume for `blender`."""
     import json
+    import shutil
     import subprocess
     import sys
 
     t0 = time.time()
-    volume.reload()
-    out = Path(DATA, "cache", key)
-    if (out / "cameras.json").exists() and (out / "house.blend").exists():
-        return {**json.loads((out / "cameras.json").read_text()), "cached": True, "seconds": round(time.time() - t0, 1)}
     tmp = Path("/tmp", key)
     p = subprocess.run([sys.executable, f"{CODE}/export.py", scene_url, str(tmp)], capture_output=True, text=True, check=False)
     if p.returncode:
         raise RuntimeError(f"export failed: {p.stderr[-2000:]}")
     exported = json.loads(p.stdout.strip().splitlines()[-1])
-    t1 = time.time()
+    out = Path(DATA, "cache", key, "export")
     out.mkdir(parents=True, exist_ok=True)
-    args = ["main.py", "prepare", str(tmp / "house.glb"), str(tmp / "rooms.json"), str(out)]
-    if context_url and _fetch_context(context_url, tmp / "context"):
-        args += ["--context", str(tmp / "context")]
-    if site:
-        args += ["--site", f"{site[0]},{site[1]}"]
-    _run(args)
-    page = {r["name"]: r for r in json.loads((tmp / "rooms.json").read_text())}
-    cams = json.loads((out / "cameras.json").read_text())
-    for r in cams["rooms"]:  # the page's own figure, the one its SIA 416 report lists
-        if page.get(r["name"], {}).get("area"):
-            r["area"] = page[r["name"]]["area"]
-    (out / "cameras.json").write_text(json.dumps(cams, ensure_ascii=False))
-    (out / "rooms.json").write_text((tmp / "rooms.json").read_text())
+    for name in ("house.glb", "rooms.json"):
+        shutil.copyfile(tmp / name, out / name)
     volume.commit()
-    return {
-        **cams,
-        "export": exported,
-        "cached": False,
-        "seconds": {"export": round(t1 - t0, 1), "blender": round(time.time() - t1, 1)},
-    }
+    return {**exported, "gpu": _gpu(str(exported.get("gl") or "")), "seconds": round(time.time() - t0, 1)}
 
 
-def _fetch_context(url: str, to: Path) -> bool:
-    """The project's surroundings (context.json and the files it names) into `to`; False when it has none."""
+@app.function(image=image, cpu=BLENDER_CPU, memory=BLENDER_MEMORY, timeout=1800, volumes=volumes)
+def blender(
+    key: str,
+    context_url: str | None = None,
+    site: list[float] | None = None,
+    exteriors: str | None = None,
+    score: dict | None = None,
+) -> dict:
+    """What `prepare` found missing: house.blend from the export, the rooms' cameras under `score`, the exterior
+    build. The scoring and the exterior build run side by side: each opens house.blend and writes its own files."""
+    import json
+    import shutil
+    from concurrent.futures import ThreadPoolExecutor
+
+    t0 = time.time()
+    volume.reload()
+    d = Path(DATA, "cache", key)
+    phases: dict[str, float] = {}
+    if not (d / "house.blend").exists():
+        glb = d / "export" / "house.glb"
+        if not glb.exists():
+            raise RuntimeError(f"version {key} is not exported")
+        _run(["main.py", "import", str(glb), str(d)])
+        shutil.copyfile(d / "export" / "rooms.json", d / "rooms.json")
+        phases["import"] = round(time.time() - t0, 1)
+    tmp = Path("/tmp", key)
+    tmp.mkdir(parents=True, exist_ok=True)
+    steps: dict[str, list[str]] = {}
+    if _cameras(d, score) is None:
+        steps["rooms"] = ["main.py", "rooms", str(d / "house.blend"), str(d / "rooms.json"), str(tmp / "cameras.json")]
+        if score is not None:
+            steps["rooms"] += ["--score", json.dumps(score)]
+    name, built = _outside(d, exteriors)
+    if name and not built:
+        steps["outside"] = ["main.py", "outside", str(d / "house.blend"), str(d), "--exteriors", exteriors or "surroundings"]
+        # house alone needs only the context's alignment (north); the surroundings need its files
+        if context_url and _fetch_context(context_url, tmp / "context", files=exteriors != "house"):
+            steps["outside"] += ["--context", str(tmp / "context")]
+        if site:
+            steps["outside"] += ["--site", f"{site[0]},{site[1]}"]
+
+    def step(item: tuple[str, list[str]]) -> None:
+        t = time.time()
+        _run(item[1])
+        phases[item[0]] = round(time.time() - t, 1)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        list(pool.map(step, steps.items()))
+    if "rooms" in steps:
+        page = {r["name"]: r for r in json.loads((d / "rooms.json").read_text())}
+        cams = json.loads((tmp / "cameras.json").read_text())
+        for r in cams["rooms"]:  # the page's own figure, the one its SIA 416 report lists
+            if page.get(r["name"], {}).get("area"):
+                r["area"] = page[r["name"]]["area"]
+        (d / _cameras_name(score)).write_text(json.dumps(cams, ensure_ascii=False))
+    shutil.rmtree(d / "export", ignore_errors=True)  # house.blend holds it now
+    volume.commit()
+    ready = _ready(d, score, exteriors)
+    if ready is None:
+        raise RuntimeError(f"version {key}: the prepare left files missing")
+    return {**ready, "phases": phases, "seconds": round(time.time() - t0, 1)}
+
+
+def _fetch_context(url: str, to: Path, files: bool = True) -> bool:
+    """The project's surroundings (context.json and, with `files`, the files it names) into `to`; False when it has
+    none."""
     import json
     import urllib.error
     import urllib.request
@@ -148,11 +250,11 @@ def _fetch_context(url: str, to: Path) -> bool:
         meta = json.loads(urllib.request.urlopen(base + "context.json", timeout=60).read())
     except (urllib.error.URLError, ValueError):
         return False
-    files = [meta[k]["file"] for k in ("terrain", "photo", "buildings", "trees", "cover", "far") if meta.get(k)]
-    files += [p["file"] for p in (meta.get("far") or {}).get("photos", [])]
+    names = [meta[k]["file"] for k in ("terrain", "photo", "buildings", "trees", "cover", "far") if meta.get(k)]
+    names += [p["file"] for p in (meta.get("far") or {}).get("photos", [])]
     to.mkdir(parents=True, exist_ok=True)
     (to / "context.json").write_text(json.dumps(meta))
-    for name in files:
+    for name in names if files else []:
         (to / name).write_bytes(urllib.request.urlopen(base + name, timeout=120).read())
     return True
 
@@ -170,17 +272,18 @@ def shoot(
     remove: list[str] | None = None,
     kind: str | None = None,
     staging: str | None = None,
+    exterior: str | None = None,
 ) -> dict:
     """One photo from the prepared version: the JPEG bytes and what the pipeline decided. `sun` ([azimuth, elevation])
     and `room_lamps` repeat a preview's light instead of searching it again; `remove` hides those dressing pieces;
-    `kind` "exterior" shoots the house in its surroundings (outside.blend); `staging` (furnished | light | empty)
-    is how much of the furnishing a room shows (#94)."""
+    `kind` "exterior" shoots the house from outside, in the build `exterior` names (surroundings | house, #97);
+    `staging` (furnished | light | empty) is how much of the furnishing a room shows (#94)."""
     import json
 
     t0 = time.time()
     volume.reload()
     d = Path(DATA, "cache", key)
-    blend = d / ("outside.blend" if kind == "exterior" else "house.blend")
+    blend = d / (f"{OUTSIDE.get(exterior or 'surroundings', 'outside')}.blend" if kind == "exterior" else "house.blend")
     if not blend.exists():
         raise RuntimeError(f"version {key} is not prepared")
     out = Path("/tmp", f"{key}-{int(t0 * 1000)}.jpg")
@@ -217,6 +320,8 @@ def web():
         key: str
         context_url: str | None = None
         site: list[float] | None = None
+        exteriors: str | None = None
+        score: dict[str, float] | None = None
 
     class ShootIn(BaseModel):
         key: str
@@ -229,20 +334,22 @@ def web():
         remove: list[str] = []
         kind: str | None = None
         staging: str | None = None
+        exterior: str | None = None
 
     @api.get("/health")
     def health() -> dict:
-        return {"ok": True, "shoot_gpu": SHOOT_GPU, "prepare_gpu": PREPARE_GPU}
+        return {"ok": True, "shoot_gpu": SHOOT_GPU, "export_gpu": EXPORT_GPU, "blender_cpu": BLENDER_CPU}
 
     @api.post("/prepare", dependencies=[Depends(auth)])
     def start_prepare(body: PrepareIn) -> dict:
-        return {"call_id": prepare.spawn(body.scene_url, body.key, body.context_url, body.site).object_id}
+        call = prepare.spawn(body.scene_url, body.key, body.context_url, body.site, body.exteriors, body.score)
+        return {"call_id": call.object_id}
 
     @api.post("/shoot", dependencies=[Depends(auth)])
     def start_shoot(body: ShootIn) -> dict:
         call = shoot.spawn(
             body.key, body.camera, body.width, body.height, body.samples, body.sun, body.room_lamps, body.remove,
-            body.kind, body.staging,
+            body.kind, body.staging, body.exterior,
         )
         return {"call_id": call.object_id}
 

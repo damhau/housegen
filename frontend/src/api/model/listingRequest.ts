@@ -6,6 +6,7 @@
  */
 import type { ListingRequestVersion } from './listingRequestVersion';
 import type { ListingRequestStaging } from './listingRequestStaging';
+import type { ListingRequestExteriors } from './listingRequestExteriors';
 
 export interface ListingRequest {
   /** the saved version to photograph (default: the current one) */
@@ -14,4 +15,6 @@ export interface ListingRequest {
   reuse?: boolean;
   /** furnished (dressed and staged), light (the furniture without the decor) or empty (the architecture, its finishes and light); default: the set's own when shot again, else furnished */
   staging?: ListingRequestStaging;
+  /** surroundings (the house in the project's surroundings), house (alone on its plot) or none (interior photos only); default: the set's own when shot again, else surroundings when the project has them, house without */
+  exteriors?: ListingRequestExteriors;
 }

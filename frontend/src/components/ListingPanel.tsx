@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Camera, ChevronLeft, ChevronRight, Download, ImageOff, Loader2, RefreshCw, Square, X } from "lucide-react"
 import { getGetListingQueryKey, useGetListing, useStartListing } from "@/api/endpoints/listing/listing"
 import { getListJobsQueryKey, useCancelJob } from "@/api/endpoints/projects/projects"
-import { ListingOutStaging, type JobOut, type ListingOut, type ListingPhotoOut } from "@/api/model"
+import { ListingOutExteriors, ListingOutStaging, type JobOut, type ListingOut, type ListingPhotoOut } from "@/api/model"
 import { fmtUsd } from "@/components/RunSummaryCard"
 import { Button } from "@/components/ui/button"
 import { errorMessage, relTime } from "@/lib/utils"
@@ -26,6 +26,35 @@ const STAGINGS: { value: ListingOutStaging; label: string; title: string }[] = [
   { value: "light", label: "Light", title: "The furniture without the decor: no accessories, art or plants" },
   { value: "empty", label: "Empty", title: "The architecture alone: finishes and light, the fitted kitchen and bathrooms, the fixed lights" },
 ]
+
+/** The set's photos from outside (#97). */
+const EXTERIORS: { value: ListingOutExteriors; label: string; title: string }[] = [
+  { value: "surroundings", label: "Surroundings", title: "The house in its surroundings: the surveyed ground, the neighbours, the trees, the land to the horizon" },
+  { value: "house", label: "House alone", title: "The house alone on its plot, with its own garden and no neighbours" },
+  { value: "none", label: "No exteriors", title: "Interior photos only" },
+]
+
+type Option<T> = { value: T; label: string; title: string; disabled?: boolean }
+
+function Choice<T extends string>({ label, options, value, onChange }: { label: string; options: Option<T>[]; value: T; onChange: (v: T) => void }) {
+  return (
+    <div role="radiogroup" aria-label={label} className="flex items-center rounded-md border p-0.5 text-xs">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          role="radio"
+          aria-checked={value === o.value}
+          title={o.title}
+          disabled={o.disabled}
+          onClick={() => onChange(o.value)}
+          className={`rounded px-2 py-0.5 hover:bg-accent disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${value === o.value ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 /** The photos grouped by unit, in listing order; the exteriors lead as the building. */
 function byUnit(photos: ListingPhotoOut[]): [string | null, ListingPhotoOut[]][] {
@@ -67,6 +96,7 @@ export function ListingPanel({
   const cancel = useCancelJob()
   const [open, setOpen] = useState<number | null>(null)
   const [picked, setPicked] = useState<ListingOutStaging | null>(null)
+  const [pickedOutside, setPickedOutside] = useState<ListingOutExteriors | null>(null)
 
   const jobId = job?.id ?? null
   useEffect(() => {
@@ -80,7 +110,7 @@ export function ListingPanel({
   }, [jobId, projectId, qc])
 
   async function shoot(reuse: boolean) {
-    await start.mutateAsync({ projectId, data: { version, reuse, staging } })
+    await start.mutateAsync({ projectId, data: { version, reuse, staging, exteriors } })
     setShown(version)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getGetListingQueryKey(projectId) })
@@ -103,6 +133,10 @@ export function ListingPanel({
   const viewedHasSet = data?.sets.includes(version) ?? false
   // a set shot again keeps its staging unless another is picked
   const staging = picked ?? set?.staging ?? ListingOutStaging.furnished
+  // and its exteriors; the surroundings need the project's (the house alone without)
+  const surroundings = data?.surroundings ?? false
+  const wanted = pickedOutside ?? set?.exteriors ?? ListingOutExteriors.surroundings
+  const exteriors = wanted === ListingOutExteriors.surroundings && !surroundings ? ListingOutExteriors.house : wanted
 
   if (listing.isPending) return <div className="p-3 text-sm text-muted-foreground">Loading…</div>
   if (listing.error) return <div className="p-3 text-sm text-destructive">{errorMessage(listing.error)}</div>
@@ -110,11 +144,11 @@ export function ListingPanel({
   return (
     <div className="space-y-3 p-3 text-sm">
       <p className="text-xs text-muted-foreground">
-        Photos for a listing: the building from outside in its surroundings, then each flat's living room, dining room or
-        kitchen, bedrooms and bathroom, rendered in Blender Cycles with the project's finishes. The app previews several
-        viewpoints of the building and of each room; a picture editor (the project's critic model) keeps the best, and those
-        are shot at full size. The staging sets how much of the furnishing the rooms show: furnished, light (no decor) or
-        empty (the architecture and its finishes).
+        Photos for a listing: the building from outside, then each flat's living room, dining room or kitchen, bedrooms and
+        bathroom, rendered in Blender Cycles with the project's finishes. The app previews several viewpoints of the building
+        and of each room; a picture editor (the project's critic model) keeps the best, and those are shot at full size. The
+        staging sets how much of the furnishing the rooms show: furnished, light (no decor) or empty (the architecture and its
+        finishes). The exteriors show the house in its surroundings, alone on its plot, or not at all.
       </p>
       {!data?.available && <p className="text-xs text-amber-700 dark:text-amber-300">No photo service is configured on this server.</p>}
       <div className="flex flex-wrap items-center gap-2">
@@ -134,20 +168,19 @@ export function ListingPanel({
           </Button>
         )}
         {!job && (
-          <div role="radiogroup" aria-label="Staging" className="flex items-center rounded-md border p-0.5 text-xs">
-            {STAGINGS.map((o) => (
-              <button
-                key={o.value}
-                role="radio"
-                aria-checked={staging === o.value}
-                title={o.title}
-                onClick={() => setPicked(o.value)}
-                className={`rounded px-2 py-0.5 hover:bg-accent ${staging === o.value ? "bg-accent text-accent-foreground" : "text-muted-foreground"}`}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+          <>
+            <Choice label="Staging" options={STAGINGS} value={staging} onChange={setPicked} />
+            <Choice
+              label="Exteriors"
+              options={EXTERIORS.map((o) =>
+                o.value === ListingOutExteriors.surroundings && !surroundings
+                  ? { ...o, disabled: true, title: "This project has no surroundings" }
+                  : o,
+              )}
+              value={exteriors}
+              onChange={setPickedOutside}
+            />
+          </>
         )}
         {job && (
           <>
@@ -199,7 +232,8 @@ function SetView({ set, currentVersion, live, onOpen }: { set: ListingOut; curre
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
-        v{set.version} · {STAGINGS.find((o) => o.value === (set.staging ?? "furnished"))?.label} · {ready.length} photo
+        v{set.version} · {STAGINGS.find((o) => o.value === (set.staging ?? "furnished"))?.label} ·{" "}
+        {EXTERIORS.find((o) => o.value === (set.exteriors ?? "surroundings"))?.label} · {ready.length} photo
         {ready.length === 1 ? "" : "s"} · {set.width}×{set.height}
         {set.created_at && ` · ${relTime(set.created_at)}`} · ≈ {fmtUsd(set.cost_usd)}
       </p>

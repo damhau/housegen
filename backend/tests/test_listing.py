@@ -22,7 +22,14 @@ from housegen.geo import context as geo_context
 from housegen.listing import job as listing_job
 from housegen.listing.client import PhotoClient, PhotoServiceError
 from housegen.listing.pick import parse_choice, parse_exteriors
-from housegen.listing.shots import exterior_caption, language, pick, room_name_parts, unit_of
+from housegen.listing.shots import (
+    MIN_AREA,
+    exterior_caption,
+    language,
+    pick,
+    room_name_parts,
+    unit_of,
+)
 from housegen.llm import Completion, ImagePart, Message, Usage
 from housegen.projects import crud
 from housegen.projects.storage import ProjectStorage
@@ -182,7 +189,13 @@ class FakeService:
             return httpx.Response(200, json={"status": "running"})
         call = self.calls[cid]
         if call["path"] == "/prepare":
-            result = {"rooms": self.rooms, "exteriors": self.exteriors, "seconds": 60}
+            result = {
+                "rooms": self.rooms,
+                "exteriors": self.exteriors,
+                "export": {"gpu": "L4"},
+                "seconds": {"export": 60, "blender": 120},
+                "cached": False,
+            }
             return httpx.Response(200, json={"status": "done", "result": result})
         if call["camera"] in self.fail:
             return httpx.Response(200, json={"status": "failed", "error": "CUDA out of memory"})
@@ -526,10 +539,13 @@ async def test_the_building_from_outside_leads_the_set(
     prep = next(c for c in svc.calls.values() if c["path"] == "/prepare")
     assert prep["context_url"].endswith(f"/scenes/{pid}/context/")
     assert prep["site"] == pytest.approx([46.5618, 6.6243], abs=1e-3)
+    assert prep["exteriors"] == "surroundings"
+    assert prep["score"] == MIN_AREA  # only the rooms a set can use are scored (#96)
     shoots = [c for c in svc.calls.values() if c["path"] == "/shoot"]
     previews = [c for c in shoots if c["width"] == 1280]
     assert sorted(c["camera"] for c in previews) == sorted(v["camera"] for v in EXTERIORS)
     assert {c["kind"] for c in previews} == {"exterior"}
+    assert {c.get("exterior") for c in shoots} == {"surroundings", None}  # None: the rooms
     outside = [c for c in shoots if c["width"] == 3840 and c.get("kind") == "exterior"]
     assert sorted((c["camera"], tuple(c["sun"])) for c in outside) == sorted(
         (EXTERIORS[i]["camera"], tuple(EXTERIORS[i]["sun"])) for i in (2, 0)
@@ -538,7 +554,10 @@ async def test_the_building_from_outside_leads_the_set(
         len(editor.calls) == 1
     )  # the rooms have one viewpoint each: only the exteriors are chosen
 
-    ls = (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()["listing"]
+    got = (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()
+    assert got["surroundings"] is True
+    ls = got["listing"]
+    assert ls["exteriors"] == "surroundings"
     assert [p["caption"] for p in ls["photos"]][:3] == [
         "Vue extérieure, côté sud-est",
         "Vue extérieure, côté sud-ouest",
@@ -583,7 +602,65 @@ async def test_without_the_editor_the_best_scored_exteriors_lead(
     assert sorted(c["camera"] for c in shoots if c.get("kind") == "exterior") == sorted(
         v["camera"] for v in EXTERIORS
     )
-    assert "context_url" not in next(c for c in svc.calls.values() if c["path"] == "/prepare")
+    prep = next(c for c in svc.calls.values() if c["path"] == "/prepare")
+    assert "context_url" not in prep
+    # no surroundings: the house alone on its plot
+    assert prep["exteriors"] == "house"
+    assert {c["exterior"] for c in shoots if c.get("kind") == "exterior"} == {"house"}
+    got = (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()
+    assert (got["surroundings"], got["listing"]["exteriors"]) == (False, "house")
+
+
+async def test_an_exteriors_choice_is_kept_and_another_chooses_the_building_again(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_rooms(MONTELLY), exteriors=EXTERIORS)
+    _fake_service(monkeypatch, svc)
+    editor = FakeEditor(json.dumps({"keep": [1, 2], "why": "w"}))
+    monkeypatch.setattr(listing_job, "get_provider", lambda name=None: editor)
+    pid = await _furnished_project()
+    st = ProjectStorage(pid)
+    geo_context.context_dir(st.root).mkdir(parents=True)
+    geo_context.save(st.root, {"version": 1, "place": {"e": 2537559, "n": 1157053}})
+
+    async def shoot(body: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        before = len(svc.calls)
+        r = await app_client.post(f"/api/v1/projects/{pid}/listing", json=body)
+        assert await _wait_job(r.json()["id"]) == "done"
+        calls = list(svc.calls.values())[before:]
+        return calls[0], [c for c in calls if c["path"] == "/shoot" and c.get("kind") == "exterior"]
+
+    await shoot({})
+    assert len(editor.calls) == 1
+    prep, outside = await shoot({"reuse": True, "exteriors": "house"})
+    assert prep["exteriors"] == "house"
+    assert prep["context_url"]  # the house alone still faces north as the plot does
+    assert {c["width"] for c in outside} == {1280, 3840}  # previewed and chosen again
+    assert {c["exterior"] for c in outside} == {"house"}
+    assert len(editor.calls) == 2
+    prep, outside = await shoot({"reuse": True})
+    assert prep["exteriors"] == "house"
+    assert {c["width"] for c in outside} == {3840}  # the same choice: its cameras kept
+    assert len(editor.calls) == 2
+    prep, outside = await shoot({"reuse": True, "exteriors": "none"})
+    assert (prep["exteriors"], "context_url" in prep, outside) == ("none", False, [])
+    ls = (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()["listing"]
+    assert ls["exteriors"] == "none"
+    assert ls["status"] == "done"
+    assert all(p["use"] != "exterior" for p in ls["photos"])
+    assert "E" not in _set_doc(pid)["previews"]
+    r = await app_client.post(f"/api/v1/projects/{pid}/listing", json={"exteriors": "garden"})
+    assert r.status_code == 422
+
+
+def test_a_prepare_costs_its_gpu_minute_and_its_cpu_minutes() -> None:
+    p = listing_job.PRICE_PER_S
+    got = listing_job._prepare_cost(
+        {"export": {"gpu": "L4"}, "seconds": {"export": 60, "blender": 150}, "cached": False}
+    )
+    assert got == pytest.approx(60 * p["L4"] + 150 * p["CPU"], abs=1e-3)
+    assert p["CPU"] < p["T4"]
+    assert listing_job._prepare_cost({"cached": True, "seconds": 0.4}) == 0.0
 
 
 def test_the_editors_exterior_answer_is_checked() -> None:

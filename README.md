@@ -115,14 +115,18 @@ bedrooms, in that order, captioned with the room's area ("Salon, 19 m²"). A `li
 service, `deploy/modal_photo.py` on Modal:
 
 1. `prepare` returns the version's house from the volume's cache when it has it (a "Shoot again" waits for no GPU);
-   otherwise `build` (a T4) loads the version's scene page headless (`photo/export.py`), exports the house to GLB,
-   imports it into Blender and finds up to six distinct viewpoints per room (its corners, along its long axis, from
-   its doorways; a lower, wider lens in a small room). Door leaves are left out of the scoring: the shoot swings a
-   leaf that stands in the frame out of it. Then `photo/blender/outside.py` builds the house in its
-   surroundings (the project's context files, fetched from the app: the land, the aerial photo, the
-   neighbouring buildings, the lidar trees, the far landscape) and scores up to six exterior viewpoints around
-   it, each with a sun at a real date and hour at the plot that lights the façades in view. The `.blend` files
-   are cached per version on the `housegen-photo` volume.
+   otherwise `export` (a T4, else an L4 or an A10G: the first one free) loads the version's scene page headless
+   (`photo/export.py`) and exports the house to GLB, about a minute, and `blender` (8 CPU cores, no GPU, #95)
+   imports it. Two steps then run side by side on that machine. The first finds up to six distinct viewpoints in
+   each room a set can use (a living room, dining room, kitchen, bedroom or bathroom above its `MIN_AREA` in
+   `listing/shots.py`, #96): its corners, along its long axis, from its doorways, with a lower, wider lens in a
+   small room. Door leaves are left out of the scoring: the shoot swings a leaf that stands in the frame out of it.
+   The second, `photo/blender/outside.py`, builds the set's exteriors (#97): the house in its surroundings (the
+   project's context files, fetched from the app: the land, the aerial photo, the neighbouring buildings, the lidar
+   trees, the far landscape) or the house alone on its plot, and scores up to six exterior viewpoints around it,
+   each with a sun at a real date and hour at the plot that lights the façades in view. The `.blend` files are
+   cached per version on the `housegen-photo` volume, the two exterior builds side by side: switching a set's
+   exteriors builds only the missing one.
 2. `shoot` (an RTX PRO 6000, one container per photo, `LISTING_PARALLEL` at a time) renders one room in Cycles
    with `photo/blender/main.py shoot`. The pipeline keeps the scene's finishes (a finish's scan at full
    resolution, its colour kept) and adds the staging: decor, art, objects. The light is a listing
@@ -131,8 +135,10 @@ service, `deploy/modal_photo.py` on Modal:
 
 Each exterior viewpoint is previewed, and one vision call keeps two to `LISTING_EXTERIOR_MAX` of them in listing
 order, the cover photo first ("Vue extérieure, côté sud-ouest", in the language of the room names). Without an
-answer, the three best-scored viewpoints lead the set. A project without surroundings is shot on the builder's
-own ground under a Swiss sun.
+answer, the three best-scored viewpoints lead the set. The **Exteriors** choice next to the staging picks them: the
+house in its surroundings (the default when the project has them), the house alone on its plot (the default
+without, under the plot's sun, or a Swiss one), or no exteriors at all. A set shot again keeps its choice; another
+choice previews and picks the building's views again.
 
 A room with several viewpoints is previewed from each of them, fully dressed and lit (1280 px, 64 samples). One
 vision call per room (the project's critic model and effort, either provider) picks the viewpoint an agency would

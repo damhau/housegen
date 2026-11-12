@@ -106,14 +106,22 @@ class PhotoClient:
         context_url: str | None = None,
         site: tuple[float, float] | None = None,
         timeout_s: float = 1800.0,
+        exteriors: str | None = None,
+        score: dict[str, float] | None = None,
     ) -> dict[str, Any]:
         """The prepared version: its rooms' viewpoints and its exteriors' (#93). `context_url`: the project's
-        surroundings (a folder with context.json); `site`: the plot's latitude and longitude, for the sun."""
+        surroundings (a folder with context.json); `site`: the plot's latitude and longitude, for the sun;
+        `exteriors`: which exterior build (surroundings | house | none, #97); `score`: {use: minimum area}, the
+        rooms a set can use, the only ones whose viewpoints are scored (#96)."""
         body: dict[str, Any] = {"scene_url": scene_url, "key": key}
         if context_url:
             body["context_url"] = context_url
         if site:
             body["site"] = list(site)
+        if exteriors:
+            body["exteriors"] = exteriors
+        if score is not None:
+            body["score"] = score
         call = await self.start("/prepare", body)
         return await self.wait(call, timeout_s)
 
@@ -130,10 +138,12 @@ class PhotoClient:
         remove: list[str] | None = None,
         kind: str | None = None,
         staging: str | None = None,
+        exterior: str | None = None,
     ) -> tuple[bytes, dict[str, Any]]:
         """The photo's JPEG and what the service reports with it (meta, gpu, seconds). `sun` and `room_lamps`
         repeat a preview's light; `remove` hides those dressing pieces; `kind` "exterior" shoots the house from
-        outside (#93); `staging` is how much of the furnishing a room shows (#94)."""
+        outside (#93), in the exterior build `exterior` (surroundings | house, #97); `staging` is how much of the
+        furnishing a room shows (#94)."""
         body: dict[str, Any] = {
             "key": key,
             "camera": camera,
@@ -149,6 +159,8 @@ class PhotoClient:
             body["remove"] = remove
         if kind:
             body["kind"] = kind
+        if kind == "exterior" and exterior:
+            body["exterior"] = exterior
         if staging and staging != "furnished":
             body["staging"] = staging
         call = await self.start("/shoot", body)

@@ -28,8 +28,9 @@ kit/       housekit: runtime.js (scene boot, views, effects, headless hooks), ho
            template/ (starting scene), versions/<name>/ (renderer snapshots; index.json names the one PINNED for the
            build path). three.js vendored via npm in kit/node_modules.
 photo/     listing photos on Modal: export.py (scene page → GLB, Python 3.11 + Playwright) and blender/ (the Cycles
-           pipeline ported from spikes/archviz: main.py prepare|shoot). Not part of the backend's gates; it runs with
-           bpy==5.0.1 (Python 3.11 only). Changes under photo/ need `uvx modal deploy deploy/modal_photo.py`.
+           pipeline ported from spikes/archviz: main.py import|rooms|outside|shoot, `prepare` = the first three). Not
+           part of the backend's gates; it runs with bpy==5.0.1 (Python 3.11 only). Changes under photo/ need
+           `uvx modal deploy deploy/modal_photo.py`.
 deploy/    k8s.yaml, modal_render.py (GPU render service), modal_photo.py (listing photo service). Root Dockerfile =
            single image, GHCR workflow on v* tags.
 ```

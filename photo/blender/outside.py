@@ -2,7 +2,8 @@
 
 At prepare, `build` turns the imported house into outside.blend: the project's surroundings when it has them (the
 surveyed ground under the aerial photo, the neighbours, the land to the horizon; kit/context.js's data and frame),
-the hedges' cores merged into one mass; `viewpoints` scores cameras around the house by ray casts and gives each a
+else outside-house.blend, the house alone (#97) with a meadow to the horizon beyond its plot (the viewer's presentation
+ground); the hedges' cores merged into one mass; `viewpoints` scores cameras around the house by ray casts and gives each a
 sun from a real date and hour at the site. At shoot, `run` adds what the export cannot carry (the hedges' leaves, the
 trees, grass near the camera: real CC0 plants instanced by geometry nodes) and renders one photo.
 """
@@ -639,6 +640,124 @@ def far_land(scene, ctx, meta, place, R):
     scene.collection.objects.link(bpy.data.objects.new("far", me))
 
 
+# kit/runtime.js presentationGround: the ground's height followed past the outline, then eased to one far height;
+# the lawn's colour darkened and warmed into the meadow's over TINT_M (PRESENTATION_LOOK.meadow 0.78, warmed)
+FOLLOW, EASE, TINT_M, INSET = 40.0, 80.0, 60.0, 0.1
+MEADOW_TINT = (0.78, 0.733, 0.624)
+MEADOW_REACH = 50000.0  # half the sheet: the haze has taken the land long before
+# far_land's haze runs over 25 km of real relief; a flat meadow under it kept its green to a sharp horizon (Montelly,
+# 2026-11-12): over a few km it fades into the sky as the viewer's fog does
+MEADOW_HAZE_M = 2500.0
+
+
+def meadow(scene):
+    """The land beyond the builder's ground when there are no surroundings (#97): a meadow to the horizon, as the
+    viewer's presentation look draws it, so that the plot never ends in the sky."""
+    heights = Heights(scene)
+    terrains = [o for o in scene.objects if o.get("kind") == "terrain" and o.type == "MESH" and not o.hide_render]
+    if heights.bvh is None or not terrains:
+        return
+    corners = [o.matrix_world @ Vector(c) for o in terrains for c in o.bound_box]
+    lo = Vector((min(c.x for c in corners), min(c.y for c in corners)))
+    hi = Vector((max(c.x for c in corners), max(c.y for c in corners)))
+
+    def lines(a, b):
+        band = FOLLOW + EASE
+        out = {a - band + 2.0 * k for k in range(int((b - a + 2 * band) / 2.0) + 1)}
+        for d in (30, 80, 180, 350, 600, 900, 2000, 5000, 12000, 25000):
+            out |= {a - band - d, b + band + d}
+        out |= {a - band - MEADOW_REACH, b + band + MEADOW_REACH}
+        return sorted(out)
+
+    xs, ys = lines(lo.x, hi.x), lines(lo.y, hi.y)
+    nx = len(xs)
+    samples = [heights(x, y) for y in ys for x in xs]
+    band = [h for h, edge, on in samples if not on and abs(edge - FOLLOW) <= 2.0]
+    far_z = sum(band) / len(band) if band else 0.0
+    verts, edge_at = [], []
+    for (h, edge, on), (x, y) in zip(samples, ((x, y) for y in ys for x in xs), strict=True):
+        if on:
+            z, edge = h - INSET, 0.0
+        else:
+            t = smoothstep(edge, FOLLOW, FOLLOW + EASE)
+            z = h * (1 - t) + far_z * t
+        verts.append((x, y, z))
+        edge_at.append(edge)
+    faces, soft = [], []
+    for j in range(len(ys) - 1):
+        for i in range(nx - 1):
+            quad = (j * nx + i, j * nx + i + 1, (j + 1) * nx + i + 1, (j + 1) * nx + i)
+            if all(samples[k][2] for k in quad):  # under the builder's ground: a pool or a sunken terrace stays open
+                continue
+            faces.append(quad)
+            soft.append(max(edge_at[k] for k in quad) < FOLLOW)
+    me = bpy.data.meshes.new("real-ground")
+    me.from_pydata(verts, [], faces)
+    me.attributes.new("edge", "FLOAT", "POINT").data.foreach_set("value", edge_at)
+    me.attributes.new("soft", "INT", "FACE").data.foreach_set("value", [int(x) for x in soft])
+    me.materials.append(meadow_material())
+    scene.collection.objects.link(bpy.data.objects.new("real-ground", me))
+    log(f"outside: meadow {len(faces)} cells, far height {far_z:.2f} m")
+
+
+def meadow_material():
+    m = bpy.data.materials.new("meadow")
+    nt = m.node_tree
+    p = nt.nodes["Principled BSDF"]
+    p.inputs["Roughness"].default_value = 0.95
+    p.inputs["Specular IOR Level"].default_value = 0.05  # lawn_material's: no pale blue sheen at a grazing angle
+    coords = nt.nodes.new("ShaderNodeTexCoord")
+    noise = nt.nodes.new("ShaderNodeTexNoise")
+    noise.inputs["Scale"].default_value = 0.35
+    nt.links.new(coords.outputs["Object"], noise.inputs["Vector"])
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].color = (0.05, 0.09, 0.025, 1)
+    ramp.color_ramp.elements[1].color = (0.11, 0.15, 0.04, 1)
+    nt.links.new(noise.outputs["Fac"], ramp.inputs["Fac"])
+    edge = nt.nodes.new("ShaderNodeAttribute")
+    edge.attribute_name = "edge"
+    to_meadow = nt.nodes.new("ShaderNodeMapRange")
+    to_meadow.interpolation_type = "SMOOTHSTEP"
+    to_meadow.inputs["From Max"].default_value = TINT_M
+    nt.links.new(edge.outputs["Fac"], to_meadow.inputs["Value"])
+    tint = nt.nodes.new("ShaderNodeMix")
+    tint.data_type = "RGBA"
+    tint.inputs["A"].default_value = (1.0, 1.0, 1.0, 1)
+    tint.inputs["B"].default_value = (*MEADOW_TINT, 1)
+    nt.links.new(to_meadow.outputs[0], tint.inputs["Factor"])
+    tinted = nt.nodes.new("ShaderNodeMix")
+    tinted.data_type = "RGBA"
+    tinted.blend_type = "MULTIPLY"
+    tinted.inputs["Factor"].default_value = 1.0
+    nt.links.new(ramp.outputs["Color"], tinted.inputs["A"])
+    nt.links.new(tint.outputs["Result"], tinted.inputs["B"])
+    # far_land's aerial haze, closer: the land's colour gives way to the sky's blue with distance
+    dist = nt.nodes.new("ShaderNodeMath")
+    dist.operation = "MULTIPLY"
+    nt.links.new(nt.nodes.new("ShaderNodeCameraData").outputs["View Distance"], dist.inputs[0])
+    dist.inputs[1].default_value = -1 / MEADOW_HAZE_M
+    ex = nt.nodes.new("ShaderNodeMath")
+    ex.operation = "EXPONENT"
+    nt.links.new(dist.outputs[0], ex.inputs[0])
+    haze = nt.nodes.new("ShaderNodeMath")
+    haze.operation = "SUBTRACT"
+    haze.inputs[0].default_value = 1.0
+    nt.links.new(ex.outputs[0], haze.inputs[1])
+    lit = nt.nodes.new("ShaderNodeMix")
+    lit.data_type = "RGBA"
+    lit.inputs["B"].default_value = (0.0, 0.0, 0.0, 1)
+    nt.links.new(haze.outputs[0], lit.inputs["Factor"])
+    nt.links.new(tinted.outputs["Result"], lit.inputs["A"])
+    nt.links.new(lit.outputs["Result"], p.inputs["Base Color"])
+    p.inputs["Emission Color"].default_value = (0.55, 0.66, 0.85, 1)
+    glow = nt.nodes.new("ShaderNodeMath")
+    glow.operation = "MULTIPLY"
+    glow.inputs[1].default_value = 0.9
+    nt.links.new(haze.outputs[0], glow.inputs[0])
+    nt.links.new(glow.outputs[0], p.inputs["Emission Strength"])
+    return m
+
+
 def separate_coplanar(scene, step=0.001):
     """The kit's walls meet by overlapping at the corners: two coplanar faces there render black in Cycles (the
     shading point's rays start inside the other piece). The smaller face of each overlapping pair steps back `step`."""
@@ -992,9 +1111,10 @@ def viewpoints(scene, trees, site, north):
     return kept
 
 
-def build(blend, out_dir, ctx=None, site=None):
-    """outside.blend and outside.json next to the prepared house.blend: the surroundings, the hedge mass, the
-    viewpoints with their sun. `site`: {"lat", "lon"} of the plot (the sun's date and hour need them)."""
+def build(blend, out_dir, ctx=None, site=None, with_surroundings=True, name="outside"):
+    """<name>.blend and <name>.json next to the prepared house.blend: the surroundings (unless
+    `with_surroundings` is False, or there are none: the house on its own plot and a meadow beyond, north still from
+    the context's alignment), the hedge mass, the viewpoints with their sun. `site`: {"lat", "lon"} of the plot (the sun's date and hour need them)."""
     t0 = time.time()
     bpy.ops.wm.open_mainfile(filepath=blend)
     scene = bpy.context.scene
@@ -1005,20 +1125,27 @@ def build(blend, out_dir, ctx=None, site=None):
     trees = kit_trees(scene)
     area = hedge_mass(scene)
     north = 0.0
-    if ctx and os.path.exists(os.path.join(ctx, "context.json")):
+    meta = os.path.join(ctx, "context.json") if ctx else None
+    loaded = bool(meta and os.path.exists(meta) and with_surroundings)
+    if loaded:
         more, al = surroundings(scene, ctx)
         trees += more
         north = float(al.get("rotation") or 0.0)
+    else:
+        meadow(scene)
+        if meta and os.path.exists(meta):
+            with open(meta, encoding="utf-8") as f:
+                north = float(json.load(f)["alignment"].get("rotation") or 0.0)
     views = viewpoints(scene, trees, site, north)
-    if ctx:  # the context files live in prepare's /tmp; the shoot runs in another container
+    if loaded:  # the context files live in prepare's /tmp; the shoot runs in another container
         root = os.path.realpath(ctx)
         for im in bpy.data.images:
             if im.source == "FILE" and not im.packed_file and os.path.realpath(bpy.path.abspath(im.filepath)).startswith(root):
                 im.pack()
-    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out_dir, "outside.blend"))
-    doc = {"views": views, "trees": trees, "hedge_m2": round(area), "north": north, "context": bool(ctx),
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out_dir, f"{name}.blend"))
+    doc = {"views": views, "trees": trees, "hedge_m2": round(area), "north": north, "context": loaded,
            "seconds": round(time.time() - t0, 1)}
-    with open(os.path.join(out_dir, "outside.json"), "w", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, f"{name}.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1)
     log(f"outside: {len(views)} viewpoints, {len(trees)} trees, hedges {area:.0f} m2, {stepped} overlapping faces "
         f"stepped back ({doc['seconds']} s)")
@@ -1245,7 +1372,7 @@ def run(blend, cam_spec, out, width=WIDTH, height=HEIGHT, samples=256, sun=None)
     bpy.ops.wm.open_mainfile(filepath=blend)
     kind, devices = photo.use_gpu()
     scene = bpy.context.scene
-    doc = json.load(open(os.path.join(os.path.dirname(blend), "outside.json"), encoding="utf-8"))
+    doc = json.load(open(os.path.splitext(blend)[0] + ".json", encoding="utf-8"))
     still.base(scene)
     still.lamps_off(scene)
     still.glass(scene)

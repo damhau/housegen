@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ListingOutStaging } from './listingOutStaging';
+import type { ListingOutExteriors } from './listingOutExteriors';
 import type { ListingPhotoOut } from './listingPhotoOut';
 
 export interface ListingOut {
@@ -16,6 +17,7 @@ export interface ListingOut {
   height: number;
   cost_usd: number;
   staging?: ListingOutStaging;
+  exteriors?: ListingOutExteriors;
   previews_done?: number;
   previews_total?: number;
   photos: ListingPhotoOut[];

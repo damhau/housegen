@@ -1,17 +1,23 @@
 """The listing photo pipeline's entry points, in Blender's Python (bpy 5.0.1).
 
     python main.py prepare <house.glb> <rooms.json> <out_dir> [--blend] [--context <dir>] [--site <lat>,<lon>]
-        <out_dir>/house.blend (the GLB imported; with --blend the first argument is already a .blend, copied) and
-        <out_dir>/cameras.json: per room, viewpoints (corners, the long axis both ways, the doorways) scored by ray
-        casts on the bare import; `views` holds up to MAX_VIEWS distinct ones, best first. Then the exteriors (#93,
-        outside.py): <out_dir>/outside.blend (the house in its surroundings, the project's context.json and files in
-        --context) and `exteriors` in cameras.json, viewpoints around the house with a sun at a real date and hour
-        (--site: the plot's latitude and longitude).
+                   [--score <json>] [--exteriors surroundings|house|none]
+        All of the three below in one process, cameras.json holding the rooms and the exteriors.
+    python main.py import <house.glb> <out_dir> [--blend]
+        <out_dir>/house.blend: the GLB imported (with --blend the first argument is already a .blend, copied).
+    python main.py rooms <house.blend> <rooms.json> <out.json> [--score <json>]
+        Per room, viewpoints (corners, the long axis both ways, the doorways) scored by ray casts on the bare
+        house; `views` holds up to MAX_VIEWS distinct ones, best first. --score {"<use>": <min area m²>, …}: only
+        the rooms a set can use are scored (#96), the others are listed unscored.
+    python main.py outside <house.blend> <out_dir> [--exteriors surroundings|house] [--context <dir>] [--site …]
+        The exteriors (#93, outside.py): outside.blend (the house in its surroundings, the project's context.json
+        and files in --context) or outside-house.blend (the house on its own plot, #97), and their .json with the
+        viewpoints around the house, a sun at a real date and hour (--site: the plot's latitude and longitude).
     python main.py shoot <spec.json>
         spec: {"blend", "rooms", "camera", "out" (.jpg), "width", "height", "samples"[, "sun", "room_lamps",
         "remove", "staging" (furnished | light | empty, staging.py; exteriors are shot as they are)]}; writes the
         photo and <out>.json (the room, the final camera, the sun, the lamps, the pieces in the frame, the device,
-        the seconds per phase). With "kind": "exterior", "blend" is outside.blend.
+        the seconds per phase). With "kind": "exterior", "blend" is one of the exterior builds.
 """
 
 import json
@@ -214,18 +220,37 @@ def score_camera(scene, dg, spec, room):
     return floor / (nx * ny), ahead
 
 
-def prepare(src, rooms_json, out_dir, from_blend=False, context=None, site=None):
-    """Import the house, save it as house.blend and write cameras.json next to it; then outside.blend."""
+# the exterior builds a version keeps side by side, by the set's Exteriors choice
+OUTSIDE = {"surroundings": "outside", "house": "outside-house"}
+
+
+def import_house(src, out_dir, from_blend=False):
+    """<out_dir>/house.blend: the GLB imported, or with `from_blend` the .blend `src` copied."""
     os.makedirs(out_dir, exist_ok=True)
     blend = os.path.join(out_dir, "house.blend")
     if from_blend:
         if os.path.abspath(src) != os.path.abspath(blend):
             shutil.copyfile(src, blend)
-        bpy.ops.wm.open_mainfile(filepath=blend)
     else:
         bpy.ops.wm.read_factory_settings(use_empty=True)
         bpy.ops.import_scene.gltf(filepath=src)
         bpy.ops.wm.save_as_mainfile(filepath=blend)
+    return blend
+
+
+def wanted(room, score):
+    """Whether a set can use the room: `score` is {use: minimum area in m²} (the app's rule); None takes every room.
+    The area is the page's own (its SIA 416 figure) when rooms.json has one, as the app's pick reads it."""
+    if score is None:
+        return True
+    use = room.get("use")
+    return use in score and float(room.get("area") or area(room["polygon"])) >= float(score[use])
+
+
+def score_rooms(blend, rooms_json, score=None):
+    """Per room of rooms.json, its viewpoints scored by ray casts on the bare house: the best, up to MAX_VIEWS
+    distinct ones and every candidate. A room `score` leaves out keeps its name, use and area, unscored."""
+    bpy.ops.wm.open_mainfile(filepath=blend)
     scene = bpy.context.scene
     scene.render.resolution_x, scene.render.resolution_y = ASPECT
     import photo
@@ -241,24 +266,44 @@ def prepare(src, rooms_json, out_dir, from_blend=False, context=None, site=None)
     doors = door_positions(scene)
     out = []
     for room in load_rooms(rooms_json):
+        base = {"name": room["name"], "use": room["use"], "y": room["y"], "area": round(area(room["polygon"]), 2)}
+        if not wanted(room, score):
+            out.append({**base, "camera": None, "score": 0.0, "views": [], "candidates": [], "scored": False})
+            continue
         cands = []
         for kind, spec in room_cameras(room, doors):
             floor, ahead = score_camera(scene, dg, spec, room)
-            score = floor - (NEAR_PENALTY if ahead < NEAR else 0.0)
-            cands.append({"camera": spec, "kind": kind, "score": round(score, 4), "floor": round(floor, 4),
+            s = floor - (NEAR_PENALTY if ahead < NEAR else 0.0)
+            cands.append({"camera": spec, "kind": kind, "score": round(s, 4), "floor": round(floor, 4),
                           "ahead": None if math.isinf(ahead) else round(ahead, 2)})
         cands.sort(key=lambda c: -c["score"])
         best = cands[0] if cands and cands[0]["floor"] > 0 else None
-        out.append({"name": room["name"], "use": room["use"], "y": room["y"], "area": round(area(room["polygon"]), 2),
-                    "camera": best and best["camera"], "score": best["score"] if best else 0.0,
-                    "views": [c["camera"] for c in distinct(cands)], "candidates": cands})
+        out.append({**base, "camera": best and best["camera"], "score": best["score"] if best else 0.0,
+                    "views": [c["camera"] for c in distinct(cands)], "candidates": cands, "scored": True})
         print(f"PREPARE {room['name']}: {len(cands)} candidates, best {best and best['camera']} "
               f"({best and best['score']})", flush=True)
+    return out
+
+
+def build_outside(blend, out_dir, exteriors="surroundings", context=None, site=None):
+    """The exterior build `exteriors` names (surroundings | house) next to house.blend; its viewpoints."""
     import outside
 
-    exteriors = outside.build(blend, out_dir, context, site)["views"]
+    if exteriors not in OUTSIDE:
+        return []
+    doc = outside.build(blend, out_dir, context, site, with_surroundings=exteriors == "surroundings",
+                        name=OUTSIDE[exteriors])
+    return doc["views"]
+
+
+def prepare(src, rooms_json, out_dir, from_blend=False, context=None, site=None, score=None,
+            exteriors="surroundings"):
+    """Import the house, save it as house.blend and write cameras.json next to it; then the exterior build."""
+    blend = import_house(src, out_dir, from_blend)
+    rooms = score_rooms(blend, rooms_json, score)
+    views = build_outside(blend, out_dir, exteriors, context, site)
     with open(os.path.join(out_dir, "cameras.json"), "w", encoding="utf-8") as f:
-        json.dump({"rooms": out, "exteriors": exteriors}, f, indent=1, ensure_ascii=False)
+        json.dump({"rooms": rooms, "exteriors": views}, f, indent=1, ensure_ascii=False)
 
 
 def shoot(spec_json):
@@ -279,16 +324,27 @@ def shoot(spec_json):
 
 
 def main(argv):
+    opts = argv[1:]
+
+    def opt(name):
+        return opts[opts.index(name) + 1] if name in opts and opts.index(name) + 1 < len(opts) else None
+
+    site = opt("--site")
+    lat_lon = [float(v) for v in site.split(",")] if site else None
+    site = {"lat": lat_lon[0], "lon": lat_lon[1]} if lat_lon else None
+    score = json.loads(opt("--score")) if opt("--score") else None
+    exteriors = opt("--exteriors") or "surroundings"
     if len(argv) >= 4 and argv[0] == "prepare":
-        opts = argv[4:]
-
-        def opt(name):
-            return opts[opts.index(name) + 1] if name in opts and opts.index(name) + 1 < len(opts) else None
-
-        site = opt("--site")
-        lat_lon = [float(v) for v in site.split(",")] if site else None
-        prepare(argv[1], argv[2], argv[3], from_blend="--blend" in opts, context=opt("--context"),
-                site={"lat": lat_lon[0], "lon": lat_lon[1]} if lat_lon else None)
+        prepare(argv[1], argv[2], argv[3], from_blend="--blend" in opts, context=opt("--context"), site=site,
+                score=score, exteriors=exteriors)
+    elif len(argv) >= 3 and argv[0] == "import":
+        import_house(argv[1], argv[2], from_blend="--blend" in opts)
+    elif len(argv) >= 4 and argv[0] == "rooms":
+        with open(argv[3], "w", encoding="utf-8") as f:
+            json.dump({"rooms": score_rooms(argv[1], argv[2], score)}, f, indent=1, ensure_ascii=False)
+    elif len(argv) >= 3 and argv[0] == "outside":
+        views = build_outside(argv[1], argv[2], exteriors, opt("--context"), site)
+        print(f"OUTSIDE {exteriors}: {len(views)} viewpoints", flush=True)
     elif len(argv) == 2 and argv[0] == "shoot":
         shoot(argv[1])
     else:

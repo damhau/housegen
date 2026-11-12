@@ -20,7 +20,7 @@ from housegen.geo.swiss import lv95_to_wgs84
 from housegen.jobs.manager import JobContext
 from housegen.listing.client import PhotoClient
 from housegen.listing.pick import pick_exteriors, pick_view
-from housegen.listing.shots import Shot, exterior_shots, language, pick
+from housegen.listing.shots import MIN_AREA, Shot, exterior_shots, language, pick
 from housegen.llm import Completion
 from housegen.llm.factory import get_provider
 from housegen.projects import crud
@@ -31,9 +31,17 @@ logger = logging.getLogger(__name__)
 
 # bump when the export or the Blender import changes what a prepared version holds on the service
 PREPARE_REV = "p4"
-# $ per container second (Modal list prices 2026-11-07): the GPU + 4 cores + 16 GiB
-_HOST = 4 * 0.0000131 + 16 * 0.00000222
-PRICE_PER_S = {"T4": 0.000164 + _HOST, "L4": 0.000222 + _HOST, "RTX-PRO-6000": 0.000842 + _HOST}
+# $ per container second (Modal list prices 2026-11-07): the GPU + 4 cores + 16 GiB; "CPU" is the prepare's
+# Blender machine (#95), 8 cores + 32 GiB without a GPU
+_CORE_S, _GIB_S = 0.0000131, 0.00000222
+_HOST = 4 * _CORE_S + 16 * _GIB_S
+PRICE_PER_S = {
+    "T4": 0.000164 + _HOST,
+    "L4": 0.000222 + _HOST,
+    "A10G": 0.000306 + _HOST,
+    "RTX-PRO-6000": 0.000842 + _HOST,
+    "CPU": 8 * _CORE_S + 32 * _GIB_S,
+}
 
 
 def listing_dir(storage: ProjectStorage, version: int) -> Path:
@@ -59,10 +67,17 @@ def _cost(gpu: str, seconds: float) -> float:
     return round(PRICE_PER_S.get(gpu, PRICE_PER_S["RTX-PRO-6000"]) * seconds, 4)
 
 
-def _seconds(value: Any) -> float:
-    if isinstance(value, dict):
-        return float(sum(float(v) for v in value.values()))
-    return float(value or 0)
+def _prepare_cost(prepared: dict[str, Any]) -> float:
+    """The prepare's machines: Chrome's export on the GPU it got, Blender on the CPU machine (#95)."""
+    seconds = prepared.get("seconds")
+    if prepared.get("cached") or not isinstance(seconds, dict):
+        return 0.0
+    gpu = str((prepared.get("export") or {}).get("gpu") or "T4")
+    return round(
+        _cost(gpu, float(seconds.get("export") or 0))
+        + _cost("CPU", float(seconds.get("blender") or 0)),
+        4,
+    )
 
 
 def scene_page(storage: ProjectStorage, version: int, kit: str) -> str:
@@ -84,6 +99,11 @@ def surroundings(st: ProjectStorage) -> tuple[str | None, tuple[float, float] | 
         lon, lat = lv95_to_wgs84(float(place["e"]), float(place["n"]))
         site = (round(lat, 5), round(lon, 5))
     return f"{base}/scenes/{st.project_id}/context/", site
+
+
+def default_exteriors(st: ProjectStorage) -> str:
+    """A set's exteriors when none is asked (#97): the house in its surroundings when the project has them."""
+    return "surroundings" if geo_context.load(st.root) else "house"
 
 
 def _spent(records: Any) -> float:
@@ -127,23 +147,57 @@ async def listing(ctx: JobContext) -> None:
     # a set shot again keeps its staging unless another is asked (#94)
     kept_staging = (previous or {}).get("settings", {}).get("staging") if reuse else None
     staging = str(req.get("staging") or kept_staging or "furnished")
+    # and its exteriors (#97); a set from before the choice was shot with the default
+    context_url, site = surroundings(st)
+    default = "surroundings" if context_url else "house"
+    kept_exterior = (
+        ((previous or {}).get("settings", {}).get("exteriors") or default) if reuse else None
+    )
+    exterior = str(req.get("exteriors") or kept_exterior or default)
+    if not s.LISTING_EXTERIORS:
+        exterior = "none"
+    elif exterior == "surroundings" and not context_url:
+        exterior = "house"
     client = PhotoClient(s)
     t0 = time.time()
     try:
         await ctx.emit("phase", name="prepare", message=f"Exporting version {version} to Blender")
-        context_url, site = surroundings(st) if s.LISTING_EXTERIORS else (None, None)
-        prepared = await client.prepare(scene_page(st, version, kit), key, context_url, site)
-        prepare_s = _seconds(prepared.get("seconds"))
-        exteriors = list(prepared.get("exteriors") or []) if s.LISTING_EXTERIORS else []
+        prepared = await client.prepare(
+            scene_page(st, version, kit),
+            key,
+            context_url if exterior != "none" else None,
+            site if exterior != "none" else None,
+            exteriors=exterior,
+            score=MIN_AREA,
+        )
+        logger.info(
+            "listing.prepared",
+            extra={
+                "job_id": ctx.job_id,
+                "cached": bool(prepared.get("cached")),
+                "seconds": prepared.get("seconds"),
+                "phases": prepared.get("phases"),
+                "gpu": (prepared.get("export") or {}).get("gpu"),
+                "exteriors": exterior,
+            },
+        )
+        exteriors = list(prepared.get("exteriors") or []) if exterior != "none" else []
+        kept = dict(previous) if previous and reuse else {}
         if previous and reuse:
             shots = [Shot(**d) for d in previous["shots"]]
+            if kept_exterior != exterior:  # other exteriors: the building's shots are chosen again
+                gone = {x.key for x in shots if x.use == "exterior"}
+                shots = [x for x in shots if x.key not in gone]
+                kept["choices"] = {
+                    k: v for k, v in kept.get("choices", {}).items() if k not in gone
+                }
+                kept["previews"] = {k: v for k, v in kept.get("previews", {}).items() if k != "E"}
         else:
             shots = pick(prepared.get("rooms", []))
         if not shots:
             raise RuntimeError(
                 "no room to photograph: the version has no living room, bedroom or bathroom with a camera"
             )
-        kept = previous if previous and reuse else {}
         doc: dict[str, Any] = {
             "version": version,
             "kit": kit,
@@ -155,6 +209,7 @@ async def listing(ctx: JobContext) -> None:
                 "height": s.LISTING_HEIGHT,
                 "samples": s.LISTING_SAMPLES,
                 "staging": staging,
+                "exteriors": exterior,
                 "preview": [
                     s.LISTING_PREVIEW_WIDTH,
                     s.LISTING_PREVIEW_HEIGHT,
@@ -172,7 +227,7 @@ async def listing(ctx: JobContext) -> None:
             "errors": {},
         }
         doc["cost"] = {
-            "prepare_usd": _cost("T4", 0 if prepared.get("cached") else prepare_s),
+            "prepare_usd": _prepare_cost(prepared),
             # a set shot again keeps the earlier job's previews and choices; their cost was that job's
             "previews_usd": _spent(p for v in doc["previews"].values() for p in v.values())
             if resumed
@@ -337,6 +392,7 @@ async def listing(ctx: JobContext) -> None:
                         remove=[choice["remove"]] if choice.get("remove") else [],
                         kind="exterior" if shot.use == "exterior" else None,
                         staging=None if shot.use == "exterior" else staging,
+                        exterior=exterior,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -397,6 +453,7 @@ async def listing(ctx: JobContext) -> None:
                         s.LISTING_SHOT_TIMEOUT_S,
                         sun=view.get("sun"),
                         kind="exterior",
+                        exterior=exterior,
                     )
                 except Exception as exc:
                     logger.warning(

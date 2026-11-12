@@ -8,6 +8,7 @@ import type { ListingStatusOutListing } from './listingStatusOutListing';
 
 export interface ListingStatusOut {
   available: boolean;
+  surroundings?: boolean;
   sets: number[];
   listing: ListingStatusOutListing;
 }

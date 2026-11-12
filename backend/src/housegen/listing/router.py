@@ -18,7 +18,7 @@ from housegen.core.config import get_settings
 from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
 from housegen.jobs.manager import job_manager
-from housegen.listing.job import listing_dir, read_set
+from housegen.listing.job import default_exteriors, listing_dir, read_set
 from housegen.listing.schemas import ListingOut, ListingPhotoOut, ListingRequest, ListingStatusOut
 from housegen.projects import crud
 from housegen.projects.schemas import JobOut
@@ -75,6 +75,7 @@ def listing_out(st: ProjectStorage, version: int, current: int) -> ListingOut | 
         height=int(doc.get("settings", {}).get("height", 0)),
         cost_usd=round(sum(float(v or 0) for v in cost.values()), 2),
         staging=doc.get("settings", {}).get("staging") or "furnished",
+        exteriors=doc.get("settings", {}).get("exteriors") or default_exteriors(st),
         previews_done=sum(len(v) for v in doc.get("previews", {}).values()),
         previews_total=sum(
             len(x.get("views") or []) for x in doc.get("shots", []) if len(x.get("views") or []) > 1
@@ -99,6 +100,7 @@ async def get_listing(
     chosen = version if version is not None else (sets[0] if sets else None)
     return ListingStatusOut(
         available=bool(get_settings().photo_service_url),
+        surroundings=default_exteriors(st) == "surroundings",
         sets=sets,
         listing=listing_out(st, chosen, project.current_version) if chosen is not None else None,
     )
@@ -124,7 +126,14 @@ async def start_listing(
         raise InvalidInputError("this version has no set to shoot again")
     if await crud.active_job(session, project_id, ("listing",)):
         raise ConflictError("a listing set is already being shot")
-    request = json.dumps({"version": version, "reuse": body.reuse, "staging": body.staging})
+    request = json.dumps(
+        {
+            "version": version,
+            "reuse": body.reuse,
+            "staging": body.staging,
+            "exteriors": body.exteriors,
+        }
+    )
     stored = RunSettings.model_validate(project.settings) if project.settings else RunSettings()
     job = await crud.create_job(
         session,
@@ -142,6 +151,7 @@ async def start_listing(
             "version": version,
             "reuse": body.reuse,
             "staging": body.staging,
+            "exteriors": body.exteriors,
         },
     )
     return JobOut.model_validate(job)
