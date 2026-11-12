@@ -140,9 +140,9 @@ function TurnRows({ group, recent }: { group: TurnGroup; recent: boolean }) {
         title={t ? `model ${str(t.model)} · thinking ${fmtMs(num(t.thinking_ms))} · tools ${fmtMs(num(t.tools_ms))} (renders ${fmtMs(num(t.render_ms))}) · ${fmtTok(num(t.input_tokens))} in` : "step in progress"}
       >
         {open ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
-        <span className="font-semibold">step {group.step}</span>
+        <span className="shrink-0 whitespace-nowrap font-semibold">step {group.step}</span>
         {t ? (
-          <span className="truncate">
+          <span className="min-w-0 truncate">
             · {fmtMs((num(t.duration_ms) ?? 0) + (num(t.tools_ms) ?? 0))} · {fmtTok(num(t.output_tokens))} out · cache {hit !== undefined ? `${Math.round(hit * 100)}%` : "–"}
             {miss ? " (lost)" : ""}
             {calls.length > 0 ? ` · ${toolSummary(calls)}` : ""}

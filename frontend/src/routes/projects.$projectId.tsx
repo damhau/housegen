@@ -381,7 +381,7 @@ function ProjectPage() {
       </div>
       </div>
 
-      <div className="grid min-h-0 gap-3 lg:grid-cols-[1fr_420px]">
+      <div className="grid min-h-0 gap-3 lg:grid-cols-[1fr_420px] xl:grid-cols-[1fr_520px] 2xl:grid-cols-[1fr_560px]">
         <SceneViewer
           sceneUrl={hasScene ? sceneUrl : null}
           reloadKey={`${reloadKey}-${selectedVersion ?? "c"}`}
@@ -414,7 +414,7 @@ function ProjectPage() {
           }
         />
         <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border bg-card">
-          <div className="flex shrink-0 gap-0.5 overflow-x-auto border-b p-1">
+          <div className="flex shrink-0 flex-wrap gap-0.5 border-b p-1">
             {tabs.map((t) => (
               <button
                 key={t.id}
