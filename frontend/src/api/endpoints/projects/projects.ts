@@ -180,6 +180,9 @@ if(bodyCreateProject.sides !== undefined) {
 if(bodyCreateProject.notes !== undefined) {
  formData.append(`notes`, bodyCreateProject.notes)
  }
+if(bodyCreateProject.settings !== undefined) {
+ formData.append(`settings`, bodyCreateProject.settings)
+ }
 
   return httpClient<ProjectOut>(getCreateProjectUrl(),
   {      

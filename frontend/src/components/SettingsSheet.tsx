@@ -3,9 +3,10 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Loader2, X } from "lucide-react"
 import { useModels } from "@/api/endpoints/meta/meta"
 import { getGetProjectQueryKey, getRunEstimateQueryKey, useUpdateSettings } from "@/api/endpoints/projects/projects"
-import type { ProjectOut, RunSettings, RunSettingsBuilderEffort, RunSettingsProvider, RunSettingsRenderQuality } from "@/api/model"
+import type { ProjectOut, ResolvedRunSettings, RunSettings, RunSettingsBuilderEffort, RunSettingsProvider, RunSettingsRenderQuality } from "@/api/model"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { chosenSettings, PRESET_LABEL, PRESETS, presetOf } from "@/lib/runSettings"
 import { cn, errorMessage } from "@/lib/utils"
 
 type Effort = NonNullable<RunSettingsBuilderEffort>
@@ -27,33 +28,49 @@ const OTHER = "__other__"
 function monthOf(iso: string | null | undefined): string {
   return iso ? iso.slice(0, 7) : ""
 }
-// the two presets (mirrors agent/run_settings.PRESETS); "custom" keeps whatever is set
-const PRESETS: Record<"quick" | "full", Pick<RunSettings, "builder_effort" | "critic_rounds" | "max_steps">> = {
-  quick: { builder_effort: "medium", critic_rounds: 1, max_steps: 30 },
-  full: { builder_effort: "xhigh", critic_rounds: 2, max_steps: 60 },
-}
-
-function presetOf(s: RunSettings, effective: ProjectOut["effective_settings"]): "quick" | "full" | "custom" {
-  const eff = s.builder_effort ?? effective.builder_effort
-  const rounds = s.critic_rounds ?? effective.critic_rounds
-  const steps = s.max_steps ?? effective.max_steps
-  for (const [name, p] of Object.entries(PRESETS)) {
-    if (p.builder_effort === eff && p.critic_rounds === rounds && p.max_steps === steps) return name as "quick" | "full"
-  }
-  return "custom"
-}
-
-/**
- * Per-project run settings (#18): provider and model, effort per role, critic rounds, step
- * budget, in-loop render quality. Unset = the server's .env default (shown as placeholder).
- * Saved on the project; the next job takes a snapshot, a running one is not affected.
- */
+/** The run settings sheet of a project: saved on it; the next job takes a snapshot, a running one is not affected. */
 export function SettingsSheet({ project, onClose }: { project: ProjectOut; onClose: () => void }) {
   const qc = useQueryClient()
   const update = useUpdateSettings()
-  const [s, setS] = useState<RunSettings>({ ...project.settings })
+  return (
+    <RunSettingsSheet
+      initial={project.settings}
+      defaults={project.effective_settings}
+      intro="For this project only; the next run takes a snapshot, a running one is not affected. Empty = the server default."
+      onClose={onClose}
+      onSave={async (body) => {
+        await update.mutateAsync({ projectId: project.id, data: body })
+        await qc.invalidateQueries({ queryKey: getGetProjectQueryKey(project.id) })
+        await qc.invalidateQueries({ queryKey: getRunEstimateQueryKey(project.id) })
+      }}
+    />
+  )
+}
+
+/**
+ * Run settings (#18): provider and model, effort per role, critic rounds, step budget, in-loop
+ * render quality. Unset = the server's .env default (shown as placeholder). `onSave` gets the
+ * fields that are set.
+ */
+export function RunSettingsSheet({
+  initial,
+  defaults,
+  intro,
+  saveLabel = "Save",
+  onSave,
+  onClose,
+}: {
+  initial: RunSettings
+  defaults: ResolvedRunSettings
+  intro: string
+  saveLabel?: string
+  onSave: (settings: RunSettings) => Promise<void>
+  onClose: () => void
+}) {
+  const [s, setS] = useState<RunSettings>({ ...initial })
   const [error, setError] = useState<string | null>(null)
-  const eff = project.effective_settings
+  const [saving, setSaving] = useState(false)
+  const eff = defaults
   const provider: Provider = s.provider ?? eff.provider
   const preset = presetOf(s, eff)
   // the provider's models, newest first (cached server-side; a failure leaves the list empty)
@@ -84,15 +101,14 @@ export function SettingsSheet({ project, onClose }: { project: ProjectOut; onClo
 
   async function save() {
     setError(null)
+    setSaving(true)
     try {
-      const body: RunSettings = {}
-      for (const [k, v] of Object.entries(s)) if (v !== null && v !== undefined && v !== "") (body as Record<string, unknown>)[k] = v
-      await update.mutateAsync({ projectId: project.id, data: body })
-      await qc.invalidateQueries({ queryKey: getGetProjectQueryKey(project.id) })
-      await qc.invalidateQueries({ queryKey: getRunEstimateQueryKey(project.id) })
+      await onSave(chosenSettings(s))
       onClose()
     } catch (e) {
       setError(errorMessage(e))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -113,9 +129,7 @@ export function SettingsSheet({ project, onClose }: { project: ProjectOut; onClo
             <X />
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          For this project only; the next run takes a snapshot, a running one is not affected. Empty = the server default.
-        </p>
+        <p className="text-xs text-muted-foreground">{intro}</p>
 
         <div className="grid grid-cols-3 gap-1.5">
           {(["quick", "full", "custom"] as const).map((name) => (
@@ -136,7 +150,7 @@ export function SettingsSheet({ project, onClose }: { project: ProjectOut; onClo
               }}
               aria-pressed={preset === name}
             >
-              <div className="font-medium">{name === "quick" ? "Quick draft" : name === "full" ? "Full quality" : "Custom"}</div>
+              <div className="font-medium">{PRESET_LABEL[name]}</div>
               <div className="text-[10px] text-muted-foreground">
                 {name === "quick" ? "medium · 1 round · 30 steps" : name === "full" ? "xhigh · 2 rounds · 60 steps" : "edit the fields below"}
               </div>
@@ -261,8 +275,8 @@ export function SettingsSheet({ project, onClose }: { project: ProjectOut; onClo
           <Button variant="outline" size="sm" onClick={onClose}>
             Cancel
           </Button>
-          <Button size="sm" onClick={() => void save()} disabled={update.isPending}>
-            {update.isPending && <Loader2 className="animate-spin" />} Save
+          <Button size="sm" onClick={() => void save()} disabled={saving}>
+            {saving && <Loader2 className="animate-spin" />} {saveLabel}
           </Button>
         </div>
       </aside>

@@ -24,4 +24,9 @@ export interface BodyCreateProject {
    * @maxLength 4000
    */
   notes?: string;
+  /**
+   * the project's run settings from the start, RunSettings as JSON (optional)
+   * @maxLength 2000
+   */
+  settings?: string;
 }

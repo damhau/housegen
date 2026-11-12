@@ -24,7 +24,8 @@ import type {
   HealthOut,
   KitsOut,
   ModelsOut,
-  ModelsParams
+  ModelsParams,
+  ResolvedRunSettings
 } from '../../model';
 
 import { httpClient } from '../../http-client';
@@ -224,6 +225,107 @@ export function useKits<TData = Awaited<ReturnType<typeof kits>>, TError = unkno
  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
 
   const queryOptions = getKitsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+/**
+ * What a project without run settings of its own runs with (the server's .env defaults),
+for the settings sheet of a project not created yet.
+ * @summary Run Defaults
+ */
+export const getRunDefaultsUrl = () => {
+
+
+  
+
+  return `/api/v1/settings/defaults`
+}
+
+export const runDefaults = async ( options?: RequestInit): Promise<ResolvedRunSettings> => {
+  
+  return httpClient<ResolvedRunSettings>(getRunDefaultsUrl(),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getRunDefaultsQueryKey = () => {
+    return [
+    `/api/v1/settings/defaults`
+    ] as const;
+    }
+
+    
+export const getRunDefaultsQueryOptions = <TData = Awaited<ReturnType<typeof runDefaults>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof runDefaults>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getRunDefaultsQueryKey();
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof runDefaults>>> = ({ signal }) => runDefaults({ signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof runDefaults>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type RunDefaultsQueryResult = NonNullable<Awaited<ReturnType<typeof runDefaults>>>
+export type RunDefaultsQueryError = unknown
+
+
+export function useRunDefaults<TData = Awaited<ReturnType<typeof runDefaults>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof runDefaults>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof runDefaults>>,
+          TError,
+          Awaited<ReturnType<typeof runDefaults>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRunDefaults<TData = Awaited<ReturnType<typeof runDefaults>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof runDefaults>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof runDefaults>>,
+          TError,
+          Awaited<ReturnType<typeof runDefaults>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useRunDefaults<TData = Awaited<ReturnType<typeof runDefaults>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof runDefaults>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Run Defaults
+ */
+
+export function useRunDefaults<TData = Awaited<ReturnType<typeof runDefaults>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof runDefaults>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getRunDefaultsQueryOptions(options)
 
   const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
 

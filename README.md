@@ -177,7 +177,9 @@ after a measured run.
 
 The model, effort, critic rounds, step budget and in-loop render quality below are the defaults; each project can
 override them from the run settings sheet (the gear button on the project page, `PATCH /projects/{id}/settings`), and
-every job snapshots the settings it started with.
+every job snapshots the settings it started with. To give a project its own settings from the start, use **Change**
+under Run settings on the new project form (the `settings` field of `POST /projects`); `GET /settings/defaults`
+returns the defaults a project without settings runs with.
 
 | var | default | meaning |
 |---|---|---|

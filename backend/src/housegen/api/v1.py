@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
-from housegen.agent.run_settings import Provider
+from housegen.agent.run_settings import Provider, ResolvedRunSettings, resolve
 from housegen.core.config import get_settings
 from housegen.core.db import DbSession
 from housegen.geo import context as geo_context
@@ -74,6 +74,13 @@ def kits() -> KitsOut:
     """The renderer snapshots a scene can be drawn with (newest first, the working copy last),
     which one the build path is pinned to and which one the viewer shows by default."""
     return list_kits()
+
+
+@router.get("/settings/defaults", tags=["meta"])
+def run_defaults() -> ResolvedRunSettings:
+    """What a project without run settings of its own runs with (the server's .env defaults),
+    for the settings sheet of a project not created yet."""
+    return resolve(get_settings())
 
 
 @router.get("/models", tags=["meta"])

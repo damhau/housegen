@@ -14,6 +14,7 @@ import anyio
 from fastapi import APIRouter, File, Form, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from PIL import Image, ImageOps
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -217,9 +218,20 @@ async def create_project(
             description="what the files cannot say: changes since the plan, materials, colours",
         ),
     ] = "",
+    settings: Annotated[
+        str,
+        Form(
+            max_length=2000,
+            description="the project's run settings from the start, RunSettings as JSON (optional)",
+        ),
+    ] = "",
 ) -> ProjectOut:
     if not plans:
         raise InvalidInputError("at least one PDF plan set is required")
+    try:
+        run_settings = RunSettings.model_validate_json(settings) if settings else RunSettings()
+    except ValidationError as e:
+        raise InvalidInputError(f"invalid run settings: {e.errors()[0]['msg']}") from e
     for up in plans:
         if not _is_pdf(up):
             raise InvalidInputError(f"'{up.filename}' is not a PDF")
@@ -237,7 +249,12 @@ async def create_project(
     logger.info(
         "projects.create.requested", extra={"photos": len(photos), "notes": len(notes.strip())}
     )
-    project = await crud.create_project(session, name, brief=notes.strip() or None)
+    project = await crud.create_project(
+        session,
+        name,
+        brief=notes.strip() or None,
+        settings=run_settings.model_dump(exclude_none=True) or None,
+    )
     st = ProjectStorage(project.id)
     st.ensure()
     for i, (photo, side) in enumerate(zip(photos, sides, strict=True)):

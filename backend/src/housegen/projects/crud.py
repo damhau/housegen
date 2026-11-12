@@ -55,8 +55,15 @@ async def latest_version_times(session: AsyncSession) -> dict[str, datetime]:
     return dict(res.tuples().all())
 
 
-async def create_project(session: AsyncSession, name: str, brief: str | None = None) -> Project:
-    project = Project(name=name, brief=brief or None)
+async def create_project(
+    session: AsyncSession,
+    name: str,
+    brief: str | None = None,
+    settings: dict[str, Any] | None = None,
+) -> Project:
+    project = Project(
+        name=name, brief=brief or None, settings_json=json.dumps(settings) if settings else None
+    )
     session.add(project)
     await session.flush()
     logger.info("projects.created", extra={"project_id": project.id})

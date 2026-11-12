@@ -151,3 +151,39 @@ async def test_settings_persist_and_the_job_takes_a_snapshot(client: AsyncClient
     r = await client.get(f"/api/v1/projects/{pid}/settings/effective")
     assert r.json()["max_steps"] == 90
     assert r.json()["preset"] == "custom"
+
+
+async def test_settings_chosen_at_creation_are_the_projects_from_the_start(
+    client: AsyncClient,
+) -> None:
+    r = await client.post(
+        "/api/v1/projects",
+        data={"name": "t", "settings": json.dumps({"builder_effort": "medium", "max_steps": 30})},
+        files=[("plans", ("p.pdf", _pdf(), "application/pdf"))],
+    )
+    assert r.status_code == 201, r.text
+    pid = r.json()["id"]
+    assert r.json()["settings"]["builder_effort"] == "medium"
+    assert r.json()["settings"]["critic_rounds"] is None
+    assert r.json()["effective_settings"]["max_steps"] == 30
+    r = await client.post(f"/api/v1/projects/{pid}/intake")
+    assert r.json()["settings"]["builder_effort"] == "medium"
+
+
+async def test_invalid_settings_at_creation_create_nothing(client: AsyncClient) -> None:
+    r = await client.post(
+        "/api/v1/projects",
+        data={"name": "t", "settings": json.dumps({"max_steps": 1000})},
+        files=[("plans", ("p.pdf", _pdf(), "application/pdf"))],
+    )
+    assert r.status_code == 422
+    assert "run settings" in r.json()["error"]["message"]
+    assert (await client.get("/api/v1/projects")).json() == []
+
+
+async def test_defaults_are_the_servers_without_a_project(client: AsyncClient) -> None:
+    r = await client.get("/api/v1/settings/defaults")
+    assert r.status_code == 200, r.text
+    env = get_settings()
+    assert r.json()["provider"] == env.LLM_PROVIDER
+    assert r.json()["max_steps"] == env.BUILDER_MAX_STEPS
