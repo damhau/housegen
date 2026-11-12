@@ -142,7 +142,12 @@ class AnthropicProvider:
         if tools:
             kwargs["tools"] = _tool_defs(tools, cache)
         if response_schema:
-            output_config["format"] = {"type": "json_schema", "schema": response_schema}
+            # the API wants additionalProperties: false on every object and rejects some
+            # constraints (minimum, maxItems…); the SDK's helper moves those into descriptions
+            output_config["format"] = {
+                "type": "json_schema",
+                "schema": anthropic.transform_schema(response_schema),
+            }
         if output_config:
             kwargs["output_config"] = output_config
 

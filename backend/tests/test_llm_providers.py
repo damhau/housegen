@@ -5,6 +5,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+from pydantic import BaseModel
+
+from housegen.agent.critic import Critique, Verification
+from housegen.agent.intake import Intake
+from housegen.listing.pick import ExteriorChoice, ViewChoice
 from housegen.llm.anthropic_provider import AnthropicProvider, _content_blocks, _message_blocks
 from housegen.llm.openai_provider import _to_input_items
 from housegen.llm.types import (
@@ -223,3 +229,27 @@ def test_anthropic_raw_from_other_provider_is_ignored() -> None:
         raw_provider="openai",
     )
     assert _message_blocks(m) == [{"type": "text", "text": "hi"}]
+
+
+def _objects(schema: Any) -> list[dict[str, Any]]:
+    if isinstance(schema, list):
+        return [o for s in schema for o in _objects(s)]
+    if not isinstance(schema, dict):
+        return []
+    found = [schema] if schema.get("type") == "object" else []
+    return found + [o for v in schema.values() for o in _objects(v)]
+
+
+@pytest.mark.parametrize("model", [Critique, Verification, Intake, ViewChoice, ExteriorChoice])
+async def test_anthropic_response_schemas_close_every_object(model: type[BaseModel]) -> None:
+    provider, fake = _anthropic(stop="end_turn")
+    await provider.complete(
+        model="claude-opus-5-5",
+        system="s",
+        messages=[Message.user("go")],
+        response_schema=model.model_json_schema(),
+    )
+    schema = fake.calls[0]["output_config"]["format"]["schema"]
+    objects = _objects(schema)
+    assert objects
+    assert all(o["additionalProperties"] is False for o in objects)
