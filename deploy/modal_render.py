@@ -1,4 +1,4 @@
-"""The render service on Modal: the app image, a T4, one HTTPS URL, nothing running when idle.
+"""The render service on Modal: the app image, a T4 (L4, A10G when none is free), one HTTPS URL, nothing running when idle.
 
 The app keeps rendering with the same code; only the machine changes. SwiftShader on the
 k8s pod draws a render call in ~45 s; the GPU in a few seconds.
@@ -57,7 +57,9 @@ image = modal.Image.from_registry(
 
 @app.function(
     image=image,
-    gpu="T4",
+    # in that order, the first one free: on 2026-11-12 no T4 was free for 23 min, and a build's
+    # render waited all that time before Modal dropped the request
+    gpu=["T4", "L4", "A10G"],
     secrets=[modal.Secret.from_name("housegen-render")],  # RENDER_SERVICE_TOKEN
     scaledown_window=300,  # stays warm between the render calls of one build, then stops
     timeout=600,
