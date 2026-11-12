@@ -32,7 +32,9 @@ import modal
 
 ROOT = Path(__file__).resolve().parent.parent
 SPIKE = ROOT / "spikes" / "archviz"
-SHOOT_GPU = os.environ.get("PHOTO_GPU", "RTX-PRO-6000")
+# The owner's choice first (2026-11-07); six previews once waited 10 minutes for one (2026-11-12), so the next
+# fastest that has RT cores for OptiX (A100 and H100 have none) take a shoot when no RTX PRO 6000 is free
+SHOOT_GPU = os.environ.get("PHOTO_GPU", "RTX-PRO-6000,L40S,A10G").split(",")
 # Chrome's export is the only step of a prepare that draws (about a minute): the first of these that is free. Waiting
 # for a T4 alone took 19 minutes once.
 EXPORT_GPU = ["T4", "L4", "A10G"]
@@ -148,8 +150,8 @@ def prepare(
     }
 
 
-def _gpu(gl: str) -> str:
-    return next((g for g in EXPORT_GPU if g in gl), EXPORT_GPU[0])
+def _gpu(device: str, choices: list[str]) -> str:
+    return next((g for g in choices if g.replace("-", " ") in device), choices[0])
 
 
 @app.function(image=image, gpu=EXPORT_GPU, cpu=4.0, memory=16384, timeout=1800, volumes=volumes,
@@ -172,7 +174,7 @@ def export(scene_url: str, key: str) -> dict:
     for name in ("house.glb", "rooms.json"):
         shutil.copyfile(tmp / name, out / name)
     volume.commit()
-    return {**exported, "gpu": _gpu(str(exported.get("gl") or "")), "seconds": round(time.time() - t0, 1)}
+    return {**exported, "gpu": _gpu(str(exported.get("gl") or ""), EXPORT_GPU), "seconds": round(time.time() - t0, 1)}
 
 
 @app.function(image=image, cpu=BLENDER_CPU, memory=BLENDER_MEMORY, timeout=1800, volumes=volumes)
@@ -295,7 +297,8 @@ def shoot(
     _run(["main.py", "shoot", str(spec_path)])
     meta_path = Path(f"{out}.json")
     meta = json.loads((meta_path if meta_path.exists() else out.with_suffix(".json")).read_text())
-    return {"jpeg": out.read_bytes(), "meta": meta, "gpu": SHOOT_GPU, "seconds": round(time.time() - t0, 1)}
+    gpu = _gpu(str(meta.get("device") or ""), SHOOT_GPU)
+    return {"jpeg": out.read_bytes(), "meta": meta, "gpu": gpu, "seconds": round(time.time() - t0, 1)}
 
 
 @app.function(image=web_image, secrets=[token], scaledown_window=300)

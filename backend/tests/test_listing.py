@@ -660,6 +660,7 @@ def test_a_prepare_costs_its_gpu_minute_and_its_cpu_minutes() -> None:
     )
     assert got == pytest.approx(60 * p["L4"] + 150 * p["CPU"], abs=1e-3)
     assert p["CPU"] < p["T4"]
+    assert p["A10G"] < p["L40S"] < p["RTX-PRO-6000"]
     assert listing_job._prepare_cost({"cached": True, "seconds": 0.4}) == 0.0
 
 

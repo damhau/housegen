@@ -39,6 +39,7 @@ PRICE_PER_S = {
     "T4": 0.000164 + _HOST,
     "L4": 0.000222 + _HOST,
     "A10G": 0.000306 + _HOST,
+    "L40S": 0.000542 + _HOST,
     "RTX-PRO-6000": 0.000842 + _HOST,
     "CPU": 8 * _CORE_S + 32 * _GIB_S,
 }

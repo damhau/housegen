@@ -127,11 +127,11 @@ service, `deploy/modal_photo.py` on Modal:
    each with a sun at a real date and hour at the plot that lights the façades in view. The `.blend` files are
    cached per version on the `housegen-photo` volume, the two exterior builds side by side: switching a set's
    exteriors builds only the missing one.
-2. `shoot` (an RTX PRO 6000, one container per photo, `LISTING_PARALLEL` at a time) renders one room in Cycles
-   with `photo/blender/main.py shoot`. The pipeline keeps the scene's finishes (a finish's scan at full
-   resolution, its colour kept) and adds the staging: decor, art, objects. The light is a listing
-   photographer's: daylight, the room's lamps where the sun does not reach, and a flash bounced off the ceiling
-   so that white tiles and ceilings stay white in mixed light.
+2. `shoot` (an RTX PRO 6000, else an L40S or an A10G; one container per photo, `LISTING_PARALLEL` at a time)
+   renders one room in Cycles with `photo/blender/main.py shoot`. The pipeline keeps the scene's finishes (a
+   finish's scan at full resolution, its colour kept) and adds the staging: decor, art, objects. The light is a
+   listing photographer's: daylight, the room's lamps where the sun does not reach, and a flash bounced off the
+   ceiling so that white tiles and ceilings stay white in mixed light.
 
 Each exterior viewpoint is previewed, and one vision call keeps two to `LISTING_EXTERIOR_MAX` of them in listing
 order, the cover photo first ("Vue extérieure, côté sud-ouest", in the language of the room names). Without an
