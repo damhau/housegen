@@ -24,6 +24,12 @@ from housegen.llm.types import (
 
 logger = logging.getLogger(__name__)
 
+PROVIDER = "anthropic"
+# A builder turn at xhigh runs 2-12 minutes and the TTL counts from the request's start: the
+# 5-minute default expired between turns and every turn paid the whole prompt again.
+_CONVERSATION_CACHE: dict[str, Any] = {"type": "ephemeral", "ttl": "1h"}
+_CALL_CACHE: dict[str, Any] = {"type": "ephemeral"}
+
 
 def _image_block(p: ImagePart) -> dict[str, Any]:
     return {
@@ -55,7 +61,7 @@ def _content_blocks(parts: list[Part] | list[TextPart | ImagePart]) -> list[dict
     return blocks
 
 
-def _tool_defs(tools: list[ToolSpec]) -> list[dict[str, Any]]:
+def _tool_defs(tools: list[ToolSpec], cache: dict[str, Any] = _CALL_CACHE) -> list[dict[str, Any]]:
     """The tools as Messages API tools (the same specs as OpenAI's), the last one marked for the cache
     (the stable tool definitions + the system prompt prefix)."""
     defs: list[dict[str, Any]] = [
@@ -63,12 +69,34 @@ def _tool_defs(tools: list[ToolSpec]) -> list[dict[str, Any]]:
         for t in tools
     ]
     if defs:
-        defs[-1]["cache_control"] = {"type": "ephemeral"}
+        defs[-1]["cache_control"] = cache
     return defs
 
 
+def _message_blocks(m: Message) -> list[dict[str, Any]]:
+    if m.role == "assistant" and m.raw and m.raw_provider == PROVIDER:
+        return m.raw
+    return _content_blocks(m.content)
+
+
+def _replay_blocks(content: list[Any]) -> list[dict[str, Any]]:
+    """The response as request blocks, in its order, thinking blocks unchanged (signature
+    included): the model keeps its reasoning from one tool call to the next."""
+    blocks: list[dict[str, Any]] = []
+    for b in content:
+        if b.type == "thinking":
+            blocks.append({"type": "thinking", "thinking": b.thinking, "signature": b.signature})
+        elif b.type == "redacted_thinking":
+            blocks.append({"type": "redacted_thinking", "data": b.data})
+        elif b.type == "text":
+            blocks.append({"type": "text", "text": b.text})
+        elif b.type == "tool_use":
+            blocks.append({"type": "tool_use", "id": b.id, "name": b.name, "input": b.input})
+    return blocks
+
+
 class AnthropicProvider:
-    name = "anthropic"
+    name = PROVIDER
 
     def __init__(self, api_key: str | None, timeout: float) -> None:
         self._client = anthropic.AsyncAnthropic(api_key=api_key, timeout=timeout, max_retries=3)
@@ -93,22 +121,26 @@ class AnthropicProvider:
         max_tokens: int = 16000,
         on_progress: ProgressCallback | None = None,
         effort: str | None = None,
-        cache_key: str | None = None,  # content-addressed cache: nothing to key
+        cache_key: str | None = None,
     ) -> Completion:
         output_config: dict[str, Any] = {}
         if effort:
             # OpenAI's none/minimal have no Anthropic equivalent; low is the floor there.
             output_config["effort"] = "low" if effort in ("none", "minimal") else effort
+        cache = _CONVERSATION_CACHE if cache_key else _CALL_CACHE
         kwargs: dict[str, Any] = {
             "model": model,
             "max_tokens": max_tokens,
-            "system": [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-            "messages": [{"role": m.role, "content": _content_blocks(m.content)} for m in messages],
+            "system": [{"type": "text", "text": system, "cache_control": cache}],
+            "messages": [{"role": m.role, "content": _message_blocks(m)} for m in messages],
             # adaptive thinking with a readable summary → shown live in the UI
             "thinking": {"type": "adaptive", "display": "summarized"},
         }
+        if cache_key:
+            # the breakpoint follows the conversation's last block: each turn reads the turns before
+            kwargs["cache_control"] = cache
         if tools:
-            kwargs["tools"] = _tool_defs(tools)
+            kwargs["tools"] = _tool_defs(tools, cache)
         if response_schema:
             output_config["format"] = {"type": "json_schema", "schema": response_schema}
         if output_config:
@@ -218,8 +250,16 @@ class AnthropicProvider:
                 "thinking_ms": thinking_ms,
             },
         )
+        # a turn cut off by max_tokens may end in an unsigned thinking block: replay its parts only
+        replay = resp.stop_reason != "max_tokens"
         return Completion(
-            message=Message(role="assistant", content=parts),
+            message=Message(
+                role="assistant",
+                content=parts,
+                raw=_replay_blocks(resp.content) if replay else None,
+                raw_provider=PROVIDER if replay else None,
+                raw_bound_to_history=replay,
+            ),
             stop_reason=cast(Any, stop),
             usage=usage,
             model=resp.model,

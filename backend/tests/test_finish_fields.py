@@ -89,6 +89,11 @@ def test_run_summary_totals_and_cost(monkeypatch) -> None:  # type: ignore[no-un
     m2.add(TurnMetric(step=1, role="builder", model="x", input_tokens=10))
     assert m2.summary().cost_usd is None
     assert Settings().price_for("claude-opus-5-20991231") is not None  # prefix match
+    # the longest prefix wins: Opus 5.5 is not priced as Opus 5
+    assert Settings().price_for("claude-opus-5-5-20991231") == Settings().price_for(
+        "claude-opus-5-5"
+    )
+    assert Settings().price_for("claude-opus-5-5") != Settings().price_for("claude-opus-5")
 
 
 def test_finish_questions_carry_what_was_assumed_and_the_options() -> None:

@@ -75,6 +75,11 @@ def prune_render_images(messages: list[Message], keep_last: int = 1, batch: int 
             )
         messages[i] = Message(role="user", content=parts)
     if removed:
+        for i in range(targets[0] + 1, len(messages)):
+            if messages[i].raw_bound_to_history:
+                messages[i] = messages[i].model_copy(
+                    update={"raw": None, "raw_provider": None, "raw_bound_to_history": False}
+                )
         logger.info("builder.pruned_images", extra={"removed": removed})
     return removed
 

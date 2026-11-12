@@ -54,8 +54,11 @@ class Settings(BaseSettings):
     # Models not listed cost 0 in the estimates (the summary then says "no price").
     MODEL_PRICES: dict[str, dict[str, float]] = Field(
         default_factory=lambda: {
-            # Anthropic list price (2026-06): $5 / $25 per MTok; cache reads 0.1x, writes 1.25x
-            "claude-opus-5": {"input": 5.0, "cached": 0.5, "output": 25.0, "cache_write": 6.25},
+            # Anthropic list prices (2026-11) per MTok. Conversations write the cache with the
+            # 1-hour TTL (2x input); one-off calls with the 5-minute one (1.25x), rarer.
+            "claude-opus-5-5": {"input": 4.0, "cached": 0.2, "output": 20.0, "cache_write": 8.0},
+            "claude-opus-5": {"input": 5.0, "cached": 0.5, "output": 25.0, "cache_write": 10.0},
+            "claude-sonnet-5-5": {"input": 2.0, "cached": 0.1, "output": 10.0, "cache_write": 4.0},
             # OpenAI list price (developers.openai.com/api/docs/pricing, 2026-09-07):
             # $10 / $1 cached / $50 per MTok
             "gpt-6-astra": {"input": 10.0, "cached": 1.0, "output": 50.0},
@@ -174,13 +177,12 @@ class Settings(BaseSettings):
         return self.PHOTO_SERVICE_TOKEN or self.RENDER_SERVICE_TOKEN
 
     def price_for(self, model: str) -> dict[str, float] | None:
-        """The price row of a model, matched by exact name then by prefix ("gpt-6-astra-2026…")."""
+        """The price row of a model, matched by exact name then by the longest prefix
+        ("gpt-6-astra-2026…"; "claude-opus-5-5-…" is not "claude-opus-5")."""
         if model in self.MODEL_PRICES:
             return self.MODEL_PRICES[model]
-        for name, row in self.MODEL_PRICES.items():
-            if model.startswith(name):
-                return row
-        return None
+        prefixes = [name for name in self.MODEL_PRICES if model.startswith(name)]
+        return self.MODEL_PRICES[max(prefixes, key=len)] if prefixes else None
 
     def resolve_model(self, role: Literal["builder", "critic"]) -> str:
         explicit = {"builder": self.BUILDER_MODEL, "critic": self.CRITIC_MODEL}[role]

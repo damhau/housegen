@@ -61,6 +61,9 @@ class Message(BaseModel):
     # including reasoning). Only the provider that produced it reads it; others ignore it.
     raw: list[dict[str, Any]] | None = None
     raw_provider: str | None = None
+    # The provider checks `raw` against every message before it (Anthropic's thinking
+    # signatures): after an earlier message is rewritten, `raw` must go, `content` replays.
+    raw_bound_to_history: bool = False
 
     @classmethod
     def user(cls, *parts: Part | str) -> Message:

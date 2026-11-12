@@ -7,10 +7,18 @@ from typing import Any
 
 import pytest
 
-from housegen.agent.builder import run_builder
+from housegen.agent.builder import prune_render_images, run_builder
 from housegen.agent.tools import BuilderTools
 from housegen.agent.workspace import Workspace
-from housegen.llm.types import Completion, Message, TextPart, ToolCallPart, ToolSpec
+from housegen.llm.types import (
+    Completion,
+    ImagePart,
+    Message,
+    TextPart,
+    ToolCallPart,
+    ToolResultPart,
+    ToolSpec,
+)
 
 
 class FakeProvider:
@@ -196,3 +204,35 @@ async def test_prune_threshold_zero_never_prunes(tools: BuilderTools) -> None:
         provider, "m", "sys", messages, tools, max_steps=10, max_tokens=100, prune_above_tokens=0
     )
     assert _images_in(messages) == 3
+
+
+def test_pruning_drops_the_thinking_bound_to_the_rewritten_history() -> None:
+    """Anthropic checks each thinking block against the messages before it: a block after a
+    rewritten message would be a 400, the ones before it stay."""
+
+    def render_result(call: str) -> Message:
+        img = ImagePart.from_bytes(b"\x89PNG", "image/png", label="north")
+        return Message(role="user", content=[ToolResultPart(tool_call_id=call, content=[img])])
+
+    def turn(call: str) -> Message:
+        return Message(
+            role="assistant",
+            content=[ToolCallPart(id=call, name="render_views", input={})],
+            raw=[{"type": "thinking", "thinking": "", "signature": call}],
+            raw_provider="anthropic",
+            raw_bound_to_history=True,
+        )
+
+    history = [
+        Message.user("build"),
+        turn("a"),
+        render_result("a"),
+        turn("b"),
+        render_result("b"),
+        turn("c"),
+    ]
+    assert prune_render_images(history) == 1
+    assert history[1].raw is not None  # before the rewritten result: untouched
+    assert history[3].raw is None
+    assert history[5].raw is None
+    assert history[3].tool_calls[0].id == "b"  # the turn itself replays from its parts

@@ -23,8 +23,9 @@ class Provider(Protocol):
     ) -> Completion:
         """One model turn, streamed under the hood.
 
-        `cache_key` groups the requests of one conversation for the provider's prompt cache
-        (OpenAI routes same-key requests to the same cache; Anthropic ignores it).
+        `cache_key` marks the requests of one conversation that goes on for the provider's
+        prompt cache (OpenAI routes same-key requests to the same cache; Anthropic caches the
+        conversation up to its last message, for an hour).
         `effort` is the reasoning effort (none…xhigh on OpenAI, low…max on Anthropic);
         each provider maps values it does not have onto its nearest level.
 
