@@ -77,6 +77,11 @@ class Settings(BaseSettings):
     # order of magnitude (#5, measured 2026-09-12); it exists to keep long builds inside the
     # context window, not to save tokens.
     BUILDER_PRUNE_ABOVE_TOKENS: int = 200000
+    # Claude runs: Opus 5.5, Fable 5.2 and Sonnet 5.5 take 1M tokens and a build peaks around
+    # 250k, while a prune there also drops the thinking of every later turn (it is bound to the
+    # history it was written in). Fable 5.2, 2026-11-12: two prunes rewrote 218k tokens into the
+    # cache, $3.50 of $16. A 200k-window Claude model (Haiku 4.5…) needs the 200k value here.
+    BUILDER_PRUNE_ABOVE_TOKENS_ANTHROPIC: int = 600000
     # independent critic rounds after the builder is done (0 disables the critic)
     CRITIC_MAX_ITERATIONS: int = 2
     CRITIC_SCORE_THRESHOLD: int = 80
@@ -184,6 +189,12 @@ class Settings(BaseSettings):
             return self.MODEL_PRICES[model]
         prefixes = [name for name in self.MODEL_PRICES if model.startswith(name)]
         return self.MODEL_PRICES[max(prefixes, key=len)] if prefixes else None
+
+    def prune_above_for(self, provider: str) -> int:
+        """The builder's prune threshold for a provider's runs (0 = never)."""
+        if provider == "anthropic":
+            return self.BUILDER_PRUNE_ABOVE_TOKENS_ANTHROPIC
+        return self.BUILDER_PRUNE_ABOVE_TOKENS
 
     def resolve_model(self, role: Literal["builder", "critic"]) -> str:
         explicit = {"builder": self.BUILDER_MODEL, "critic": self.CRITIC_MODEL}[role]
