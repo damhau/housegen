@@ -56,6 +56,7 @@ class Settings(BaseSettings):
         default_factory=lambda: {
             # Anthropic list prices (2026-11) per MTok. Conversations write the cache with the
             # 1-hour TTL (2x input); one-off calls with the 5-minute one (1.25x), rarer.
+            "claude-fable-5-2": {"input": 8.0, "cached": 0.2, "output": 40.0, "cache_write": 16.0},
             "claude-opus-5-5": {"input": 4.0, "cached": 0.2, "output": 20.0, "cache_write": 8.0},
             "claude-opus-5": {"input": 5.0, "cached": 0.5, "output": 25.0, "cache_write": 10.0},
             "claude-sonnet-5-5": {"input": 2.0, "cached": 0.1, "output": 10.0, "cache_write": 4.0},
