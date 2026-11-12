@@ -260,7 +260,15 @@ export function PhotoViewer({
   const p = photos[index]
   if (!p?.url) return null
   return (
-    <div role="dialog" aria-label={p.caption} className="fixed inset-0 z-50 grid grid-rows-[1fr_auto] bg-black/90 p-4" onClick={onClose}>
+    <div role="dialog" aria-label={p.caption} className="fixed inset-0 z-50 grid grid-rows-[minmax(0,1fr)_auto] bg-black/90 p-4" onClick={onClose}>
+      <button
+        onClick={onClose}
+        aria-label="Close"
+        title="Close (Esc)"
+        className="absolute right-3 top-3 z-10 rounded-full bg-black/60 p-2 text-white ring-1 ring-white/30 hover:bg-white/20"
+      >
+        <X className="size-6" />
+      </button>
       <img src={p.url} alt={p.caption} className="m-auto max-h-full max-w-full object-contain" onClick={(e) => e.stopPropagation()} />
       <div className="flex items-center justify-center gap-3 pt-2 text-sm text-white" onClick={(e) => e.stopPropagation()}>
         <button onClick={() => onIndex((index - 1 + n) % n)} aria-label="Previous" className="rounded p-1 hover:bg-white/10">
@@ -276,9 +284,6 @@ export function PhotoViewer({
         <a href={p.url} target="_blank" rel="noreferrer" className="rounded p-1 text-xs underline-offset-2 hover:underline">
           full size
         </a>
-        <button onClick={onClose} aria-label="Close" className="rounded p-1 hover:bg-white/10">
-          <X />
-        </button>
       </div>
     </div>
   )
