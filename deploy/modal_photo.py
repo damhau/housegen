@@ -150,8 +150,12 @@ def prepare(
     }
 
 
+# Modal's "A10G" can be a card that names itself "NVIDIA A10" (Montelly reshoot, 2026-11-13)
+_DEVICE_NAMES = {"A10G": "A10"}
+
+
 def _gpu(device: str, choices: list[str]) -> str:
-    return next((g for g in choices if g.replace("-", " ") in device), choices[0])
+    return next((g for g in choices if _DEVICE_NAMES.get(g, g).replace("-", " ") in device), choices[0])
 
 
 @app.function(image=image, gpu=EXPORT_GPU, cpu=4.0, memory=16384, timeout=1800, volumes=volumes,
