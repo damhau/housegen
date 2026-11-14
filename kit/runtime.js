@@ -61,6 +61,7 @@ import { loadContext } from "./context.js";
 import { createSunStudy } from "./sunstudy.js";
 import { isMirror, Mirrors } from "./mirror.js";
 import { applyLampMode } from "./lighting.js";
+import { setHouseStyle } from "./styles.js";
 
 const params = new URLSearchParams(location.search);
 const HEADLESS = params.get("headless") === "1";
@@ -353,6 +354,17 @@ function recordError(msg) {
 window.addEventListener("error", (e) => recordError(e.message || e.error));
 window.addEventListener("unhandledrejection", (e) => recordError(e.reason?.message ?? e.reason));
 
+/** The scene's house style (src/style.js, styles.js), {} when it has none. */
+async function loadHouseStyle() {
+  try {
+    return (await import(new URL("./src/style.js", document.baseURI).href)).default ?? {};
+  } catch (e) {
+    // a scene without the file is the usual case; a file that does not parse is the scene's error
+    if (!/dynamically imported module|Failed to fetch|Importing a module script failed/i.test(e?.message ?? "")) recordError(`src/style.js: ${e?.message ?? e}`);
+    return {};
+  }
+}
+
 /** Subtle tileable noise so large flat surfaces (lawn) do not read as plastic. */
 function noiseTexture(size = 256, base = 200, spread = 26, seed = 1, repeat = 40) {
   const c = document.createElement("canvas");
@@ -533,6 +545,7 @@ export async function boot(buildScene) {
   try {
     // textured surfaces: loaded first so house.js mat.* hands out textured materials (plain without the files)
     await loadFinishes().catch((e) => console.warn(`housekit: finishes not loaded: ${e?.message ?? e}`));
+    setHouseStyle(await loadHouseStyle());
     result = await buildScene({ THREE, scene, house, group: houseGroup, sun, ground, renderer, camera });
     house.texturePitchedRoofs(houseGroup);
     // the details a builder leaves out of its rooms (#43): skirting, inner window sills

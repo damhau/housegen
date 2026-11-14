@@ -36,5 +36,7 @@ npm-debug.log*
 kit/assets/polyhaven/
 kit/assets/sketchfab/
 kit/assets/objects/
+# the styles' marbles (ambientCG, CC0), fetched by the same script
+kit/assets/ambientcg/
 # kit/assets/licensed/ IS versioned: bought models, masked (kit/scripts/licensed/pack.mjs). Their
 # license allows that only while the repository stays private.

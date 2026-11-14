@@ -2,6 +2,8 @@
 // pieces built here (sofa, bed, dining set, wardrobe, kitchen run, bathroom), in one light
 // Scandinavian style: light oak, white lacquer, grey and sand textiles.
 //
+// The bath and kitchen fittings and the bedding are the house style's (styles.js) unless a piece names its own.
+//
 // Every piece has its origin at the bottom centre and FACES +z (its back at z = -depth/2).
 // `onWall(room, edge, at, piece)` puts a piece with its back against a wall of a room polygon,
 // facing into the room; `place(piece, [x, z], rotationY)` puts it anywhere.
@@ -12,9 +14,10 @@ import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
-import { finishMaterial, metricUV, tileMaterial, track } from "./finishes.js";
+import { WALL_TILES, finishMaterial, metricUV, tileMaterial, track, wallTileMaterial } from "./finishes.js";
 import * as lighting from "./lighting.js";
 import { OBJECTS } from "./objects.js";
+import { entry } from "./styles.js";
 
 // --------------------------------------------------------------------------
 // Materials
@@ -55,6 +58,34 @@ export const finish = {
   towel: (color = "#ece8e0") => finishMaterial("cotton-weave", { color, scale: 0.6 })
     ?? m(`towel:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
 };
+
+const matteBlack = () => m("fittings-black", () => new THREE.MeshStandardMaterial({ name: "matte black", color: "#1c1c1c", roughness: 0.45, metalness: 0.35 }));
+
+/**
+ * Bath and kitchen fittings by name (styles.js "fittings"): the metal of taps, mixers, the shower and the drains,
+ * the kitchen mixer's, the flush plate and its buttons, a shower's linear drain.
+ */
+export const FITTINGS = {
+  chrome: () => ({ metal: finish.chrome(), kitchen: finish.steel(), plate: finish.lacquer("#f4f3f0"), buttons: finish.chrome(), drain: finish.steel() }),
+  // the interior pilot's: a matte plate, its buttons in a satin black chrome that catches the light
+  black: () => ({ metal: matteBlack(), kitchen: matteBlack(), drain: matteBlack(),
+    plate: m("plate-black", () => new THREE.MeshStandardMaterial({ name: "matte black plate", color: "#1b1b1b", roughness: 0.7, metalness: 0.1 })),
+    buttons: m("buttons-black", () => new THREE.MeshStandardMaterial({ name: "satin black chrome", color: "#6e6e6e", roughness: 0.3, metalness: 0.55 })) }),
+};
+/** A piece's fittings: its own (`name`) or the house style's. */
+const fittingsOf = (name) => entry(FITTINGS, "fittings", { piece: name })();
+
+/**
+ * Bed dressing by name (styles.js "bedding"): `linen` is the kit's (white linen; a catalogue bed's duvet and throw
+ * by its room's accent), `olive` the interior pilot's layered bed (a white sheet turned down over an olive duvet, a
+ * grey throw, white pillows, olive cushions). Colours for a scene's own bed: fx.bedding().
+ */
+export const BEDDING = {
+  linen: { layered: false, sheet: "#f5f3ee", duvet: "#f5f3ee", throw: "#d5c9b8", pillows: "#f5f3ee", cushions: [] },
+  olive: { layered: true, sheet: "#f3f2ee", duvet: "#5b5a44", throw: "#c4c2bb", pillows: "#fbfaf7", cushions: ["#6c6c4c", "#7a7a5a"] },
+};
+/** The bedding of the house style (for `room`, a room's name), or the one named (`bedding`). */
+export const bedding = ({ room, bedding: name } = {}) => entry(BEDDING, "bedding", { piece: name, room });
 
 // --------------------------------------------------------------------------
 // Building blocks
@@ -116,14 +147,22 @@ export function sofa({ width = 2.2, depth = 0.92, color = "#a3a49e" } = {}) {
   return piece(g, "sofa", width, depth);
 }
 
-/** Bed: oak frame and headboard, mattress, duvet folded back, pillows, a throw. */
-export function bed({ width = 1.6, length = 2.05, throwColor } = {}) {
+/**
+ * Bed: oak frame and headboard, mattress, duvet folded back, pillows, a throw; `bedding` (BEDDING) the house
+ * style's unless named: a layered one drapes a sheet, a duvet and a throw and adds cushions.
+ */
+export function bed({ width = 1.6, length = 2.05, throwColor, bedding: name, room } = {}) {
   const g = new THREE.Group();
   const oak = finish.oak(), linen = finish.linen();
   const frameH = 0.3, mattH = 0.2;
   block(g, [width + 0.06, frameH, length + 0.04], [0, 0, 0.02], oak, 0.015);
   block(g, [width + 0.06, 0.95, 0.06], [0, 0, -length / 2 - 0.01], oak, 0.015);
   block(g, [width - 0.02, mattH, length - 0.04], [0, frameH, 0.02], linen, 0.05);
+  const dress = bedding({ room, bedding: name });
+  if (dress.layered) {
+    layers(g, dress, { width, length, top: frameH + mattH, head: -length / 2, foot: length / 2 + 0.02, drop: 0.2 });
+    return piece(g, "bed", width + 0.06, length + 0.08);
+  }
   // duvet over the foot two thirds, hanging a little over the sides and the foot
   const duvetL = length * 0.72, duvetZ = length / 2 - duvetL / 2 + 0.04, top = frameH + mattH;
   block(g, [width + 0.1, 0.07, duvetL], [0, top - 0.02, duvetZ], linen, 0.035);
@@ -211,11 +250,12 @@ export function wardrobe({ width = 1.2, depth = 0.6, height = 2.3 } = {}) {
  * from the left end), wall units above (`upper`), a splashback between them (`splash`: tile options
  * { size, color }, a colour, or null) and a hood over the hob: built into the wall units, or with
  * `hood: "chimney"` a canopy and chimney up to `ceiling` (m above the floor), for a run with no
- * wall units or an island.
+ * wall units or an island. The mixer in the `fittings`' kitchen metal (FITTINGS, the house style's unless named).
  */
 export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null, hob = null, upper = true, front = "#f2f1ed",
-  worktop = "#d9d5cc", splash = { size: [0.3, 0.1], color: "#f4f3ef" }, hood = true, ceiling = 2.4 } = {}) {
+  worktop = "#d9d5cc", splash = { size: [0.3, 0.1], color: "#f4f3ef" }, hood = true, ceiling = 2.4, fittings } = {}) {
   const g = new THREE.Group();
+  const F = fittingsOf(fittings);
   const white = finish.lacquer(front), gap = finish.lacquer("#8f8b84");
   // #61: a terrazzo or marble worktop, textured when the finishes are loaded
   const stoneTop = { terrazzo: () => finishMaterial("terrazzo", { roughness: 0.45 }), marble: () => finishMaterial("stone-tile", { roughness: 0.4 }) }[worktop];
@@ -280,12 +320,12 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
       const bowl = new THREE.Group(); // sunkenBowl draws around x = 0
       // brushed steel, rougher than the taps': a polished bowl mirrors the bright room and reads white
       const brushed = m("sink-steel", () => new THREE.MeshStandardMaterial({ color: "#878a8c", roughness: 0.55, metalness: 0.55 }));
-      sunkenBowl(bowl, SINK.w, SINK.d, 0.9, 0.2, 0.008, brushed, SINK.z);
+      sunkenBowl(bowl, SINK.w, SINK.d, 0.9, 0.2, 0.008, brushed, SINK.z, F.metal);
       bowl.position.x = x0 + sink;
       g.add(bowl);
     }
     else block(g, [0.6, 0.012, 0.44], [x0 + sink, 0.9, 0.02], finish.steel(), 0.01);
-    kitchenMixer(g, x0 + sink, 0.9, SINK.z - SINK.d / 2 - 0.045);
+    kitchenMixer(g, x0 + sink, 0.9, SINK.z - SINK.d / 2 - 0.045, F.kitchen);
   }
   if (hob !== null && !inTall(hob)) {
     block(g, [0.6, 0.008, 0.52], [x0 + hob, 0.9, 0.02], finish.black());
@@ -356,14 +396,14 @@ function roundedSolid(g, w, d, h, r, y, z, material, bevel = 0.012) {
  * A ceramic bowl `w` x `d`, its rim at `top`, `depth` deep: walls `rim` thick all the way down, a
  * floor and a drain. The inside is open: whatever carries it must stay below top - depth.
  */
-function sunkenBowl(g, w, d, top, depth, rim, material, z = 0) {
+function sunkenBowl(g, w, d, top, depth, rim, material, z = 0, drainMaterial = finish.chrome()) {
   const y = top - depth;
   block(g, [w, depth, rim], [0, y, z - d / 2 + rim / 2], material, 0.01);
   block(g, [w, depth, rim], [0, y, z + d / 2 - rim / 2], material, 0.01);
   block(g, [rim, depth, d - 2 * rim], [-w / 2 + rim / 2, y, z], material, 0.01);
   block(g, [rim, depth, d - 2 * rim], [w / 2 - rim / 2, y, z], material, 0.01);
   block(g, [w - 2 * rim, 0.02, d - 2 * rim], [0, y, z], material, 0.008);
-  const drain = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.004, 24), finish.chrome()));
+  const drain = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.004, 24), drainMaterial));
   drain.position.set(0, y + 0.021, z);
   g.add(drain);
 }
@@ -409,10 +449,9 @@ function upgrade(g, names, placeholder, make) {
 
 /**
  * A single-lever kitchen mixer on the worktop at (x, y, z): a round body, a high arched spout over the
- * sink (toward +z), the lever on its side. Brushed steel.
+ * sink (toward +z), the lever on its side, in `steel` (the fittings' kitchen metal).
  */
-function kitchenMixer(g, x, y, z) {
-  const steel = finish.steel();
+function kitchenMixer(g, x, y, z, steel = finish.steel()) {
   const body = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.026, 0.1, 24), steel));
   body.position.set(x, y + 0.05, z);
   const spout = new THREE.CatmullRomCurve3([
@@ -446,16 +485,15 @@ function hose(g, points, r, material = finish.chrome()) {
 }
 
 /** A wall-mounted bath mixer on the wall z at (x, y), toward +z: rosette, round body, lever, spout. */
-function bathMixer(g, x, y, z) {
-  rod(g, 0.032, 0.032, 0.012, [x, y, z + 0.006], ALONG_Z); // rosette
-  rod(g, 0.025, 0.025, 0.07, [x, y, z + 0.045], ALONG_Z); // body
-  rod(g, 0.006, 0.008, 0.07, [x, y + 0.045, z + 0.055], [-0.35, 0, 0]); // lever
-  hose(g, [[x, y - 0.012, z + 0.06], [x, y - 0.018, z + 0.13], [x, y - 0.045, z + 0.19]], 0.013); // spout
+function bathMixer(g, x, y, z, c = finish.chrome()) {
+  rod(g, 0.032, 0.032, 0.012, [x, y, z + 0.006], ALONG_Z, c); // rosette
+  rod(g, 0.025, 0.025, 0.07, [x, y, z + 0.045], ALONG_Z, c); // body
+  rod(g, 0.006, 0.008, 0.07, [x, y + 0.045, z + 0.055], [-0.35, 0, 0], c); // lever
+  hose(g, [[x, y - 0.012, z + 0.06], [x, y - 0.018, z + 0.13], [x, y - 0.045, z + 0.19]], 0.013, c); // spout
 }
 
 /** A mixer tap on the wall or the deck: body, spout reaching `reach` forward. */
-function tap(g, x, y, z, reach = 0.14) {
-  const c = finish.chrome();
+function tap(g, x, y, z, reach = 0.14, c = finish.chrome()) {
   block(g, [0.05, 0.05, 0.05], [x, y, z], c, 0.01);
   block(g, [0.022, 0.022, reach], [x, y + 0.03, z + reach / 2], c, 0.008);
   block(g, [0.03, 0.012, 0.012], [x, y + 0.055, z], c, 0.004); // lever
@@ -464,16 +502,17 @@ function tap(g, x, y, z, reach = 0.14) {
 /**
  * Wall-hung WC: the bowl (rounded, tapering to the front) with seat and lid, on a tiled or lacquered
  * box that hides the cistern (`boxWidth` wide: 0 for none, e.g. when the wall is already built out),
- * the flush plate on it.
+ * the flush plate on it. `tiles` (true: the style's wall tiles, a WALL_TILES name or tile options) clad the
+ * box; `fittings` (FITTINGS) the plate's, the house style's unless named.
  */
-export function wc({ boxWidth = 0.5, boxHeight = 1.1, tiles } = {}) {
+export function wc({ boxWidth = 0.5, boxHeight = 1.1, tiles, fittings } = {}) {
   const g = new THREE.Group();
-  const c = finish.ceramic();
+  const c = finish.ceramic(), F = fittingsOf(fittings);
   const placeholder = [];
   if (boxWidth > 0) {
-    const box = block(g, [boxWidth, boxHeight, 0.18], [0, 0, -0.26], tiles ? tileMaterial(tiles) : finish.lacquer("#f4f3f0"), 0.004);
+    const box = block(g, [boxWidth, boxHeight, 0.18], [0, 0, -0.26], tiles ? wallTileMaterial(tiles) : finish.lacquer("#f4f3f0"), 0.004);
     if (tiles) metricUV(box.geometry);
-    placeholder.push(block(g, [0.24, 0.16, 0.012], [0, boxHeight - 0.28, -0.166], finish.chrome(), 0.004));
+    placeholder.push(block(g, [0.24, 0.16, 0.012], [0, boxHeight - 0.28, -0.166], F.plate, 0.004));
   }
   // bowl: 36 x 54, hung 40 cm above the floor, narrower at the front
   placeholder.push(
@@ -482,20 +521,22 @@ export function wc({ boxWidth = 0.5, boxHeight = 1.1, tiles } = {}) {
     roundedSolid(g, 0.36, 0.48, 0.02, 0.17, 0.425, 0.055, c, 0.008), // lid
   );
   // the real ones: the WC's back on the box (z = -0.17), at the height it is drawn at; the flush
-  // plate (white, chrome buttons) centred where the parametric one was
+  // plate centred where the parametric one was
   upgrade(g, boxWidth > 0 ? ["wc-wall-hung", "flush-plate"] : ["wc-wall-hung"], placeholder, ([bowl, plate]) => [
     sanitaryCopy(bowl, { body: c, seat: finish.lacquer("#f7f6f3"), lid: finish.lacquer("#f7f6f3") }, [0, 0, -0.17]),
-    ...(plate ? [sanitaryCopy(plate, { plate: finish.lacquer("#f4f3f0"), buttons: finish.chrome() }, [0, boxHeight - 0.2, -0.17])] : []),
+    ...(plate ? [sanitaryCopy(plate, { plate: F.plate, buttons: F.buttons }, [0, boxHeight - 0.2, -0.17])] : []),
   ]);
   return piece(g, "wc", Math.max(0.37, boxWidth), 0.7);
 }
 
 /**
  * Washbasin: a ceramic top with a real bowl on an oak vanity (or wall-hung without), a tap, and
- * a mirror above (silvered, `mirrorHeight` high, its bottom at 1.05 m).
+ * a mirror above (silvered, `mirrorHeight` high, its bottom at 1.05 m). `fittings` (FITTINGS): the house
+ * style's unless named.
  */
-export function basin({ width = 0.6, depth = 0.46, vanity = true, mirror = true, mirrorHeight = 0.7 } = {}) {
+export function basin({ width = 0.6, depth = 0.46, vanity = true, mirror = true, mirrorHeight = 0.7, fittings } = {}) {
   const g = new THREE.Group();
+  const F = fittingsOf(fittings);
   const placeholder = [];
   const added = (f) => { const n = g.children.length; f(); placeholder.push(...g.children.slice(n)); };
   // the real basin (60 x 46) fits from 50 to 75 cm wide and 38 to 55 cm deep, stretched; outside
@@ -507,9 +548,9 @@ export function basin({ width = 0.6, depth = 0.46, vanity = true, mirror = true,
     vanityBox = block(g, [width - 0.01, 0.28, depth - 0.03], [0, 0.46, -0.015], finish.oak(), 0.006);
     block(g, [width - 0.06, 0.004, 0.004], [0, 0.62, depth / 2 - 0.03], finish.black()); // grip line
   }
-  added(() => sunkenBowl(g, width, depth, 0.86, 0.12, 0.05, finish.ceramic()));
+  added(() => sunkenBowl(g, width, depth, 0.86, 0.12, 0.05, finish.ceramic(), 0, F.metal));
   if (!real) placeholder.length = 0;
-  added(() => tap(g, 0, 0.86, -depth / 2 + 0.06, Math.min(0.13, depth * 0.3)));
+  added(() => tap(g, 0, 0.86, -depth / 2 + 0.06, Math.min(0.13, depth * 0.3), F.metal));
   if (mirror) {
     block(g, [width, mirrorHeight, 0.012], [0, 1.05, -depth / 2 - 0.006], finish.mirror(), 0.004);
   }
@@ -517,44 +558,50 @@ export function basin({ width = 0.6, depth = 0.46, vanity = true, mirror = true,
   if (real && vanityBox) placeholder.push(vanityBox);
   upgrade(g, real ? ["basin-60", "basin-mixer"] : ["basin-mixer"], placeholder, (models) => {
     const mixer = models[models.length - 1];
-    if (!real) return sanitaryCopy(mixer, { body: finish.chrome() }, [0, 0.86, -depth / 2 + 0.06]);
+    if (!real) return sanitaryCopy(mixer, { body: F.metal }, [0, 0.86, -depth / 2 + 0.06]);
     // the basin's top at 0.86, its back on the wall; the mixer in its tap hole (11 cm from the back);
     // a vanity stops under the basin (16 cm deep)
     return [
       sanitaryCopy(models[0], { body: finish.ceramic() }, [0, 0.86, -depth / 2], [sx, 1, sz]),
-      sanitaryCopy(mixer, { body: finish.chrome() }, [0, 0.864, -depth / 2 + 0.111 * sz]),
+      sanitaryCopy(mixer, { body: F.metal }, [0, 0.864, -depth / 2 + 0.111 * sz]),
       ...(vanityBox ? [block(new THREE.Group(), [width - 0.01, 0.235, depth - 0.03], [0, 0.46, -0.015], finish.oak(), 0.006)] : []),
     ];
   });
   return piece(g, "basin", width, depth);
 }
 
-/** Built-in bathtub: a white bath (rim, sunken inside) in a tiled or white front panel, a tap on the wall. */
-export function bathtub({ length = 1.7, width = 0.75, tiles } = {}) {
+/**
+ * Built-in bathtub: a white bath (rim, sunken inside) in a tiled (`tiles`, as wc's) or white front panel, a mixer
+ * on the wall in its `fittings` (FITTINGS, the house style's unless named).
+ */
+export function bathtub({ length = 1.7, width = 0.75, tiles, fittings } = {}) {
   const g = new THREE.Group();
-  const front = tiles ? tileMaterial(tiles) : finish.lacquer("#eceae5");
+  const front = tiles ? wallTileMaterial(tiles) : finish.lacquer("#eceae5"), F = fittingsOf(fittings);
   // the tub on a base under its floor, its front clad (tiles or a white panel) up to the rim
   block(g, [length, 0.14, width - 0.02], [0, 0, -0.01], front, 0.004);
-  sunkenBowl(g, length, width - 0.02, 0.56, 0.42, 0.06, finish.ceramic(), -0.01);
+  sunkenBowl(g, length, width - 0.02, 0.56, 0.42, 0.06, finish.ceramic(), -0.01, F.metal);
   const apron = block(g, [length, 0.51, 0.012], [0, 0, width / 2 - 0.006], front, 0.002);
   if (tiles) metricUV(apron.geometry);
-  bathMixer(g, -length / 2 + 0.3, 0.72, -width / 2);
+  bathMixer(g, -length / 2 + 0.3, 0.72, -width / 2, F.metal);
   return piece(g, "bathtub", length, width);
 }
 
 /**
- * Walk-in shower `width` x `depth` (its back on the wall): a flush tray in `floor` (tile material
- * options or a colour) with a linear drain, a fixed glass panel `panel` metres wide on the front,
+ * Walk-in shower `width` x `depth` (its back on the wall): a flush tray in `floor` (true: the style's wall
+ * tiles, a WALL_TILES name, tile options, or a colour) with a linear drain, a fixed glass panel `panel` metres wide on the front,
  * 2 m high with a steadying bar to the wall, the way in beside it; `side` "left" / "right" closes
  * that side with glass too (a shower in a corner has a wall on the other side). A rain head on an
- * arm, a hand shower on a rail and a thermostatic mixer on the back wall.
+ * arm, a hand shower on a rail and a thermostatic mixer on the back wall, in its `fittings` (FITTINGS, the house
+ * style's unless named).
  */
-export function shower({ width = 1.2, depth = 0.9, panel = 0.8, side = null, floor } = {}) {
+export function shower({ width = 1.2, depth = 0.9, panel = 0.8, side = null, floor, fittings } = {}) {
   const g = new THREE.Group();
-  const trayMat = floor && typeof floor === "object" ? tileMaterial(floor) : finish.stone(floor ?? "#8e8b85");
+  const F = fittingsOf(fittings);
+  const tiled = floor === true || (floor && typeof floor === "object") || (typeof floor === "string" && floor in WALL_TILES);
+  const trayMat = tiled ? wallTileMaterial(floor) : finish.stone(floor ?? "#8e8b85");
   const tray = block(g, [width, 0.012, depth], [0, 0, 0], trayMat);
-  if (floor && typeof floor === "object") metricUV(tray.geometry);
-  block(g, [width - 0.1, 0.004, 0.05], [0, 0.012, -depth / 2 + 0.08], finish.steel()); // drain
+  if (tiled) metricUV(tray.geometry);
+  block(g, [width - 0.1, 0.004, 0.05], [0, 0.012, -depth / 2 + 0.08], F.drain); // drain
   const glass = finish.showerGlass(), black = finish.black();
   const p = Math.min(panel, width);
   // the front panel starts at the closed side (the glass side, or the left when both are walls)
@@ -567,7 +614,7 @@ export function shower({ width = 1.2, depth = 0.9, panel = 0.8, side = null, flo
   } else {
     block(g, [0.012, 0.012, depth - 0.02], [edge - s * (p - 0.02), 1.95, 0], black); // bar to the back wall
   }
-  const c = finish.chrome(), back = -depth / 2;
+  const c = F.metal, back = -depth / 2;
   // rain head on a round arm from the back wall
   rod(g, 0.03, 0.03, 0.012, [0, 2.11, back + 0.006], ALONG_Z, c); // rosette
   rod(g, 0.01, 0.01, 0.33, [0, 2.11, back + 0.165], ALONG_Z, c);
@@ -722,9 +769,10 @@ export function washer({ dryer = false } = {}) {
 /**
  * Things on a bathroom ledge (the top of the WC's box, a shelf, a vanity): a tray with a soap
  * dispenser and a toothbrush cup with two brushes. `width` x 0.12, origin at its bottom centre:
- * place it at the ledge's height.
+ * place it at the ledge's height. The pump in the `fittings`' metal (FITTINGS, the house style's unless named).
  */
-export function bathAccessories({ width = 0.3, tray = "#2a2b2c" } = {}) {
+export function bathAccessories({ width = 0.3, tray = "#2a2b2c", fittings } = {}) {
+  const F = fittingsOf(fittings);
   const g = new THREE.Group();
   block(g, [width, 0.012, 0.12], [0, 0, 0], finish.metal(tray), 0.004);
   const cyl = (r, h, x, y, mat, seg = 24) => {
@@ -733,11 +781,11 @@ export function bathAccessories({ width = 0.3, tray = "#2a2b2c" } = {}) {
     g.add(c);
     return c;
   };
-  // soap dispenser: an amber glass bottle, a chrome pump
+  // soap dispenser: an amber glass bottle, a pump
   const amber = m("amberGlass", () => new THREE.MeshStandardMaterial({ color: "#8a5a2b", roughness: 0.15, transparent: true, opacity: 0.85 }));
   cyl(0.033, 0.13, -width / 4, 0.012, amber);
-  cyl(0.012, 0.03, -width / 4, 0.142, finish.chrome(), 12);
-  block(g, [0.008, 0.008, 0.04], [-width / 4, 0.165, 0.015], finish.chrome());
+  cyl(0.012, 0.03, -width / 4, 0.142, F.metal, 12);
+  block(g, [0.008, 0.008, 0.04], [-width / 4, 0.165, 0.015], F.metal);
   // toothbrush cup, two brushes leaning in it
   cyl(0.032, 0.1, width / 4, 0.012, finish.ceramic());
   for (const [dx, col] of [[-0.01, "#7fa7b5"], [0.012, "#e9e3d6"]]) {
@@ -1092,6 +1140,59 @@ async function pottedPlant(role, { height, room } = {}) {
   return piece(new THREE.Group(), role, 0, 0);
 }
 
+/**
+ * A cloth draped over a bed (the interior pilot's): a sheet `width` wide from z0 to z1 at height `y`, falling `side`
+ * at its sides and `foot` at its far end, with a little waviness.
+ */
+function drape(width, z0, z1, y, material, { side = 0.17, foot = 0.14, wave = 1 } = {}) {
+  const nx = 48, nz = 44, pos = [], uv = [], idx = [];
+  for (let j = 0; j <= nz; j++) for (let i = 0; i <= nx; i++) {
+    const u = i / nx, v = j / nz, x = (u - 0.5) * width, z = z0 + v * (z1 - z0);
+    const s = Math.pow(Math.max(0, (Math.abs(u - 0.5) - 0.425) / 0.075), 1.3);
+    const f = Math.pow(Math.max(0, (v - 0.925) / 0.075), 1.3);
+    const waves = wave * (0.007 * Math.sin(x * 31 + z * 8) + 0.009 * Math.sin(x * 13 - z * 16));
+    pos.push(x, y + waves - side * s - foot * f, z);
+    uv.push(u * width, v * (z1 - z0));
+  }
+  for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) {
+    const a = j * (nx + 1) + i, b = a + nx + 1;
+    idx.push(a, b, a + 1, b, b + 1, a + 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  geo.userData.metricUV = true;
+  const mat = m(`drape:${material.uuid}`, () => { const c = material.clone(); c.side = THREE.DoubleSide; return c; });
+  return shade(new THREE.Mesh(geo, mat));
+}
+
+/**
+ * Layered bedding (BEDDING `layered`) on a mattress whose top is at `top`, `width` wide from `head` to `foot`
+ * (z), centred on x = `cx`: a sheet turned down, the duvet over it, a throw across, two sleeping pillows and two
+ * square ones against the head, the cushions in front of them (one of each on a single bed). `drop`: how far the
+ * cloths fall at the sides.
+ */
+function layers(g, dress, { width, top, head, foot, cx = 0, drop = 0.2, pillows = true }) {
+  const L = foot - head, mid = (head + foot) / 2;
+  const add = (mesh) => { mesh.position.x = cx; g.add(mesh); return mesh; };
+  add(drape(width + 0.14, mid - L * 0.12, foot + 0.05, top + 0.025, finish.linen(dress.sheet), { side: drop, foot: Math.min(0.16, drop) }));
+  add(drape(width + 0.16, mid - L * 0.04, foot + 0.06, top + 0.04, finish.wool(dress.duvet), { side: drop + 0.02, foot: Math.min(0.2, drop) }));
+  add(drape(width + 0.2, mid + L * 0.18, mid + L * 0.42, top + 0.075, finish.weave(dress.throw), { side: 0.12, foot: 0.02, wave: 1.4 }));
+  const soft = (w, h, d, x, y, z, rx, mat) => {
+    const p = shade(new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 5, Math.min(h, d) * 0.45), mat));
+    p.position.set(cx + x, y, z);
+    p.rotation.x = rx;
+    g.add(p);
+  };
+  const white = finish.linen(dress.pillows), n = width < 1.2 ? 1 : 2;
+  const xs = n === 1 ? [0] : [-width / 4, width / 4];
+  if (pillows) for (const x of xs) soft(width / n - 0.12, 0.17, 0.48, x, top + 0.1, head + 0.24, -0.25, white);
+  for (const x of xs) soft(0.46, 0.42, 0.13, x * 0.95, top + 0.21, head + 0.31, -0.32, white);
+  dress.cushions.slice(0, n).forEach((col, i) => soft(0.4, 0.34, 0.12, xs[i] * 0.85, top + 0.17, head + 0.43, -0.3, finish.weave(col)));
+}
+
 // the duvet's colour, by the room's accent: quiet linen mostly, a muted colour now and then
 const DUVETS = { null: ["#ece8e0", "#e4ddd0", "#d9d8d4"], warm: ["#ece8e0", "#d8c7b0"], cool: ["#e6e8ea", "#c9d0d6"], green: ["#ece8e0", "#c8cdbd"] };
 const THROWS = { null: ["#8a8379", "#5b5e60"], warm: ["#b4734f", "#a08a6a"], cool: ["#5d6f80", "#7f8c96"], green: ["#7d8a6a", "#5f6b55"] };
@@ -1103,12 +1204,17 @@ const THROWS = { null: ["#8a8379", "#5b5e60"], warm: ["#b4734f", "#a08a6a"], coo
  */
 function dressBed(wrap, o, s, room) {
   const { top, x: [x0, x1], z: [head, foot], footboard } = o.mattress;
-  const accent = room == null ? null : ACCENTS[hash(`${sceneKey()}|room|${room}`) % ACCENTS.length];
-  const pick = (list, salt) => list[hash(`${sceneKey()}|${room ?? ""}|${o.id}|${salt}`) % list.length];
-  const linen = finish.linen(pick(DUVETS[accent], "duvet")), wool = finish.wool(pick(THROWS[accent], "throw"));
   const g = new THREE.Group();
   g.add(wrap);
   const w = (x1 - x0) * s[0], cx = (x0 + x1) / 2 * s[0], y = top * s[1];
+  const dress = bedding({ room });
+  if (dress.layered) {
+    layers(g, dress, { width: w, top: y, head: head * s[2], foot: foot * s[2], cx, drop: Math.min(0.2, y - 0.12), pillows: o.pillows === false });
+    return g;
+  }
+  const accent = room == null ? null : ACCENTS[hash(`${sceneKey()}|room|${room}`) % ACCENTS.length];
+  const pick = (list, salt) => list[hash(`${sceneKey()}|${room ?? ""}|${o.id}|${salt}`) % list.length];
+  const linen = finish.linen(pick(DUVETS[accent], "duvet")), wool = finish.wool(pick(THROWS[accent], "throw"));
   const zf = foot * s[2], len = (foot - head) * s[2] * 0.68, zc = zf - len / 2 + 0.03;
   block(g, [w + 0.08, 0.06, len + 0.04], [cx, y - 0.02, zc], linen, 0.03);
   const drop = Math.min(0.22, y - 0.12);
@@ -1253,7 +1359,7 @@ export function onWall(room, edge, at, p, { y = 0, gap, out = 0 } = {}) {
 export default {
   finish, sofa, bed, nightstand, chair, diningSet, wardrobe, kitchenRun, wc, basin, bathtub, shower, towelRail,
   coatHooks, bench, washer, bathAccessories, towelStack, laundryBasket, rug, ceilingLight,
-  MODELS, ROLES, model, credits, place, onWall,
+  MODELS, ROLES, model, credits, place, onWall, FITTINGS, BEDDING, bedding,
   // light fixtures that carry their own light (lighting.js): fx.fixture("downlight", { mount: "recessed" })
   fixture: lighting.fixture, FIXTURES: lighting.FIXTURES, lighting,
 };

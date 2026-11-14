@@ -14,7 +14,8 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { finishMaterial, metricUV, tileMaterial } from "./finishes.js";
+import { FLOOR_TILES, bathFloorMaterial, finishMaterial, metricUV, tileMaterial, wallTileMaterial } from "./finishes.js";
+import { entry } from "./styles.js";
 
 // plain fallbacks (no import of house.js: a page may load it under another URL, ?v=<tag>, and a
 // second instance of it would carry its own caches)
@@ -33,14 +34,16 @@ const FLOORS = {
   "oak-light": () => finishMaterial("oak-washed", { roughness: 0.85 }) ?? plain("#dcc3a0", 0.7),
   "oak-smoked": () => finishMaterial("oak-smoked", { roughness: 0.8 }) ?? plain("#8a6a4c", 0.7),
   herringbone: () => finishMaterial("oak-herringbone", { roughness: 0.8 }) ?? plain("#c9a57c", 0.7),
-  // large-format porcelain, 60 x 60, pale joints (drawn, nothing to fetch)
-  tile: () => tileMaterial({ size: [0.6, 0.6], joint: 0.002, color: "#e6e4df", jointColor: "#d2cfc8", roughness: 0.4 }),
+  // large-format porcelain, 60 x 60, pale joints (drawn, nothing to fetch); a bath's or a WC's: the style's (WET)
+  tile: () => tileMaterial(FLOOR_TILES.tile),
   "tile-dark": () => finishMaterial("porcelain-dark", { roughness: 0.65 }) ?? plain("#8d8b86", 0.5),
   terrazzo: () => finishMaterial("terrazzo", { roughness: 0.55 }) ?? plain("#d9d4ca", 0.5),
   marble: () => finishMaterial("stone-tile") ?? plain("#e2ddd3", 0.4),
   concrete: () => plain("#b9b6ae", 0.95),
 };
 const PLASTER = () => finishMaterial("plaster") ?? plain("#f1efea", 0.92);
+// the rooms whose "tile" floor is the house style's bath floor (styles.js "bathFloor")
+const WET = new Set(["bath", "wc"]);
 
 function shadow(mesh) {
   mesh.castShadow = true;
@@ -165,7 +168,7 @@ export function floorPlan({ y = 0, height = 2.5, rooms = [], partitions = [], ce
   const g = new THREE.Group();
   const listed = [];
   for (const r of rooms) {
-    const floorMat = (FLOORS[r.floor ?? "oak"] ?? FLOORS.oak)();
+    const floorMat = r.floor === "tile" && WET.has(r.use) ? bathFloorMaterial(r.name) : (FLOORS[r.floor ?? "oak"] ?? FLOORS.oak)();
     const f = horizontal(r.polygon, y + 0.015, 0.015, floorMat);
     f.userData = { kind: "roomFloor", room: r.name };
     g.add(f);
@@ -230,12 +233,13 @@ function wallOpenings(root) {
  * Ceramic tiles on the walls of a room, cut around its doors and windows: `height` metres up all
  * round, `fullHeight` on the edges listed in `full` (a shower, the wall behind a bath). Edge i runs
  * from room.polygon[i] to the next point (the clear inside faces, as in floorPlan). `root` is the
- * scene holding the walls: the openings are found in it (wallOpenings). `tiles` are tileMaterial's
+ * scene holding the walls: the openings are found in it (wallOpenings). `tiles`: the house style's wall tiles
+ * when left out (styles.js "wallTile", the room's override included), a name of WALL_TILES, or tileMaterial's
  * options ({ size: [0.3, 0.6], color, jointColor, joint }). Add the result to the scene.
  */
-export function tileWalls(root, room, { y = 0, height = 1.2, full = [], fullHeight = 2.4, edges, tiles = {} } = {}) {
+export function tileWalls(root, room, { y = 0, height = 1.2, full = [], fullHeight = 2.4, edges, tiles } = {}) {
   const poly = room.polygon ?? room;
-  const material = tileMaterial(tiles);
+  const material = wallTileMaterial(tiles, { room: room.name });
   const openings = wallOpenings(root);
   const T = 0.008; // tile + adhesive
   let area = 0;
@@ -496,6 +500,12 @@ const KINDS = {
   wallDecor: (w) => ["art", "frame", "frames", "painting", "poster", "print", "gallery", "mirror"].some((k) => w.includes(k)),
   plant: (w) => w.some((x) => x.includes("plant") || x.includes("ficus") || x.includes("ivy")),
 };
+/** The words of a piece's name, for KINDS; a camelCase name counts as one word too ("towelRail" → "towel", "rail", "towelrail"). */
+function pieceWords(name) {
+  const words = String(name ?? "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z]+/).filter(Boolean);
+  words.push(String(name ?? "").toLowerCase().replace(/[^a-z]/g, ""));
+  return words;
+}
 // What each room use needs (the builder's "What each room gets", the parts that can be checked)
 const ESSENTIALS = {
   bath: [["tiles", "walls not tiled (tileWalls)"], [["basin"], "no basin (fx.basin)"], [["bathtub", "shower"], "no bath or shower (fx.bathtub, fx.shower)"],
@@ -528,10 +538,7 @@ export function roomEssentials(root) {
       for (const r of u.rooms ?? []) rooms.push({ ...r, y: u.y + at.y });
     } else if (u.kind === "furniture") {
       o.getWorldPosition(at);
-      const words = String(u.name ?? "").replace(/([a-z])([A-Z])/g, "$1 $2").toLowerCase().split(/[^a-z]+/).filter(Boolean);
-      // camelCase names count as one word too ("towelRail" → "towel", "rail", "towelrail")
-      words.push(String(u.name ?? "").toLowerCase().replace(/[^a-z]/g, ""));
-      pieces.push({ words, x: at.x, y: at.y, z: at.z });
+      pieces.push({ words: pieceWords(u.name), x: at.x, y: at.y, z: at.z });
     } else if (u.kind === "wallTiles") {
       tiles.push(u);
     }
@@ -556,11 +563,119 @@ export function roomEssentials(root) {
   return lines;
 }
 
+/** The feature walls a style names (styles.js "featureWall"): panelledWall's options, or none. */
+export const FEATURE_WALLS = {
+  none: null,
+  panelled: { height: 1.25, board: 0.12, color: "#8a8a85" },
+};
+
+const OAK = () => finishMaterial("oak", { color: "#dcb98c", roughness: 0.9 }) ?? plain("#d2b48a", 0.62); // furnish.js finish.oak
+
+/**
+ * A panelled feature wall (the interior pilot's): vertical boards `board` wide, painted `color`, `height` high
+ * along a wall `width` wide, an oak ledge on top (0.11 deep: photographs can lean on it). Like a piece: origin at
+ * its bottom centre, its back at z = -0.055 (fx.onWall(room, edge, at, p, { y, gap: 0 }) puts it on a wall).
+ * Tagged kind "featureWall", not furniture: the bed in front of it is no collision.
+ */
+export function panelledWall(width, { height = 1.25, board = 0.12, color = "#8a8a85" } = {}) {
+  const g = new THREE.Group();
+  const D = 0.11, back = -D / 2;
+  const slab = (w, h, d, x, y, z) => new THREE.BoxGeometry(w, h, d).translate(x, y + h / 2, z);
+  const n = Math.max(1, Math.floor(width / board)), w = width / n;
+  const boards = Array.from({ length: n }, (_, i) => slab(w - 0.006, height, 0.018, -width / 2 + w * (i + 0.5), 0, back + 0.009));
+  g.add(shadow(new THREE.Mesh(mergeGeometries(boards), plain(color, 0.75))));
+  // the shade in the grooves, in front of the skirting (12 mm)
+  g.add(shadow(new THREE.Mesh(slab(width - 0.006, height, 0.014, 0, 0, back + 0.007), plain("#5d5d59", 0.9))));
+  g.add(shadow(new THREE.Mesh(metricUV(slab(width, 0.03, D, 0, height, 0)), OAK())));
+  g.userData = { kind: "featureWall", name: "panelled feature wall with oak ledge", footprint: [width, D], height: height + 0.03 };
+  return g;
+}
+
+const DOUBLE_BED = 1.35; // a bed this wide or wider: the room's main bed
+
+/**
+ * A feature wall (styles.js "featureWall", FEATURE_WALLS) behind the double bed of each bedroom whose style asks for
+ * one: on the wall its headboard is against, along the stretch of it round the bed that no door, window or tall
+ * piece interrupts, below what hangs on it above the bed. Skipped for a room that has one (kind "featureWall").
+ * Returns how many it added.
+ */
+function featureWalls(root, plans) {
+  const beds = [], others = [], walls = [];
+  root.traverse((o) => {
+    const u = o.userData ?? {};
+    if (u.kind === "featureWall") walls.push(o);
+    else if (u.kind === "furniture") (KINDS.bed(pieceWords(u.name)) && (u.footprint?.[0] ?? 0) >= DOUBLE_BED ? beds : others).push(o);
+  });
+  const openings = wallOpenings(root);
+  const dot = (p, q) => p[0] * q[0] + p[1] * q[1];
+  let added = 0;
+  for (const plan of plans) {
+    const { y } = plan.userData;
+    const floorY = plan.localToWorld(new THREE.Vector3(0, y + 0.015, 0)).y;
+    const planTurn = plan.getWorldQuaternion(new THREE.Quaternion()).invert();
+    const local = (o) => plan.worldToLocal(o.getWorldPosition(new THREE.Vector3()));
+    const inRoom = (r, p) => p.y > y - 0.3 && p.y < y + 2.2 && nearPolygon([p.x, p.z], r.polygon, 0.15);
+    for (const r of plan.userData.rooms ?? []) {
+      if (r.use !== "bedroom") continue;
+      const spec = entry(FEATURE_WALLS, "featureWall", { room: r.name });
+      if (!spec || walls.some((o) => inRoom(r, local(o)))) continue;
+      const bed = beds.filter((o) => inRoom(r, local(o))).sort((a, b) => b.userData.footprint[0] - a.userData.footprint[0])[0];
+      if (!bed) continue;
+      const at = local(bed), [bw, bl] = bed.userData.footprint;
+      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(bed.getWorldQuaternion(new THREE.Quaternion())).applyQuaternion(planTurn);
+      const head = [at.x + dir.x * bl / 2, at.z + dir.z * bl / 2];
+      let e = null;
+      for (const c of roomEdges(r.polygon)) {
+        const off = [head[0] - c.a[0], head[1] - c.a[1]], gap = dot(off, c.n), along = dot(off, c.u);
+        if (dot(c.n, [dir.x, dir.z]) < -0.9 && gap > -0.05 && gap < 0.35 && along > 0 && along < c.L && (!e || gap < e.gap)) e = { ...c, gap };
+      }
+      if (!e) continue;
+      const rel = (x, z) => [x - e.a[0], z - e.a[1]];
+      const centre = dot(rel(at.x, at.z), e.u);
+      const bedTop = new THREE.Box3().setFromObject(bed).max.y - floorY;
+      // the other pieces against that wall: their stretch along it and their heights above the floor
+      const against = [];
+      for (const o of others) {
+        const b = new THREE.Box3().setFromObject(o);
+        if (b.isEmpty() || b.max.y - floorY < bedTop + 0.05) continue;
+        const lo = plan.worldToLocal(b.min.clone()), hi = plan.worldToLocal(b.max.clone());
+        const corners = [[lo.x, lo.z], [lo.x, hi.z], [hi.x, lo.z], [hi.x, hi.z]].map(([x, z]) => rel(x, z));
+        if (Math.min(...corners.map((c) => dot(c, e.n))) > 0.25) continue;
+        const along = corners.map((c) => dot(c, e.u));
+        against.push({ s0: Math.min(...along), s1: Math.max(...along), h0: b.min.y - floorY, h1: b.max.y - floorY });
+      }
+      let height = spec.height;
+      // hung: what starts above the bed's top less 10 cm (a picture, a sconce); a table lamp on a nightstand is not
+      const hung = (p) => p.h0 >= bedTop - 0.1;
+      // the stretch: doors and windows up to the ledge, and what stands taller than it (a wardrobe, a curtain), end it
+      const stops = [...edgeOpenings(openings, e.a, e.u, e.n, e.L, floorY, height + 0.03),
+        ...against.filter((p) => !hung(p) && p.h1 > height)];
+      let s0 = 0, s1 = e.L;
+      for (const h of stops) {
+        if (h.s1 <= centre) s0 = Math.max(s0, h.s1);
+        else if (h.s0 >= centre) s1 = Math.min(s1, h.s0);
+        else s1 = s0;
+      }
+      // below what hangs over it (a picture, a sconce), clear of the bed's headboard
+      for (const p of against) if (hung(p) && p.s1 > s0 && p.s0 < s1) height = Math.min(height, p.h0 - 0.08);
+      if (s1 - s0 < Math.min(1.2, bw) || height < Math.max(0.9, bedTop + 0.05)) continue;
+      const wall = panelledWall(s1 - s0, { ...spec, height });
+      const mid = (s0 + s1) / 2;
+      wall.position.set(e.a[0] + e.u[0] * mid + e.n[0] * 0.055, y + 0.015, e.a[1] + e.u[1] * mid + e.n[1] * 0.055);
+      wall.rotation.y = Math.atan2(e.n[0], e.n[1]);
+      wall.userData.room = r.name;
+      plan.add(wall);
+      added++;
+    }
+  }
+  return added;
+}
+
 /**
  * The details a builder leaves out, added to every room of every floor plan once the scene is built
  * (#43): skirting (not in rooms with tiled walls), inner window sills, curtain rails over the
  * windows with curtains, and a ceiling cornice where the floor plan asks for one (cornice: true). Skipped for a room that already has its own (kind "skirting",
- * "windowSills", "curtainRails" for that room).
+ * "windowSills", "curtainRails" for that room). Then what the house style adds: a feature wall behind a double bed.
  */
 export function roomDetails(root) {
   root.updateMatrixWorld(true);
@@ -592,7 +707,8 @@ export function roomDetails(root) {
       }
     }
   }
-  return added;
+  return added + featureWalls(root, plans);
 }
 
-export default { floorPlan, partition, interiorDoor, polygonArea, tileWalls, roomEssentials, skirting, windowSills, curtainRails, cornice, roomDetails };
+export default { floorPlan, partition, interiorDoor, polygonArea, tileWalls, panelledWall, FEATURE_WALLS, roomEssentials, skirting, windowSills,
+  curtainRails, cornice, roomDetails };

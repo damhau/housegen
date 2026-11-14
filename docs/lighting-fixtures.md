@@ -44,7 +44,10 @@ starting with `familyName(` and listing the parameters with their defaults.
 - **Glowing parts:** `glowMaterial`, `opal`, `bulbGlow`, made per fixture (never cached): the
   runtime turns them off with the fixture's lights.
 - **Finishes:** a `finish` parameter that accepts every name in `FINISHES` (brass, black, white,
-  chrome, bronze). Glass, fabric and paper are materials of their own.
+  chrome, bronze). Glass, fabric and paper are materials of their own. A fixture called without
+  a finish takes the house style's (`kit/styles.js`: `fixtures`, or `builtIns` for the families in
+  `BUILT_IN`), so no default is brass: brass appears only when a scene or its `src/style.js` asks.
+  A second metal part (a lining, a rim) defaults to the finish too.
 - **Budget:** at most 20,000 triangles per fixture. Aim for 2–8k: a storey has 10+ fixtures.
 
 ## Light, by eye and by number

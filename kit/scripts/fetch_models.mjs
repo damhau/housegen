@@ -1,13 +1,15 @@
 // Download the scanned furniture models listed in furnish.js (Poly Haven, CC0, glTF with 1k textures)
 // into kit/assets/polyhaven/<id>/, and the surface textures listed in finishes.js (1k JPEG colour,
-// normal, roughness + meta.json with their real size) into kit/assets/polyhaven/textures/<id>/.
+// normal, roughness + meta.json with their real size) into kit/assets/polyhaven/textures/<id>/, and the
+// marbles of the styles' tiles (finishes.js MARBLES, ambientCG, CC0: the 1K colour map) into kit/assets/ambientcg/<id>/.
 // Run from kit/: node scripts/fetch_models.mjs
 import { mkdir, writeFile, access } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { unzipSync } from "three/addons/libs/fflate.module.js";
 import { MODELS } from "../furnish.js";
-import { TEXTURES } from "../finishes.js";
+import { MARBLES, TEXTURES } from "../finishes.js";
 import { OBJECTS } from "../objects.js";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "assets", "polyhaven");
@@ -46,6 +48,17 @@ for (const id of new Set(Object.values(TEXTURES).map((t) => t.id))) {
   const size = (info.dimensions ?? [1000, 1000]).map((mm) => Math.round(mm) / 1000);
   await writeFile(join(dir, "meta.json"), JSON.stringify({ id, size, source: `https://polyhaven.com/a/${id}`, license: "CC0" }));
   console.log(`${id}: fetched, ${size.join(" × ")} m`);
+}
+
+for (const id of Object.keys(MARBLES)) {
+  const dir = join(OUT, "..", "ambientcg", id), name = `${id}_1K-JPG_Color.jpg`;
+  if (await access(join(dir, "meta.json")).then(() => true, () => false)) { console.log(`${id}: present`); continue; }
+  const zip = unzipSync(new Uint8Array(await get(`https://ambientcg.com/get?file=${id}_1K-JPG.zip`)), { filter: (f) => f.name === name });
+  if (!zip[name]) throw new Error(`${id}: no ${name} in its archive`);
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, name), zip[name]);
+  await writeFile(join(dir, "meta.json"), JSON.stringify({ id, source: `https://ambientcg.com/view?id=${id}`, license: "CC0" }));
+  console.log(`${id}: fetched`);
 }
 
 /**

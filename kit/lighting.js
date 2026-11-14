@@ -20,12 +20,15 @@
 // Families live in lighting-pendants.js, lighting-wall.js, lighting-standing.js, lighting-built-in.js
 // (made of lighting-parts.js) and are gathered in FIXTURES; fixture(name, params) builds one;
 // fixtureReference() documents them for the builder (agent/prompts.py lists it).
+// A fixture's finish is the house style's (styles.js) unless the call names one: the decorative ones'
+// "fixtures", the built-in ones' "builtIns"; their details (a lining, a rim) take the finish too.
 
 export * from "./lighting-parts.js";
 import { PENDANTS } from "./lighting-pendants.js";
 import { WALL } from "./lighting-wall.js";
 import { STANDING } from "./lighting-standing.js";
 import { BUILT_IN } from "./lighting-built-in.js";
+import { look } from "./styles.js";
 
 // ---------------------------------------------------------------- registry
 
@@ -35,11 +38,19 @@ import { BUILT_IN } from "./lighting-built-in.js";
  */
 export const FIXTURES = { ...PENDANTS, ...WALL, ...STANDING, ...BUILT_IN };
 
-/** A fixture by family name: fixture("downlight", { mount: "recessed" }). */
+// their own profile (brushed aluminium, a gypsum trough), not one of the shared finishes: no style finish
+const OWN_FINISH = new Set(["mirrorBar", "coveStrip", "underCabinet"]);
+
+/**
+ * A fixture by family name: fixture("downlight", { mount: "recessed" }). Without `finish`, the house
+ * style's for the family (`room`: that room's override).
+ */
 export function fixture(name, params = {}) {
   const spec = FIXTURES[name];
   if (!spec) throw new Error(`unknown fixture ${name}. Known: ${Object.keys(FIXTURES).join(", ")}`);
-  return spec.make(params);
+  if (OWN_FINISH.has(name)) return spec.make(params);
+  const finish = look(name in BUILT_IN ? "builtIns" : "fixtures", { piece: params.finish, room: params.room, kind: name });
+  return spec.make({ ...params, finish });
 }
 
 /** The builder's reference: one line per family. */

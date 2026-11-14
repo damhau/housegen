@@ -181,3 +181,18 @@ async def test_still_nothing_saves_the_version_and_skips_the_critic(
     st = ProjectStorage(pid)
     assert (st.versions_dir / "1").is_dir()
     assert not list((st.versions_dir / "1" / "renders").glob("*.jpg"))
+
+
+def test_a_scene_without_a_house_style_is_no_console_error() -> None:
+    from housegen.render.renderer import console_line
+
+    missing = "Failed to load resource: the server responded with a status of 404 (Not Found)"
+    assert console_line("error", missing, "http://x/scenes/p/src/style.js?kit=v36") is None
+    assert (
+        console_line("error", missing, "http://x/scenes/p/src/furniture.js") == f"[error] {missing}"
+    )
+    assert (
+        console_line("warning", "housekit: unknown style", "")
+        == "[warning] housekit: unknown style"
+    )
+    assert console_line("log", "hello", "") is None

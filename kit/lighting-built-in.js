@@ -144,7 +144,7 @@ const pick = (v, i) => {
  * half-angle; `gimbal: true` tilts the head by `tilt` (toward -z, turned by `yaw`) and its cone with
  * it (a ball-jointed can under a canopy, or a cup tilting out of the recessed trim). Role "ceiling".
  */
-function downlight({ d = 0.09, mount = "surface", shape = "round", finish = "black", beam = 0.55, lm = 450,
+function downlight({ d = 0.09, mount = "surface", shape = "round", finish = "white", beam = 0.55, lm = 450,
   gimbal = false, tilt = 0.35, yaw = 0, tone = "warm" } = {}) {
   const g = new THREE.Group();
   const m = metal(finish);
@@ -188,7 +188,7 @@ function downlight({ d = 0.09, mount = "surface", shape = "round", finish = "bla
  * tilt: [0.5, 0.3, 0.5]); `fan` turns the outer heads that much outward (0: all parallel). One cone
  * per head, heads grouped two by two past three (3 lights at most).
  */
-function track({ length = 1.2, heads = 3, finish = "black", tilt = 0.6, yaw = 0, fan = 0.3, beam = 0.32, lm = 180, tone = "warm" } = {}) {
+function track({ length = 1.2, heads = 3, finish = "white", tilt = 0.6, yaw = 0, fan = 0.3, beam = 0.32, lm = 180, tone = "warm" } = {}) {
   const g = new THREE.Group();
   const m = metal(finish);
   const n = Math.max(1, Math.min(4, Math.round(heads)));
@@ -335,9 +335,9 @@ function stepLight({ w = 0.12, h = 0.075, style = "louvre", finish = "white", lm
 /** The family's entries for lighting.js FIXTURES: { make, kind, doc }. */
 export const BUILT_IN = {
   downlight: { make: downlight, kind: "ceiling",
-    doc: "downlight({ d=0.09, mount:'surface'|'recessed', shape:'round'|'square', finish:'black'|'white'|…, beam=0.55, lm=450, gimbal=false, tilt=0.35, yaw=0, tone:'warm'|'neutral' }) a cone straight down (gimbal: an adjustable head tilted toward -z): halls, kitchens, baths" },
+    doc: "downlight({ d=0.09, mount:'surface'|'recessed', shape:'round'|'square', finish='white', beam=0.55, lm=450, gimbal=false, tilt=0.35, yaw=0, tone:'warm'|'neutral' }) a cone straight down (gimbal: an adjustable head tilted toward -z): halls, kitchens, baths" },
   track: { make: track, kind: "ceiling",
-    doc: "track({ length=1.2, heads=3 (2-4), finish:'black'|'white'|…, tilt=0.6, yaw=0 (or one per head), fan=0.3, beam=0.32, lm=180 per head, tone }) surface track along x with spots tilted toward -z: over a worktop, a picture wall" },
+    doc: "track({ length=1.2, heads=3 (2-4), finish='white', tilt=0.6, yaw=0 (or one per head), fan=0.3, beam=0.32, lm=180 per head, tone }) surface track along x with spots tilted toward -z: over a worktop, a picture wall" },
   flushCeiling: { make: flushCeiling, kind: "ceiling",
     doc: "flushCeiling({ d=0.35 (0.3-0.5), shape:'round'|'square', finish='white', lm≈1400·(d/0.35)², beam=1.3, tone }) flush opal ceiling light, light down in a wide cone: halls, baths, small rooms (replaces fx.ceilingLight)" },
   coveStrip: { make: coveStrip, kind: "ceiling",

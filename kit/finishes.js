@@ -6,11 +6,13 @@
 //   finishMaterial(name, opts)    the material, or null when that finish is not available
 //   await finishesReady()         after building: every material used has its images (and what track() was given)
 //
-// Textures are fetched with kit/scripts/fetch_models.mjs into kit/assets/polyhaven/textures/<id>/.
+// Textures are fetched with kit/scripts/fetch_models.mjs into kit/assets/polyhaven/textures/<id>/, the
+// marble photographs of the marble tiles into kit/assets/ambientcg/<id>/.
 // The runtime loads them before buildScene (house.js mat.* then return textured materials) and runs
 // metricUVs over the built scene.
 
 import * as THREE from "three";
+import { entry } from "./styles.js";
 
 // colour: false keeps the caller's colour and takes only the relief (normal + roughness) of the texture
 // grade: a correction of the colour map (#61) so the finishes sit together without new files:
@@ -43,6 +45,30 @@ export const TEXTURES = {
 
 // absolute: renderer snapshots (kit/versions/<name>/) share the working copy's assets
 const BASE = new URL("/kit/assets/polyhaven/textures/", import.meta.url);
+const AMBIENT = new URL("/kit/assets/ambientcg/", import.meta.url);
+
+/**
+ * Marble photographs (ambientCG, CC0, the 1k colour map) for tiles, graded to a grey as in the interior pilot:
+ * each pixel's value = lift + 0.38 × its luminance, plus `tint` (r, g, b).
+ */
+export const MARBLES = {
+  // near black with dense white veins: lifted to a warm mid grey, the veins softened
+  Marble017: { lift: 104, tint: [2, 0, -3] },
+  Marble012: { lift: 150, tint: [0, 0, -2] },
+};
+const MARBLE_GAIN = 0.38;
+
+/** The tiles of tileWalls and of the tiled fronts (wc, bathtub, shower), by name: styles.js "wallTile". */
+export const WALL_TILES = {
+  white: {}, // tileMaterial's defaults: 30 x 60 glazed white, pale joints
+  "marble-grey": { marble: "Marble017", size: [0.6, 1.2], joint: 0.002, jointColor: "#8c8a86", roughness: 0.28 },
+};
+/** The "tile" floor of a bath or a WC, by name: styles.js "bathFloor". */
+export const FLOOR_TILES = {
+  tile: { size: [0.6, 0.6], joint: 0.002, color: "#e6e4df", jointColor: "#d2cfc8", roughness: 0.4 }, // light porcelain
+  "marble-light": { marble: "Marble012", size: [0.6, 0.6], joint: 0.002, jointColor: "#c9c7c2", roughness: 0.22 },
+};
+
 const _mats = new Map();
 
 const _meta = new Map(); // name -> { size } when the set was fetched, null when it was not
@@ -217,9 +243,10 @@ const _tiles = new Map();
  * Ceramic tiles drawn on a canvas (nothing to fetch): one tile of `size` [w, h] metres per
  * texture repeat, `joint` metres of grout between them, glossy tiles and matt grout (roughness
  * map), a groove at every joint (normal map). Needs UVs in metres like the other finishes.
- * Without a canvas (Node), the plain tile colour.
+ * Without a canvas (Node), the plain tile colour. `marble` (a MARBLES name): marble tiles instead (marbleTiles).
  */
-export function tileMaterial({ size = [0.3, 0.6], joint = 0.003, color = "#f3f2ee", jointColor = "#c9c3b9", roughness = 0.2 } = {}) {
+export function tileMaterial({ size = [0.3, 0.6], joint = 0.003, color = "#f3f2ee", jointColor = "#c9c3b9", roughness = 0.2, marble } = {}) {
+  if (marble) return marbleTiles({ marble, size, joint, jointColor, roughness });
   const key = JSON.stringify([size, joint, color, jointColor, roughness]);
   if (_tiles.has(key)) return _tiles.get(key);
   const m = new THREE.MeshStandardMaterial({ color, roughness });
@@ -282,6 +309,81 @@ export function tileMaterial({ size = [0.3, 0.6], joint = 0.003, color = "#f3f2e
 }
 
 /**
+ * Marble tiles: a 2 x 2 tile canvas cut from the marble photograph (each tile its own window of the slab, two of
+ * them turned) so that neighbours do not repeat, graded (MARBLES), the joints drawn: the interior pilot's. One tile
+ * of `size` [w, h] metres; UVs in metres. Plain grey without a canvas (Node) or until the photograph is in (tracked:
+ * finishesReady waits for it).
+ */
+function marbleTiles({ marble, size, joint, jointColor, roughness }) {
+  const key = JSON.stringify([marble, size, joint, jointColor, roughness]);
+  if (_tiles.has(key)) return _tiles.get(key);
+  const spec = MARBLES[marble];
+  const grade = (y) => { const v = spec.lift + y * MARBLE_GAIN; return [v + spec.tint[0], v + spec.tint[1], v + spec.tint[2]]; };
+  const plain = new THREE.Color().setRGB(...grade(140).map((c) => c / 255), THREE.SRGBColorSpace);
+  const m = new THREE.MeshStandardMaterial({ name: "marble tiles", color: plain, roughness });
+  m.userData.finish = "tiles";
+  m.userData.baseColor = plain.clone();
+  m.userData.tile = { size, joint, marble };
+  _tiles.set(key, m);
+  if (typeof document === "undefined") return m;
+  const url = new URL(`${marble}/${marble}_1K-JPG_Color.jpg`, AMBIENT).href;
+  track(fetch(url)
+    .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+    .then((blob) => createImageBitmap(blob))
+    .then((img) => {
+      const k = 512 / size[0], W = Math.round(2 * size[0] * k), H = Math.round(2 * size[1] * k);
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const c = canvas.getContext("2d", { willReadFrequently: true });
+      const tw = W / 2, th = H / 2, j = Math.max(1, Math.round(joint * k / 2));
+      c.fillStyle = jointColor;
+      c.fillRect(0, 0, W, H);
+      const sw = img.width * 0.45, sh = img.height * 0.9;
+      [[0, 0, false], [0.55, 0.1, true], [0.3, 0.05, true], [0.5, 0, false]].forEach(([u, v, turn], i) => {
+        const x = (i % 2) * tw, y = Math.floor(i / 2) * th;
+        c.save();
+        c.beginPath();
+        c.rect(x + j, y + j, tw - 2 * j, th - 2 * j);
+        c.clip();
+        if (turn) {
+          c.translate(x + tw, y + th);
+          c.rotate(Math.PI);
+          c.drawImage(img, u * img.width, v * img.height, sw, sh, 0, 0, tw, th);
+        } else c.drawImage(img, u * img.width, v * img.height, sw, sh, x, y, tw, th);
+        c.restore();
+      });
+      const px = c.getImageData(0, 0, W, H);
+      const d = px.data;
+      for (let i = 0; i < d.length; i += 4) {
+        [d[i], d[i + 1], d[i + 2]] = grade(0.3 * d[i] + 0.59 * d[i + 1] + 0.11 * d[i + 2]);
+      }
+      c.putImageData(px, 0, 0);
+      const map = new THREE.CanvasTexture(canvas);
+      map.colorSpace = THREE.SRGBColorSpace;
+      map.wrapS = map.wrapT = THREE.RepeatWrapping;
+      map.repeat.set(1 / (2 * size[0]), 1 / (2 * size[1]));
+      map.anisotropy = 8;
+      Object.assign(m, { map, color: new THREE.Color("#ffffff") });
+      m.needsUpdate = true;
+    })
+    .catch((e) => console.warn(`housekit: ${marble} not loaded (${e?.message ?? e}): plain marble tiles`)));
+  return m;
+}
+
+/**
+ * Wall tiles as a piece asks for them: an object is the tiles themselves (tileMaterial's options), a name one of
+ * WALL_TILES, anything else (true, nothing) the house style's "wallTile" (for `room`, a room's name).
+ */
+export function wallTileMaterial(tiles, { room } = {}) {
+  if (tiles && typeof tiles === "object") return tileMaterial(tiles);
+  return tileMaterial(entry(WALL_TILES, "wallTile", { piece: typeof tiles === "string" ? tiles : undefined, room }));
+}
+
+/** The floor tiles of a bath or a WC whose floor is "tile": the house style's "bathFloor" for `room`. */
+export const bathFloorMaterial = (room) => tileMaterial(entry(FLOOR_TILES, "bathFloor", { room }));
+
+/**
  * After a scene is built: give every mesh that wears a textured finish UVs in metres, except shapes
  * that already have them (extruded and flat shapes: walls, slabs, patches).
  */
@@ -327,4 +429,5 @@ export function metricUV(geo) {
   return geo;
 }
 
-export default { TEXTURES, loadFinishes, finishesReady, track, finishMaterial, metricUV, metricUVs };
+export default { TEXTURES, MARBLES, WALL_TILES, FLOOR_TILES, loadFinishes, finishesReady, track, finishMaterial, tileMaterial,
+  wallTileMaterial, metricUV, metricUVs };

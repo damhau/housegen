@@ -82,10 +82,10 @@ const tag = (g, family, name, role, finish, box) =>
 /**
  * Hexagonal sconce: a cube stood on its corner, its back corner cut off by the wall, so it reads as a
  * hexagon from the room (three facets meeting at the front). `finish` outside (black), `inner` inside
- * (brass). Open at the bottom front facet (the brass inside and the bulb show) and at the top facet
+ * (the finish too by default). Open at the bottom front facet (the lining and the bulb show) and at the top facet
  * against the wall. `d` the hexagon's height point to point. A cone up and a cone down along the wall.
  */
-function hexSconce({ d = 0.17, finish = "black", inner = "brass", lm = 360, light = "warm", role = "accent" } = {}) {
+function hexSconce({ d = 0.17, finish = "black", inner, lm = 360, light = "warm", role = "accent" } = {}) {
   const g = new THREE.Group();
   const a = d / (4 * Math.sqrt(2 / 3)); // the cube's half side: the hexagon's circumradius is 2a·√(2/3)
   const s = Math.sqrt(2 / 3), c = 1 / Math.sqrt(3);
@@ -105,7 +105,7 @@ function hexSconce({ d = 0.17, finish = "black", inner = "brass", lm = 360, ligh
   const sheet = 0.0012;
   put(g, facets(closed), metal(finish));
   // the lining: the inner finish, lit by the bulb while the sconce is on (a glow material: dark when off)
-  const base = metal(inner), lining = glowMaterial({ color: `#${base.color.getHexString()}`, strength: 0.55, roughness: base.roughness,
+  const base = metal(inner ?? finish), lining = glowMaterial({ color: `#${base.color.getHexString()}`, strength: 0.55, roughness: base.roughness,
     emissive: `#${base.color.clone().lerp(new THREE.Color("#fff3e0"), 0.35).getHexString()}`, name: "sconce lining" });
   lining.metalness = base.metalness;
   put(g, inverted(facets(closed, sheet)), lining);
@@ -156,10 +156,10 @@ function upDown({ d = 0.07, h = 0.16, beam = 0.36, finish = "black", lm = 320, l
 
 /**
  * Globe sconce: an opal globe sitting in a cup at the end of a short arm, on a round back plate
- * (`finish` brass or black). `d` the globe's diameter, `arm` its reach (at least 14 cm, so the glow
+ * (`finish`). `d` the globe's diameter, `arm` its reach (at least 14 cm, so the glow
  * sits 15 cm off the wall). A modest glow inside the globe.
  */
-function globeSconce({ d = 0.15, arm = 0.2, finish = "brass", lm = 140, light = "warm", role = "accent" } = {}) {
+function globeSconce({ d = 0.15, arm = 0.2, finish = "black", lm = 140, light = "warm", role = "accent" } = {}) {
   const g = new THREE.Group();
   const m = metal(finish), R = d / 2, plateT = 0.014;
   const reach = Math.max(arm, 0.15 - plateT); // the glow at least 15 cm off the wall
@@ -228,10 +228,10 @@ function swingArm({ arm = 0.5, aim = 0.45, finish = "black", lm = 350, light = "
 
 /**
  * Picture light: a slim bar on a curved arm from a small plate, held out over a picture below it.
- * `w` the bar's width (0.3–1), `out` how far the bar stands off the wall, `finish` brass or black.
+ * `w` the bar's width (0.3–1), `out` how far the bar stands off the wall, `finish` its metal.
  * One cone (two from 45 cm wide) down and back onto the wall below.
  */
-function pictureLight({ w = 0.5, out = 0.17, finish = "brass", lm = 260, light = "warm", role = "accent" } = {}) {
+function pictureLight({ w = 0.5, out = 0.17, finish = "black", lm = 260, light = "warm", role = "accent" } = {}) {
   const g = new THREE.Group();
   const m = metal(finish), W = Math.min(1, Math.max(0.3, w));
   discZ(g, 0.024, 0.01, 0, m, { seg: 32, r1: 0.022 });
@@ -259,7 +259,7 @@ function pictureLight({ w = 0.5, out = 0.17, finish = "brass", lm = 260, light =
     const x = n === 1 ? 0 : (i ? 1 : -1) * W / 4;
     addCone(g, [x, by - br - 0.006, out - 0.004], dir, lm / n, { angle: n === 1 ? 0.62 : 0.55, penumbra: 0.75, color: tint(light), reach: 4 });
   }
-  return tag(g, "pictureLight", "brass picture light", role, finish, { w: W, d: out + br, h: 0.11 });
+  return tag(g, "pictureLight", `${finish} picture light`, role, finish, { w: W, d: out + br, h: 0.11 });
 }
 
 /**
@@ -287,15 +287,15 @@ function mirrorBar({ w = 0.6, finish = "aluminium", light = "neutral", lm, role 
 /** The family's entries for lighting.js FIXTURES: { make, kind, doc }. */
 export const WALL = {
   hexSconce: { make: hexSconce, kind: "wall",
-    doc: "hexSconce({ d=0.17, finish='black', inner='brass' }) faceted hexagonal sconce, open top and bottom, brass inside: a scallop up and down the wall; bedside, hall" },
+    doc: "hexSconce({ d=0.17, finish='black', inner=finish }) faceted hexagonal sconce, open top and bottom, lined inside: a scallop up and down the wall; bedside, hall" },
   upDown: { make: upDown, kind: "wall",
     doc: "upDown({ d=0.07, h=0.16, beam=0.36, finish='black' }) cylinder washing the wall up and down (beam: the cones' half-angle); halls, stairs, beside a door, outside a bedroom" },
   globeSconce: { make: globeSconce, kind: "wall",
-    doc: "globeSconce({ d=0.15, arm=0.2, finish='brass' }) opal globe in a cup on a short arm, round back plate: a soft glow; bedside, hall, bathroom" },
+    doc: "globeSconce({ d=0.15, arm=0.2, finish='black' }) opal globe in a cup on a short arm, round back plate: a soft glow; bedside, hall, bathroom" },
   swingArm: { make: swingArm, kind: "wall",
     doc: "swingArm({ arm=0.5, aim=0.45, finish='black' }) articulated reading light, conical shade aimed down/forward: beside a bed or an armchair, at about 1.1-1.3 m" },
   pictureLight: { make: pictureLight, kind: "wall",
-    doc: "pictureLight({ w=0.5, out=0.17, finish='brass' }) slim bar on a curved arm, lights the wall below it: fix it 5-10 cm above a picture's top" },
+    doc: "pictureLight({ w=0.5, out=0.17, finish='black' }) slim bar on a curved arm, lights the wall below it: fix it 5-10 cm above a picture's top" },
   mirrorBar: { make: mirrorBar, kind: "wall",
     doc: "mirrorBar({ w=0.6, finish='aluminium', light='neutral' }) slim LED bar with an opal underside over a bathroom or WC mirror (w 0.4-1.2): its top edge at the mirror's" },
 };

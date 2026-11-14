@@ -14,7 +14,7 @@ from housegen.core.config import get_settings
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
-LATEST = "2026-11-11-v35"  # the newest snapshot
+LATEST = "2026-11-14-v36"  # the newest snapshot
 VIEWER = "2026-11-11-v35"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
 
 
@@ -160,3 +160,28 @@ def test_only_renderers_with_decor_roles_are_told_about_them() -> None:
     assert told.index("Put small decor") < told.index("Decor by role")
     assert for_kit(INTERIOR_SYSTEM, without) == INTERIOR_SYSTEM
     assert for_kit(BUILDER_SYSTEM, with_roles) == BUILDER_SYSTEM
+
+
+def test_only_renderers_with_styles_are_told_to_leave_finishes_to_the_house_style() -> None:
+    from housegen.agent.prompts import (
+        BUILDER_SYSTEM,
+        INTERIOR_SYSTEM,
+        MODIFY_INTERIOR_SYSTEM,
+        for_kit,
+    )
+
+    styled, plain = kits.kit_dir(LATEST), kits.kit_dir(VIEWER)
+    assert (styled / "styles.js").exists()
+    assert not (plain / "styles.js").exists()
+    for system in (INTERIOR_SYSTEM, MODIFY_INTERIOR_SYSTEM):
+        told = for_kit(system, styled)
+        assert "### House style — src/style.js" in told
+        assert told.index("### House style") < told.index("### Furniture — import fx")
+        assert "Leave a fixture's finish out" in told
+        assert "one finish for its fixtures" not in told
+        assert "tiles: { size:[0.3,0.6]" not in told
+        assert "House style" not in for_kit(system, plain)
+    # without styles, brass is never offered as a default
+    assert '"brass"|"black"' not in INTERIOR_SYSTEM
+    assert "(brass or black" not in INTERIOR_SYSTEM
+    assert for_kit(BUILDER_SYSTEM, styled) == BUILDER_SYSTEM

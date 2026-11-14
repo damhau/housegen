@@ -130,7 +130,7 @@ function globeTableLamp({ d = 0.2, finish = "black", lm = 250 } = {}) {
  * glows (a cone down and a modest point under the dome), "metal" (in `finish`, white inside) throws a
  * cone down. Role "accent".
  */
-function mushroomLamp({ d = 0.32, height = 0.42, shade = "opal", finish = "brass", lm = 250 } = {}) {
+function mushroomLamp({ d = 0.32, height = 0.42, shade = "opal", finish = "black", lm = 250 } = {}) {
   const g = new THREE.Group();
   const m = metal(finish);
   const R = d / 2, sh = d * 0.42, rimY = height - sh, t = 0.004;
@@ -175,7 +175,7 @@ function mushroomLamp({ d = 0.32, height = 0.42, shade = "opal", finish = "brass
  * `shade` (linen, white, grey, sand, charcoal, sage or a colour). Cones up and down through the
  * shade's openings, a weak glow through the cloth. Role "accent".
  */
-function drumTableLamp({ shape = "drum", shadeD = 0.38, shade = "linen", base = "ceramic", glaze = "white", finish = "brass", lm = 350 } = {}) {
+function drumTableLamp({ shape = "drum", shadeD = 0.38, shade = "linen", base = "ceramic", glaze = "white", finish = "black", lm = 350 } = {}) {
   const g = new THREE.Group();
   const m = metal(finish);
   const bodyH = 0.3;
@@ -278,7 +278,7 @@ function deskLamp({ finish = "black", arm = 0.36, shadeD = 0.15, tilt = 12, turn
  * toward +x, all in `finish`; `height` to the stem's top, `d` the globe, `arm` its reach. A glow in
  * the globe. Role "accent".
  */
-function globeFloorLamp({ height = 1.5, d = 0.2, arm = 0.2, turn = 35, finish = "brass", lm = 450 } = {}) {
+function globeFloorLamp({ height = 1.5, d = 0.2, arm = 0.2, turn = 35, finish = "black", lm = 450 } = {}) {
   const g = new THREE.Group();
   const m = metal(finish);
   const R = 0.13;
@@ -397,13 +397,13 @@ export const STANDING = {
   globeTableLamp: { make: globeTableLamp, kind: "standing",
     doc: "globeTableLamp({ d=0.2, finish }) opal globe on a small base: bedside, sideboard" },
   mushroomLamp: { make: mushroomLamp, kind: "standing",
-    doc: "mushroomLamp({ d=0.32, height=0.42, shade:'opal'|'metal', finish='brass' }) Scandinavian dome shade on a trumpet foot (opal glows, metal throws light down): sideboard, bedside" },
+    doc: "mushroomLamp({ d=0.32, height=0.42, shade:'opal'|'metal', finish='black' }) Scandinavian dome shade on a trumpet foot (opal glows, metal throws light down): sideboard, bedside" },
   drumTableLamp: { make: drumTableLamp, kind: "standing",
-    doc: "drumTableLamp({ shape:'drum'|'cone', shadeD=0.38, shade='linen'|'white'|'grey'|'sand'|'charcoal'|'sage'|'#hex', base:'ceramic'|'metal', glaze='white'|'sage'|'clay'|'charcoal'|'sand'|'blue'|'#hex', finish='brass' }) fabric shade on a ceramic gourd or a metal column, 0.59 m: living room, bedside" },
+    doc: "drumTableLamp({ shape:'drum'|'cone', shadeD=0.38, shade='linen'|'white'|'grey'|'sand'|'charcoal'|'sage'|'#hex', base:'ceramic'|'metal', glaze='white'|'sage'|'clay'|'charcoal'|'sand'|'blue'|'#hex', finish='black' }) fabric shade on a ceramic gourd or a metal column, 0.59 m: living room, bedside" },
   deskLamp: { make: deskLamp, kind: "standing",
     doc: "deskLamp({ finish='black', arm=0.36, shadeD=0.15, tilt=12, turn=30 }) articulated twin-rod arms swivelled `turn` degrees from +z toward +x, conical metal shade aimed down: desk, bedside" },
   globeFloorLamp: { make: globeFloorLamp, kind: "standing",
-    doc: "globeFloorLamp({ height=1.5, d=0.2, arm=0.2, turn=35, finish='brass' }) slim stem, opal globe on a short arm swung `turn` degrees from +z toward +x: reading corner, beside a sofa or an armchair" },
+    doc: "globeFloorLamp({ height=1.5, d=0.2, arm=0.2, turn=35, finish='black' }) slim stem, opal globe on a short arm swung `turn` degrees from +z toward +x: reading corner, beside a sofa or an armchair" },
   arcFloorLamp: { make: arcFloorLamp, kind: "standing",
     doc: "arcFloorLamp({ reach=1.6, height=2.1, shadeD=0.4, base:'marble'|'metal', finish='black' }) arched tube from a heavy base, dome shade `reach` m toward +z, ~1.6 m up: over a sofa or a coffee table" },
   tripodFloorLamp: { make: tripodFloorLamp, kind: "standing",

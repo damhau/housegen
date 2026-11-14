@@ -141,7 +141,7 @@ const graphite = () => (_graphite ??= new THREE.MeshStandardMaterial({ name: "gr
  * from the ceiling to the globe's bottom, `finish` of the canopy and the cap. Glows every way.
  * Role "accent" when it hangs over a table or an island (`over: true`), else "ceiling".
  */
-function globePendant({ d = 0.3, drop = 0.7, glass = "opal", finish = "brass", over = false, lm = 600 } = {}) {
+function globePendant({ d = 0.3, drop = 0.7, glass = "opal", finish = "black", over = false, lm = 600 } = {}) {
   const g = new THREE.Group();
   const m = metal(finish);
   const bottom = suspension(g, drop - d, m);
@@ -223,7 +223,7 @@ function facetedCluster({ n = 11, size = 0.25, spread = 1.0, drop = 0.95, finish
   const nb = Math.round(clamp(bulbs ?? n, 0, n));
   const rnd = random(seed);
   const shellOut = metal(finish), shellAlt = finish === "black" ? graphite() : shellOut;
-  const shellIn = metal(inside ?? (finish === "brass" ? "black" : "brass"));
+  const shellIn = metal(inside ?? finish);
   const cord = finishes.black(), bulb = bulbGlow(2.4);
   const g = new THREE.Group(), A = assembler();
 
@@ -303,12 +303,12 @@ function facetedCluster({ n = 11, size = 0.25, spread = 1.0, drop = 0.95, finish
  * longest arm, `drop` from the ceiling to the lowest disc's bottom. Up to three cones down, one per
  * group of discs. Role "accent" with `over: true`, else "ceiling".
  */
-function discArms({ arms = 3, span = 1.2, d = 0.24, drop = 0.75, finish = "black", rim = "brass", over = false, lm = 1500 } = {}) {
+function discArms({ arms = 3, span = 1.2, d = 0.24, drop = 0.75, finish = "black", rim, over = false, lm = 1500 } = {}) {
   arms = Math.round(clamp(arms, 2, 4));
   span = clamp(span, 0.6, 2);
   d = clamp(d, 0.12, 0.4);
   drop = clamp(drop, 0.35, 2);
-  const m = metal(finish), rm = metal(rim), under = opal(1.7);
+  const m = metal(finish), rm = metal(rim ?? finish), under = opal(1.7);
   const g = new THREE.Group(), A = assembler();
   const bar = 0.012, t = 0.032, gap = 0.008; // the arms' section, the discs' thickness, the stem between
   canopy(A, 0, 0, 0.08, m, 0.03);
@@ -360,13 +360,13 @@ function discArms({ arms = 3, span = 1.2, d = 0.24, drop = 0.75, finish = "black
 // ---------------------------------------------------------------- frame globes
 
 /**
- * Frame globes: three interlocking rectangles of square bar (`finish`, brass by default): a horizontal
+ * Frame globes: three interlocking rectangles of square bar (`finish`): a horizontal
  * one `length` × `depth`, a hanging one across its left end in the plane of its front bar, and an
  * upright one across its right part whose uprights pass through its long bars; thin rods to the
  * ceiling. `globes` (3–4) opal globes of `d` sit on the bars or hang under the upright's top. `drop`
  * from the ceiling to the frame's bottom. Two glows. Role "accent" with `over: true`, else "ceiling".
  */
-function frameGlobes({ length = 1.2, depth = 0.4, drop = 0.8, globes = 4, d = 0.13, finish = "brass", over = false, lm = 1000 } = {}) {
+function frameGlobes({ length = 1.2, depth = 0.4, drop = 0.8, globes = 4, d = 0.13, finish = "black", over = false, lm = 1000 } = {}) {
   length = clamp(length, 0.7, 1.8);
   depth = clamp(depth, 0.25, 0.6);
   drop = clamp(drop, 0.62, 2);
@@ -463,7 +463,7 @@ function ledRing({ d = 0.9, drop = 0.8, finish = "black", over = false, lm = 180
  * or linear (in a row, 0.32 m apart); `drop` from the ceiling to the lowest one's rim. A cone down
  * from each (up to three). Role "accent" with `over: true` (over a bar or an island), else "ceiling".
  */
-function barCluster({ n = 3, canopy: kind = "round", drop = 0.8, shape = "cylinder", d = 0.11, finish = "brass", light = "warm", over = false, lm = 600 } = {}) {
+function barCluster({ n = 3, canopy: kind = "round", drop = 0.8, shape = "cylinder", d = 0.11, finish = "black", light = "warm", over = false, lm = 600 } = {}) {
   n = Math.round(clamp(n, 1, 5));
   d = clamp(d, 0.06, 0.2);
   drop = clamp(drop, 0.35, 2);
@@ -589,15 +589,15 @@ export const PENDANTS = {
   globePendant: { make: globePendant, kind: "ceiling",
     doc: "globePendant({ d=0.3, drop=0.7, glass:'opal'|'clear', finish, over=false }) opal or clear glass globe on a cable; over: true above a table or island" },
   facetedCluster: { make: facetedCluster, kind: "ceiling",
-    doc: "facetedCluster({ n=11, size=0.25, spread=1.0, drop=0.95, finish='black', inside='brass', bulbs=n, seed=7, over=false }) faceted metal shells open on one face, brass inside, each on its own cable at staggered heights with a bare bulb: a statement over a bed, a stairwell, a table (over: true)" },
+    doc: "facetedCluster({ n=11, size=0.25, spread=1.0, drop=0.95, finish='black', inside=finish, bulbs=n, seed=7, over=false }) faceted metal shells open on one face, each on its own cable at staggered heights with a bare bulb: a statement over a bed, a stairwell, a table (over: true)" },
   discArms: { make: discArms, kind: "ceiling",
-    doc: "discArms({ arms=3, span=1.2, d=0.24, drop=0.75, finish='black', rim='brass', over=false }) black rods and crossing arms ending in round LED discs (brass rim, opal underside): bedrooms, living rooms, over a table (over: true)" },
+    doc: "discArms({ arms=3, span=1.2, d=0.24, drop=0.75, finish='black', rim=finish, over=false }) thin rods and crossing arms ending in round LED discs (a metal rim, opal underside): bedrooms, living rooms, over a table (over: true)" },
   frameGlobes: { make: frameGlobes, kind: "ceiling",
-    doc: "frameGlobes({ length=1.2, depth=0.4, drop=0.8, globes=4, d=0.13, finish='brass', over=false }) interlocking rectangles of square brass bar carrying opal globes: bedrooms, dining (over: true above the table)" },
+    doc: "frameGlobes({ length=1.2, depth=0.4, drop=0.8, globes=4, d=0.13, finish='black', over=false }) interlocking rectangles of square metal bar carrying opal globes: bedrooms, dining (over: true above the table)" },
   ledRing: { make: ledRing, kind: "ceiling",
     doc: "ledRing({ d=0.9, drop=0.8, finish='black', over=false }) a thin LED ring (d 0.6-1.2) on three cables, opal underneath: living rooms, over a dining table (over: true)" },
   barCluster: { make: barCluster, kind: "ceiling",
-    doc: "barCluster({ n=3, canopy:'round'|'linear', drop=0.8, shape:'cylinder'|'cone'|'mix', d=0.11, finish='brass', light:'warm'|'neutral', over=false }) small metal pendants at staggered heights from one canopy: over a bar or a kitchen island (over: true)" },
+    doc: "barCluster({ n=3, canopy:'round'|'linear', drop=0.8, shape:'cylinder'|'cone'|'mix', d=0.11, finish='black', light:'warm'|'neutral', over=false }) small metal pendants at staggered heights from one canopy: over a bar or a kitchen island (over: true)" },
   linearPendant: { make: linearPendant, kind: "ceiling",
     doc: "linearPendant({ length=1.2, drop=0.8, finish='black', light:'warm'|'neutral', over=false }) a slim bar (length 0.9-2) on two cables, opal underneath: over an island or a dining table (over: true)" },
   domePendant: { make: domePendant, kind: "ceiling",

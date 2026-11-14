@@ -11,7 +11,14 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from PIL import Image
-from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
+from playwright.async_api import (
+    Browser,
+    BrowserContext,
+    ConsoleMessage,
+    Page,
+    Playwright,
+    async_playwright,
+)
 
 from housegen.core.config import get_settings
 from housegen.core.exceptions import RenderError
@@ -68,6 +75,26 @@ _GL_PROBE = """() => {
   const ext = gl.getExtension("WEBGL_debug_renderer_info");
   return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : String(gl.getParameter(gl.RENDERER));
 }"""
+
+
+# The runtime asks every scene for its optional house style (kit/styles.js): a scene without one answers 404, which
+# the browser logs as an error; it is not the scene's fault, so the builder never hears of it.
+_OPTIONAL_FILES = ("/src/style.js",)
+
+
+def console_line(kind: str, text: str, url: str) -> str | None:
+    """The line a console message adds to a render's console (errors and warnings), None for the others."""
+    if kind not in ("error", "warning"):
+        return None
+    if text.startswith("Failed to load resource") and url.split("?")[0].endswith(_OPTIONAL_FILES):
+        return None
+    return f"[{kind}] {text}"
+
+
+def _keep_console(console: list[str], m: ConsoleMessage) -> None:
+    line = console_line(m.type, m.text, str(m.location.get("url", "")))
+    if line is not None:
+        console.append(line)
 
 
 class Renderer:
@@ -219,14 +246,7 @@ class Renderer:
             browser = await self._ensure_browser()
             context = await self._context(browser, s.RENDER_WIDTH, s.RENDER_HEIGHT)
             page = await context.new_page()
-            page.on(
-                "console",
-                lambda m: (
-                    result.console.append(f"[{m.type}] {m.text}")
-                    if m.type in ("error", "warning")
-                    else None
-                ),
-            )
+            page.on("console", lambda m: _keep_console(result.console, m))
             page.on("pageerror", lambda e: result.errors.append(f"pageerror: {e}"))
             sep = "&" if "?" in scene_url else "?"
             url = f"{scene_url}{sep}headless=1&quality={quality}&view={views[0] if views else 'southeast'}&w={s.RENDER_WIDTH}&h={s.RENDER_HEIGHT}&t={int(time.time())}"
