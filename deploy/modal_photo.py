@@ -32,9 +32,10 @@ import modal
 
 ROOT = Path(__file__).resolve().parent.parent
 SPIKE = ROOT / "spikes" / "archviz"
-# The owner's choice first (2026-11-07); six previews once waited 10 minutes for one (2026-11-12), so the next
-# fastest that has RT cores for OptiX (A100 and H100 have none) take a shoot when no RTX PRO 6000 is free
-SHOOT_GPU = os.environ.get("PHOTO_GPU", "RTX-PRO-6000,L40S,A10G").split(",")
+# The owner's choice first (2026-11-07); six previews once waited 10 minutes for one (2026-11-12), so an L40S takes
+# a shoot when no RTX PRO 6000 is free: a 4K photo takes about as long on it (347 s against 323-357 s, the render is
+# the smaller part). An A10G took 560-628 s, and a set waits for its slowest photo (Montelly v14, 2026-11-13).
+SHOOT_GPU = os.environ.get("PHOTO_GPU", "RTX-PRO-6000,L40S").split(",")
 # Chrome's export is the only step of a prepare that draws (about a minute): the first of these that is free. Waiting
 # for a T4 alone took 19 minutes once.
 EXPORT_GPU = ["T4", "L4", "A10G"]
