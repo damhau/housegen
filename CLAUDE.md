@@ -31,7 +31,8 @@ photo/     listing photos on Modal: export.py (scene page → GLB, Python 3.11 +
            pipeline ported from spikes/archviz: main.py import|rooms|outside|shoot, `prepare` = the first three). Not
            part of the backend's gates; it runs with bpy==5.0.1 (Python 3.11 only). Changes under photo/ need
            `uvx modal deploy deploy/modal_photo.py`.
-deploy/    k8s.yaml, modal_render.py (GPU render service), modal_photo.py (listing photo service). Root Dockerfile =
+deploy/    k8s.yaml, modal_render.py (GPU render service), modal_photo.py (listing photo service), modal_sheet.py
+           (render checks of this checkout on an RTX PRO 6000). Root Dockerfile =
            single image, GHCR workflow on v* tags.
 ```
 
@@ -100,6 +101,10 @@ cd frontend && npm run api:gen
 cd backend  && uv run python scripts/look_sheet.py --scene data/projects/<id>/versions/<n> --look quality=high --look look=presentation --out /tmp/sheet.png
 # no Chromium here? --scene-url https://housegen-dev…/scenes/<id>/versions/<n>/index.html with RENDER_SERVICE_URL + RENDER_SERVICE_TOKEN
 # in the environment renders it on the GPU render service (deploy/modal_render.py), ultra included, in seconds.
+# Render checks run on Modal, not on the owner's PC (owner, 2026-11-14): this checkout's kit, backend and scripts on
+# an RTX PRO 6000, a scene directory uploaded ({scene}, {out} are filled in), 14 rooms in about 25 s:
+uvx modal run deploy/modal_sheet.py --scene <dir with index.html + src/> --out /tmp/sheet \
+    --args "--scene {scene} --look look=presentation --views room-1 room-2 --out {out}/sheet.png"
 ```
 
 `frontend/openapi.json` is committed on purpose (CI builds without a backend). `src/routeTree.gen.ts` is generated
