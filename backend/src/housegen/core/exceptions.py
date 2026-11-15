@@ -27,6 +27,21 @@ class ConflictError(AppError):
     code = "conflict"
 
 
+class UnauthorizedError(AppError):
+    status_code = 401
+    code = "unauthorized"
+
+
+class ForbiddenError(AppError):
+    status_code = 403
+    code = "forbidden"
+
+
+class GoneError(AppError):
+    status_code = 410
+    code = "gone"
+
+
 class LLMError(AppError):
     status_code = 502
     code = "llm_error"

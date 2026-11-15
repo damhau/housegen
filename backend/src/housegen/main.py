@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -7,13 +8,17 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
 from starlette.staticfiles import PathLike
 from starlette.types import Scope
 
+from housegen.accounts.migrations import migrate_organisations
+from housegen.accounts.oidc import build_oauth, configured_providers
+from housegen.accounts.router import auth_router
 from housegen.agent.pipeline import resume_interrupted_jobs, start_all_waiting, start_waiting
 from housegen.api.v1 import router as api_router
-from housegen.core.config import get_settings
+from housegen.core.config import Settings, get_settings
 from housegen.core.db import dispose_db, init_db
 from housegen.core.exceptions import register_exception_handlers
 from housegen.core.logging import RequestLoggingMiddleware, configure_logging
@@ -60,6 +65,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         },
     )
     await migrate_plans(settings.projects_dir)  # one-off: plan.pdf + plan/ → plans/1/ (#10)
+    await migrate_organisations()  # one-off: the projects from before accounts (#104)
+    _log_auth(settings)
     # jobs the previous process left behind (deploy, reload, crash) continue with the same id
     resumed = await resume_interrupted_jobs(job_manager)
     if resumed:
@@ -74,6 +81,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     logger.info("app.shutdown")
 
 
+def _log_auth(settings: Settings) -> None:
+    providers = configured_providers(settings)
+    logger.info(
+        "auth.config",
+        extra={
+            "disabled": settings.AUTH_DISABLED,
+            "providers": providers,
+            "admin_email_set": bool(settings.AUTH_ADMIN_EMAIL),
+            "public_url": settings.AUTH_PUBLIC_URL or None,
+        },
+    )
+    if providers and not settings.AUTH_SESSION_SECRET:
+        logger.warning("auth.session_secret_missing")
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
@@ -86,8 +108,19 @@ def create_app() -> FastAPI:
         generate_unique_id_function=lambda route: route.name,
     )
     app.add_middleware(RequestLoggingMiddleware)
+    # the session cookie: who signed in, the organisation they work in, Authlib's login state
+    app.add_middleware(
+        SessionMiddleware,
+        secret_key=settings.AUTH_SESSION_SECRET or secrets.token_hex(32),
+        session_cookie="housegen_session",
+        max_age=settings.AUTH_SESSION_DAYS * 24 * 3600,
+        same_site="lax",
+        https_only=True,
+    )
+    app.state.oauth = build_oauth(settings)
     register_exception_handlers(app)
     app.include_router(api_router)
+    app.include_router(auth_router)
     # scene pages served with a chosen renderer snapshot (?kit=): before the /scenes mount
     app.include_router(pages_router)
 

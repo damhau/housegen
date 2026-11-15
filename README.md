@@ -59,7 +59,7 @@ cd ../kit && npm install
 cd ../frontend
 npm install
 npm run api:gen                  # regenerate the typed client from ../frontend/openapi.json
-npm run dev                      # http://localhost:5173  (proxies /api, /scenes, /kit to :8000)
+npm run dev                      # http://localhost:5173  (proxies /api, /scenes, /kit, /auth to :8000)
 ```
 
 Regenerate `openapi.json` after changing the API:
@@ -179,6 +179,29 @@ records the renderer its pictures were drawn with. `kit/` itself is the working 
 compare it with the newest snapshot on a real version, copy it to a new snapshot when it is right, move the pin only
 after a measured run.
 
+### Sign-in and organisations
+
+People sign in with Google or Microsoft (OpenID Connect, `/auth/login/<provider>`); projects belong to an
+organisation and its members share them (#80). A provider is offered when its client id is set. The session is a
+signed cookie (`housegen_session`: Secure, HttpOnly, SameSite=Lax) holding the user and the organisation they work
+in. The identity is the provider's issuer and subject, never the email: an invitation is accepted through its link
+(`/invite/<token>`) by whoever opens it while signed in. The email matters in one place: the first sign-in of
+`AUTH_ADMIN_EMAIL` with an email the provider verified (Google `email_verified`; Microsoft a personal account or the
+`xms_edov` claim) becomes the owner of the **default organisation**, which the startup migration created for every
+project from before accounts. The API so far identifies the caller (`GET /api/v1/me`) but requires no session
+(#105 enforces it).
+
+To set it up:
+
+1. Run `deploy/auth_apps.sh` with your own `az` login. It creates the Microsoft app (work and personal accounts,
+   the `email` and `xms_edov` claims), lists the Google console pages to fill in, and writes
+   `~/.config/housegen/auth-{dev,prod,local}.env`.
+2. Create the `housegen-auth` secret from the env file of each environment (the script prints the commands). The
+   deployment reads it through an optional `secretRef`.
+3. For local sign-in, append `auth-local.env` to `backend/.env` and open the app through Vite
+   (`http://localhost:5173`, which proxies `/auth`). Without it, set `AUTH_DISABLED=1`: one implicit user who owns
+   the default organisation.
+
 ## Configuration (backend/.env)
 
 The model, effort, critic rounds, step budget and in-loop render quality below are the defaults; each project can
@@ -215,6 +238,13 @@ returns the defaults a project without settings runs with.
 | `LISTING_EXTERIORS`, `LISTING_EXTERIOR_MAX` | `true`, `4` | lead the set with the building from outside, at most this many views (#93) |
 | `RENDER_BASE_URL` | `http://HOST:PORT` | where the renderer loads scenes from; the app's public URL when a render service is used |
 | `RENDER_KIT` | pinned in `kit/versions/index.json` | the renderer snapshot the build path draws with (builder, critic, version pictures); the viewer picks its own |
+| `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` | | sign-in with Google, offered when the id is set |
+| `AUTH_MICROSOFT_CLIENT_ID`, `AUTH_MICROSOFT_CLIENT_SECRET` | | sign-in with Microsoft (`common`: work and personal accounts) |
+| `AUTH_SESSION_SECRET` | random per process | signs the session cookie; without it every restart signs everyone out |
+| `AUTH_ADMIN_EMAIL` | | the first verified sign-in with this email owns the default organisation |
+| `AUTH_DISABLED` | `false` | no sign-in: one implicit user in the default organisation (local dev, the tests) |
+| `AUTH_PUBLIC_URL` | the request's origin | where the providers send the browser back (`https://host`); by default from `X-Forwarded-Proto`/`-Host` |
+| `AUTH_SESSION_DAYS`, `AUTH_INVITATION_DAYS` | `14`, `14` | how long a session and an invitation link last |
 | `MODEL_PRICES` | list prices for `claude-fable-5-2`, `claude-opus-5-5`, `claude-opus-5`, `claude-sonnet-5-5`, `gpt-6-astra` | JSON `{model: {input, cached, output[, cache_write]}}` in USD per million tokens, for the cost in each run's summary |
 
 ## Quality gates

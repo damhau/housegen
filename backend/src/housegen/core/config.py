@@ -156,6 +156,24 @@ class Settings(BaseSettings):
     LISTING_EXTERIORS: bool = True
     LISTING_EXTERIOR_MAX: int = 4
 
+    # sign-in (#80, #104). A provider exists when its client id is set; deploy/auth_apps.sh creates
+    # the apps and the values. AUTH_DISABLED: one implicit user in the default organisation (local
+    # dev, the tests).
+    AUTH_DISABLED: bool = False
+    AUTH_GOOGLE_CLIENT_ID: str = ""
+    AUTH_GOOGLE_CLIENT_SECRET: str = ""
+    AUTH_MICROSOFT_CLIENT_ID: str = ""
+    AUTH_MICROSOFT_CLIENT_SECRET: str = ""
+    # signs the session cookie; empty = a random one per process (sessions end at every restart)
+    AUTH_SESSION_SECRET: str = ""
+    # the first sign-in with this email, verified by the provider, owns the default organisation
+    AUTH_ADMIN_EMAIL: str = ""
+    # where the providers send the browser back (https://host, no path); empty = this request's
+    # origin, from X-Forwarded-Proto/-Host behind a proxy
+    AUTH_PUBLIC_URL: str = ""
+    AUTH_SESSION_DAYS: int = 14
+    AUTH_INVITATION_DAYS: int = 14
+
     @property
     def database_url(self) -> str:
         return self.DATABASE_URL or f"sqlite+aiosqlite:///{self.DATA_DIR / 'housegen.db'}"

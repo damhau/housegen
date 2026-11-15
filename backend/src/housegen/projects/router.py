@@ -18,6 +18,8 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
+from housegen.accounts import crud as accounts_crud
+from housegen.accounts.dependencies import OptionalAccess
 from housegen.agent import pipeline
 from housegen.agent.estimate import Estimate, Kind, estimate
 from housegen.agent.run_settings import ResolvedRunSettings, RunSettings, resolve
@@ -195,6 +197,7 @@ async def _add_plan(
 @router.post("", status_code=201)
 async def create_project(
     session: DbSession,
+    access: OptionalAccess,
     name: Annotated[str, Form(min_length=1, max_length=200)],
     # one or more PDF plan sets (the 1935 original, the 2024 survey…), with an optional label
     # each, same order. Plain lists with an empty default (not `| None`): the generated
@@ -249,11 +252,17 @@ async def create_project(
     logger.info(
         "projects.create.requested", extra={"photos": len(photos), "notes": len(notes.strip())}
     )
+    # signed out (until #105 requires a session): the default organisation, like every project
+    # from before accounts
+    organisation = (
+        access.organisation if access else (await accounts_crud.default_organisation(session))[0]
+    )
     project = await crud.create_project(
         session,
         name,
         brief=notes.strip() or None,
         settings=run_settings.model_dump(exclude_none=True) or None,
+        organisation_id=organisation.id,
     )
     st = ProjectStorage(project.id)
     st.ensure()

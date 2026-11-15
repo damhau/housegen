@@ -31,7 +31,10 @@ spec:
         - name: housegen
           image: ghcr.io/damhau/housegen:latest
           ports: [{ containerPort: 8000 }]
-          envFrom: [{ secretRef: { name: housegen-llm } }]
+          # housegen-auth: the sign-in apps and the session secret (deploy/auth_apps.sh writes it)
+          envFrom:
+            - secretRef: { name: housegen-llm }
+            - secretRef: { name: housegen-auth, optional: true }
           resources:
             requests: { cpu: "1", memory: 2Gi }
             limits: { cpu: "4", memory: 6Gi }   # software WebGL + image-heavy LLM calls: give it room

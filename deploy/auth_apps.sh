@@ -38,20 +38,25 @@ microsoft() {
         exit 1
     fi
 
-    local redirects id
+    local redirects id claims
     redirects=$(callbacks microsoft | jq -R . | jq -s .)
+    # email: work accounts send none without it; xms_edov: whether the tenant verified the email's
+    # domain, the only way a work account's email counts for AUTH_ADMIN_EMAIL (#104)
+    claims='{"idToken": [{"name": "email", "essential": false}, {"name": "xms_edov", "essential": false}]}'
     id=$(graph get "/applications?\$filter=displayName%20eq%20'$NAME'" --query 'value[0].id' -o tsv)
     if [ -z "$id" ]; then
         # personal accounts need v2 access tokens set at creation, or Graph refuses the audience
         id=$(graph post /applications --query id -o tsv --body "$(jq -n --arg n "$NAME" --argjson r "$redirects" \
+            --argjson c "$claims" \
             '{displayName: $n, signInAudience: "AzureADandPersonalMicrosoftAccount",
-              api: {requestedAccessTokenVersion: 2}, web: {redirectUris: $r}}')")
+              api: {requestedAccessTokenVersion: 2}, web: {redirectUris: $r}, optionalClaims: $c}')")
         echo "  created app registration $NAME"
     else
         local merged
         merged=$(graph get "/applications/$id" --query web.redirectUris -o json | jq --argjson r "$redirects" '. + $r | unique')
-        graph patch "/applications/$id" --body "$(jq -n --argjson r "$merged" '{web: {redirectUris: $r}}')" >/dev/null
-        echo "  app registration $NAME exists: redirect URIs updated"
+        graph patch "/applications/$id" --body "$(jq -n --argjson r "$merged" --argjson c "$claims" \
+            '{web: {redirectUris: $r}, optionalClaims: $c}')" >/dev/null
+        echo "  app registration $NAME exists: redirect URIs and optional claims updated"
     fi
     MS_ID=$(graph get "/applications/$id" --query appId -o tsv)
     local body expires

@@ -42,6 +42,12 @@ class Project(Base):
     share_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # the surfaces and volumes report's settings (#47, #48): report.schemas.ReportSettings
     report_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # who sees and edits it (#80): every member of this organisation. Nullable only because SQLite
+    # cannot alter the column of an existing table; the startup migration and project creation
+    # always set it
+    organisation_id: Mapped[str | None] = mapped_column(
+        ForeignKey("organisations.id"), nullable=True, index=True
+    )
 
     @property
     def settings(self) -> dict[str, Any] | None:

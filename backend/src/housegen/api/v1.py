@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
+from housegen.accounts.router import router as accounts_router
 from housegen.agent.run_settings import Provider, ResolvedRunSettings, resolve
 from housegen.core.config import get_settings
 from housegen.core.db import DbSession
@@ -23,6 +24,7 @@ router.include_router(projects_router)
 router.include_router(geo_router)
 router.include_router(report_router)
 router.include_router(listing_router)
+router.include_router(accounts_router)
 
 
 @router.get("/shared/{token}", tags=["shared"])

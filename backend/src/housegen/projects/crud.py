@@ -60,9 +60,13 @@ async def create_project(
     name: str,
     brief: str | None = None,
     settings: dict[str, Any] | None = None,
+    organisation_id: str | None = None,
 ) -> Project:
     project = Project(
-        name=name, brief=brief or None, settings_json=json.dumps(settings) if settings else None
+        name=name,
+        brief=brief or None,
+        settings_json=json.dumps(settings) if settings else None,
+        organisation_id=organisation_id,
     )
     session.add(project)
     await session.flush()
