@@ -1,12 +1,12 @@
 // housekit styles (#99): every style names an entry of each role's catalogue, the precedence piece > room > house >
-// style > fallback, fixtures never brass unless asked, and what the contemporary style changes in a bedroom, a
-// kitchen and a living room.
+// style > fallback, fixtures never brass unless asked and readable against a white ceiling, and what the contemporary
+// style changes in a bedroom, a kitchen and a living room.
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import * as house from "../house.js";
 import { DEFAULT_STYLE, FALLBACK, MAPS, ROLES, STYLES, look, setHouseStyle, styleName } from "../styles.js";
-import { FINISHES } from "../lighting-parts.js";
+import { FINISHES, WOODS } from "../lighting-parts.js";
 import { FLOOR_TILES, WALL_TILES } from "../finishes.js";
 import fx, { BEDDING, FITTINGS, FURNITURE_TONES, HANDLES, MODELS, ROLES as PIECES, RUGS, SOFA_DRESSINGS, pickObject, resetObjects } from "../furnish.js";
 import { FIXTURES } from "../lighting.js";
@@ -45,7 +45,11 @@ test("every style, and the fallback, names an existing entry for every role", ()
       }
       const names = typeof v === "object" ? Object.values(v) : [v];
       if (typeof v === "object") assert.ok("default" in v, `${name}.${role}: a value per kind has a default`);
-      for (const n of names) assert.ok(n in CATALOGUES[role], `${name}.${role}: "${n}" is not in its catalogue`);
+      for (const n of names) {
+        // a fixture family's finish with its parts
+        const finish = role === "fixtures" && typeof n === "object" ? n.finish : n;
+        assert.ok(finish in CATALOGUES[role], `${name}.${role}: "${finish}" is not in its catalogue`);
+      }
     }
   }
   for (const v of Object.values(STYLES).map((st) => st.fixtures).filter((v) => typeof v === "object")) {
@@ -60,8 +64,8 @@ test("every style, and the fallback, names an existing entry for every role", ()
 test("no style: the default style; a house style, a room override and a piece override win in that order", () => {
   assert.equal(styleName(), "scandinavian");
   assert.equal(look("fittings"), "chrome");
-  assert.equal(look("fixtures", { kind: "globePendant" }), "white");
-  assert.equal(look("fixtures", { kind: "hexSconce" }), "white");
+  assert.deepEqual(look("fixtures", { kind: "globePendant" }), { finish: "black", canopy: "oak" });
+  assert.equal(look("fixtures", { kind: "ledRing" }), "black");
 
   setHouseStyle({ style: "contemporary", rooms: { "SDB 1": { wallTile: "white", fittings: "chrome" } } });
   assert.equal(styleName(), "contemporary");
@@ -163,17 +167,101 @@ test("contemporary puts a panelled wall behind a double bed, once, under what ha
   assert.equal(off.plan.children.filter((c) => c.userData.kind === "featureWall").length, 0, "a room's override");
 });
 
-test("decorative fixtures are white in scandinavian and black in contemporary, built-ins white in both", () => {
-  for (const [style, finish] of [[{}, "white"], [{ style: "contemporary" }, "black"]]) {
+// bedrooms of 4 x d (x from x0, z 0..d) with a double bed on their north wall, or standing free in the middle
+function flats(rooms) {
+  const root = new THREE.Group();
+  const defs = rooms.map(({ name, x0, d }) => ({ name, use: "bedroom", polygon: [[x0, 0], [x0 + 4, 0], [x0 + 4, d], [x0, d]] }));
+  const plan = interior.floorPlan({ y: 0, rooms: defs, partitions: [] });
+  root.add(plan);
+  rooms.forEach(({ x0, d, free }, i) => {
+    const bed = fx.bed({ width: 1.6, length: 2.0 });
+    if (free) bed.position.set(x0 + 2, 0.015, d / 2 + 0.3);
+    root.add(free ? bed : fx.onWall(defs[i].polygon, 0, 1.6, bed, { y: 0.015 }));
+  });
+  const walls = () => plan.children.filter((c) => c.userData.kind === "featureWall").map((c) => c.userData.room ?? "the scene's").sort();
+  return { root, plan, defs, walls };
+}
+
+test("the feature wall goes in each unit's main bedroom only (the largest with a double bed); a room's override adds or removes one", () => {
+  const house = [
+    { name: "Chambre 1 — Appartement 1", x0: 0, d: 3.5 },
+    { name: "Chambre 2 — Appartement 1", x0: 4.2, d: 4.5 },
+    { name: "Chambre 1 — Appartement 2", x0: 8.4, d: 4.0 },
+    { name: "Chambre 2 — Appartement 2", x0: 12.6, d: 3.6 },
+  ];
+  setHouseStyle({ style: "contemporary" });
+  const two = flats(house);
+  interior.roomDetails(two.root);
+  assert.deepEqual(two.walls(), ["Chambre 1 — Appartement 2", "Chambre 2 — Appartement 1"]);
+
+  const one = flats([{ name: "Chambre", x0: 0, d: 3.5 }, { name: "Chambre parents", x0: 4.2, d: 4.5 }]);
+  interior.roomDetails(one.root);
+  assert.deepEqual(one.walls(), ["Chambre parents"], "a house of one unit: one wall");
+
+  setHouseStyle({ style: "contemporary", rooms: { "Chambre 2 — Appartement 1": { featureWall: "none" }, "Chambre 2 — Appartement 2": { featureWall: "panelled" } } });
+  const own = flats(house);
+  interior.roomDetails(own.root);
+  assert.deepEqual(own.walls(), ["Chambre 1 — Appartement 2", "Chambre 2 — Appartement 2"], "removed, not moved; added where asked");
+
+  setHouseStyle({ style: "contemporary" });
+  const free = flats([{ name: "Chambre 1 — App. 1", x0: 0, d: 3.5 }, { name: "Chambre 2 — App. 1", x0: 4.2, d: 4.5, free: true }]);
+  interior.roomDetails(free.root);
+  assert.deepEqual(free.walls(), ["Chambre 1 — App. 1"], "the next largest when the largest's bed stands free");
+
+  const drawn = flats([{ name: "Chambre 1 — App. 1", x0: 0, d: 3.5 }, { name: "Chambre 2 — App. 1", x0: 4.2, d: 4.5 }]);
+  drawn.root.add(fx.onWall(drawn.defs[0].polygon, 0, 2, interior.panelledWall(2), { y: 0.015, gap: 0 }));
+  interior.roomDetails(drawn.root);
+  assert.equal(drawn.root.children.filter((c) => c.userData.kind === "featureWall").length, 1, "the scene's own is the flat's");
+  assert.deepEqual(drawn.walls(), [], "none added");
+
+  setHouseStyle({ featureWall: "panelled" });
+  const scandi = flats(house);
+  interior.roomDetails(scandi.root);
+  assert.deepEqual(scandi.walls(), ["Chambre 1 — Appartement 2", "Chambre 2 — Appartement 1"], "scandinavian when the house asks");
+});
+
+// a part of a fixture that reads against a white ceiling or wall: dark, or wood
+const reads = (f) => {
+  let found = false;
+  f.traverse((c) => {
+    for (const m of [c.isMesh ? c.material : []].flat()) {
+      if (m.userData?.glow !== undefined || m.transparent) continue;
+      const hsl = m.color?.getHSL({});
+      if (/wood|oak|walnut/.test(m.name ?? "") || m.userData?.finish === "oak" || (hsl && hsl.l < 0.3)) found = true;
+    }
+  });
+  return found;
+};
+const OWN = ["mirrorBar", "coveStrip", "underCabinet"];
+
+test("scandinavian's decorative fixtures are black and white with oak and linen, each reads against a white ceiling; contemporary's black; built-ins white", () => {
+  for (const [style, finish] of [[{}, null], [{ style: "contemporary" }, "black"]]) {
     setHouseStyle(style);
-    for (const name of Object.keys(FIXTURES).filter((n) => !["mirrorBar", "coveStrip", "underCabinet"].includes(n))) {
+    for (const name of Object.keys(FIXTURES).filter((n) => !OWN.includes(n))) {
       const f = fx.fixture(name, {});
-      const want = name in BUILT_IN ? "white" : finish;
-      if (f.userData.fixture?.finish !== undefined) assert.equal(f.userData.fixture.finish, want, `${name} (${style.style ?? "no style"})`);
+      if (name in BUILT_IN) {
+        assert.equal(f.userData.fixture.finish, "white", `${name} (${style.style ?? "no style"})`);
+        continue;
+      }
+      assert.ok(["black", "white"].includes(f.userData.fixture.finish), `${name}: ${f.userData.fixture.finish}`);
+      if (finish) assert.equal(f.userData.fixture.finish, finish, name);
+      assert.ok(reads(f), `${name} (${style.style ?? "no style"}) has a dark or wooden part`);
     }
   }
   setHouseStyle({});
+  const woody = (f) => materials(f).has("oak wood") || [...materials(f)].some((n) => /oak/.test(n));
+  const linen = (f) => { let c = null; f.traverse((o) => { if (o.material?.name === "fabric shade") c = o.material.color.getHexString(); }); return c; };
+  assert.ok(woody(fx.fixture("globeFloorLamp", {})), "an oak stem");
+  assert.ok(woody(fx.fixture("mushroomLamp", {})), "an oak foot");
+  assert.equal(linen(fx.fixture("domePendant", {})), "e6dccb", "a linen shade");
   assert.equal(fx.fixture("discArms", { finish: "black" }).userData.fixture.finish, "black", "a fixture's own finish");
+  assert.ok(!woody(fx.fixture("globeFloorLamp", { finish: "black" })), "a call's own finish leaves the style's parts out");
+  assert.ok(!woody(fx.fixture("globeFloorLamp", { stem: "black" })), "a call's own part wins");
+  assert.ok(woody(fx.fixture("globeFloorLamp", { stem: undefined })), "an undefined part is the style's");
+  setHouseStyle({ style: "contemporary" });
+  assert.equal(linen(fx.fixture("domePendant", {})), null, "a metal shade");
+  assert.ok(!woody(fx.fixture("globeFloorLamp", {})));
+  for (const wood of WOODS) assert.ok(fx.fixture("barCluster", { collar: wood }).userData.fixture);
 });
 
 const meshes = (o, test) => {
@@ -268,7 +356,7 @@ test("a style draws a named model as another or as a role; the house can keep th
   try {
     setHouseStyle({ style: "contemporary" });
     const table = await fx.model("coffee-table-oval-white", { width: 0.8 });
-    assert.equal(table.userData.styledFrom, "coffee-table-oval-white");
+    assert.equal(table.userData.styledFrom, undefined, "the oval pair keeps its white table");
     const chair = await fx.model("dining-chair-grey", { width: 0.44 });
     assert.equal(chair.userData.styledFrom, "dining-chair-grey", "a dark chair (the parametric one in Node)");
     setHouseStyle({ style: "contemporary", models: { "dining-chair-grey": "dining-chair-grey" } });

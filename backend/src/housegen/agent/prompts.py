@@ -246,14 +246,14 @@ Place: ceiling fixtures fx.place(f, [x, z], rot, ceilingY): a pendant hangs f.us
   plate's centre (bedside sconces about floor + 1.2, hall and bath ones floor + 1.8; a cove at ceilingY). Table lamps on
   their surface, floor lamps on the floor: fx.place(f, [x, z], rot, surfaceY), or fx.onWall with the out option.
 Pendants and ceiling lights:
-- globePendant({ d=0.3, drop=0.7, glass:'opal'|'clear', finish, over=false }) opal or clear glass globe on a cable; over: true above a table or island
+- globePendant({ d=0.3, drop=0.7, glass:'opal'|'clear', finish, canopy=finish, over=false }) opal or clear glass globe on a cable (canopy: its canopy and cap, 'oak'|'walnut' or a finish); over: true above a table or island
 - facetedCluster({ n=11, size=0.25, spread=1.0, drop=0.95, finish='black', inside=finish, bulbs=n, seed=7, over=false }) faceted metal shells open on one face, each on its own cable at staggered heights with a bare bulb: a statement over a bed, a stairwell, a table (over: true)
-- discArms({ arms=3, span=1.2, d=0.24, drop=0.75, finish='black', rim=finish, over=false }) thin rods and crossing arms ending in round LED discs (a metal rim, opal underside): bedrooms, living rooms, over a table (over: true)
+- discArms({ arms=3, span=1.2, d=0.24, drop=0.75, finish='black', rim=finish, over=false }) thin rods and crossing arms ending in round LED discs (rim: their housing, a finish or 'oak'; opal underside): bedrooms, living rooms, over a table (over: true)
 - frameGlobes({ length=1.2, depth=0.4, drop=0.8, globes=4, d=0.13, finish='black', over=false }) interlocking rectangles of square metal bar carrying opal globes: bedrooms, dining (over: true above the table)
 - ledRing({ d=0.9, drop=0.8, finish='black', over=false }) a thin LED ring (d 0.6-1.2) on three cables, opal underneath: living rooms, over a dining table (over: true)
-- barCluster({ n=3, canopy:'round'|'linear', drop=0.8, shape:'cylinder'|'cone'|'mix', d=0.11, finish='black', light:'warm'|'neutral', over=false }) small metal pendants at staggered heights from one canopy: over a bar or a kitchen island (over: true)
-- linearPendant({ length=1.2, drop=0.8, finish='black', light:'warm'|'neutral', over=false }) a slim bar (length 0.9-2) on two cables, opal underneath: over an island or a dining table (over: true)
-- domePendant({ shape:'dome'|'cone'|'drum', d=0.4, drop=0.7, finish='black', light:'warm'|'neutral', over=false }) a metal shade, white inside, the bulb hidden: kitchens, dining, over a table or an island (over: true)
+- barCluster({ n=3, canopy:'round'|'linear', drop=0.8, shape:'cylinder'|'cone'|'mix', d=0.11, finish='black', collar=finish, light:'warm'|'neutral', over=false }) small metal pendants at staggered heights from one canopy (collar: the canopy and the collars, 'oak'|'walnut' or a finish): over a bar or a kitchen island (over: true)
+- linearPendant({ length=1.2, drop=0.8, finish='black', bar=finish, light:'warm'|'neutral', over=false }) a slim bar (length 0.9-2; bar: 'oak'|'walnut' or a finish) on two cables, opal underneath: over an island or a dining table (over: true)
+- domePendant({ shape:'dome'|'cone'|'drum', shade='metal'|'linen'|'white'|'sand'|'grey'|'charcoal'|'sage'|'#hex', d=0.4, drop=0.7, finish='black', canopy=finish, light:'warm'|'neutral', over=false }) a metal shade (white inside) or a fabric one, the bulb hidden (canopy: the canopy and the collar, 'oak'|'walnut' or a finish): kitchens, dining, over a table or an island (over: true)
 - downlight({ d=0.09, mount:'surface'|'recessed', shape:'round'|'square', finish='white', beam=0.55, lm=450, gimbal=false, tilt=0.35, yaw=0, tone:'warm'|'neutral' }) a cone straight down (gimbal: an adjustable head tilted toward -z): halls, kitchens, baths
 - track({ length=1.2, heads=3 (2-4), finish='white', tilt=0.6, yaw=0 (or one per head), fan=0.3, beam=0.32, lm=180 per head, tone }) surface track along x with spots tilted toward -z: over a worktop, a picture wall
 - flushCeiling({ d=0.35 (0.3-0.5), shape:'round'|'square', finish='white', lm≈1400·(d/0.35)², beam=1.3, tone }) flush opal ceiling light, light down in a wide cone: halls, baths, small rooms (replaces fx.ceilingLight)
@@ -262,17 +262,17 @@ Pendants and ceiling lights:
 Wall lights:
 - hexSconce({ d=0.17, finish='black', inner=finish }) faceted hexagonal sconce, open top and bottom, lined inside: a scallop up and down the wall; bedside, hall
 - upDown({ d=0.07, h=0.16, beam=0.36, finish='black' }) cylinder washing the wall up and down (beam: the cones' half-angle); halls, stairs, beside a door, outside a bedroom
-- globeSconce({ d=0.15, arm=0.2, finish='black' }) opal globe in a cup on a short arm, round back plate: a soft glow; bedside, hall, bathroom
+- globeSconce({ d=0.15, arm=0.2, finish='black', plate=finish }) opal globe in a cup on a short arm, round back plate (plate: 'oak'|'walnut' or a finish): a soft glow; bedside, hall, bathroom
 - swingArm({ arm=0.5, aim=0.45, finish='black' }) articulated reading light, conical shade aimed down/forward: beside a bed or an armchair, at about 1.1-1.3 m
 - pictureLight({ w=0.5, out=0.17, finish='black' }) slim bar on a curved arm, lights the wall below it: fix it 5-10 cm above a picture's top
 - mirrorBar({ w=0.6, finish='aluminium', light='neutral' }) slim LED bar with an opal underside over a bathroom or WC mirror (w 0.4-1.2): its top edge at the mirror's
 - stepLight({ w=0.12, h=0.075, style:'louvre'|'slot', finish='white'|…, lm=30, tone }) accent: small plate in the wall about 0.3 m up, light down onto steps or a corridor floor
 Table, desk and floor lamps:
-- globeTableLamp({ d=0.2, finish }) opal globe on a small base: bedside, sideboard
-- mushroomLamp({ d=0.32, height=0.42, shade:'opal'|'metal', finish='black' }) Scandinavian dome shade on a trumpet foot (opal glows, metal throws light down): sideboard, bedside
+- globeTableLamp({ d=0.2, finish, base=finish }) opal globe on a small base (base: 'oak'|'walnut' or a finish): bedside, sideboard
+- mushroomLamp({ d=0.32, height=0.42, shade:'opal'|'metal', finish='black', foot=finish }) Scandinavian dome shade on a trumpet foot (foot: 'oak'|'walnut' or a finish; opal glows, metal throws light down): sideboard, bedside
 - drumTableLamp({ shape:'drum'|'cone', shadeD=0.38, shade='linen'|'white'|'grey'|'sand'|'charcoal'|'sage'|'#hex', base:'ceramic'|'metal', glaze='white'|'sage'|'clay'|'charcoal'|'sand'|'blue'|'#hex', finish='black' }) fabric shade on a ceramic gourd or a metal column, 0.59 m: living room, bedside
 - deskLamp({ finish='black', arm=0.36, shadeD=0.15, tilt=12, turn=30 }) articulated twin-rod arms swivelled `turn` degrees from +z toward +x, conical metal shade aimed down: desk, bedside
-- globeFloorLamp({ height=1.5, d=0.2, arm=0.2, turn=35, finish='black' }) slim stem, opal globe on a short arm swung `turn` degrees from +z toward +x: reading corner, beside a sofa or an armchair
+- globeFloorLamp({ height=1.5, d=0.2, arm=0.2, turn=35, finish='black', stem=finish }) slim stem (stem: 'oak'|'walnut' or a finish), opal globe on a short arm swung `turn` degrees from +z toward +x: reading corner, beside a sofa or an armchair
 - arcFloorLamp({ reach=1.6, height=2.1, shadeD=0.4, base:'marble'|'metal', finish='black' }) arched tube from a heavy base, dome shade `reach` m toward +z, ~1.6 m up: over a sofa or a coffee table
 - tripodFloorLamp({ height=1.55, shadeD=0.45, shade='linen'|'white'|'grey'|'sand'|'charcoal'|'sage'|'#hex', legs:'oak'|'walnut'|'metal', finish='black' }) three splayed legs, fabric drum shade: living-room corner, beside a sofa
 Light each flat the way a photographed home for sale is lit: one finish for its fixtures (black or white, the built-in
@@ -361,16 +361,16 @@ rugs, a feature wall and the sofa cushions are the house style's: leave them out
 src/style.js holds it (plain data, no import):
   export default { style: "contemporary" }
 Without the file the house is "scandinavian". Write it when the brief names a style or asks for a finish.
-- "scandinavian": light oak, white, grey and sand textiles; white fixtures (opal, white metal, oak legs); chrome
-  fittings and a steel sink; handleless kitchen units; sand rugs; white tiles and a light porcelain bath floor; white
+- "scandinavian": light oak, white, grey and sand textiles; black and white fixtures with oak and linen (black arms
+  with white discs, oak canopies, collars and stems, linen shades, opal glass); chrome fittings and a steel sink; handleless kitchen units; sand rugs; white tiles and a light porcelain bath floor; white
   linen bedding.
 - "contemporary": dark accents on white walls; black fixtures; matte black fittings, kitchen handles, sink, hood and
   oven trim (the fronts and the worktop stay the project's); charcoal woven rugs; grey veined marble to 1.2 m and a
   light marble floor in the baths; olive and grey layered bedding with olive cushions; a panelled wall with an oak ledge
-  behind each double bed (the kit adds it: lean framed photographs on the ledge); olive and sand cushions and a grey
-  throw on every sofa (the kit adds them: put no cushions of your own on a sofa); "coffee-table-oval-white" drawn as
-  "coffee-table-oval-black", "dining-chair-grey" as a black chair, and dark tables, chairs and sideboards first among
-  the catalogue's pieces.
+  behind the double bed of each flat's main bedroom, the largest with one (the kit adds it: lean framed photographs on
+  the ledge; featureWall "panelled" on a room adds one there too); olive and sand cushions and a grey throw on every
+  sofa (the kit adds them: put no cushions of your own on a sofa); "dining-chair-grey" drawn as a black chair, and dark
+  tables, chairs and sideboards first among the catalogue's pieces.
 The built-in fixtures (downlight, track, flushCeiling, stepLight) are white in both. A role for the whole house or for
 one room (the floorPlan's room name) overrides the style, e.g. brass fixtures when the owner asks for them:
   export default { style: "contemporary", fixtures: "brass", rooms: { "Bain": { wallTile: "white" } } }

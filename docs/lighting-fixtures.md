@@ -47,7 +47,14 @@ starting with `familyName(` and listing the parameters with their defaults.
   chrome, bronze). Glass, fabric and paper are materials of their own. A fixture called without
   a finish takes the house style's (`kit/styles.js`: `fixtures`, or `builtIns` for the families in
   `BUILT_IN`), so no default is brass: brass appears only when a scene or its `src/style.js` asks.
-  A second metal part (a lining, a rim) defaults to the finish too.
+  A second part (a lining, a rim, a canopy, a stem, a foot) defaults to the finish too; a part that
+  can be wood takes `'oak'|'walnut'` (`partMaterial`, `WOODS`) as well, a fabric shade a name of
+  `SHADES` (`fabric`). A style may give a family its parts with its finish (`{ finish: "black",
+  canopy: "oak" }`): they apply when the call names no finish, and a part the call names wins.
+  `scandinavian` dresses the decorative families in black and white with oak and linen (black arms
+  with white discs, oak canopies, collars, bars, plates, stems and feet, a linen dome shade, a white
+  mushroom lamp on an oak foot) so that each reads against a white ceiling and wall; `contemporary`
+  is all black; the built-ins are white in both.
 - **Budget:** at most 20,000 triangles per fixture. Aim for 2–8k: a storey has 10+ fixtures.
 
 ## Light, by eye and by number

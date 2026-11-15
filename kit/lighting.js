@@ -21,7 +21,9 @@
 // (made of lighting-parts.js) and are gathered in FIXTURES; fixture(name, params) builds one;
 // fixtureReference() documents them for the builder (agent/prompts.py lists it).
 // A fixture's finish is the house style's (styles.js) unless the call names one: the decorative ones'
-// "fixtures", the built-in ones' "builtIns"; their details (a lining, a rim) take the finish too.
+// "fixtures", the built-in ones' "builtIns"; their details (a lining, a rim) take the finish too. A style may give
+// a family its parts with the finish ({ finish: "black", canopy: "oak" }): they apply when the call names no finish,
+// and a part the call names wins.
 
 export * from "./lighting-parts.js";
 import { PENDANTS } from "./lighting-pendants.js";
@@ -43,14 +45,17 @@ const OWN_FINISH = new Set(["mirrorBar", "coveStrip", "underCabinet"]);
 
 /**
  * A fixture by family name: fixture("downlight", { mount: "recessed" }). Without `finish`, the house
- * style's for the family (`room`: that room's override).
+ * style's for the family (`room`: that room's override), with the parts the style gives it (an oak canopy, a
+ * linen shade) under the call's own.
  */
 export function fixture(name, params = {}) {
   const spec = FIXTURES[name];
   if (!spec) throw new Error(`unknown fixture ${name}. Known: ${Object.keys(FIXTURES).join(", ")}`);
   if (OWN_FINISH.has(name)) return spec.make(params);
-  const finish = look(name in BUILT_IN ? "builtIns" : "fixtures", { piece: params.finish, room: params.room, kind: name });
-  return spec.make({ ...params, finish });
+  const styled = look(name in BUILT_IN ? "builtIns" : "fixtures", { piece: params.finish, room: params.room, kind: name });
+  const { finish, ...parts } = typeof styled === "object" ? styled : { finish: styled };
+  const own = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined));
+  return spec.make({ ...parts, ...own, finish });
 }
 
 /** The builder's reference: one line per family. */

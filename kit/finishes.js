@@ -49,19 +49,19 @@ const AMBIENT = new URL("/kit/assets/ambientcg/", import.meta.url);
 
 /**
  * Marble photographs (ambientCG, CC0, the 1k colour map) for tiles, graded to a grey as in the interior pilot:
- * each pixel's value = lift + 0.38 × its luminance, plus `tint` (r, g, b).
+ * each pixel's value = lift + gain × its luminance, plus `tint` (r, g, b).
  */
 export const MARBLES = {
-  // near black with dense white veins: lifted to a warm mid grey, the veins softened
-  Marble017: { lift: 104, tint: [2, 0, -3] },
-  Marble012: { lift: 150, tint: [0, 0, -2] },
+  // near black with dense white veins: lifted to a light warm grey with near-white veins (the pilot's lift of 104
+  // read as a dark stone in a lit bath)
+  Marble017: { lift: 178, gain: 0.45, tint: [2, 0, -3] },
+  Marble012: { lift: 150, gain: 0.38, tint: [0, 0, -2] },
 };
-const MARBLE_GAIN = 0.38;
 
 /** The tiles of tileWalls and of the tiled fronts (wc, bathtub, shower), by name: styles.js "wallTile". */
 export const WALL_TILES = {
   white: {}, // tileMaterial's defaults: 30 x 60 glazed white, pale joints
-  "marble-grey": { marble: "Marble017", size: [0.6, 1.2], joint: 0.002, jointColor: "#8c8a86", roughness: 0.28 },
+  "marble-grey": { marble: "Marble017", size: [0.6, 1.2], joint: 0.002, jointColor: "#a9a7a2", roughness: 0.28 },
 };
 /** The "tile" floor of a bath or a WC, by name: styles.js "bathFloor". */
 export const FLOOR_TILES = {
@@ -318,7 +318,7 @@ function marbleTiles({ marble, size, joint, jointColor, roughness }) {
   const key = JSON.stringify([marble, size, joint, jointColor, roughness]);
   if (_tiles.has(key)) return _tiles.get(key);
   const spec = MARBLES[marble];
-  const grade = (y) => { const v = spec.lift + y * MARBLE_GAIN; return [v + spec.tint[0], v + spec.tint[1], v + spec.tint[2]]; };
+  const grade = (y) => { const v = spec.lift + y * spec.gain; return [v + spec.tint[0], v + spec.tint[1], v + spec.tint[2]]; };
   const plain = new THREE.Color().setRGB(...grade(140).map((c) => c / 255), THREE.SRGBColorSpace);
   const m = new THREE.MeshStandardMaterial({ name: "marble tiles", color: plain, roughness });
   m.userData.finish = "tiles";

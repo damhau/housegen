@@ -15,7 +15,8 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { FLOOR_TILES, bathFloorMaterial, finishMaterial, metricUV, tileMaterial, wallTileMaterial } from "./finishes.js";
-import { entry } from "./styles.js";
+import { entry, roomLook } from "./styles.js";
+import { flatOf } from "./plan2d.js";
 import { SOFA_DRESSINGS, dressSofa } from "./furnish.js";
 
 // plain fallbacks (no import of house.js: a page may load it under another URL, ?v=<tag>, and a
@@ -595,10 +596,11 @@ export function panelledWall(width, { height = 1.25, board = 0.12, color = "#8a8
 const DOUBLE_BED = 1.35; // a bed this wide or wider: the room's main bed
 
 /**
- * A feature wall (styles.js "featureWall", FEATURE_WALLS) behind the double bed of each bedroom whose style asks for
- * one: on the wall its headboard is against, along the stretch of it round the bed that no door, window or tall
- * piece interrupts, below what hangs on it above the bed. Skipped for a room that has one (kind "featureWall").
- * Returns how many it added.
+ * A feature wall (styles.js "featureWall", FEATURE_WALLS) behind the double bed of each unit's main bedroom (its
+ * largest bedroom with a double bed that can take one; a unit: the flat its name gives, plan2d.js flatOf) and of any
+ * bedroom whose own override in the house style names one: on the wall its headboard is against, along the stretch
+ * of it round the bed that no door, window or tall piece interrupts, below what hangs on it above the bed. Skipped
+ * for a unit with one already (kind "featureWall"). Returns how many it added.
  */
 function featureWalls(root, plans) {
   const beds = [], others = [], walls = [];
@@ -607,66 +609,89 @@ function featureWalls(root, plans) {
     if (u.kind === "featureWall") walls.push(o);
     else if (u.kind === "furniture") (KINDS.bed(pieceWords(u.name)) && (u.footprint?.[0] ?? 0) >= DOUBLE_BED ? beds : others).push(o);
   });
+  const inRoom = (plan, r, o) => {
+    const p = plan.worldToLocal(o.getWorldPosition(new THREE.Vector3())), { y } = plan.userData;
+    return p.y > y - 0.3 && p.y < y + 2.2 && nearPolygon([p.x, p.z], r.polygon, 0.15);
+  };
+  // the bedrooms with a double bed (the widest, when there are two)
+  const rooms = [];
+  for (const plan of plans) {
+    for (const r of plan.userData.rooms ?? []) {
+      if (r.use !== "bedroom") continue;
+      const bed = beds.filter((o) => inRoom(plan, r, o)).sort((a, b) => b.userData.footprint[0] - a.userData.footprint[0])[0];
+      if (!bed) continue;
+      rooms.push({ plan, r, bed, unit: flatOf(r.name), area: polygonArea(r.polygon) });
+    }
+  }
   const openings = wallOpenings(root);
   const dot = (p, q) => p[0] * q[0] + p[1] * q[1];
-  let added = 0;
-  for (const plan of plans) {
+  // one room's wall, when its bed stands against a wall with room for one; whether it got one
+  const place = ({ plan, r, bed }) => {
+    const spec = entry(FEATURE_WALLS, "featureWall", { room: r.name });
+    if (!spec || walls.some((o) => inRoom(plan, r, o))) return false;
     const { y } = plan.userData;
     const floorY = plan.localToWorld(new THREE.Vector3(0, y + 0.015, 0)).y;
     const planTurn = plan.getWorldQuaternion(new THREE.Quaternion()).invert();
-    const local = (o) => plan.worldToLocal(o.getWorldPosition(new THREE.Vector3()));
-    const inRoom = (r, p) => p.y > y - 0.3 && p.y < y + 2.2 && nearPolygon([p.x, p.z], r.polygon, 0.15);
-    for (const r of plan.userData.rooms ?? []) {
-      if (r.use !== "bedroom") continue;
-      const spec = entry(FEATURE_WALLS, "featureWall", { room: r.name });
-      if (!spec || walls.some((o) => inRoom(r, local(o)))) continue;
-      const bed = beds.filter((o) => inRoom(r, local(o))).sort((a, b) => b.userData.footprint[0] - a.userData.footprint[0])[0];
-      if (!bed) continue;
-      const at = local(bed), [bw, bl] = bed.userData.footprint;
-      const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(bed.getWorldQuaternion(new THREE.Quaternion())).applyQuaternion(planTurn);
-      const head = [at.x + dir.x * bl / 2, at.z + dir.z * bl / 2];
-      let e = null;
-      for (const c of roomEdges(r.polygon)) {
-        const off = [head[0] - c.a[0], head[1] - c.a[1]], gap = dot(off, c.n), along = dot(off, c.u);
-        if (dot(c.n, [dir.x, dir.z]) < -0.9 && gap > -0.05 && gap < 0.35 && along > 0 && along < c.L && (!e || gap < e.gap)) e = { ...c, gap };
+    const at = plan.worldToLocal(bed.getWorldPosition(new THREE.Vector3())), [bw, bl] = bed.userData.footprint;
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(bed.getWorldQuaternion(new THREE.Quaternion())).applyQuaternion(planTurn);
+    const head = [at.x + dir.x * bl / 2, at.z + dir.z * bl / 2];
+    let e = null;
+    for (const c of roomEdges(r.polygon)) {
+      const off = [head[0] - c.a[0], head[1] - c.a[1]], gap = dot(off, c.n), along = dot(off, c.u);
+      if (dot(c.n, [dir.x, dir.z]) < -0.9 && gap > -0.05 && gap < 0.35 && along > 0 && along < c.L && (!e || gap < e.gap)) e = { ...c, gap };
+    }
+    if (!e) return false;
+    const rel = (x, z) => [x - e.a[0], z - e.a[1]];
+    const centre = dot(rel(at.x, at.z), e.u);
+    const bedTop = new THREE.Box3().setFromObject(bed).max.y - floorY;
+    // the other pieces against that wall: their stretch along it and their heights above the floor
+    const against = [];
+    for (const o of others) {
+      const b = new THREE.Box3().setFromObject(o);
+      if (b.isEmpty() || b.max.y - floorY < bedTop + 0.05) continue;
+      const lo = plan.worldToLocal(b.min.clone()), hi = plan.worldToLocal(b.max.clone());
+      const corners = [[lo.x, lo.z], [lo.x, hi.z], [hi.x, lo.z], [hi.x, hi.z]].map(([x, z]) => rel(x, z));
+      if (Math.min(...corners.map((c) => dot(c, e.n))) > 0.25) continue;
+      const along = corners.map((c) => dot(c, e.u));
+      against.push({ s0: Math.min(...along), s1: Math.max(...along), h0: b.min.y - floorY, h1: b.max.y - floorY });
+    }
+    let height = spec.height;
+    // hung: what starts above the bed's top less 10 cm (a picture, a sconce); a table lamp on a nightstand is not
+    const hung = (p) => p.h0 >= bedTop - 0.1;
+    // the stretch: doors and windows up to the ledge, and what stands taller than it (a wardrobe, a curtain), end it
+    const stops = [...edgeOpenings(openings, e.a, e.u, e.n, e.L, floorY, height + 0.03),
+      ...against.filter((p) => !hung(p) && p.h1 > height)];
+    let s0 = 0, s1 = e.L;
+    for (const h of stops) {
+      if (h.s1 <= centre) s0 = Math.max(s0, h.s1);
+      else if (h.s0 >= centre) s1 = Math.min(s1, h.s0);
+      else s1 = s0;
+    }
+    // below what hangs over it (a picture, a sconce), clear of the bed's headboard
+    for (const p of against) if (hung(p) && p.s1 > s0 && p.s0 < s1) height = Math.min(height, p.h0 - 0.08);
+    if (s1 - s0 < Math.min(1.2, bw) || height < Math.max(0.9, bedTop + 0.05)) return false;
+    const wall = panelledWall(s1 - s0, { ...spec, height });
+    const mid = (s0 + s1) / 2;
+    wall.position.set(e.a[0] + e.u[0] * mid + e.n[0] * 0.055, y + 0.015, e.a[1] + e.u[1] * mid + e.n[1] * 0.055);
+    wall.rotation.y = Math.atan2(e.n[0], e.n[1]);
+    wall.userData.room = r.name;
+    plan.add(wall);
+    return true;
+  };
+  // a unit's wall goes to its largest bedroom that can take one: a room's own "none" removes it (not moved), a
+  // wall the scene drew in one of its bedrooms is the unit's; a room's own override for one adds it there too
+  const units = new Map();
+  for (const room of rooms) units.set(room.unit, [...(units.get(room.unit) ?? []), room]);
+  let added = 0;
+  for (const list of units.values()) {
+    let open = !list.some(({ plan, r }) => walls.some((o) => inRoom(plan, r, o)));
+    for (const room of list.sort((a, b) => b.area - a.area)) {
+      const own = roomLook("featureWall", room.r.name);
+      if (own === "none") open = false;
+      else if ((open || own != null) && place(room)) {
+        added++;
+        open = false;
       }
-      if (!e) continue;
-      const rel = (x, z) => [x - e.a[0], z - e.a[1]];
-      const centre = dot(rel(at.x, at.z), e.u);
-      const bedTop = new THREE.Box3().setFromObject(bed).max.y - floorY;
-      // the other pieces against that wall: their stretch along it and their heights above the floor
-      const against = [];
-      for (const o of others) {
-        const b = new THREE.Box3().setFromObject(o);
-        if (b.isEmpty() || b.max.y - floorY < bedTop + 0.05) continue;
-        const lo = plan.worldToLocal(b.min.clone()), hi = plan.worldToLocal(b.max.clone());
-        const corners = [[lo.x, lo.z], [lo.x, hi.z], [hi.x, lo.z], [hi.x, hi.z]].map(([x, z]) => rel(x, z));
-        if (Math.min(...corners.map((c) => dot(c, e.n))) > 0.25) continue;
-        const along = corners.map((c) => dot(c, e.u));
-        against.push({ s0: Math.min(...along), s1: Math.max(...along), h0: b.min.y - floorY, h1: b.max.y - floorY });
-      }
-      let height = spec.height;
-      // hung: what starts above the bed's top less 10 cm (a picture, a sconce); a table lamp on a nightstand is not
-      const hung = (p) => p.h0 >= bedTop - 0.1;
-      // the stretch: doors and windows up to the ledge, and what stands taller than it (a wardrobe, a curtain), end it
-      const stops = [...edgeOpenings(openings, e.a, e.u, e.n, e.L, floorY, height + 0.03),
-        ...against.filter((p) => !hung(p) && p.h1 > height)];
-      let s0 = 0, s1 = e.L;
-      for (const h of stops) {
-        if (h.s1 <= centre) s0 = Math.max(s0, h.s1);
-        else if (h.s0 >= centre) s1 = Math.min(s1, h.s0);
-        else s1 = s0;
-      }
-      // below what hangs over it (a picture, a sconce), clear of the bed's headboard
-      for (const p of against) if (hung(p) && p.s1 > s0 && p.s0 < s1) height = Math.min(height, p.h0 - 0.08);
-      if (s1 - s0 < Math.min(1.2, bw) || height < Math.max(0.9, bedTop + 0.05)) continue;
-      const wall = panelledWall(s1 - s0, { ...spec, height });
-      const mid = (s0 + s1) / 2;
-      wall.position.set(e.a[0] + e.u[0] * mid + e.n[0] * 0.055, y + 0.015, e.a[1] + e.u[1] * mid + e.n[1] * 0.055);
-      wall.rotation.y = Math.atan2(e.n[0], e.n[1]);
-      wall.userData.room = r.name;
-      plan.add(wall);
-      added++;
     }
   }
   return added;

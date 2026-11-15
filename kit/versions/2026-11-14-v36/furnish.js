@@ -52,8 +52,10 @@ export const finish = {
   // a silvered mirror: while walking it shows the room (kit/mirror.js finds it by its name), else
   // the environment (the room's light)
   mirror: () => m("mirror", () => new THREE.MeshStandardMaterial({ name: "mirror", color: "#e9eeee", roughness: 0.02, metalness: 1 })),
-  // shower screens: clear, a faint green edge tint, a little sheen
-  showerGlass: () => m("showerGlass", () => new THREE.MeshStandardMaterial({ color: "#e8f2ee", roughness: 0.03, metalness: 0.1, transparent: true, opacity: 0.18, side: THREE.DoubleSide })),
+  // shower screens, clear: a dark green-grey that only dims what is behind it a little (a light one reads as a frosted
+  // white panel over dark tiles), and its edges, where the glass's green shows
+  showerGlass: () => m("showerGlass", () => new THREE.MeshStandardMaterial({ name: "shower glass", color: "#3f4d48", roughness: 0.04, transparent: true, opacity: 0.14, side: THREE.DoubleSide })),
+  glassEdge: () => m("glassEdge", () => new THREE.MeshStandardMaterial({ name: "glass edge", color: "#8fa79e", roughness: 0.1, transparent: true, opacity: 0.6 })),
   chrome: () => m("chrome", () => new THREE.MeshStandardMaterial({ color: "#e6e8ea", roughness: 0.08, metalness: 1 })),
   towel: (color = "#ece8e0") => finishMaterial("cotton-weave", { color, scale: 0.6 })
     ?? m(`towel:${color}`, () => new THREE.MeshStandardMaterial({ color, roughness: 1 })),
@@ -657,15 +659,18 @@ export function shower({ width = 1.2, depth = 0.9, panel = 0.8, side = null, flo
   const tray = block(g, [width, 0.012, depth], [0, 0, 0], trayMat);
   if (tiled) metricUV(tray.geometry);
   block(g, [width - 0.1, 0.004, 0.05], [0, 0.012, -depth / 2 + 0.08], F.drain); // drain
-  const glass = finish.showerGlass(), black = finish.black();
-  const p = Math.min(panel, width);
+  const glass = finish.showerGlass(), rim = finish.glassEdge(), black = finish.black();
+  const p = Math.min(panel, width), front = depth / 2 - 0.02;
   // the front panel starts at the closed side (the glass side, or the left when both are walls)
   const s = side === "right" ? 1 : -1;
   const edge = s * (width / 2);
-  block(g, [p, 2.0, 0.008], [edge - s * (p / 2), 0.012, depth / 2 - 0.02], glass);
-  block(g, [0.02, 2.0, 0.02], [edge - s * 0.01, 0.012, depth / 2 - 0.02], black); // profile
+  block(g, [p, 2.0, 0.008], [edge - s * (p / 2), 0.012, front], glass);
+  block(g, [0.008, 2.0, 0.009], [edge - s * (p - 0.004), 0.012, front], rim); // its free edge
+  block(g, [p - 0.02, 0.008, 0.009], [edge - s * (p / 2 + 0.01), 2.004, front], rim); // its top edge
+  block(g, [0.016, 2.0, 0.016], [edge - s * 0.008, 0.012, front], black); // the profile at the wall
   if (side) {
     block(g, [0.008, 2.0, depth - 0.04], [edge - s * 0.02, 0.012, 0], glass);
+    block(g, [0.009, 0.008, depth - 0.06], [edge - s * 0.02, 2.004, -0.01], rim);
   } else {
     block(g, [0.012, 0.012, depth - 0.02], [edge - s * (p - 0.02), 1.95, 0], black); // bar to the back wall
   }

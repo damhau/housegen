@@ -11,7 +11,7 @@
 
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { metal, finishes, cyl, lit, suspension, addGlow, addCone, tagFixture, opal, clearGlass, bulbGlow, glowMaterial, WARM, NEUTRAL } from "./lighting-parts.js";
+import { metal, finishes, partMaterial, fabric, cyl, lit, suspension, addGlow, addCone, tagFixture, opal, clearGlass, bulbGlow, glowMaterial, WARM, NEUTRAL } from "./lighting-parts.js";
 
 // ---------------------------------------------------------------- helpers of this file
 
@@ -138,12 +138,12 @@ const graphite = () => (_graphite ??= new THREE.MeshStandardMaterial({ name: "gr
 
 /**
  * Globe pendant: an opal (or clear, with a bare bulb) glass globe on a cable. `d` its diameter, `drop`
- * from the ceiling to the globe's bottom, `finish` of the canopy and the cap. Glows every way.
- * Role "accent" when it hangs over a table or an island (`over: true`), else "ceiling".
+ * from the ceiling to the globe's bottom; the canopy and the cap in `canopy` (oak, walnut or a finish; `finish`
+ * by default). Glows every way. Role "accent" when it hangs over a table or an island (`over: true`), else "ceiling".
  */
-function globePendant({ d = 0.3, drop = 0.7, glass = "opal", finish = "black", over = false, lm = 600 } = {}) {
+function globePendant({ d = 0.3, drop = 0.7, glass = "opal", finish = "black", canopy, over = false, lm = 600 } = {}) {
   const g = new THREE.Group();
-  const m = metal(finish);
+  const m = partMaterial(canopy ?? finish);
   const bottom = suspension(g, drop - d, m);
   cyl(g, 0.035, 0.045, 0.05, bottom - 0.025, m); // the cap
   const cy = bottom - 0.05 - d / 2 + 0.02;
@@ -298,8 +298,8 @@ function facetedCluster({ n = 11, size = 0.25, spread = 1.0, drop = 0.95, finish
 
 /**
  * Disc arms: from a round canopy, thin rods hold `arms` crossing horizontal arms (square bar, `finish`)
- * at slightly different heights, each ending in two round LED discs (`d` across, a `rim` metal
- * housing, an opal underside); rods to the ceiling hold the two longest arms' far ends. `span` the
+ * at slightly different heights, each ending in two round LED discs (`d` across, a `rim` housing: a finish, oak
+ * or walnut; an opal underside); rods to the ceiling hold the two longest arms' far ends. `span` the
  * longest arm, `drop` from the ceiling to the lowest disc's bottom. Up to three cones down, one per
  * group of discs. Role "accent" with `over: true`, else "ceiling".
  */
@@ -308,7 +308,7 @@ function discArms({ arms = 3, span = 1.2, d = 0.24, drop = 0.75, finish = "black
   span = clamp(span, 0.6, 2);
   d = clamp(d, 0.12, 0.4);
   drop = clamp(drop, 0.35, 2);
-  const m = metal(finish), rm = metal(rim ?? finish), under = opal(1.7);
+  const m = metal(finish), rm = partMaterial(rim ?? finish), under = opal(1.7);
   const g = new THREE.Group(), A = assembler();
   const bar = 0.012, t = 0.032, gap = 0.008; // the arms' section, the discs' thickness, the stem between
   canopy(A, 0, 0, 0.08, m, 0.03);
@@ -460,27 +460,28 @@ function ledRing({ d = 0.9, drop = 0.8, finish = "black", over = false, lm = 180
 /**
  * Bar cluster: `n` (1–5) small metal pendants (`shape` cylinder, cone or mix; `d` across; `finish`
  * outside, white inside, a bulb tip showing) at staggered heights from one canopy, round (in a ring)
- * or linear (in a row, 0.32 m apart); `drop` from the ceiling to the lowest one's rim. A cone down
- * from each (up to three). Role "accent" with `over: true` (over a bar or an island), else "ceiling".
+ * or linear (in a row, 0.32 m apart); `drop` from the ceiling to the lowest one's rim. The canopy and the
+ * pendants' collars in `collar` (oak, walnut or a finish; `finish` by default). A cone down from each (up to
+ * three). Role "accent" with `over: true` (over a bar or an island), else "ceiling".
  */
-function barCluster({ n = 3, canopy: kind = "round", drop = 0.8, shape = "cylinder", d = 0.11, finish = "black", light = "warm", over = false, lm = 600 } = {}) {
+function barCluster({ n = 3, canopy: kind = "round", drop = 0.8, shape = "cylinder", d = 0.11, finish = "black", collar, light = "warm", over = false, lm = 600 } = {}) {
   n = Math.round(clamp(n, 1, 5));
   d = clamp(d, 0.06, 0.2);
   drop = clamp(drop, 0.35, 2);
-  const m = metal(finish), cord = finishes.black(), inner = shadeInside(0.5), bulb = bulbGlow(2.2);
+  const m = metal(finish), cm = partMaterial(collar ?? finish), cord = finishes.black(), inner = shadeInside(0.5), bulb = bulbGlow(2.2);
   const g = new THREE.Group(), A = assembler();
   const pos = [];
   if (kind === "linear") {
     const sp = 0.32;
     for (let k = 0; k < n; k++) pos.push([(k - (n - 1) / 2) * sp, 0]);
-    A.add(new THREE.BoxGeometry((n - 1) * sp + 0.1, 0.02, 0.06), m, at(0, -0.01, 0));
+    A.add(new THREE.BoxGeometry((n - 1) * sp + 0.1, 0.02, 0.06), cm, at(0, -0.01, 0));
   } else {
     const rr = n === 1 ? 0 : 0.05 + 0.008 * n;
     for (let k = 0; k < n; k++) {
       const a = Math.PI / 2 + 0.4 + (k * 2 * Math.PI) / n;
       pos.push([rr * Math.cos(a), rr * Math.sin(a)]);
     }
-    canopy(A, 0, 0, rr + 0.03, m, 0.02);
+    canopy(A, 0, 0, rr + 0.03, cm, 0.02);
   }
   const lift = [0, 0.16, 0.08, 0.12, 0.04];
   const R = d / 2, H = d * 1.35, rc = 0.017;
@@ -492,7 +493,7 @@ function barCluster({ n = 3, canopy: kind = "round", drop = 0.8, shape = "cylind
     const sh = shape === "mix" ? (k % 2 ? "cone" : "cylinder") : profiles[shape] ? shape : "cylinder";
     const y0 = -drop + lift[k];
     shade(A, profiles[sh], m, inner, at(x, y0, z), { seg: 40 });
-    A.add(new THREE.CylinderGeometry(rc, rc, 0.05, 20), m, at(x, y0 + H + 0.025, z)); // the collar
+    A.add(new THREE.CylinderGeometry(rc, rc, 0.05, 20), cm, at(x, y0 + H + 0.025, z)); // the collar
     A.add(new THREE.SphereGeometry(Math.min(0.022, R * 0.45), 16, 12), bulb, at(x, y0 + H * 0.42, z), { shadow: false });
     rod(A, [x, -0.02, z], [x, y0 + H + 0.05, z], 0.002, cord);
     return { x, y: y0, z };
@@ -510,17 +511,18 @@ function barCluster({ n = 3, canopy: kind = "round", drop = 0.8, shape = "cylind
 // ---------------------------------------------------------------- linear pendant
 
 /**
- * Linear pendant: a slim bar `length` long (0.9–2 m; `finish`, an opal diffuser underneath) on two
- * cables with their own small canopies; `drop` from the ceiling to its underside. Two cones down
- * (three from 1.5 m). Role "accent" with `over: true` (over an island or a table), else "ceiling".
+ * Linear pendant: a slim bar `length` long (0.9–2 m; in `bar`: oak, walnut or a finish, `finish` by default; an
+ * opal diffuser underneath) on two cables with their own small canopies (`finish`); `drop` from the ceiling to its
+ * underside. Two cones down (three from 1.5 m). Role "accent" with `over: true` (over an island or a table), else
+ * "ceiling".
  */
-function linearPendant({ length = 1.2, drop = 0.8, finish = "black", light = "warm", over = false, lm = 1800 } = {}) {
+function linearPendant({ length = 1.2, drop = 0.8, finish = "black", bar, light = "warm", over = false, lm = 1800 } = {}) {
   length = clamp(length, 0.6, 2.4);
   drop = clamp(drop, 0.25, 2);
   const m = metal(finish), cord = finishes.black(), diffuser = opal(1.8);
   const g = new THREE.Group(), A = assembler();
   const w = 0.036, h = 0.05, y0 = -drop;
-  A.add(new THREE.BoxGeometry(length, h, w), m, at(0, y0 + h / 2, 0));
+  A.add(new THREE.BoxGeometry(length, h, w), partMaterial(bar ?? finish), at(0, y0 + h / 2, 0));
   A.add(new THREE.PlaneGeometry(length - 0.012, w - 0.009).rotateX(Math.PI / 2), diffuser, at(0, y0 - 0.0006, 0), { shadow: false });
   const xa = length / 2 - Math.min(0.15, length * 0.12);
   for (const x of [-xa, xa]) {
@@ -539,14 +541,17 @@ function linearPendant({ length = 1.2, drop = 0.8, finish = "black", light = "wa
 // ---------------------------------------------------------------- dome pendant
 
 /**
- * Dome pendant: a metal shade (`shape` dome, cone or drum; `d` across; `finish` outside, white inside)
- * on a collar and a cable, its bulb hidden inside; `drop` from the ceiling to the rim. A cone down and
- * a weak glow from the mouth. Role "accent" with `over: true` (over a table or an island), else "ceiling".
+ * Dome pendant: a shade (`shape` dome, cone or drum; `d` across) of metal (`shade` "metal": `finish` outside, white
+ * inside) or of cloth (`shade` linen, white, grey, sand, charcoal, sage or a colour: it glows a little while on), on a
+ * collar and a cable, its bulb hidden inside; the canopy and the collar in `canopy` (oak, walnut or a finish;
+ * `finish` by default); `drop` from the ceiling to the rim. A cone down and a weak glow from the mouth. Role
+ * "accent" with `over: true` (over a table or an island), else "ceiling".
  */
-function domePendant({ shape = "dome", d, drop = 0.7, finish = "black", light = "warm", over = false, lm = 800 } = {}) {
+function domePendant({ shape = "dome", shade: cloth = "metal", d, drop = 0.7, finish = "black", canopy: top, light = "warm", over = false, lm = 800 } = {}) {
   if (!["dome", "cone", "drum"].includes(shape)) shape = "dome";
   d = clamp(d ?? { dome: 0.4, cone: 0.32, drum: 0.35 }[shape], 0.15, 0.7);
-  const m = metal(finish), inner = shadeInside(0.45), bulb = bulbGlow(2);
+  const m = metal(finish), cm = partMaterial(top ?? finish), bulb = bulbGlow(2);
+  const outer = cloth === "metal" ? m : fabric(cloth, 0.18), inner = cloth === "metal" ? shadeInside(0.45) : fabric(cloth, 0.7);
   const g = new THREE.Group(), A = assembler();
   const R = d / 2, rt = 0.032, rc = 0.026;
   let profile, H, angle;
@@ -572,34 +577,34 @@ function domePendant({ shape = "dome", d, drop = 0.7, finish = "black", light = 
   }
   drop = clamp(drop, H + 0.2, 2);
   const y0 = -drop;
-  shade(A, profile, m, inner, at(0, y0, 0), { seg: 56 });
-  A.add(new THREE.CylinderGeometry(rc, rc, 0.07, 24), m, at(0, y0 + H + 0.035, 0)); // the collar
-  canopy(A, 0, 0, 0.055, m, 0.025);
+  shade(A, profile, outer, inner, at(0, y0, 0), { seg: 56 });
+  A.add(new THREE.CylinderGeometry(rc, rc, 0.07, 24), cm, at(0, y0 + H + 0.035, 0)); // the collar
+  canopy(A, 0, 0, 0.055, cm, 0.025);
   rod(A, [0, -0.025, 0], [0, y0 + H + 0.07, 0], 0.0022, finishes.black());
   // the bulb, hidden up in the shade under its socket
   A.add(new THREE.CylinderGeometry(0.017, 0.017, 0.04, 16), m, at(0, y0 + H - 0.02, 0));
   A.add(new THREE.SphereGeometry(0.03, 20, 14), bulb, at(0, y0 + H - 0.07, 0), { shadow: false });
   addCone(g, [0, y0 + H * 0.35, 0], [0, -1, 0], lm * 0.85, { angle, penumbra: 0.75, color: lightColour(light) });
   addGlow(g, [0, y0 + 0.02, 0], lm * 0.12, { color: lightColour(light), reach: 3 });
-  return finishFixture(g, A, { name: `${shape} pendant`, family: "domePendant", role: over ? "accent" : "ceiling", finish });
+  return finishFixture(g, A, { name: `${cloth === "metal" ? shape : `${shape} fabric`} pendant`, family: "domePendant", role: over ? "accent" : "ceiling", finish });
 }
 
 /** The family's entries for lighting.js FIXTURES: { make, kind, doc }. */
 export const PENDANTS = {
   globePendant: { make: globePendant, kind: "ceiling",
-    doc: "globePendant({ d=0.3, drop=0.7, glass:'opal'|'clear', finish, over=false }) opal or clear glass globe on a cable; over: true above a table or island" },
+    doc: "globePendant({ d=0.3, drop=0.7, glass:'opal'|'clear', finish, canopy=finish, over=false }) opal or clear glass globe on a cable (canopy: its canopy and cap, 'oak'|'walnut' or a finish); over: true above a table or island" },
   facetedCluster: { make: facetedCluster, kind: "ceiling",
     doc: "facetedCluster({ n=11, size=0.25, spread=1.0, drop=0.95, finish='black', inside=finish, bulbs=n, seed=7, over=false }) faceted metal shells open on one face, each on its own cable at staggered heights with a bare bulb: a statement over a bed, a stairwell, a table (over: true)" },
   discArms: { make: discArms, kind: "ceiling",
-    doc: "discArms({ arms=3, span=1.2, d=0.24, drop=0.75, finish='black', rim=finish, over=false }) thin rods and crossing arms ending in round LED discs (a metal rim, opal underside): bedrooms, living rooms, over a table (over: true)" },
+    doc: "discArms({ arms=3, span=1.2, d=0.24, drop=0.75, finish='black', rim=finish, over=false }) thin rods and crossing arms ending in round LED discs (rim: their housing, a finish or 'oak'; opal underside): bedrooms, living rooms, over a table (over: true)" },
   frameGlobes: { make: frameGlobes, kind: "ceiling",
     doc: "frameGlobes({ length=1.2, depth=0.4, drop=0.8, globes=4, d=0.13, finish='black', over=false }) interlocking rectangles of square metal bar carrying opal globes: bedrooms, dining (over: true above the table)" },
   ledRing: { make: ledRing, kind: "ceiling",
     doc: "ledRing({ d=0.9, drop=0.8, finish='black', over=false }) a thin LED ring (d 0.6-1.2) on three cables, opal underneath: living rooms, over a dining table (over: true)" },
   barCluster: { make: barCluster, kind: "ceiling",
-    doc: "barCluster({ n=3, canopy:'round'|'linear', drop=0.8, shape:'cylinder'|'cone'|'mix', d=0.11, finish='black', light:'warm'|'neutral', over=false }) small metal pendants at staggered heights from one canopy: over a bar or a kitchen island (over: true)" },
+    doc: "barCluster({ n=3, canopy:'round'|'linear', drop=0.8, shape:'cylinder'|'cone'|'mix', d=0.11, finish='black', collar=finish, light:'warm'|'neutral', over=false }) small metal pendants at staggered heights from one canopy (collar: the canopy and the collars, 'oak'|'walnut' or a finish): over a bar or a kitchen island (over: true)" },
   linearPendant: { make: linearPendant, kind: "ceiling",
-    doc: "linearPendant({ length=1.2, drop=0.8, finish='black', light:'warm'|'neutral', over=false }) a slim bar (length 0.9-2) on two cables, opal underneath: over an island or a dining table (over: true)" },
+    doc: "linearPendant({ length=1.2, drop=0.8, finish='black', bar=finish, light:'warm'|'neutral', over=false }) a slim bar (length 0.9-2; bar: 'oak'|'walnut' or a finish) on two cables, opal underneath: over an island or a dining table (over: true)" },
   domePendant: { make: domePendant, kind: "ceiling",
-    doc: "domePendant({ shape:'dome'|'cone'|'drum', d=0.4, drop=0.7, finish='black', light:'warm'|'neutral', over=false }) a metal shade, white inside, the bulb hidden: kitchens, dining, over a table or an island (over: true)" },
+    doc: "domePendant({ shape:'dome'|'cone'|'drum', shade='metal'|'linen'|'white'|'sand'|'grey'|'charcoal'|'sage'|'#hex', d=0.4, drop=0.7, finish='black', canopy=finish, light:'warm'|'neutral', over=false }) a metal shade (white inside) or a fabric one, the bulb hidden (canopy: the canopy and the collar, 'oak'|'walnut' or a finish): kitchens, dining, over a table or an island (over: true)" },
 };

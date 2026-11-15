@@ -381,6 +381,17 @@ export function roomNameParts(name) {
   return { name: parts[0], flat: parts[1] };
 }
 
+/**
+ * The flat a room's name gives ("Chambre 2 — Appartement 1, étage" and "App. 1 — Chambre 2" → "App. 1"),
+ * "Commun" when its dash leads to none, null without a dash.
+ */
+export function flatOf(name) {
+  const { flat } = roomNameParts(name);
+  if (!flat) return null;
+  const m = FLAT_LABEL.exec(flat);
+  return m ? `App. ${m[1]}` : "Commun";
+}
+
 /** A room's display name and its flat: "Chambre 2 — App. 1, étage" → ["Chambre 2", "App. 1"]. */
 function splitName(name) {
   const { name: base, flat } = roomNameParts(name);

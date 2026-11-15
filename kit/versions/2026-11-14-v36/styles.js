@@ -8,18 +8,19 @@
 // The most specific wins: the piece's own setting, the room's override, the house's, the style's, the fallback
 // (the kit's defaults). The runtime reads src/style.js before buildScene; a scene without it draws in
 // DEFAULT_STYLE, today's look. A role's value may also be one entry per kind ({ default, globePendant: "white" }:
-// a fixture family's own finish). A map role (MAPS) names an entry per name only: { "dining-chair-grey":
+// a fixture family's own finish); a fixture family's entry may carry its parts with the finish ({ finish: "black",
+// canopy: "oak" }: lighting.js fixture()). A map role (MAPS) names an entry per name only: { "dining-chair-grey":
 // "dining-chair-black" } draws that model as the other, and a name it does not list stays itself.
 
 /** The roles, and the catalogue each one names an entry of. */
 export const ROLES = {
-  fixtures: "decorative light fixtures' finish: lighting-parts.js FINISHES, per family",
+  fixtures: "decorative light fixtures' finish: lighting-parts.js FINISHES, per family, or { finish, ...parts } (the family's options)",
   builtIns: "built-in fixtures' finish (downlight, track, flushCeiling, stepLight): FINISHES",
   fittings: "taps, mixers, shower, flush plate, bath accessories, kitchen mixer: furnish.js FITTINGS",
   wallTile: "tileWalls and the tiled fronts of wc, bathtub and shower: finishes.js WALL_TILES",
   bathFloor: "the \"tile\" floor of a bath or a WC: finishes.js FLOOR_TILES",
   bedding: "bed dressing and its cushions: furnish.js BEDDING",
-  featureWall: "a wall behind each double bed: interior.js FEATURE_WALLS",
+  featureWall: "a wall behind the double bed of each unit's main bedroom: interior.js FEATURE_WALLS",
   handles: "kitchen units' handles: furnish.js HANDLES (none: handleless, a grip rail under the worktop)",
   rug: "a rug the scene gives no colour: furnish.js RUGS",
   sofaDressing: "cushions and a throw on every sofa: furnish.js SOFA_DRESSINGS",
@@ -31,10 +32,24 @@ export const ROLES = {
 export const MAPS = new Set(["models"]);
 
 export const STYLES = {
-  // today's look: light oak, white, grey and sand textiles, chrome, handleless kitchens; fixtures white (opal, white
-  // metal; a tripod lamp's legs oak), built-ins white
+  // today's look: light oak, white, grey and sand textiles, chrome, handleless kitchens; decorative fixtures black and
+  // white with oak and linen (an oak canopy, collar, bar, stem or foot; a linen shade; white discs and linings), so
+  // each reads against a white ceiling and wall; built-ins white
   scandinavian: {
-    fixtures: "white",
+    fixtures: {
+      default: "black",
+      globePendant: { finish: "black", canopy: "oak" },
+      facetedCluster: { finish: "black", inside: "white" },
+      discArms: { finish: "black", rim: "white" },
+      barCluster: { finish: "black", collar: "oak" },
+      linearPendant: { finish: "black", bar: "oak" },
+      domePendant: { finish: "black", shade: "linen", canopy: "oak" },
+      hexSconce: { finish: "black", inner: "white" },
+      globeSconce: { finish: "black", plate: "oak" },
+      globeTableLamp: { finish: "black", base: "oak" },
+      mushroomLamp: { finish: "white", foot: "oak" },
+      globeFloorLamp: { finish: "black", stem: "oak" },
+    },
     builtIns: "white",
     fittings: "chrome",
     wallTile: "white",
@@ -62,7 +77,8 @@ export const STYLES = {
     rug: "charcoal",
     sofaDressing: "olive",
     furnitureTone: { default: "any", "dining-chair": "dark", "coffee-table": "dark", "side-table": "dark", sideboard: "dark" },
-    models: { "coffee-table-oval-white": "coffee-table-oval-black", "dining-chair-grey": "dining-chair-black" },
+    // not the oval coffee tables: white and black, they are a nesting pair
+    models: { "dining-chair-grey": "dining-chair-black" },
   },
 };
 
@@ -100,6 +116,9 @@ export function look(role, { room, piece, kind } = {}) {
   return undefined;
 }
 
+/** The house style's own setting of `role` for the room named `room` (src/style.js "rooms"), undefined without one. */
+export const roomLook = (role, room) => house.rooms?.[room]?.[role];
+
 const _warned = new Set();
 
 /** The `catalogue` entry `role` resolves to (look's options); the fallback's, with a warning, for an unknown name. */
@@ -113,4 +132,4 @@ export function entry(catalogue, role, options = {}) {
   return catalogue[FALLBACK[role]];
 }
 
-export default { ROLES, MAPS, STYLES, DEFAULT_STYLE, FALLBACK, setHouseStyle, styleName, look, entry };
+export default { ROLES, MAPS, STYLES, DEFAULT_STYLE, FALLBACK, setHouseStyle, styleName, look, roomLook, entry };

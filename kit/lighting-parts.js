@@ -3,6 +3,7 @@
 // and the tag. Family modules (lighting-*.js) import from here; lighting.js gathers the families.
 
 import * as THREE from "three";
+import { finishMaterial } from "./finishes.js";
 
 // ---------------------------------------------------------------- the ceiling
 /**
@@ -41,6 +42,16 @@ export const finishes = {
 export const FINISHES = Object.keys(finishes);
 export const metal = (name) => (finishes[name] ?? finishes.black)();
 
+/** Light oak or walnut (a lamp's foot, stem or legs, a canopy, a bar): the kit's oak veneer, tinted, when the finishes are loaded. */
+export function wood(kind = "oak") {
+  const walnut = kind === "walnut";
+  return finishMaterial("oak", { color: walnut ? "#7a583f" : "#dcb98c", roughness: 0.85 })
+    ?? mat(`fx-wood:${kind}`, () => new THREE.MeshStandardMaterial({ name: `${walnut ? "walnut" : "oak"} wood`, color: walnut ? "#6a4a33" : "#d0ae84", roughness: 0.6 }));
+}
+export const WOODS = ["oak", "walnut"];
+/** A fixture part's material by name: a wood (WOODS) or a finish (FINISHES). */
+export const partMaterial = (name) => (WOODS.includes(name) ? wood(name) : metal(name));
+
 /**
  * A material that shines while its fixture is on: `emissive` at `strength` (the runtime sets it to 0
  * when the fixture is off). Opal glass, a fabric or paper shade's inside, a bulb, an LED's diffuser.
@@ -55,6 +66,17 @@ export const opal = (strength = 1.2) => glowMaterial({ color: "#f7f6f2", emissiv
 /** Clear glass: a faint reflection, nearly invisible (no transmission: too costly in the walk). */
 export const clearGlass = () => mat("fx-clear", () => new THREE.MeshStandardMaterial({
   name: "clear glass", color: "#ffffff", roughness: 0.04, metalness: 0, transparent: true, opacity: 0.12, depthWrite: false }));
+/** Fabric shades in a named colour (or a hex). */
+export const SHADES = { linen: "#e6dccb", white: "#f4f2ed", grey: "#a9a8a3", sand: "#d8c6a8", charcoal: "#4c4c4b", sage: "#a9b39d" };
+/**
+ * A lit fabric shade: the cloth's colour, glowing with the warm light through it (made per fixture: the runtime dims
+ * it with the fixture). Give the inside a higher `strength` than the outside.
+ */
+export function fabric(shade, strength) {
+  const c = new THREE.Color(SHADES[shade] ?? shade);
+  const e = c.clone().multiply(new THREE.Color("#ffc890"));
+  return glowMaterial({ color: `#${c.getHexString()}`, emissive: `#${e.getHexString()}`, strength, roughness: 0.95, name: "fabric shade" });
+}
 /** A bulb's glass when lit (bare bulbs, filaments behind clear glass). */
 export const bulbGlow = (strength = 2.2) => glowMaterial({ color: "#fff4e0", emissive: "#ffd9a6", strength, roughness: 0.2, name: "bulb" });
 

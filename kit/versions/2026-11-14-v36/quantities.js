@@ -14,7 +14,7 @@
 // of the camera's framing) are still read from the geometry the kit left in their userData.
 
 import * as THREE from "three";
-import { FLAT_LABEL, roomNameParts } from "./plan2d.js";
+import { flatOf, roomNameParts } from "./plan2d.js";
 
 // --------------------------------------------------------------------------
 // Rooms: class, flat, plan check
@@ -36,16 +36,7 @@ export function siaClass(room) {
   return "SUP";
 }
 
-/**
- * The flat a room's name gives ("Chambre 2 — Appartement 1, étage" and "App. 1 — Chambre 2" → "App. 1"),
- * "Commun" when its dash leads to none, null without a dash.
- */
-export function flatOf(name) {
-  const { flat } = roomNameParts(name);
-  if (!flat) return null;
-  const m = FLAT_LABEL.exec(flat);
-  return m ? `App. ${m[1]}` : "Commun";
-}
+export { flatOf };
 
 /** A room's short name: its name without its flat. */
 export const shortName = (name) => roomNameParts(name).name;

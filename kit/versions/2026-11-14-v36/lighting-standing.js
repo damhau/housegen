@@ -8,8 +8,7 @@
 // shades throw a cone.
 
 import * as THREE from "three";
-import { metal, finishes, cyl, lit, shaded, addGlow, addCone, tagFixture, opal, bulbGlow, glowMaterial } from "./lighting-parts.js";
-import { finishMaterial } from "./finishes.js";
+import { metal, finishes, partMaterial, wood, WOODS, fabric, cyl, lit, shaded, addGlow, addCone, tagFixture, opal, bulbGlow, glowMaterial } from "./lighting-parts.js";
 
 // ---------------------------------------------------------------- this family's helpers
 
@@ -22,12 +21,6 @@ const UP = new THREE.Vector3(0, 1, 0);
 const v3 = (p) => (p.isVector3 ? p.clone() : new THREE.Vector3(...p));
 const DEG = Math.PI / 180;
 
-/** Legs of light oak or walnut: the kit's oak veneer, tinted, when the finishes are loaded. */
-function wood(kind = "oak") {
-  const walnut = kind === "walnut";
-  return finishMaterial("oak", { color: walnut ? "#7a583f" : "#dcb98c", roughness: 0.85 })
-    ?? own(`wood:${kind}`, () => new THREE.MeshStandardMaterial({ name: `${walnut ? "walnut" : "oak"} wood`, color: walnut ? "#6a4a33" : "#d0ae84", roughness: 0.6 }));
-}
 /** A white marble base: polished light stone (the kit's marble texture reads beige under warm light). */
 const marble = () => own("marble", () => new THREE.MeshStandardMaterial({ name: "white marble", color: "#e4e3df", roughness: 0.22 }));
 /** Glazed ceramic in a named glaze or a colour. */
@@ -36,17 +29,6 @@ const ceramic = (glaze) => {
   const color = GLAZES[glaze] ?? glaze;
   return own(`ceramic:${color}`, () => new THREE.MeshStandardMaterial({ name: "glazed ceramic", color, roughness: 0.2 }));
 };
-/** Fabric shades in a named colour or a hex. */
-const SHADES = { linen: "#e6dccb", white: "#f4f2ed", grey: "#a9a8a3", sand: "#d8c6a8", charcoal: "#4c4c4b", sage: "#a9b39d" };
-/**
- * A lit fabric shade: the cloth's colour, glowing with the warm light through it (made per fixture:
- * the runtime dims it with the fixture). The inside is brighter than the outside.
- */
-function fabric(shade, strength) {
-  const c = new THREE.Color(SHADES[shade] ?? shade);
-  const e = c.clone().multiply(new THREE.Color("#ffc890"));
-  return glowMaterial({ color: `#${c.getHexString()}`, emissive: `#${e.getHexString()}`, strength, roughness: 0.95, name: "fabric shade" });
-}
 /** The lit inside of a metal shade: white, faintly glowing. */
 const shadeInside = (strength = 0.5) => glowMaterial({ color: "#f4f2ee", emissive: "#ffe2bf", strength, roughness: 0.6, name: "shade inside" });
 
@@ -112,11 +94,14 @@ function tagStanding(g, { name, family, finish, footprint }) {
 
 // ---------------------------------------------------------------- table lamps
 
-/** Opal globe table lamp on a small base (`finish`): bedside, sideboard, desk. A soft glow. Role "accent". */
-function globeTableLamp({ d = 0.2, finish = "black", lm = 250 } = {}) {
+/**
+ * Opal globe table lamp on a small base (`base`: oak, walnut or a finish; `finish` by default) and a stem in
+ * `finish`: bedside, sideboard, desk. A soft glow. Role "accent".
+ */
+function globeTableLamp({ d = 0.2, finish = "black", base, lm = 250 } = {}) {
   const g = new THREE.Group();
   const m = metal(finish);
-  cyl(g, 0.06, 0.065, 0.025, 0.0125, m, 32);
+  cyl(g, 0.06, 0.065, 0.025, 0.0125, partMaterial(base ?? finish), 32);
   cyl(g, 0.01, 0.01, 0.08, 0.065, m, 12);
   const globe = new THREE.Mesh(new THREE.SphereGeometry(d / 2, 40, 24), opal(1.1));
   globe.position.y = 0.105 + d / 2;
@@ -126,11 +111,11 @@ function globeTableLamp({ d = 0.2, finish = "black", lm = 250 } = {}) {
 }
 
 /**
- * Mushroom table lamp (the Scandinavian classic): a dome shade on a slim trumpet foot. `shade` "opal"
- * glows (a cone down and a modest point under the dome), "metal" (in `finish`, white inside) throws a
- * cone down. Role "accent".
+ * Mushroom table lamp (the Scandinavian classic): a dome shade on a slim trumpet foot (`foot`: oak, walnut or a
+ * finish; `finish` by default). `shade` "opal" glows (a cone down and a modest point under the dome), "metal" (in
+ * `finish`, white inside) throws a cone down. Role "accent".
  */
-function mushroomLamp({ d = 0.32, height = 0.42, shade = "opal", finish = "black", lm = 250 } = {}) {
+function mushroomLamp({ d = 0.32, height = 0.42, shade = "opal", finish = "black", foot: footOf, lm = 250 } = {}) {
   const g = new THREE.Group();
   const m = metal(finish);
   const R = d / 2, sh = d * 0.42, rimY = height - sh, t = 0.004;
@@ -142,7 +127,7 @@ function mushroomLamp({ d = 0.32, height = 0.42, shade = "opal", finish = "black
     foot.push([rs + (rb - rs) * Math.pow(1 - k, 3.2), 0.004 + k * (top - 0.004)]);
   }
   foot.push([0, top]);
-  lathe(g, foot, m, { seg: 48 });
+  lathe(g, foot, partMaterial(footOf ?? finish), { seg: 48 });
   // the dome: a half ellipsoid with a wall `t` thick, opal glass or spun metal
   const dome = (r, h) => Array.from({ length: 17 }, (_, k) => {
     const p = (k / 16) * (Math.PI / 2);
@@ -274,23 +259,25 @@ function deskLamp({ finish = "black", arm = 0.36, shadeD = 0.15, tilt = 12, turn
 // ---------------------------------------------------------------- floor lamps
 
 /**
- * Floor lamp: a slim stem on a round plate, an opal globe on a short arm swung `turn` degrees from +z
- * toward +x, all in `finish`; `height` to the stem's top, `d` the globe, `arm` its reach. A glow in
- * the globe. Role "accent".
+ * Floor lamp: a slim stem (`stem`: oak, walnut or a finish; `finish` by default) on a round plate, an opal globe on a
+ * short arm swung `turn` degrees from +z toward +x, the plate and the arm in `finish`; `height` to the stem's top,
+ * `d` the globe, `arm` its reach. A glow in the globe. Role "accent".
  */
-function globeFloorLamp({ height = 1.5, d = 0.2, arm = 0.2, turn = 35, finish = "black", lm = 450 } = {}) {
+function globeFloorLamp({ height = 1.5, d = 0.2, arm = 0.2, turn = 35, finish = "black", stem, lm = 450 } = {}) {
   const g = new THREE.Group();
-  const m = metal(finish);
+  const m = metal(finish), sm = partMaterial(stem ?? finish), wooden = WOODS.includes(stem);
   const R = 0.13;
   lathe(g, [[0, 0], [R, 0], [R, 0.014], [R - 0.006, 0.02], [0.022, 0.021], [0.022, 0.04], [0, 0.04]], m, { seg: 56, crisp: true });
-  rod(g, [0, 0.04, 0], [0, height - 0.018, 0], 0.008, m, { seg: 16 });
-  ball(g, [0, height - 0.011, 0], 0.011, m);
+  // a wooden stem is a dowel, thicker than a metal tube
+  rod(g, [0, 0.04, 0], [0, height - 0.018, 0], wooden ? 0.013 : 0.008, sm, { seg: 16 });
+  ball(g, [0, height - 0.011, 0], wooden ? 0.015 : 0.011, sm);
   // the arm, turning on the stem: a sleeve, a rod, a cup holding the globe by its neck
   const gy = height - 0.13;
   const swing = new THREE.Group();
   swing.rotation.y = turn * DEG;
   g.add(swing);
-  cyl(swing, 0.012, 0.012, 0.04, gy, m, 16);
+  const sleeve = wooden ? 0.017 : 0.012;
+  cyl(swing, sleeve, sleeve, 0.04, gy, m, 16);
   rod(swing, [0, gy, 0], [0, gy, arm], 0.006, m, { seg: 12 });
   rod(swing, [0, gy, arm - 0.005], [0, gy, arm + 0.045], 0.015, m, { r1: 0.024, seg: 24 });
   const gz = arm + 0.045 + d / 2 - 0.012;
@@ -395,15 +382,15 @@ function tripodFloorLamp({ height = 1.55, shadeD = 0.45, shadeH = 0.3, shade = "
 /** The family's entries for lighting.js FIXTURES: { make, kind, doc }. */
 export const STANDING = {
   globeTableLamp: { make: globeTableLamp, kind: "standing",
-    doc: "globeTableLamp({ d=0.2, finish }) opal globe on a small base: bedside, sideboard" },
+    doc: "globeTableLamp({ d=0.2, finish, base=finish }) opal globe on a small base (base: 'oak'|'walnut' or a finish): bedside, sideboard" },
   mushroomLamp: { make: mushroomLamp, kind: "standing",
-    doc: "mushroomLamp({ d=0.32, height=0.42, shade:'opal'|'metal', finish='black' }) Scandinavian dome shade on a trumpet foot (opal glows, metal throws light down): sideboard, bedside" },
+    doc: "mushroomLamp({ d=0.32, height=0.42, shade:'opal'|'metal', finish='black', foot=finish }) Scandinavian dome shade on a trumpet foot (foot: 'oak'|'walnut' or a finish; opal glows, metal throws light down): sideboard, bedside" },
   drumTableLamp: { make: drumTableLamp, kind: "standing",
     doc: "drumTableLamp({ shape:'drum'|'cone', shadeD=0.38, shade='linen'|'white'|'grey'|'sand'|'charcoal'|'sage'|'#hex', base:'ceramic'|'metal', glaze='white'|'sage'|'clay'|'charcoal'|'sand'|'blue'|'#hex', finish='black' }) fabric shade on a ceramic gourd or a metal column, 0.59 m: living room, bedside" },
   deskLamp: { make: deskLamp, kind: "standing",
     doc: "deskLamp({ finish='black', arm=0.36, shadeD=0.15, tilt=12, turn=30 }) articulated twin-rod arms swivelled `turn` degrees from +z toward +x, conical metal shade aimed down: desk, bedside" },
   globeFloorLamp: { make: globeFloorLamp, kind: "standing",
-    doc: "globeFloorLamp({ height=1.5, d=0.2, arm=0.2, turn=35, finish='black' }) slim stem, opal globe on a short arm swung `turn` degrees from +z toward +x: reading corner, beside a sofa or an armchair" },
+    doc: "globeFloorLamp({ height=1.5, d=0.2, arm=0.2, turn=35, finish='black', stem=finish }) slim stem (stem: 'oak'|'walnut' or a finish), opal globe on a short arm swung `turn` degrees from +z toward +x: reading corner, beside a sofa or an armchair" },
   arcFloorLamp: { make: arcFloorLamp, kind: "standing",
     doc: "arcFloorLamp({ reach=1.6, height=2.1, shadeD=0.4, base:'marble'|'metal', finish='black' }) arched tube from a heavy base, dome shade `reach` m toward +z, ~1.6 m up: over a sofa or a coffee table" },
   tripodFloorLamp: { make: tripodFloorLamp, kind: "standing",

@@ -7,7 +7,7 @@
 
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
-import { metal, cyl, lit, shaded, addGlow, addCone, tagFixture, opal, bulbGlow, glowMaterial, WARM, NEUTRAL } from "./lighting-parts.js";
+import { metal, partMaterial, cyl, lit, shaded, addGlow, addCone, tagFixture, opal, bulbGlow, glowMaterial, WARM, NEUTRAL } from "./lighting-parts.js";
 
 // ---------------------------------------------------------------- helpers (this family's own)
 
@@ -155,15 +155,15 @@ function upDown({ d = 0.07, h = 0.16, beam = 0.36, finish = "black", lm = 320, l
 }
 
 /**
- * Globe sconce: an opal globe sitting in a cup at the end of a short arm, on a round back plate
- * (`finish`). `d` the globe's diameter, `arm` its reach (at least 14 cm, so the glow
- * sits 15 cm off the wall). A modest glow inside the globe.
+ * Globe sconce: an opal globe sitting in a cup at the end of a short arm (`finish`), on a round back plate
+ * (`plate`: oak, walnut or a finish; `finish` by default). `d` the globe's diameter, `arm` its reach (at least
+ * 14 cm, so the glow sits 15 cm off the wall). A modest glow inside the globe.
  */
-function globeSconce({ d = 0.15, arm = 0.2, finish = "black", lm = 140, light = "warm", role = "accent" } = {}) {
+function globeSconce({ d = 0.15, arm = 0.2, finish = "black", plate, lm = 140, light = "warm", role = "accent" } = {}) {
   const g = new THREE.Group();
   const m = metal(finish), R = d / 2, plateT = 0.014;
   const reach = Math.max(arm, 0.15 - plateT); // the glow at least 15 cm off the wall
-  discZ(g, 0.05, plateT, 0, m, { seg: 40, r1: 0.047 });
+  discZ(g, 0.05, plateT, 0, partMaterial(plate ?? finish), { seg: 40, r1: 0.047 });
   const end = plateT + reach;
   rod(g, [0, 0, plateT], [0, 0, end], 0.0065, m);
   ball(g, 0.011, [0, 0, end], m);
@@ -291,7 +291,7 @@ export const WALL = {
   upDown: { make: upDown, kind: "wall",
     doc: "upDown({ d=0.07, h=0.16, beam=0.36, finish='black' }) cylinder washing the wall up and down (beam: the cones' half-angle); halls, stairs, beside a door, outside a bedroom" },
   globeSconce: { make: globeSconce, kind: "wall",
-    doc: "globeSconce({ d=0.15, arm=0.2, finish='black' }) opal globe in a cup on a short arm, round back plate: a soft glow; bedside, hall, bathroom" },
+    doc: "globeSconce({ d=0.15, arm=0.2, finish='black', plate=finish }) opal globe in a cup on a short arm, round back plate (plate: 'oak'|'walnut' or a finish): a soft glow; bedside, hall, bathroom" },
   swingArm: { make: swingArm, kind: "wall",
     doc: "swingArm({ arm=0.5, aim=0.45, finish='black' }) articulated reading light, conical shade aimed down/forward: beside a bed or an armchair, at about 1.1-1.3 m" },
   pictureLight: { make: pictureLight, kind: "wall",
