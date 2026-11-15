@@ -14,6 +14,7 @@ import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from housegen.accounts import crud as accounts_crud
 from housegen.core import db
 from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
@@ -265,7 +266,9 @@ def _fake_service(monkeypatch: pytest.MonkeyPatch, svc: FakeService) -> None:
 
 async def _furnished_project(versions: int = 1) -> str:
     async with session_factory()() as s, s.begin():
-        project = await crud.create_project(s, "Montelly")
+        project = await crud.create_project(
+            s, "Montelly", organisation_id=(await accounts_crud.default_organisation(s))[0].id
+        )
         st = ProjectStorage(project.id)
         st.ensure()
         for n in range(1, versions + 1):

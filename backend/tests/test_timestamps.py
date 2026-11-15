@@ -10,6 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
+from housegen.accounts import crud as accounts_crud
 from housegen.core import db
 from housegen.core.config import get_settings
 from housegen.projects.models import Project
@@ -34,7 +35,7 @@ async def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 async def _insert_project() -> str:
     async with db.session_factory()() as s:
-        p = Project(name="t")
+        p = Project(name="t", organisation_id=(await accounts_crud.default_organisation(s))[0].id)
         s.add(p)
         await s.commit()
         return p.id

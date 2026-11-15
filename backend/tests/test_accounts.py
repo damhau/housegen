@@ -221,8 +221,8 @@ async def test_me_without_a_session_lists_the_providers(world: World) -> None:
         "organisations": [],
         "auth": {"disabled": False, "providers": ["google", "microsoft"]},
     }
-    # nothing is enforced yet (#105): the projects stay open
-    assert (await browser.get("/api/v1/projects")).status_code == 200
+    # the projects need a session (#105)
+    assert (await browser.get("/api/v1/projects")).status_code == 401
     # the account routes need a session
     r = await browser.post("/api/v1/organisations", json={"name": "A"})
     assert r.status_code == 401
@@ -578,17 +578,12 @@ async def test_a_project_created_while_signed_in_belongs_to_the_organisation(wor
         data={"name": "Chalet"},
         files=[("plans", ("p.pdf", pdf, "application/pdf"))],
     )
-    assert r.status_code == 201, r.text
+    assert r.status_code == 401, r.text
     async with session_factory()() as s:
         from sqlalchemy import select
 
-        from housegen.accounts.models import Organisation
-
         rows = dict((await s.execute(select(Project.name, Project.organisation_id))).tuples().all())
-        default = (
-            await s.execute(select(Organisation).where(Organisation.is_default.is_(True)))
-        ).scalar_one()
-    assert rows == {"Villa": org["id"], "Chalet": default.id}
+    assert rows == {"Villa": org["id"]}
 
 
 async def test_no_provider_configured(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -613,7 +608,8 @@ async def test_no_provider_configured(tmp_path: Path, monkeypatch: pytest.Monkey
             assert r.json()["user"] is None
             assert r.json()["auth"] == {"disabled": False, "providers": []}
             assert (await c.get("/auth/login/google")).status_code == 404
-            assert (await c.get("/api/v1/projects")).status_code == 200
+            # nobody can sign in, and nothing opens without a session
+            assert (await c.get("/api/v1/projects")).status_code == 401
     finally:
         await db.dispose_db()
         get_settings.cache_clear()

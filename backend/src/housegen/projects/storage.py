@@ -63,14 +63,17 @@ class ProjectStorage:
         p = self.versions_dir / str(version) / "kit.txt"
         return p.read_text(encoding="utf-8").strip() or None if p.exists() else None
 
-    def render_urls(self, version: int) -> dict[str, str]:
+    def version_url(self, version: int) -> str:
+        """The folder of a version's files (its scene page, renders, listing photos)."""
+        return f"/scenes/{self.project_id}/versions/{version}"
+
+    def render_urls(self, version: int, base: str | None = None) -> dict[str, str]:
+        """The version's pictures by view, under `base` (a share link's folder) or its own."""
         d = self.versions_dir / str(version) / "renders"
         if not d.exists():
             return {}
-        return {
-            p.stem: f"/scenes/{self.project_id}/versions/{version}/renders/{p.name}"
-            for p in sorted(d.glob("*.jpg"))
-        }
+        folder = base or self.version_url(version)
+        return {p.stem: f"{folder}/renders/{p.name}" for p in sorted(d.glob("*.jpg"))}
 
     def photo_url(self, filename: str) -> str:
         return f"/scenes/{self.project_id}/photos/{filename}"

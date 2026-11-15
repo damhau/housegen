@@ -1,17 +1,13 @@
 import logging
-import os
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
-from starlette.responses import Response
-from starlette.staticfiles import PathLike
-from starlette.types import Scope
 
 from housegen.accounts.migrations import migrate_organisations
 from housegen.accounts.oidc import build_oauth, configured_providers
@@ -23,35 +19,25 @@ from housegen.core.db import dispose_db, init_db
 from housegen.core.exceptions import register_exception_handlers
 from housegen.core.logging import RequestLoggingMiddleware, configure_logging
 from housegen.jobs.manager import job_manager
+from housegen.projects.access import scene_page_access
+from housegen.projects.files import RevalidatedStaticFiles, SceneFiles
 from housegen.projects.migrations import migrate_plans
+from housegen.projects.shared import router as shared_router
 from housegen.render import renderer
 from housegen.render.kits import pages_router
 
 logger = logging.getLogger(__name__)
 
 
-class RevalidatedStaticFiles(StaticFiles):
-    """Static files the browser must revalidate on every load (Cache-Control: no-cache, answered
-    by a 304 when unchanged). The kit's working copy and a project's scene sources change under
-    the same URL, and a browser's heuristic caching would keep showing the old ones: a renderer
-    switch in the viewer or a build in progress then looks like nothing happened."""
-
-    def file_response(
-        self,
-        full_path: PathLike,
-        stat_result: os.stat_result,
-        scope: Scope,
-        status_code: int = 200,
-    ) -> Response:
-        response = super().file_response(full_path, stat_result, scope, status_code)
-        response.headers["Cache-Control"] = "no-cache"
-        return response
+class SignInMissing(RuntimeError):
+    pass
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
     configure_logging(settings.LOG_LEVEL, settings.ENV)
+    _log_auth(settings)
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
     await init_db()
     logger.info(
@@ -66,7 +52,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     await migrate_plans(settings.projects_dir)  # one-off: plan.pdf + plan/ → plans/1/ (#10)
     await migrate_organisations()  # one-off: the projects from before accounts (#104)
-    _log_auth(settings)
     # jobs the previous process left behind (deploy, reload, crash) continue with the same id
     resumed = await resume_interrupted_jobs(job_manager)
     if resumed:
@@ -82,6 +67,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def _log_auth(settings: Settings) -> None:
+    """Fail closed (#105): without a sign-in provider nobody could sign in, and an app that
+    answered without a session instead would be open to anyone."""
     providers = configured_providers(settings)
     logger.info(
         "auth.config",
@@ -90,8 +77,16 @@ def _log_auth(settings: Settings) -> None:
             "providers": providers,
             "admin_email_set": bool(settings.AUTH_ADMIN_EMAIL),
             "public_url": settings.AUTH_PUBLIC_URL or None,
+            "readonly_token_set": bool(settings.AUTH_READONLY_TOKEN),
+            "service_token_set": bool(settings.RENDER_SERVICE_TOKEN),
         },
     )
+    if not providers and not settings.AUTH_DISABLED:
+        logger.error("auth.no_provider")
+        raise SignInMissing(
+            "no sign-in provider is configured (AUTH_GOOGLE_CLIENT_ID, AUTH_MICROSOFT_CLIENT_ID): "
+            "set one, or AUTH_DISABLED=1 to run without sign-in (local dev only)"
+        )
     if providers and not settings.AUTH_SESSION_SECRET:
         logger.warning("auth.session_secret_missing")
 
@@ -122,7 +117,9 @@ def create_app() -> FastAPI:
     app.include_router(api_router)
     app.include_router(auth_router)
     # scene pages served with a chosen renderer snapshot (?kit=): before the /scenes mount
-    app.include_router(pages_router)
+    app.include_router(pages_router, dependencies=[Depends(scene_page_access)])
+    # a share link's own paths onto the shared version's files, readable signed out
+    app.include_router(shared_router)
 
     settings.projects_dir.mkdir(parents=True, exist_ok=True)
     # scene runtime + component kit + vendored three.js
@@ -132,8 +129,8 @@ def create_app() -> FastAPI:
         name="three",
     )
     app.mount("/kit", RevalidatedStaticFiles(directory=settings.KIT_DIR), name="kit")
-    # per-project files: scene working copy, versions, renders, photos, plan pages
-    app.mount("/scenes", RevalidatedStaticFiles(directory=settings.projects_dir), name="scenes")
+    # per-project files: scene working copy, versions, renders, photos, plan pages (by organisation)
+    app.mount("/scenes", SceneFiles(directory=settings.projects_dir), name="scenes")
     if settings.STATIC_DIR is not None:
         mount_spa(app, settings.STATIC_DIR)
     return app

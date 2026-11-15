@@ -59,7 +59,7 @@ cd ../kit && npm install
 cd ../frontend
 npm install
 npm run api:gen                  # regenerate the typed client from ../frontend/openapi.json
-npm run dev                      # http://localhost:5173  (proxies /api, /scenes, /kit, /auth to :8000)
+npm run dev                      # http://localhost:5173  (proxies /api, /scenes, /shared, /kit, /auth to :8000)
 ```
 
 Regenerate `openapi.json` after changing the API:
@@ -188,15 +188,44 @@ in. The identity is the provider's issuer and subject, never the email: an invit
 (`/invite/<token>`) by whoever opens it while signed in. The email matters in one place: the first sign-in of
 `AUTH_ADMIN_EMAIL` with an email the provider verified (Google `email_verified`; Microsoft a personal account or the
 `xms_edov` claim) becomes the owner of the **default organisation**, which the startup migration created for every
-project from before accounts. The API so far identifies the caller (`GET /api/v1/me`) but requires no session
-(#105 enforces it).
+project from before accounts.
+
+Everything is behind the session (#105). Every `/api/v1/**` route, the job event streams included, answers 401
+signed out and 403 (`no_organisation`) before the first organisation. The public routes are `/api/v1/health`,
+`/api/v1/me`, an invitation link's preview (`GET /api/v1/invitations/<token>`), a share link's view
+(`GET /api/v1/shared/<token>`) and `/auth/*`. A project's routes and its files (`/scenes/<id>/…`: the scene, the
+versions, the renders, the photos, the plan sheets, the surroundings) are those of the organisation the session works
+in; another organisation's project answers 404, as one that does not exist. The check runs before a route does, so
+before any job is enqueued. `/kit/**` and the SPA's pages stay public: the SPA sends a signed-out visitor to sign in.
+
+A share link (`/s/<token>`) works signed out through paths of its own, which map onto the shared version's files and
+nothing else: `/shared/<token>/scene/index.html` (with `src/…`, `renders/…` and the listing photos next to it, so
+the page's relative URLs work), `/shared/<token>/context/…` (the surroundings) and `/shared/<token>/photos/<file>`.
+Revoking the link closes them.
+
+Two tokens open the app without a session, both for reads only (GET and HEAD; a write answers 403 `read_only`). Each
+is sent as `Authorization: Bearer <token>` or as the `housegen_token` cookie:
+
+- `RENDER_SERVICE_TOKEN`, the service token, reads `/scenes/**` of every organisation. The GPU render service, the
+  listing photo service and this app's own headless renderer present it when they load a scene page. A headless
+  browser presents it as the cookie, set for the scene page's host only, so the page's requests to other hosts (map
+  tiles, fonts) never carry it. Without `RENDER_SERVICE_TOKEN`, the app's own renderer uses a token of its process.
+- `AUTH_READONLY_TOKEN` reads `/api/v1/**` and `/scenes/**` of every organisation, for checks on a deployed app.
+  Its copy for those checks is in `~/.config/housegen/readonly-token`:
+
+  ```bash
+  curl -H "Authorization: Bearer $(cat ~/.config/housegen/readonly-token)" \
+      https://housegen-dev.apps.dhconsulting.ch/api/v1/projects
+  ```
+
+The app fails closed: without a sign-in provider and without `AUTH_DISABLED=1`, it does not start.
 
 In the app, a signed-out visitor goes to `/signin`, with one button per configured provider; share links (`/s/…`) and
 invitation links stay open. A signed-in user without an organisation lands on the wizard at `/welcome`: join an
 organisation that invited your verified email (`GET /api/v1/me/invitations`), or create one and invite coworkers.
 Each invitation is a link you copy and send yourself; housegen sends no email. The organisation menu in the header
 switches between organisations and opens the settings (`/organisation`: name, members, pending invitations). With
-`AUTH_DISABLED=1` or no provider configured, the app shows none of this.
+`AUTH_DISABLED=1`, the app shows none of this.
 
 To set it up:
 
@@ -207,7 +236,7 @@ To set it up:
    deployment reads it through an optional `secretRef`.
 3. For local sign-in, append `auth-local.env` to `backend/.env` and open the app through Vite
    (`http://localhost:5173`, which proxies `/auth`). Without it, set `AUTH_DISABLED=1`: one implicit user who owns
-   the default organisation.
+   the default organisation. The app does not start with neither.
 
 ## Configuration (backend/.env)
 
@@ -236,7 +265,7 @@ returns the defaults a project without settings runs with.
 | `PLAN_DPI` | `150` | rasterisation of the sheets (dimension strings on a 1:100 sheet stay legible; `inspect_image` zooms at 300 dpi) |
 | `BROWSER_CHANNEL` | `chrome` | `chrome`, `msedge`, or empty for Playwright's Chromium |
 | `RENDER_ANGLE` | `swiftshader` | WebGL backend: `swiftshader` (software), `gl-egl` or `vulkan` (an NVIDIA GPU) |
-| `RENDER_SERVICE_URL`, `RENDER_SERVICE_TOKEN` | | render on the GPU service instead of in-process (see above); `RENDER_SERVICE_FALLBACK=false` fails the render instead of drawing locally when it is unreachable |
+| `RENDER_SERVICE_URL`, `RENDER_SERVICE_TOKEN` | | render on the GPU service instead of in-process (see above); `RENDER_SERVICE_FALLBACK=false` fails the render instead of drawing locally when it is unreachable. The services send the token back to read the scene pages (see "Sign-in and organisations") |
 | `PHOTO_SERVICE_URL`, `PHOTO_SERVICE_TOKEN` | next to the render service | the listing photo service (see above); empty = `RENDER_SERVICE_URL` with `housegen-photo-web`, `RENDER_SERVICE_TOKEN` |
 | `LISTING_WIDTH`, `LISTING_HEIGHT`, `LISTING_SAMPLES` | `3840`, `2160`, `512` | a listing photo's size and Cycles samples |
 | `LISTING_PICK` | `true` | preview every viewpoint of a room and let the picture editor choose (#92) |
@@ -249,7 +278,8 @@ returns the defaults a project without settings runs with.
 | `AUTH_MICROSOFT_CLIENT_ID`, `AUTH_MICROSOFT_CLIENT_SECRET` | | sign-in with Microsoft (`common`: work and personal accounts) |
 | `AUTH_SESSION_SECRET` | random per process | signs the session cookie; without it every restart signs everyone out |
 | `AUTH_ADMIN_EMAIL` | | the first verified sign-in with this email owns the default organisation |
-| `AUTH_DISABLED` | `false` | no sign-in: one implicit user in the default organisation (local dev, the tests) |
+| `AUTH_DISABLED` | `false` | no sign-in: one implicit user in the default organisation (local dev, the tests). Without it, the app needs a provider to start |
+| `AUTH_READONLY_TOKEN` | | a bearer token that reads `/api/v1/**` and `/scenes/**` of every organisation, GET and HEAD only (checks on a deployed app) |
 | `AUTH_PUBLIC_URL` | the request's origin | where the providers send the browser back (`https://host`); by default from `X-Forwarded-Proto`/`-Host` |
 | `AUTH_SESSION_DAYS`, `AUTH_INVITATION_DAYS` | `14`, `14` | how long a session and an invitation link last |
 | `MODEL_PRICES` | list prices for `claude-fable-5-2`, `claude-opus-5-5`, `claude-opus-5`, `claude-sonnet-5-5`, `gpt-6-astra` | JSON `{model: {input, cached, output[, cache_write]}}` in USD per million tokens, for the cost in each run's summary |

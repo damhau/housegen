@@ -55,6 +55,8 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
 /**
+ * The projects of the organisation the caller works in (every organisation's for the
+read-only token).
  * @summary List Projects
  */
 export const getListProjectsUrl = () => {

@@ -129,4 +129,6 @@ EXPOSE 8000
 
 # Single process: jobs run in-process and state lives in SQLite + /data, so do NOT
 # scale to multiple workers or replicas without adding a job queue + shared storage.
+# It refuses to start without a sign-in provider (AUTH_GOOGLE_CLIENT_ID, AUTH_MICROSOFT_CLIENT_ID)
+# unless AUTH_DISABLED=1 (#105).
 CMD ["uvicorn", "housegen.main:app", "--host", "0.0.0.0", "--port", "8000"]

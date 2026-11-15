@@ -10,6 +10,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
 
+from housegen.accounts.migrations import migrate_organisations
 from housegen.agent.pipeline import _first_message, _Inputs, plan_documents_text, sheet_label
 from housegen.agent.tools import ImageSources
 from housegen.core import db
@@ -123,6 +124,7 @@ async def test_old_layout_is_moved_at_startup_and_gets_a_document_row(
     assert migrate_plan_layout(get_settings().projects_dir) == []  # idempotent
     assert await migrate_plans(get_settings().projects_dir) == 1
     assert await migrate_plans(get_settings().projects_dir) == 0
+    await migrate_organisations()  # a project from before accounts joins the default organisation
     body = (await client.get(f"/api/v1/projects/{pid}")).json()
     assert [(d["number"], d["label"], d["pages"]) for d in body["plans"]] == [(1, "Plans-1935", 2)]
     assert body["plan_pages"] == 2

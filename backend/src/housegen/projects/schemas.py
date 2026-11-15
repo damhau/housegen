@@ -166,6 +166,8 @@ class SharedProjectOut(BaseModel):
     context_url: str | None = None
     # the shared version's listing photos (#91), when it has a set
     listing: ListingOut | None = None
+    # the renderer the page draws with: the viewer's default (the renderer list needs a session)
+    kit: str
 
 
 class ProjectSummaryOut(BaseModel):

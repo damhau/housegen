@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from housegen.accounts import crud as accounts_crud
 from housegen.agent import pipeline
 from housegen.core import db
 from housegen.core.config import get_settings
@@ -32,7 +33,9 @@ async def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 async def _project_and_job(kind: str = "generate") -> tuple[str, str]:
     async with session_factory()() as s, s.begin():
-        project = await crud.create_project(s, "t")
+        project = await crud.create_project(
+            s, "t", organisation_id=(await accounts_crud.default_organisation(s))[0].id
+        )
         ProjectStorage(project.id).ensure()
         project.status = "generating"
         job = await crud.create_job(s, project.id, kind)

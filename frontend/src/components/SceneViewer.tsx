@@ -206,6 +206,7 @@ export function SceneViewer({
   coverUrl = null,
   versionNumber = null,
   onPoint,
+  fixedKit,
 }: {
   sceneUrl: string | null
   reloadKey?: string | number
@@ -227,6 +228,8 @@ export function SceneViewer({
   versionNumber?: number | null
   /** the Point button (#35): what the owner clicked in the scene, for the chat (null: cancelled) */
   onPoint?: (point: PointOut | null) => void
+  /** the renderer to draw with, without asking for the renderer list (the share page: signed out) */
+  fixedKit?: string
 }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const refB = useRef<HTMLIFrameElement>(null)
@@ -287,10 +290,10 @@ export function SceneViewer({
   // the scene page answers once it is ready: requests made while it loads wait for it
   const frameReady = useRef(false)
   const readyWaiters = useRef<(() => void)[]>([])
-  const kitsQuery = useKits({ query: { staleTime: 60 * 60 * 1000 } })
+  const kitsQuery = useKits({ query: { staleTime: 60 * 60 * 1000, enabled: fixedKit === undefined } })
   const kits = kitsQuery.data?.kits ?? []
-  const kitsKnown = !kitsQuery.isLoading
-  const kitA = kit ?? kitsQuery.data?.latest ?? null
+  const kitsKnown = fixedKit !== undefined || !kitsQuery.isLoading
+  const kitA = kit ?? fixedKit ?? kitsQuery.data?.latest ?? null
   const frameSrc = (name: string | null) =>
     sceneUrl === null
       ? null

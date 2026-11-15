@@ -251,7 +251,8 @@ async def test_fetch_align_and_share_the_surroundings(client: AsyncClient, tmp_p
 
     token = (await client.post(f"/api/v1/projects/{pid}/share")).json()["token"]
     shared = (await client.get(f"/api/v1/shared/{token}")).json()
-    assert shared["context_url"] == f"/scenes/{pid}/context/"
+    assert shared["context_url"] == f"/shared/{token}/context/"
+    assert (await client.get(f"{shared['context_url']}context.json")).status_code == 200
 
     assert (await client.delete(f"/api/v1/projects/{pid}/surroundings")).status_code == 204
     assert (await client.get(f"/api/v1/projects/{pid}/surroundings")).json()["exists"] is False

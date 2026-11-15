@@ -12,6 +12,7 @@ from housegen.core.config import get_settings
 from housegen.core.db import session_factory
 from housegen.jobs.manager import job_manager
 from housegen.projects import crud
+from housegen.render.kits import viewer_kit
 
 
 def _pdf() -> bytes:
@@ -84,7 +85,9 @@ async def test_share_create_is_idempotent_pins_and_revokes(client: AsyncClient) 
     assert body["name"] == "Villa"
     assert body["version"] == 1
     assert body["pinned"] is True
-    assert body["scene_url"] == f"/scenes/{pid}/versions/1/index.html"
+    # under the link's own paths, readable signed out (#105); the project's need a session
+    assert body["scene_url"] == f"/shared/{token}/scene/index.html"
+    assert body["kit"] == viewer_kit()
     assert set(body) == {
         "name",
         "version",
@@ -95,6 +98,7 @@ async def test_share_create_is_idempotent_pins_and_revokes(client: AsyncClient) 
         "created_at",
         "context_url",  # the public surroundings (swisstopo), once aligned (#39)
         "listing",  # the version's listing photos (#91)
+        "kit",  # the renderer it is drawn with (the renderer list needs a session)
     }
     assert "private" not in r.text
     # unpinned → the current version

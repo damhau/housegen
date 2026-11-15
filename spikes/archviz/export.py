@@ -18,6 +18,14 @@ from playwright.async_api import async_playwright
 
 KIT = os.environ.get("BAKE_KIT", "2026-10-30-v34")
 ENV = {**os.environ, "GALLIUM_DRIVER": "d3d12", "MESA_D3D12_DEFAULT_ADAPTER_NAME": "NVIDIA", "LD_LIBRARY_PATH": "/usr/lib/wsl/lib"}
+
+
+def token_cookie(url: str) -> list[dict]:
+    """dev's scene pages need a token (#105): the read-only one, as the app's cookie of dev's host only."""
+    token_file = Path.home() / ".config" / "housegen" / "readonly-token"
+    token = os.environ.get("AUTH_READONLY_TOKEN") or (token_file.read_text().strip() if token_file.is_file() else "")
+    host = "/".join(url.split("/")[:3])
+    return [{"name": "housegen_token", "value": token, "url": host, "httpOnly": True, "secure": True}] if token else []
 EXPORT = """async () => {
   const { GLTFExporter } = await import('/kit/vendor/three/examples/jsm/exporters/GLTFExporter.js');
   const root = window.__house.houseGroup, skipped = {};
@@ -42,6 +50,7 @@ async def main(project: str, out: Path) -> None:
         b = await pw.chromium.launch(executable_path=os.environ["WALK_CHROME"], headless=True, env=ENV,
                                      args=["--use-gl=angle", "--use-angle=gl", "--ignore-gpu-blocklist"])
         p = await b.new_page(viewport={"width": 800, "height": 500}, accept_downloads=True)
+        await p.context.add_cookies(token_cookie(url))
         await p.goto(url)
         await p.wait_for_function("() => window.__house && window.__house.ready", timeout=600_000)
         gl = await p.evaluate("() => window.__house.gl")

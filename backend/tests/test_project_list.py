@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from housegen.accounts import crud as accounts_crud
 from housegen.core import db
 from housegen.core.config import get_settings
 from housegen.projects.models import Job, Project, SceneVersion
@@ -33,8 +34,10 @@ async def test_list_shows_the_running_job_and_the_last_version_time(client: Asyn
     created = datetime.now(UTC) - timedelta(days=2)
     saved = datetime.now(UTC) - timedelta(minutes=5)
     async with db.session_factory()() as s:
+        org = (await accounts_crud.default_organisation(s))[0].id
         busy = Project(name="busy", status="ready", current_version=1, created_at=created)
         idle = Project(name="idle", status="ready", current_version=0, created_at=created)
+        busy.organisation_id = idle.organisation_id = org
         s.add_all([busy, idle])
         await s.flush()
         s.add(

@@ -19,6 +19,7 @@ export default defineConfig({
       "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/scenes": { target: "http://127.0.0.1:8000", changeOrigin: true },
       "/kit": { target: "http://127.0.0.1:8000", changeOrigin: true },
+      "/shared": { target: "http://127.0.0.1:8000", changeOrigin: true },
       // sign-in: the backend builds the provider callback from X-Forwarded-Host/-Proto
       "/auth": { target: "http://127.0.0.1:8000", xfwd: true },
     },

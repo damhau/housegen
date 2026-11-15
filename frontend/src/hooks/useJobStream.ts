@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import type { JobEventOut } from "@/api/model"
+import { recheckSession } from "@/lib/auth"
 
 export type JobEvent = JobEventOut
 
@@ -40,6 +42,7 @@ export function useJobStream(projectId: string, jobId: string | null | undefined
   const [disconnectedSince, setDisconnectedSince] = useState<number | null>(null)
   const onEndRef = useRef(onEnd)
   onEndRef.current = onEnd
+  const queryClient = useQueryClient()
 
   useEffect(() => {
     setEvents([])
@@ -122,6 +125,9 @@ export function useJobStream(projectId: string, jobId: string | null | undefined
         // is down) it gives up on, so we reopen it after a pause
         if (es?.readyState === EventSource.CLOSED) {
           es.close()
+          // an EventSource does not say why it failed: a 401 (the session ended) looks like a
+          // pod restart, and only /me tells them apart
+          recheckSession(queryClient)
           timer = setTimeout(connect, RECONNECT_MS)
         }
       }
@@ -134,7 +140,7 @@ export function useJobStream(projectId: string, jobId: string | null | undefined
       es?.close()
       setLive(false)
     }
-  }, [projectId, jobId])
+  }, [projectId, jobId, queryClient])
 
   return { events, live, progress, liveText, liveThought, disconnectedSince }
 }

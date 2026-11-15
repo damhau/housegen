@@ -52,6 +52,7 @@ async def main() -> None:
             await ws.serve_local_src(page, args.src)
         errors: list[str] = []
         page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+        await ws.present_token(page, url)
         await page.goto(url)
         await page.wait_for_function("() => window.__house && window.__house.ready", timeout=240_000)
         gl = str(await page.evaluate("() => window.__house.gl"))

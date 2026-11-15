@@ -50,7 +50,12 @@ export function refreshSession(queryClient: QueryClient): Promise<void> {
   return queryClient.invalidateQueries()
 }
 
-/** A 401 from any call: the session ended, so ask again who is signed in (the gate takes it from there). */
+/** Ask again who is signed in (the gate takes it from there). */
+export function recheckSession(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: getMeQueryKey() })
+}
+
+/** A 401 from any call: the session ended. */
 export function onApiError(queryClient: QueryClient, error: unknown): void {
-  if (error instanceof ApiError && error.status === 401) void queryClient.invalidateQueries({ queryKey: getMeQueryKey() })
+  if (error instanceof ApiError && error.status === 401) recheckSession(queryClient)
 }

@@ -16,6 +16,10 @@ stringData:
   LLM_PROVIDER: openai
   OPENAI_API_KEY: "replace-me"
   ANTHROPIC_API_KEY: ""
+  # what the render and photo services present to read the scene pages (#105)
+  RENDER_SERVICE_TOKEN: ""
+  # Authorization: Bearer <it> reads the API and /scenes, GET and HEAD only (checks on a deployed app)
+  AUTH_READONLY_TOKEN: ""
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -31,10 +35,11 @@ spec:
         - name: housegen
           image: ghcr.io/damhau/housegen:latest
           ports: [{ containerPort: 8000 }]
-          # housegen-auth: the sign-in apps and the session secret (deploy/auth_apps.sh writes it)
+          # housegen-auth: the sign-in apps and the session secret (deploy/auth_apps.sh writes it).
+          # Required: without a provider the app refuses to start (#105)
           envFrom:
             - secretRef: { name: housegen-llm }
-            - secretRef: { name: housegen-auth, optional: true }
+            - secretRef: { name: housegen-auth }
           resources:
             requests: { cpu: "1", memory: 2Gi }
             limits: { cpu: "4", memory: 6Gi }   # software WebGL + image-heavy LLM calls: give it room

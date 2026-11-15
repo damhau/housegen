@@ -22,4 +22,5 @@ export interface SharedProjectOut {
   created_at: string;
   context_url?: SharedProjectOutContextUrl;
   listing?: SharedProjectOutListing;
+  kit: string;
 }

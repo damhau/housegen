@@ -1,3 +1,4 @@
+import secrets
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -7,6 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _BACKEND_ROOT = Path(__file__).resolve().parents[3]
 _REPO_ROOT = _BACKEND_ROOT.parent
+# what this process's own renderer presents when no RENDER_SERVICE_TOKEN is set (never leaves it)
+_PROCESS_TOKEN = secrets.token_urlsafe(32)
+# a headless browser presents its token as this cookie (#105): a cookie stays on the host it was set
+# for, where a header would also go to every other host the page loads from
+TOKEN_COOKIE = "housegen_token"
 
 
 class Settings(BaseSettings):
@@ -157,8 +163,8 @@ class Settings(BaseSettings):
     LISTING_EXTERIOR_MAX: int = 4
 
     # sign-in (#80, #104). A provider exists when its client id is set; deploy/auth_apps.sh creates
-    # the apps and the values. AUTH_DISABLED: one implicit user in the default organisation (local
-    # dev, the tests).
+    # the apps and the values. The app refuses to start without one unless AUTH_DISABLED: one
+    # implicit user in the default organisation (local dev, the tests).
     AUTH_DISABLED: bool = False
     AUTH_GOOGLE_CLIENT_ID: str = ""
     AUTH_GOOGLE_CLIENT_SECRET: str = ""
@@ -173,6 +179,9 @@ class Settings(BaseSettings):
     AUTH_PUBLIC_URL: str = ""
     AUTH_SESSION_DAYS: int = 14
     AUTH_INVITATION_DAYS: int = 14
+    # Claude's checks on a deployed app (#105): `Authorization: Bearer <token>` reads /api/v1/** and
+    # /scenes/** of every organisation, GET and HEAD only. Empty = no such token.
+    AUTH_READONLY_TOKEN: str = ""
 
     @property
     def database_url(self) -> str:
@@ -199,6 +208,18 @@ class Settings(BaseSettings):
     @property
     def photo_service_token(self) -> str:
         return self.PHOTO_SERVICE_TOKEN or self.RENDER_SERVICE_TOKEN
+
+    @property
+    def service_token(self) -> str:
+        """What loads the app's scene pages without a session (#105): RENDER_SERVICE_TOKEN, which
+        the Modal services share, else a token of this process for its own renderer."""
+        return self.RENDER_SERVICE_TOKEN or _PROCESS_TOKEN
+
+    @property
+    def page_token(self) -> str:
+        """The token a headless browser of this process presents to the scene pages it loads: the
+        service token, or the read-only one for a script run against a deployed app."""
+        return self.RENDER_SERVICE_TOKEN or self.AUTH_READONLY_TOKEN or _PROCESS_TOKEN
 
     def price_for(self, model: str) -> dict[str, float] | None:
         """The price row of a model, matched by exact name then by the longest prefix

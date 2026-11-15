@@ -16,7 +16,9 @@ backend/   FastAPI + SQLite + Playwright (uv, Python 3.12). Domain-first: src/ho
   render/    renderer.py (headless Chromium, shadow map reused across views), service.py (the same renderer as an
              HTTP service for a GPU box, deploy/modal_render.py), remote.py (its client + the local/remote dispatcher)
   jobs/      in-process job runner + SSE fan-out (persisted events vs transient progress events)
-  projects/  models, crud, router, storage (data/projects/<id>/{plans/<k>,photos,scene,versions}), migrations (one-off, at startup)
+  projects/  models, crud, router, storage (data/projects/<id>/{plans/<k>,photos,scene,versions}), migrations (one-off, at startup),
+             access (who sees a project: its organisation, the tokens, #105), files (the /scenes mount behind it),
+             shared (a share link's own /shared/<token>/… paths, readable signed out)
   listing/   listing photo sets (#91): shots.py (units from room names, listing order, captions), client.py (the
              photo service), pick.py (the picture editor: one vision call per room over its previews, #92),
              job.py (the `listing` job: beside scene jobs, never blocks them), router.py
@@ -127,6 +129,11 @@ by the Vite plugin: run `vite build` before `tsc` on a clean checkout (the Docke
   restarted (pod start time against a job's times) and which image runs. A project's files over HTTP:
   `/scenes/<id>/versions/<n>/src/*.js` is a version; `/api/v1/projects/<id>/files` is the working copy, which a running
   job is still changing (check the project's jobs first).
+- **The deployed API needs a session (#105).** Claude reads it with the read-only token, every organisation, GET and
+  HEAD only: `curl -H "Authorization: Bearer $(cat ~/.config/housegen/readonly-token)" https://housegen-dev…/api/v1/projects`
+  (the same header on `/scenes/**`). `walk_sheet.py`, `look_sheet.py --scene-url` and the archviz lab scripts send it
+  by themselves (as a cookie of dev's host only), from `AUTH_READONLY_TOKEN` or that file. Local runs and the tests
+  use `AUTH_DISABLED=1`: without it and without a sign-in provider the app does not start.
 - Commits: Conventional Commits (`feat:` → minor, `fix:`/`perf:` → patch, anything else → no release), plain
   messages, **no Co-Authored-By**. Every push to `main` runs python-semantic-release (a release tags the pushed
   commit `vX.Y.Z`; no file is bumped, `project.version` is unused), builds the image and deploys it to the dev environment

@@ -46,6 +46,7 @@ function SharedPage() {
         sceneUrl={s.scene_url}
         reloadKey={`shared-${s.version}`}
         contextUrl={s.context_url}
+        fixedKit={s.kit}
         className="min-h-[420px]"
         autoTour={window.location.hash.includes("autoplay")}
         coverUrl={s.render_urls.southeast ?? Object.values(s.render_urls)[0] ?? null}

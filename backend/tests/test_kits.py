@@ -10,7 +10,10 @@ from pathlib import Path
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from housegen.accounts import crud as accounts_crud
+from housegen.core import db
 from housegen.core.config import get_settings
+from housegen.projects.models import Project
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
@@ -22,11 +25,14 @@ VIEWER = "2026-11-11-v35"  # the viewer's default (index.json "viewer"), set whe
 async def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[AsyncClient]:
     monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
     get_settings.cache_clear()
+    await db.dispose_db()
     from housegen.main import create_app
 
     app = create_app()
+    await db.init_db()
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
         yield c
+    await db.dispose_db()
     get_settings.cache_clear()
 
 
@@ -106,6 +112,9 @@ def test_rewrite_points_the_import_map_at_the_snapshot() -> None:
 
 
 async def test_scene_pages_are_served_with_the_chosen_renderer(client: AsyncClient) -> None:
+    async with db.session_factory()() as session, session.begin():
+        org = (await accounts_crud.default_organisation(session))[0].id
+        session.add(Project(id="p1", name="p1", organisation_id=org))
     s = get_settings()
     version = s.projects_dir / "p1" / "versions" / "3"
     version.mkdir(parents=True)

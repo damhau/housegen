@@ -33,7 +33,8 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
  * The read-only view behind a share link (#24): the scene (current or pinned version),
-its renders and photos. Nothing that could change the project, nothing the owner wrote.
+its renders and photos, all under the link's own paths (/shared/<token>/…, readable signed
+out). Nothing that could change the project, nothing the owner wrote.
  * @summary Shared Project
  */
 export const getSharedProjectUrl = (token: string,) => {

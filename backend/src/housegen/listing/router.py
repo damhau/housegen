@@ -41,17 +41,22 @@ def set_versions(st: ProjectStorage) -> list[int]:
     return sorted(found, reverse=True)
 
 
-def listing_out(st: ProjectStorage, version: int, current: int) -> ListingOut | None:
+def listing_out(
+    st: ProjectStorage, version: int, current: int, base: str | None = None
+) -> ListingOut | None:
+    """A version's listing set; its photos' URLs under `base` (a share link's folder) or the
+    version's own."""
     doc = read_set(st, version)
     if doc is None:
         return None
+    folder = base or st.version_url(version)
     photos = []
     for shot in doc.get("shots", []):
         photo = doc.get("photos", {}).get(shot["key"])
         url = None
         if photo and (listing_dir(st, version) / photo["file"]).exists():
             mtime = int((listing_dir(st, version) / photo["file"]).stat().st_mtime)
-            url = f"/scenes/{st.project_id}/versions/{version}/listing/{photo['file']}?t={mtime}"
+            url = f"{folder}/listing/{photo['file']}?t={mtime}"
         photos.append(
             ListingPhotoOut(
                 key=shot["key"],

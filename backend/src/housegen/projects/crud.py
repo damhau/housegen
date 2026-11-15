@@ -29,8 +29,12 @@ async def get_project(session: AsyncSession, project_id: str) -> Project:
     return project
 
 
-async def list_projects(session: AsyncSession) -> list[Project]:
-    res = await session.execute(select(Project).order_by(Project.created_at.desc()))
+async def list_projects(session: AsyncSession, organisation_id: str | None) -> list[Project]:
+    """An organisation's projects, newest first; None: every organisation's."""
+    query = select(Project).order_by(Project.created_at.desc())
+    if organisation_id is not None:
+        query = query.where(Project.organisation_id == organisation_id)
+    res = await session.execute(query)
     return list(res.scalars().all())
 
 

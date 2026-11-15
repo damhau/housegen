@@ -4,13 +4,16 @@
 
 Writes house.glb and rooms.json (the floor plans' rooms with their storey level). Lamps the light budget
 hides are real lights for a path tracer; instanced foliage (Blender's importer makes one object per card)
-and custom-shader meshes are left out.
+and custom-shader meshes are left out. The app's scene pages need a session or a token: RENDER_SERVICE_TOKEN
+from the environment goes to the page's host as the app's token cookie, and to no other host.
 """
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from playwright.async_api import async_playwright
 
@@ -38,13 +41,26 @@ EXPORT = """async () => {
   return { bytes: glb.byteLength, skipped };
 }"""
 GL_PROBE = "() => window.__house.gl"
+TOKEN_COOKIE = "housegen_token"  # the app's (backend core/config.py)
+
+
+def token_cookie(url: str, token: str) -> list[dict]:
+    """The token as a cookie of the page's host only (a header would go to every host the page loads from)."""
+    parts = urlsplit(url)
+    if not token or parts.scheme not in ("http", "https"):
+        return []
+    origin = f"{parts.scheme}://{parts.netloc}"
+    return [{"name": TOKEN_COOKIE, "value": token, "url": origin, "httpOnly": True,
+             "secure": parts.scheme == "https", "sameSite": "Lax"}]
 
 
 async def export(url: str, out: Path) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(headless=True, args=ARGS)
-        page = await browser.new_page(viewport={"width": 800, "height": 500}, accept_downloads=True)
+        context = await browser.new_context(viewport={"width": 800, "height": 500}, accept_downloads=True)
+        await context.add_cookies(token_cookie(url, os.environ.get("RENDER_SERVICE_TOKEN", "")))
+        page = await context.new_page()
         await page.goto(url, timeout=120_000)
         await page.wait_for_function("() => window.__house && window.__house.ready", timeout=600_000)
         gl = str(await page.evaluate(GL_PROBE))

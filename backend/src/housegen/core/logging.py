@@ -81,7 +81,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             raise
         finally:
             request_id_ctx.reset(token)
-        if not request.url.path.startswith(("/kit/", "/scenes/")):
+        if not request.url.path.startswith(("/kit/", "/scenes/", "/shared/")):
             logger.info(
                 "request.completed",
                 extra={

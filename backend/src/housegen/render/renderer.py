@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from PIL import Image
 from playwright.async_api import (
@@ -20,7 +21,7 @@ from playwright.async_api import (
     async_playwright,
 )
 
-from housegen.core.config import get_settings
+from housegen.core.config import TOKEN_COOKIE, get_settings
 from housegen.core.exceptions import RenderError
 
 logger = logging.getLogger(__name__)
@@ -95,6 +96,27 @@ def _keep_console(console: list[str], m: ConsoleMessage) -> None:
     line = console_line(m.type, m.text, str(m.location.get("url", "")))
     if line is not None:
         console.append(line)
+
+
+async def present_token(context: BrowserContext, url: str, token: str) -> None:
+    """The app's scene pages need a session or a token (#105): the token as a cookie of the
+    scene URL's host, so the page's requests to the app carry it and those to any other host
+    (map tiles, fonts) do not. A header set on the context would go everywhere."""
+    parts = urlsplit(url)
+    if parts.scheme not in ("http", "https") or not parts.netloc or not token:
+        return
+    await context.add_cookies(
+        [
+            {
+                "name": TOKEN_COOKIE,
+                "value": token,
+                "url": f"{parts.scheme}://{parts.netloc}",
+                "httpOnly": True,
+                "secure": parts.scheme == "https",
+                "sameSite": "Lax",
+            }
+        ]
+    )
 
 
 class Renderer:
@@ -245,6 +267,7 @@ class Renderer:
         async with self._lock:
             browser = await self._ensure_browser()
             context = await self._context(browser, s.RENDER_WIDTH, s.RENDER_HEIGHT)
+            await present_token(context, scene_url, s.page_token)
             page = await context.new_page()
             page.on("console", lambda m: _keep_console(result.console, m))
             page.on("pageerror", lambda e: result.errors.append(f"pageerror: {e}"))

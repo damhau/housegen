@@ -52,10 +52,14 @@ class RenderError(AppError):
     code = "render_error"
 
 
+def error_response(exc: AppError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}},
+    )
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def _app_error(_: Request, exc: AppError) -> JSONResponse:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"error": {"code": exc.code, "message": exc.message, "details": exc.details}},
-        )
+        return error_response(exc)

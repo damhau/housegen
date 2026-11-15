@@ -15,8 +15,10 @@ touched) and renders through the app's own headless Renderer in this process (sa
 flags, same JPEG pipeline as the version pictures). With --scene-url it renders the page at that
 URL through the app's render client: the GPU service when RENDER_SERVICE_URL is set (a local
 directory cannot be used there, the service cannot reach this machine), else the local browser.
-Either way it writes one contact sheet: a row per view, a column per look, each cell labelled
-with its mean luminance and 10/50/90 percentiles (p10 = the shade, p50 = the walls, p90 = the sky).
+A deployed app's scene pages need a token (#105): the service sends its own; the local browser
+sends RENDER_SERVICE_TOKEN, else AUTH_READONLY_TOKEN (by default ~/.config/housegen/readonly-token),
+to the page's host only. Either way it writes one contact sheet: a row per view, a column per look,
+each cell labelled with its mean luminance and 10/50/90 percentiles (p10 = the shade, p50 = the walls, p90 = the sky).
 Run it from `backend/`. With neither --scene nor --scene-url it renders the kit's template.
 """
 
@@ -42,6 +44,8 @@ from housegen.core.config import get_settings  # noqa: E402
 from housegen.render.kits import DEV, kit_dir  # noqa: E402
 from housegen.render.remote import RenderClient  # noqa: E402
 from housegen.render.renderer import Renderer, SceneRenderer  # noqa: E402
+
+READONLY_TOKEN_FILE = Path.home() / ".config" / "housegen" / "readonly-token"
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
@@ -163,6 +167,8 @@ def main() -> None:
     ap.add_argument("--cell-width", type=int, default=560)
     args = ap.parse_args()
 
+    if args.scene_url and READONLY_TOKEN_FILE.is_file():
+        os.environ.setdefault("AUTH_READONLY_TOKEN", READONLY_TOKEN_FILE.read_text().strip())
     settings = get_settings()
     if args.kit:
         try:

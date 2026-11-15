@@ -17,7 +17,9 @@ look, surroundings on). Then, for each renderer:
     uv run python scripts/walk_sheet.py --project fa8bd00053e6 --kit dev --kit 2026-10-04-v9 \\
         --chrome <dir>/chrome/linux-145.0.7632.159/chrome-linux64/chrome --out /tmp/walk
 
-The scene page and its assets come from dev (`--base`). The kit's modules (`/kit/*.js`) come
+The scene page and its assets come from dev (`--base`), read with the read-only token (#105):
+AUTH_READONLY_TOKEN, else ~/.config/housegen/readonly-token, sent to that host only as the
+app's token cookie. The kit's modules (`/kit/*.js`) come
 from THIS checkout: the working copy for `dev`, `kit/versions/<name>/` for a snapshot. So a change
 is measured before it is deployed. `--local-assets` also serves the kit's other files (textures,
 sky) from the checkout when it has them.
@@ -69,6 +71,34 @@ GPU_ARGS = [
 ]
 KIT_MODULE = re.compile(r"^/kit/([A-Za-z0-9_-]+\.js)$")
 GPU_LOCK = Path("/tmp/housegen-gpu.lock")
+READONLY_TOKEN_FILE = Path.home() / ".config" / "housegen" / "readonly-token"
+
+
+def readonly_token() -> str:
+    """The deployed app's read-only token: AUTH_READONLY_TOKEN, else the owner's file."""
+    token = os.environ.get("AUTH_READONLY_TOKEN", "").strip()
+    if not token and READONLY_TOKEN_FILE.is_file():
+        token = READONLY_TOKEN_FILE.read_text(encoding="utf-8").strip()
+    return token
+
+
+async def present_token(page: Page, url: str) -> None:
+    """The token as a cookie of the scene page's host only (the app's backend does the same)."""
+    parts = urlsplit(url)
+    token = readonly_token()
+    if token and parts.scheme in ("http", "https"):
+        await page.context.add_cookies(
+            [
+                {
+                    "name": "housegen_token",
+                    "value": token,
+                    "url": f"{parts.scheme}://{parts.netloc}",
+                    "httpOnly": True,
+                    "secure": parts.scheme == "https",
+                    "sameSite": "Lax",
+                }
+            ]
+        )
 
 
 @contextlib.contextmanager
@@ -389,6 +419,7 @@ async def measure_kit(
 
     cdp.on("Network.loadingFinished", finished)
 
+    await present_token(page, url)
     t0 = time.monotonic()
     await page.goto(url)
     await page.wait_for_function(

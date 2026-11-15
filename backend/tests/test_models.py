@@ -4,10 +4,12 @@ a provider failure reported instead of raised, and the answer cached."""
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from housegen.core import db
 from housegen.core.config import get_settings
 from housegen.llm import models as models_mod
 from housegen.llm.openai_provider import is_language_model
@@ -50,13 +52,18 @@ class _Provider:
 
 
 @pytest.fixture
-def app(monkeypatch: pytest.MonkeyPatch):
+async def app(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("DATA_DIR", str(tmp_path / "data"))
     get_settings.cache_clear()
+    await db.dispose_db()
     models_mod.clear_cache()
     from housegen.main import create_app
 
-    yield create_app()
+    app = create_app()
+    await db.init_db()  # the routes need a caller: AUTH_DISABLED's local user
+    yield app
     models_mod.clear_cache()
+    await db.dispose_db()
     get_settings.cache_clear()
 
 

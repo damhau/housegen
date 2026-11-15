@@ -20,7 +20,9 @@ Deploy (again after a change under photo/):
     curl https://<workspace>--housegen-photo-web.modal.run/health
 
 The app finds the service next to the render service (RENDER_SERVICE_URL with housegen-render → housegen-photo) or at
-PHOTO_SERVICE_URL, and sends RENDER_SERVICE_TOKEN.
+PHOTO_SERVICE_URL, and sends RENDER_SERVICE_TOKEN. The service sends the same token back when it loads from the app
+(#105): `export` as the app's token cookie of the scene page's host, `blender` as a bearer header on the context files,
+never across a redirect.
 """
 
 
@@ -160,7 +162,7 @@ def _gpu(device: str, choices: list[str]) -> str:
 
 
 @app.function(image=image, gpu=EXPORT_GPU, cpu=4.0, memory=16384, timeout=1800, volumes=volumes,
-              scaledown_window=GPU_SCALEDOWN_S)
+              scaledown_window=GPU_SCALEDOWN_S, secrets=[token])
 def export(scene_url: str, key: str) -> dict:
     """The version's house as GLB and its rooms (export.py), onto the volume for `blender`."""
     import json
@@ -182,7 +184,7 @@ def export(scene_url: str, key: str) -> dict:
     return {**exported, "gpu": _gpu(str(exported.get("gl") or ""), EXPORT_GPU), "seconds": round(time.time() - t0, 1)}
 
 
-@app.function(image=image, cpu=BLENDER_CPU, memory=BLENDER_MEMORY, timeout=1800, volumes=volumes)
+@app.function(image=image, cpu=BLENDER_CPU, memory=BLENDER_MEMORY, timeout=1800, volumes=volumes, secrets=[token])
 def blender(
     key: str,
     context_url: str | None = None,
@@ -253,8 +255,17 @@ def _fetch_context(url: str, to: Path, files: bool = True) -> bool:
     import urllib.request
 
     base = url if url.endswith("/") else url + "/"
+    token = os.environ.get("RENDER_SERVICE_TOKEN", "")
+
+    def get(name: str, timeout: float) -> bytes:
+        req = urllib.request.Request(base + name)
+        if token:
+            # unredirected: a redirect to another host never gets it
+            req.add_unredirected_header("Authorization", f"Bearer {token}")
+        return urllib.request.urlopen(req, timeout=timeout).read()
+
     try:
-        meta = json.loads(urllib.request.urlopen(base + "context.json", timeout=60).read())
+        meta = json.loads(get("context.json", 60))
     except (urllib.error.URLError, ValueError):
         return False
     names = [meta[k]["file"] for k in ("terrain", "photo", "buildings", "trees", "cover", "far") if meta.get(k)]
@@ -262,7 +273,7 @@ def _fetch_context(url: str, to: Path, files: bool = True) -> bool:
     to.mkdir(parents=True, exist_ok=True)
     (to / "context.json").write_text(json.dumps(meta))
     for name in names if files else []:
-        (to / name).write_bytes(urllib.request.urlopen(base + name, timeout=120).read())
+        (to / name).write_bytes(get(name, 120))
     return True
 
 

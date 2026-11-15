@@ -169,7 +169,8 @@ pages_router = APIRouter(include_in_schema=False)
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
-def _serve(page: Path, kit: str | None) -> HTMLResponse:
+def serve_page(page: Path, kit: str | None) -> HTMLResponse:
+    """A scene page, drawn with the renderer `kit` names (its own import map without one)."""
     if not page.is_file():
         raise HTTPException(404, "no such scene")
     html = page.read_text(encoding="utf-8")
@@ -186,13 +187,13 @@ def _serve(page: Path, kit: str | None) -> HTMLResponse:
 def scene_page(project_id: str, kit: str | None = Query(None)) -> HTMLResponse:
     if not _ID.match(project_id):
         raise HTTPException(404, "no such scene")
-    return _serve(get_settings().projects_dir / project_id / "scene" / "index.html", kit)
+    return serve_page(get_settings().projects_dir / project_id / "scene" / "index.html", kit)
 
 
 @pages_router.get("/scenes/{project_id}/versions/{number}/index.html")
 def version_page(project_id: str, number: int, kit: str | None = Query(None)) -> HTMLResponse:
     if not _ID.match(project_id) or number < 0:
         raise HTTPException(404, "no such scene")
-    return _serve(
+    return serve_page(
         get_settings().projects_dir / project_id / "versions" / str(number) / "index.html", kit
     )
