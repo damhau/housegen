@@ -92,7 +92,14 @@ jobs:
             fi
           }
           call "${base}?refresh=normal"
-          call -X POST -H "Content-Type: application/json" "${base}/sync" -d '{"prune": true}'
+          out=$(curl -sS -H "$auth" -H "Content-Type: application/json" -w '\n%{http_code}' -X POST "${base}/sync" -d '{"prune": true}')
+          if [[ "${out##*$'\n'}" != 2* ]]; then
+            # Argo CD's auto-sync is often already applying this same commit (the ExternalSecret's sync wave makes
+            # it last): wait for it rather than fail
+            grep -q "another operation is already in progress" <<< "${out%$'\n'*}" \
+              || { echo "::error::Argo CD answered ${out##*$'\n'}: ${out%$'\n'*}"; exit 1; }
+            echo "${APP}: a sync is already running, waiting for it"
+          fi
           for i in $(seq 1 60); do
             call "$base"
             state=$(jq -r '.status.sync.status + "/" + .status.health.status' <<< "$body")
