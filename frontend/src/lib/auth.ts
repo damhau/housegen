@@ -5,9 +5,14 @@ import { ApiError } from "@/api/http-client"
 
 export const PROVIDER_LABEL: Record<string, string> = { google: "Google", microsoft: "Microsoft", local: "this server" }
 
-/** Pages anyone may open signed out: sign-in itself, a share link (#24), an invitation link. */
+const PUBLIC_PAGES = new Set(["/signin", "/about", "/privacy"])
+
+/**
+ * Pages anyone may open signed out: sign-in itself, the about and privacy pages (Google's OAuth
+ * branding links to them), a share link (#24), an invitation link.
+ */
 export function isPublicPath(pathname: string): boolean {
-  return pathname === "/signin" || pathname.startsWith("/s/") || pathname.startsWith("/invite/")
+  return PUBLIC_PAGES.has(pathname) || pathname.startsWith("/s/") || pathname.startsWith("/invite/")
 }
 
 /** Whether this server asks people to sign in: a provider is configured and auth is not disabled. */

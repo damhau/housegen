@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { createFileRoute, useRouter } from "@tanstack/react-router"
+import { createFileRoute, Link, useRouter } from "@tanstack/react-router"
 import { CircleAlert } from "lucide-react"
 import { useMe } from "@/api/endpoints/accounts/accounts"
 import { CenteredCard } from "@/components/accounts/CenteredCard"
@@ -49,6 +49,14 @@ function SignInPage() {
       <ProviderButtons providers={me.data.auth.providers} next={safeNext(next)} />
       <p className="text-xs text-muted-foreground">
         A coworker sent you an invitation link? Open it first: it signs you in and adds you to their organisation.
+      </p>
+      <p className="flex gap-3 text-xs text-muted-foreground">
+        <Link to="/about" className="underline-offset-4 hover:underline">
+          About housegen
+        </Link>
+        <Link to="/privacy" className="underline-offset-4 hover:underline">
+          Privacy policy
+        </Link>
       </p>
     </CenteredCard>
   )
