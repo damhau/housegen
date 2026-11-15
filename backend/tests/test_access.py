@@ -5,13 +5,14 @@ sign-in provider."""
 from __future__ import annotations
 
 import re
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import AsyncExitStack
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from httpx import AsyncClient
 
 from housegen.accounts.oidc import build_oauth
@@ -101,12 +102,30 @@ async def _project(organisation_id: str) -> str:
 
 
 def _api_routes(app: FastAPI) -> list[tuple[str, str]]:
-    return [
+    """Every /api/v1 operation, those left out of the schema too (the job stream, the PDF)."""
+
+    def walk(routes: list[Any], above: str, own: str) -> Iterator[tuple[str, APIRoute]]:
+        # a route's path has its own router's prefix already, not those of the routers above it
+        for route in routes:
+            if isinstance(route, APIRoute):
+                yield above + route.path, route
+            elif hasattr(route, "original_router"):
+                inner = route.original_router
+                yield from walk(inner.routes, above + own, inner.prefix)
+
+    found = [
+        (method, path)
+        for path, route in walk(app.routes, "", "")
+        if path.startswith("/api/v1")
+        for method in sorted(route.methods - {"HEAD"})
+    ]
+    schema = {
         (method.upper(), path)
         for path, methods in app.openapi()["paths"].items()
-        if path.startswith("/api/v1")
         for method in methods
-    ]
+    }
+    assert schema <= set(found), schema - set(found)  # the walk sees what the schema lists
+    return found
 
 
 def _fill(path: str, project_id: str) -> str:
@@ -119,7 +138,8 @@ async def test_signed_out_only_the_public_routes_answer(world: World) -> None:
     pid = await _project(org)
     anonymous = await world.browser()
     routes = _api_routes(world.app)
-    assert len(routes) > 40
+    assert len(routes) > 50
+    assert ("POST", "/api/v1/projects/{project_id}/report/pdf") in routes
     for method, path in routes:
         r = await anonymous.request(method, _fill(path, pid))
         if (method, path) in PUBLIC:
