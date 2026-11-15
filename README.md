@@ -191,6 +191,13 @@ in. The identity is the provider's issuer and subject, never the email: an invit
 project from before accounts. The API so far identifies the caller (`GET /api/v1/me`) but requires no session
 (#105 enforces it).
 
+In the app, a signed-out visitor goes to `/signin`, with one button per configured provider; share links (`/s/…`) and
+invitation links stay open. A signed-in user without an organisation lands on the wizard at `/welcome`: join an
+organisation that invited your verified email (`GET /api/v1/me/invitations`), or create one and invite coworkers.
+Each invitation is a link you copy and send yourself; housegen sends no email. The organisation menu in the header
+switches between organisations and opens the settings (`/organisation`: name, members, pending invitations). With
+`AUTH_DISABLED=1` or no provider configured, the app shows none of this.
+
 To set it up:
 
 1. Run `deploy/auth_apps.sh` with your own `az` login. It creates the Microsoft app (work and personal accounts,

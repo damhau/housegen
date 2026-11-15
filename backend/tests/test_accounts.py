@@ -487,6 +487,64 @@ async def test_an_expired_invitation_is_gone(world: World) -> None:
     assert (await owner.get(f"/api/v1/organisations/{org['id']}/invitations")).json() == []
 
 
+async def _invite(owner: AsyncClient, organisation_id: str, email: str) -> str:
+    r = await owner.post(
+        f"/api/v1/organisations/{organisation_id}/invitations", json={"email": email}
+    )
+    assert r.status_code == 201, r.text
+    return str(r.json()["url"].removeprefix("/invite/"))
+
+
+async def test_my_invitations_are_those_sent_to_my_verified_email(world: World) -> None:
+    from sqlalchemy import update
+
+    from housegen.accounts.models import Invitation
+
+    owner, _ = await world.sign_in("google", google("g-a", "a@agency.ch"))
+    names = ("Agency A", "Agency B", "Expired", "Taken")
+    orgs = {
+        n: (await owner.post("/api/v1/organisations", json={"name": n})).json()["id"] for n in names
+    }
+    tokens = {n: await _invite(owner, orgs[n], "B@X.ch") for n in names}
+    await _invite(owner, orgs["Agency A"], "someone.else@x.ch")
+    async with session_factory()() as s, s.begin():
+        await s.execute(
+            update(Invitation)
+            .where(Invitation.token == tokens["Expired"])
+            .values(expires_at=Invitation.created_at)
+        )
+    # another account opened the "Taken" link first
+    c, _ = await world.sign_in("google", google("g-c", "c@x.ch"))
+    assert (await c.post(f"/api/v1/invitations/{tokens['Taken']}/accept")).status_code == 200
+
+    anonymous = await world.browser()
+    assert (await anonymous.get("/api/v1/me/invitations")).status_code == 401
+
+    # the provider vouches for the email (any case): the pending, unexpired ones
+    b, _ = await world.sign_in("google", google("g-b", "b@x.CH"))
+    found = (await b.get("/api/v1/me/invitations")).json()
+    assert [(i["organisation_name"], i["invited_by"]) for i in found] == [
+        ("Agency A", "A"),
+        ("Agency B", "A"),
+    ]
+    assert found[0]["token"] == tokens["Agency A"]
+    assert found[0]["organisation_id"] == orgs["Agency A"]
+
+    # the same email unverified (Google says so, or a Microsoft work account): nothing
+    unverified, _ = await world.sign_in("google", google("g-u", "b@x.ch", verified=False))
+    assert (await unverified.get("/api/v1/me/invitations")).json() == []
+    work, _ = await world.sign_in("microsoft", microsoft("m-b", "b@x.ch"))
+    assert (await work.get("/api/v1/me/invitations")).json() == []
+
+    # joining goes through the token, as the link does; an accepted one leaves the list, and so
+    # does a new invitation to an organisation the user is already in
+    r = await b.post(f"/api/v1/invitations/{found[0]['token']}/accept")
+    assert r.status_code == 200
+    await _invite(owner, orgs["Agency A"], "b@x.ch")
+    found = (await b.get("/api/v1/me/invitations")).json()
+    assert [i["organisation_name"] for i in found] == ["Agency B"]
+
+
 async def test_switching_between_organisations(world: World) -> None:
     user, _ = await world.sign_in("google", google("g-a", "a@x.ch"))
     first = (await user.post("/api/v1/organisations", json={"name": "First"})).json()

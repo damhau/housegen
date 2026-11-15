@@ -81,6 +81,8 @@ export * from './modelInfoDisplayName';
 export * from './modelsOut';
 export * from './modelsOutError';
 export * from './modelsParams';
+export * from './myInvitationOut';
+export * from './myInvitationOutInvitedBy';
 export * from './organisationIn';
 export * from './organisationOut';
 export * from './organisationOutRole';

@@ -29,6 +29,7 @@ from housegen.accounts.schemas import (
     InvitationPreviewOut,
     MemberOut,
     MeOut,
+    MyInvitationOut,
     OrganisationIn,
     OrganisationOut,
     SwitchOrganisationIn,
@@ -208,6 +209,23 @@ async def switch_organisation(
         extra={"user_id": user.id, "organisation_id": body.organisation_id},
     )
     return await _me(request, session, user)
+
+
+@router.get("/me/invitations")
+async def my_invitations(session: DbSession, user: CurrentUser) -> list[MyInvitationOut]:
+    """The pending invitations sent to the caller's email, only when the provider verified it
+    (none otherwise), leaving out the organisations they are already in."""
+    return [
+        MyInvitationOut(
+            id=r.invitation.id,
+            organisation_id=r.invitation.organisation_id,
+            organisation_name=r.organisation_name,
+            invited_by=r.invited_by,
+            token=r.invitation.token,
+            expires_at=r.invitation.expires_at,
+        )
+        for r in await crud.invitations_for(session, user)
+    ]
 
 
 @router.post("/organisations", status_code=201)

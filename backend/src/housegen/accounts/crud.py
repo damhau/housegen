@@ -8,6 +8,7 @@ from typing import Literal
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from housegen.accounts.models import (
     LOCAL_ISSUER,
@@ -276,6 +277,36 @@ async def pending_invitations(session: AsyncSession, organisation_id: str) -> li
         .order_by(Invitation.created_at)
     )
     return list(res.scalars().all())
+
+
+@dataclass(frozen=True)
+class ReceivedInvitation:
+    invitation: Invitation
+    organisation_name: str
+    invited_by: str | None  # the inviter's name
+
+
+async def invitations_for(session: AsyncSession, user: User) -> list[ReceivedInvitation]:
+    """The pending invitations sent to the user's email, when the provider verified that email:
+    whoever reads that mailbox would get the links anyway. Leaves out the organisations the user
+    is already in."""
+    if not user.email or not user.email_verified:
+        return []
+    already = select(Membership.organisation_id).where(Membership.user_id == user.id)
+    inviter = aliased(User)
+    res = await session.execute(
+        select(Invitation, Organisation.name, inviter.name)
+        .join(Organisation, Organisation.id == Invitation.organisation_id)
+        .outerjoin(inviter, inviter.id == Invitation.invited_by)
+        .where(
+            func.lower(Invitation.email) == user.email.strip().lower(),
+            Invitation.accepted_at.is_(None),
+            Invitation.expires_at > _now(),
+            Invitation.organisation_id.not_in(already),
+        )
+        .order_by(Invitation.created_at)
+    )
+    return [ReceivedInvitation(i, org, by) for i, org, by in res.tuples().all()]
 
 
 async def revoke_invitation(

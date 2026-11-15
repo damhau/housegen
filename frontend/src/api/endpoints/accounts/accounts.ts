@@ -30,6 +30,7 @@ import type {
   InvitationPreviewOut,
   MeOut,
   MemberOut,
+  MyInvitationOut,
   OrganisationIn,
   OrganisationOut,
   SwitchOrganisationIn
@@ -216,6 +217,107 @@ export const useSwitchOrganisation = <TError = HTTPValidationError,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * The pending invitations sent to the caller's email, only when the provider verified it
+(none otherwise), leaving out the organisations they are already in.
+ * @summary My Invitations
+ */
+export const getMyInvitationsUrl = () => {
+
+
+  
+
+  return `/api/v1/me/invitations`
+}
+
+export const myInvitations = async ( options?: RequestInit): Promise<MyInvitationOut[]> => {
+  
+  return httpClient<MyInvitationOut[]>(getMyInvitationsUrl(),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getMyInvitationsQueryKey = () => {
+    return [
+    `/api/v1/me/invitations`
+    ] as const;
+    }
+
+    
+export const getMyInvitationsQueryOptions = <TData = Awaited<ReturnType<typeof myInvitations>>, TError = unknown>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof myInvitations>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getMyInvitationsQueryKey();
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof myInvitations>>> = ({ signal }) => myInvitations({ signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof myInvitations>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type MyInvitationsQueryResult = NonNullable<Awaited<ReturnType<typeof myInvitations>>>
+export type MyInvitationsQueryError = unknown
+
+
+export function useMyInvitations<TData = Awaited<ReturnType<typeof myInvitations>>, TError = unknown>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof myInvitations>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof myInvitations>>,
+          TError,
+          Awaited<ReturnType<typeof myInvitations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useMyInvitations<TData = Awaited<ReturnType<typeof myInvitations>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof myInvitations>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof myInvitations>>,
+          TError,
+          Awaited<ReturnType<typeof myInvitations>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useMyInvitations<TData = Awaited<ReturnType<typeof myInvitations>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof myInvitations>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary My Invitations
+ */
+
+export function useMyInvitations<TData = Awaited<ReturnType<typeof myInvitations>>, TError = unknown>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof myInvitations>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getMyInvitationsQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+/**
  * A new organisation, owned by its creator, who now works in it.
  * @summary Create Organisation
  */

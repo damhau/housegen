@@ -73,6 +73,18 @@ class InvitationOut(BaseModel):
     expires_at: datetime
 
 
+class MyInvitationOut(BaseModel):
+    """An invitation sent to the signed-in user's verified email: the first-login wizard's Join
+    list. Joining goes through its token, as the link does."""
+
+    id: str
+    organisation_id: str
+    organisation_name: str
+    invited_by: str | None
+    token: str
+    expires_at: datetime
+
+
 class InvitationPreviewOut(BaseModel):
     """What an invitation link shows before it is accepted."""
 

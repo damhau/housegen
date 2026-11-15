@@ -24,6 +24,10 @@ export function formatDate(iso: string) {
   return parseIso(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
 }
 
+export function formatDay(iso: string) {
+  return parseIso(iso).toLocaleDateString(undefined, { dateStyle: "medium" })
+}
+
 export function relTime(iso: string) {
   const s = (Date.now() - parseIso(iso).getTime()) / 1000
   if (s < 60) return "just now"

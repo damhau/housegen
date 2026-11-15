@@ -2,6 +2,8 @@ import { createRootRouteWithContext, Link, Outlet } from "@tanstack/react-router
 import type { QueryClient } from "@tanstack/react-query"
 import { Home } from "lucide-react"
 import { useHealth } from "@/api/endpoints/meta/meta"
+import { AccountMenu } from "@/components/accounts/AccountMenu"
+import { AuthGate } from "@/components/accounts/AuthGate"
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
   component: RootLayout,
@@ -20,18 +22,25 @@ function RootLayout() {
           </span>
           housegen
         </Link>
-        <span className="text-xs text-muted-foreground">plan + photos → 3D, with an agent that looks at its own work</span>
-        {build && (
-          <span
-            className="ml-auto font-mono text-[11px] tabular-nums text-muted-foreground"
-            title={`${build.env}${build.commit ? ` · commit ${build.commit}` : ""}`}
-          >
-            {build.version}
-          </span>
-        )}
+        <span className="hidden text-xs text-muted-foreground md:inline">
+          plan + photos → 3D, with an agent that looks at its own work
+        </span>
+        <div className="ml-auto flex items-center gap-3">
+          <AccountMenu />
+          {build && (
+            <span
+              className="hidden font-mono text-[11px] tabular-nums text-muted-foreground sm:inline"
+              title={`${build.env}${build.commit ? ` · commit ${build.commit}` : ""}`}
+            >
+              {build.version}
+            </span>
+          )}
+        </div>
       </header>
       <main className="min-h-0 flex-1">
-        <Outlet />
+        <AuthGate>
+          <Outlet />
+        </AuthGate>
       </main>
     </div>
   )
