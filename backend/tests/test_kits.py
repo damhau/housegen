@@ -180,6 +180,8 @@ def test_only_renderers_with_styles_are_told_to_leave_finishes_to_the_house_styl
         assert "Leave a fixture's finish out" in told
         assert "one finish for its fixtures" not in told
         assert "tiles: { size:[0.3,0.6]" not in told
+        assert "(handleless units" not in told
+        assert "house style's rug" in told
         assert "House style" not in for_kit(system, plain)
     # without styles, brass is never offered as a default
     assert '"brass"|"black"' not in INTERIOR_SYSTEM

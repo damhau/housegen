@@ -17,7 +17,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { WALL_TILES, finishMaterial, metricUV, tileMaterial, track, wallTileMaterial } from "./finishes.js";
 import * as lighting from "./lighting.js";
 import { OBJECTS } from "./objects.js";
-import { entry } from "./styles.js";
+import { entry, look } from "./styles.js";
 
 // --------------------------------------------------------------------------
 // Materials
@@ -60,17 +60,31 @@ export const finish = {
 };
 
 const matteBlack = () => m("fittings-black", () => new THREE.MeshStandardMaterial({ name: "matte black", color: "#1c1c1c", roughness: 0.45, metalness: 0.35 }));
+// brushed steel, rougher than the taps': a polished bowl mirrors the bright room and reads white
+const brushedSteel = () => m("sink-steel", () => new THREE.MeshStandardMaterial({ color: "#878a8c", roughness: 0.55, metalness: 0.55 }));
 
 /**
  * Bath and kitchen fittings by name (styles.js "fittings"): the metal of taps, mixers, the shower and the drains,
- * the kitchen mixer's, the flush plate and its buttons, a shower's linear drain.
+ * the kitchen mixer's, the flush plate and its buttons, a shower's linear drain; in a kitchen also the sink, the
+ * hood's steel and the oven's handle.
  */
 export const FITTINGS = {
-  chrome: () => ({ metal: finish.chrome(), kitchen: finish.steel(), plate: finish.lacquer("#f4f3f0"), buttons: finish.chrome(), drain: finish.steel() }),
-  // the interior pilot's: a matte plate, its buttons in a satin black chrome that catches the light
+  chrome: () => ({ metal: finish.chrome(), kitchen: finish.steel(), plate: finish.lacquer("#f4f3f0"), buttons: finish.chrome(), drain: finish.steel(),
+    sink: brushedSteel(), hood: finish.metal("#b7babc"), appliance: finish.steel() }),
+  // the interior pilot's: a matte plate, its buttons in a satin black chrome that catches the light; a black
+  // composite sink
   black: () => ({ metal: matteBlack(), kitchen: matteBlack(), drain: matteBlack(),
     plate: m("plate-black", () => new THREE.MeshStandardMaterial({ name: "matte black plate", color: "#1b1b1b", roughness: 0.7, metalness: 0.1 })),
-    buttons: m("buttons-black", () => new THREE.MeshStandardMaterial({ name: "satin black chrome", color: "#6e6e6e", roughness: 0.3, metalness: 0.55 })) }),
+    buttons: m("buttons-black", () => new THREE.MeshStandardMaterial({ name: "satin black chrome", color: "#6e6e6e", roughness: 0.3, metalness: 0.55 })),
+    sink: m("sink-black", () => new THREE.MeshStandardMaterial({ name: "black composite sink", color: "#262626", roughness: 0.62, metalness: 0 })),
+    hood: matteBlack(), appliance: matteBlack() }),
+};
+
+/** Kitchen units' handles by name (styles.js "handles"): none (handleless, a grip rail under the worktop) or bars. */
+export const HANDLES = {
+  none: null,
+  black: () => matteBlack(),
+  steel: () => finish.steel(),
 };
 /** A piece's fittings: its own (`name`) or the house style's. */
 const fittingsOf = (name) => entry(FITTINGS, "fittings", { piece: name })();
@@ -86,6 +100,25 @@ export const BEDDING = {
 };
 /** The bedding of the house style (for `room`, a room's name), or the one named (`bedding`). */
 export const bedding = ({ room, bedding: name } = {}) => entry(BEDDING, "bedding", { piece: name, room });
+
+/** Rugs by name (styles.js "rug"), for a rug given no colour: the colour of its cotton weave. */
+export const RUGS = {
+  sand: "#d8d2c5",
+  charcoal: "#706e6a",
+};
+
+/**
+ * Sofa dressing by name (styles.js "sofaDressing"), put on every sofa by interior.js roomDetails: the cushions
+ * against the back from one end to the other (the first ones at the left end, the last at the right end), a woven
+ * throw over the seat's front at the right end.
+ */
+export const SOFA_DRESSINGS = {
+  none: null,
+  olive: { cushions: ["#6c6c4c", "#cdbfa6", "#6c6c4c"], throw: "#a29e97" },
+};
+
+/** The tone catalogue furniture prefers (styles.js "furnitureTone", per role): any quiet one, or dark first. */
+export const FURNITURE_TONES = { any: { dark: false }, dark: { dark: true } };
 
 // --------------------------------------------------------------------------
 // Building blocks
@@ -244,18 +277,26 @@ export function wardrobe({ width = 1.2, depth = 0.6, height = 2.3 } = {}) {
 
 /**
  * Kitchen run along a wall, `length` long, fronts `front`, worktop `worktop` ("oak", "terrazzo",
- * "marble" or a stone colour): base units of ~60 cm (handleless: dark joints, a grip rail under the worktop, a recessed
- * plinth), tall units `tall: [{ at, width, oven }]` (centre from the left end; `oven` puts a
+ * "marble" or a stone colour): base units of ~60 cm (dark joints, a recessed plinth; handleless with a grip rail under
+ * the worktop, or bar handles: `handles`, HANDLES, the house style's unless named), tall units `tall: [{ at, width, oven }]` (centre from the left end; `oven` puts a
  * built-in oven at eye height), an undermount sink and an induction hob at `sink` / `hob` (centres
  * from the left end), wall units above (`upper`), a splashback between them (`splash`: tile options
  * { size, color }, a colour, or null) and a hood over the hob: built into the wall units, or with
  * `hood: "chimney"` a canopy and chimney up to `ceiling` (m above the floor), for a run with no
- * wall units or an island. The mixer in the `fittings`' kitchen metal (FITTINGS, the house style's unless named).
+ * wall units or an island. The mixer, the sink, the hood's metal and the oven's handle are the `fittings`' (FITTINGS,
+ * the house style's unless named).
  */
 export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null, hob = null, upper = true, front = "#f2f1ed",
-  worktop = "#d9d5cc", splash = { size: [0.3, 0.1], color: "#f4f3ef" }, hood = true, ceiling = 2.4, fittings } = {}) {
+  worktop = "#d9d5cc", splash = { size: [0.3, 0.1], color: "#f4f3ef" }, hood = true, ceiling = 2.4, fittings, handles } = {}) {
   const g = new THREE.Group();
   const F = fittingsOf(fittings);
+  const bar = entry(HANDLES, "handles", { piece: handles })?.();
+  // a bar handle centred at (x, y) on a front whose face is at z: along x, or upright
+  const handle = (x, y, z, w, upright = false) => {
+    const [sx, sy] = upright ? [0.012, w] : [w, 0.012];
+    block(g, [sx, sy, 0.026], [x, y - sy / 2, z + 0.013], bar, 0.005);
+  };
+  const across = (w) => Math.min(0.32, w - 0.16);
   const white = finish.lacquer(front), gap = finish.lacquer("#8f8b84");
   // #61: a terrazzo or marble worktop, textured when the finishes are loaded
   const stoneTop = { terrazzo: () => finishMaterial("terrazzo", { roughness: 0.45 }), marble: () => finishMaterial("stone-tile", { roughness: 0.4 }) }[worktop];
@@ -301,8 +342,18 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
     const n = Math.max(1, Math.round((b - a) / 0.6));
     for (let i = 1; i < n; i++) block(g, [0.006, 0.74, 0.004], [x0 + a + ((b - a) / n) * i, 0.11, depth / 2 - 0.01], gap);
     block(g, [b - a, 0.004, 0.004], [x0 + (a + b) / 2, 0.66, depth / 2 - 0.01], gap);
-    // the grip rail: a dark recess under the worktop
-    block(g, [b - a - 0.01, 0.025, 0.006], [x0 + (a + b) / 2, 0.83, depth / 2 - 0.012], gap);
+    if (bar) {
+      // a drawer over a door in each ~60 cm column
+      const w = (b - a) / n;
+      for (let i = 0; i < n; i++) {
+        const x = x0 + a + w * (i + 0.5);
+        handle(x, 0.765, depth / 2 - 0.02, across(w));
+        handle(x, 0.6, depth / 2 - 0.02, across(w));
+      }
+    } else {
+      // the grip rail: a dark recess under the worktop
+      block(g, [b - a - 0.01, 0.025, 0.006], [x0 + (a + b) / 2, 0.83, depth / 2 - 0.012], gap);
+    }
   }
   for (const t of tall) {
     block(g, [t.width - 0.004, 2.14, depth], [x0 + t.at, 0.1, 0], white, 0.003);
@@ -312,19 +363,22 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
       const w = Math.min(0.56, t.width - 0.04);
       block(g, [w, 0.56, 0.01], [x0 + t.at, 0.96, depth / 2 + 0.002], finish.black(), 0.004);
       block(g, [w, 0.07, 0.01], [x0 + t.at, 1.53, depth / 2 + 0.002], finish.black(), 0.003);
-      block(g, [w - 0.1, 0.018, 0.025], [x0 + t.at, 1.43, depth / 2 + 0.02], finish.steel(), 0.006);
+      block(g, [w - 0.1, 0.018, 0.025], [x0 + t.at, 1.43, depth / 2 + 0.02], F.appliance, 0.006);
+    }
+    if (bar) {
+      handle(x0 + t.at, 0.87, depth / 2, across(t.width));
+      if (t.oven) handle(x0 + t.at, 1.67, depth / 2, across(t.width));
+      else handle(x0 + t.at + t.width / 2 - 0.06, 1.25, depth / 2, 0.4, true);
     }
   }
   if (sink !== null && !inTall(sink)) {
     if (sinkCut) {
       const bowl = new THREE.Group(); // sunkenBowl draws around x = 0
-      // brushed steel, rougher than the taps': a polished bowl mirrors the bright room and reads white
-      const brushed = m("sink-steel", () => new THREE.MeshStandardMaterial({ color: "#878a8c", roughness: 0.55, metalness: 0.55 }));
-      sunkenBowl(bowl, SINK.w, SINK.d, 0.9, 0.2, 0.008, brushed, SINK.z, F.metal);
+      sunkenBowl(bowl, SINK.w, SINK.d, 0.9, 0.2, 0.008, F.sink, SINK.z, F.metal);
       bowl.position.x = x0 + sink;
       g.add(bowl);
     }
-    else block(g, [0.6, 0.012, 0.44], [x0 + sink, 0.9, 0.02], finish.steel(), 0.01);
+    else block(g, [0.6, 0.012, 0.44], [x0 + sink, 0.9, 0.02], F.sink, 0.01);
     kitchenMixer(g, x0 + sink, 0.9, SINK.z - SINK.d / 2 - 0.045, F.kitchen);
   }
   if (hob !== null && !inTall(hob)) {
@@ -343,14 +397,15 @@ export function kitchenRun({ length = 3.6, depth = 0.62, tall = [], sink = null,
       block(g, [b - a, 0.7, 0.35], [x0 + (a + b) / 2, 1.5, -depth / 2 + 0.175], white, 0.003);
       const n = Math.max(1, Math.round((b - a) / 0.6));
       for (let i = 1; i < n; i++) block(g, [0.006, 0.68, 0.004], [x0 + a + ((b - a) / n) * i, 1.51, -depth / 2 + 0.35], gap);
+      if (bar) for (let i = 0; i < n; i++) handle(x0 + a + ((b - a) / n) * (i + 0.5), 1.545, -depth / 2 + 0.35, across((b - a) / n));
     }
     if (hob !== null && hood && hood !== "chimney" && !inTall(hob)) {
       // a flat hood built into the wall unit: a steel lip under it
-      block(g, [0.6, 0.03, 0.3], [x0 + hob, 1.47, -depth / 2 + 0.17], finish.metal("#b7babc"), 0.004);
+      block(g, [0.6, 0.03, 0.3], [x0 + hob, 1.47, -depth / 2 + 0.17], F.hood, 0.004);
     }
   }
   if (hob !== null && hood === "chimney" && !inTall(hob)) {
-    const steel = finish.metal("#b7babc");
+    const steel = F.hood;
     block(g, [0.9, 0.06, 0.5], [x0 + hob, 1.55, -depth / 2 + 0.25], steel, 0.006);
     block(g, [0.28, Math.max(0.1, ceiling - 1.61), 0.24], [x0 + hob, 1.61, -depth / 2 + 0.14], steel, 0.004);
   }
@@ -830,10 +885,10 @@ export function ceilingLight({ diameter = 0.32 } = {}) {
   return piece(g, "ceilingLight", diameter, diameter, { hang: true, height: 0.06 });
 }
 
-/** Flat woven rug. */
-export function rug({ width = 2.0, depth = 1.4, color = "#d8d2c5" } = {}) {
+/** Flat rug: a cotton weave in `color`, else the house style's (RUGS; `rug` names one, `room` takes a room's). */
+export function rug({ width = 2.0, depth = 1.4, color, rug: name, room } = {}) {
   const g = new THREE.Group();
-  const r = block(g, [width, 0.012, depth], [0, 0, 0], finish.weave(color));
+  const r = block(g, [width, 0.012, depth], [0, 0, 0], finish.weave(color ?? entry(RUGS, "rug", { piece: name, room })));
   r.castShadow = false;
   return piece(g, "rug", width, depth, { flat: true });
 }
@@ -862,7 +917,8 @@ export const MODELS = {
     credit: "“Soho bed” by BertO, CC BY 4.0" },
   "sofa-grey-cushions": { fallback: "sofa", file: "sketchfab/modern-sofa.glb", uid: "ac92f6e97eaa43c4ad6cb8f7c65ac43f", rotate: 0,
     credit: "“Modern Sofa” by 3dimentionalben, CC BY 4.0" },
-  "sofa-modular-l": { fallback: "sofa", file: "sketchfab/modular-sofa.glb", uid: "c7a0c35f4f0b49f8b4fea273f9014001", rotate: 0, scale: 0.01,
+  // `dressed`: modelled with its own cushions, the house style's are not added (interior.js roomDetails)
+  "sofa-modular-l": { fallback: "sofa", file: "sketchfab/modular-sofa.glb", uid: "c7a0c35f4f0b49f8b4fea273f9014001", rotate: 0, scale: 0.01, dressed: true,
     credit: "“Sofa” by GreenG, CC BY 4.0" },
   // Bought: Aurélien Martel's "PBR Archviz Asset Pack" (Fab, Standard license), one light Scandinavian
   // flat, in kit/assets/licensed/martel (kit/scripts/licensed/pack.mjs). The license allows them in a
@@ -879,6 +935,8 @@ export const MODELS = {
   "coffee-table-oval-black": { licensed: "martel/lowtable2.glbx", rotate: Math.PI / 2 },
   "dining-table-white": { licensed: "martel/dinnertable.glbx", rotate: 0 },
   "dining-chair-grey": { licensed: "martel/chair.glbx", fallback: "chair", rotate: 0 },
+  // the same chair stained dark (`tint` multiplies its colours): a charcoal seat on dark oak legs
+  "dining-chair-black": { licensed: "martel/chair.glbx", fallback: "chair", rotate: 0, tint: "#5c544e" },
   "desk-trestle-white": { licensed: "martel/desk.glbx", rotate: 0 },
   "desk-chair-leather": { licensed: "martel/deskchair.glbx", rotate: 0 },
   "step-stool-black": { licensed: "martel/footboard.glbx", rotate: 0 },
@@ -1053,8 +1111,10 @@ export function pickObject(role, { width, length, height, room } = {}) {
   const set = MATCHED.has(role) && room != null ? `${role}|${room}` : null;
   if (set && _matched.has(set)) return { piece: _matched.get(set), accent: accent ?? null };
   const [want, axis] = height ? [height, 2] : width ? [width, 0] : length ? [length, 1] : [0, 0];
-  // a stager keeps the large pieces quiet and lets the small ones carry the room's colour
-  const tone = (o) => ["neutral", "dark"].includes(o.tone) ? 0 : o.tone === accent ? (BASE.has(role) ? 1 : 0) : 2;
+  // a stager keeps the large pieces quiet and lets the small ones carry the room's colour; a style may want them dark
+  const dark = entry(FURNITURE_TONES, "furnitureTone", { room, kind: role }).dark;
+  const quiet = (o) => ["neutral", "dark"].includes(o.tone) ? 0 : o.tone === accent ? (BASE.has(role) ? 1 : 0) : 2;
+  const tone = (o) => dark ? quiet(o) * 2 + (o.tone === "dark" ? 0 : 1) : quiet(o);
   const score = (o, i) => [
     _taken.get(o.id) ?? 0,
     FURNITURE.has(role) ? misfit(o, width, length) : want && !FLAT.has(role) && Math.abs(Math.log(want / o.size[axis])) > TOO_FAR ? 1 : 0,
@@ -1193,6 +1253,124 @@ function layers(g, dress, { width, top, head, foot, cx = 0, drop = 0.2, pillows 
   dress.cushions.slice(0, n).forEach((col, i) => soft(0.4, 0.34, 0.12, xs[i] * 0.85, top + 0.17, head + 0.43, -0.3, finish.weave(col)));
 }
 
+const _pillows = new Map();
+/**
+ * A stuffed cushion `w` x `h`, `d` thick at its centre, facing +z, centred on the origin: thin at its rim, its
+ * sides drawn in between its corners.
+ */
+function pillowGeometry(w, h, d) {
+  const key = `${w}:${h}:${d}`;
+  if (_pillows.has(key)) return _pillows.get(key);
+  const n = 24, pos = [], idx = [];
+  for (const side of [1, -1]) {
+    const base = pos.length / 3;
+    for (let j = 0; j <= n; j++) for (let i = 0; i <= n; i++) {
+      const u = (i / n) * 2 - 1, v = (j / n) * 2 - 1;
+      const x = u * (w / 2) * (1 - 0.07 * (1 - v * v)), y = v * (h / 2) * (1 - 0.07 * (1 - u * u));
+      pos.push(x, y, side * (d / 2) * Math.pow((1 - u * u) * (1 - v * v), 0.45));
+    }
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const a = base + j * (n + 1) + i, b = a + n + 1;
+      if (side > 0) idx.push(a, a + 1, b, a + 1, b + 1, b);
+      else idx.push(a, b, a + 1, a + 1, b, b + 1);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  _pillows.set(key, geo);
+  return geo;
+}
+
+/**
+ * A sofa dressed (`dress`: a SOFA_DRESSINGS entry): cushions leaning on its back and a throw over the front of its
+ * seat, where rays cast at the sofa find its seat, the face of its back, its arms and the seat's front. A group to add
+ * to the sofa's parent, at its place and turn (unscaled: a model's wrap is), tagged kind "sofaDressing"; null when
+ * no seat is found.
+ */
+export function dressSofa(sofa, dress) {
+  sofa.updateMatrixWorld(true);
+  const frame = new THREE.Matrix4().compose(sofa.position, sofa.quaternion, new THREE.Vector3(1, 1, 1));
+  const toWorld = sofa.parent ? sofa.parent.matrixWorld.clone().multiply(frame) : frame;
+  const toFrame = toWorld.clone().invert();
+  const turn = new THREE.Matrix3().setFromMatrix4(toWorld);
+  const box = new THREE.Box3(), part = new THREE.Box3(), meshes = [];
+  sofa.traverse((o) => {
+    if (!o.isMesh || !o.geometry?.attributes.position) return;
+    meshes.push(o);
+    if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+    box.union(part.copy(o.geometry.boundingBox).applyMatrix4(toFrame.clone().multiply(o.matrixWorld)));
+  });
+  if (box.isEmpty()) return null;
+  const ray = new THREE.Raycaster();
+  const cast = (from, dir) => {
+    ray.set(new THREE.Vector3(...from).applyMatrix4(toWorld), new THREE.Vector3(...dir).applyMatrix3(turn).normalize());
+    const hit = ray.intersectObjects(meshes, false)[0];
+    return hit ? hit.point.applyMatrix4(toFrame) : null;
+  };
+  const cx = (box.min.x + box.max.x) / 2, above = box.max.y + 0.1, ahead = box.max.z + 0.1;
+  const down = (x, z) => cast([x, above, z], [0, -1, 0]);
+  // the seat's height: the median of a few rays (not one between two seat cushions), a back 20 to 35 cm deep
+  const xs = [-0.25, 0, 0.25].map((k) => cx + k * (box.max.x - box.min.x));
+  const heights = xs.flatMap((x) => [0.45, 0.6].map((dz) => down(x, box.min.z + dz)?.y))
+    .filter((y) => y != null && y > box.min.y + 0.25 && y < box.min.y + 0.7).sort((a, b) => a - b);
+  if (!heights.length) return null;
+  const seatY = heights[Math.floor(heights.length / 2)];
+  const most = (hits, k) => (hits.length ? Math.max(...hits.map((v) => k * v)) * k : null);
+  const backZ = most([xs[0], xs[2]].map((x) => cast([x, seatY + 0.2, ahead], [0, 0, -1])?.z).filter((z) => z != null && z < box.min.z + 0.45), 1)
+    ?? box.min.z + 0.25;
+  const frontZ = most([xs[0], xs[2]].map((x) => cast([x, seatY - 0.04, ahead], [0, 0, -1])?.z).filter((z) => z != null && z > backZ + 0.3), 1)
+    ?? box.max.z;
+  const mid = (backZ + frontZ) / 2;
+  const seatAt = (x, z) => {
+    const y = down(x, z)?.y;
+    return y != null && Math.abs(y - seatY) < 0.08 ? y : seatY;
+  };
+  const arm = (k) => cast([cx, seatY + 0.12, mid], [k, 0, 0])?.x ?? (k > 0 ? box.max.x : box.min.x);
+  // the stretch of seat with a back: between the arms, and not along an open end (a chaise, an ottoman)
+  const backed = (k) => {
+    let last = cx;
+    for (let x = cx + k * 0.1, misses = 0; misses < 2 && Math.abs(x - cx) < (box.max.x - box.min.x) / 2; x += k * 0.1) {
+      const z = cast([x, seatY + 0.2, ahead], [0, 0, -1])?.z;
+      if (z == null || z < backZ - 0.15 || z > backZ + 0.3) misses++; // one miss: a gap between two back cushions
+      else [last, misses] = [x, 0];
+    }
+    return last;
+  };
+  const left = Math.max(arm(-1), backed(-1) - 0.05), right = Math.min(arm(1), backed(1) + 0.05), inner = right - left;
+  // a cushion of the model's own already there
+  const taken = (x, z, half) => [x - half, x, x + half].some((xx) => (down(xx, z)?.y ?? seatY) > seatY + 0.1);
+  const g = new THREE.Group();
+  const colours = inner < 1.2 ? [dress.cushions[0], dress.cushions.at(-1)] : dress.cushions;
+  const tilt = -0.28;
+  colours.forEach((col, i) => {
+    const last = i === colours.length - 1, size = i > 0 && !last ? 0.4 : 0.44;
+    let x = last ? right - 0.3 : left + 0.3 + i * 0.36;
+    for (let n = 0; n < 3 && taken(x, backZ + 0.12, size / 3); n++) x += (last ? -1 : 1) * 0.12;
+    if (taken(x, backZ + 0.12, size / 3)) return;
+    const c = shade(new THREE.Mesh(pillowGeometry(size, size, 0.16), finish.weave(col)));
+    c.position.set(x, seatAt(x, mid) + size / 2 * Math.cos(tilt) - 0.03, backZ + 0.07 + (i > 0 && !last ? 0.05 : 0));
+    c.rotation.set(tilt, (i % 2 ? -1 : 1) * 0.12, (last ? -1 : 1) * 0.05);
+    g.add(c);
+  });
+  if (dress.throw) {
+    const tw = Math.min(0.55, inner * 0.3);
+    const tx = [right - 0.1 - tw / 2, left + 0.1 + tw / 2].find((x) => !taken(x, (mid + frontZ) / 2, tw / 2));
+    if (tx != null) {
+      const ty = Math.max(seatAt(tx - tw / 3, mid), seatAt(tx + tw / 3, mid), seatAt(tx, (mid + frontZ) / 2)) + 0.015;
+      const cloth = drape(tw, backZ + 0.16, frontZ + 0.04, ty, finish.weave(dress.throw), { side: 0.015, foot: Math.min(0.3, ty - 0.1), wave: 0.6 });
+      cloth.position.x = tx;
+      g.add(cloth);
+    }
+  }
+  if (!g.children.length) return null;
+  g.position.copy(sofa.position);
+  g.quaternion.copy(sofa.quaternion);
+  g.userData = { kind: "sofaDressing", name: "sofa cushions and throw" };
+  return g;
+}
+
 // the duvet's colour, by the room's accent: quiet linen mostly, a muted colour now and then
 const DUVETS = { null: ["#ece8e0", "#e4ddd0", "#d9d8d4"], warm: ["#ece8e0", "#d8c7b0"], cool: ["#e6e8ea", "#c9d0d6"], green: ["#ece8e0", "#c8cdbd"] };
 const THROWS = { null: ["#8a8379", "#5b5e60"], warm: ["#b4734f", "#a08a6a"], cool: ["#5d6f80", "#7f8c96"], green: ["#7d8a6a", "#5f6b55"] };
@@ -1271,6 +1449,11 @@ async function roleModel(role, { width, length, height, room, stems } = {}) {
   return piece(new THREE.Group(), role, 0, 0);
 }
 const _loaded = new Map();
+const tinted = (material, tint) => m(`tint:${material.uuid}:${tint}`, () => {
+  const c = material.clone();
+  c.color.multiply(new THREE.Color(tint));
+  return c;
+});
 
 /**
  * A scanned or bought model by its catalogue name, bottom-centred and facing +z (async: it is
@@ -1280,14 +1463,25 @@ const _loaded = new Map();
  * A role instead of a name (ROLES: "vase", "rug", "cushion"…) draws one of the role's pieces (pickObject;
  * `room` gives the room's accent) at its real size, scaled as a whole to the `height`, else `width`, else
  * `length` asked; a rug or a runner is stretched to its width and length; a vase with `stems: true` holds branches.
+ * The house style may draw a name as another model or a role (styles.js "models": contemporary's dark chairs).
  */
 export async function model(name, { width, length, height, room, stems } = {}) {
+  const as = look("models", { room, kind: name });
+  if (as != null && as !== name && (MODELS[as] || ROLES[as])) {
+    const p = await drawModel(as, { width, length, height, room, stems });
+    p.userData.styledFrom = name;
+    return p;
+  }
+  return drawModel(name, { width, length, height, room, stems });
+}
+
+async function drawModel(name, { width, length, height, room, stems } = {}) {
   const spec = MODELS[name];
   if (!spec && ROLES[name]) return roleModel(name, { width, length, height, room, stems });
   if (!spec) throw new Error(`unknown model ${name}. Roles: ${Object.keys(ROLES).join(", ")}. Known: ${Object.keys(MODELS).join(", ")}`);
   const file = spec.licensed ? `licensed/${spec.licensed}` : spec.file ?? `polyhaven/${spec.id}/${spec.id}.gltf`;
   // models are fetched compressed (meshopt geometry, WebP textures at 1k: scripts/fetch_models.mjs)
-  if (!_loaded.has(file)) _loaded.set(file, loadGLTF(spec, file).catch(() => null));
+  if (!_loaded.has(file)) _loaded.set(file, loadGLTF(spec, file).catch((e) => (console.warn(`housekit: ${file}: ${e?.message ?? e}`), null)));
   const gltf = await _loaded.get(file);
   if (!gltf) {
     // not fetched (a build without the Sketchfab token) or not loadable: the parametric piece of
@@ -1299,6 +1493,7 @@ export async function model(name, { width, length, height, room, stems } = {}) {
   }
   _used.add(name);
   const inner = gltf.scene.clone(true);
+  if (spec.tint) inner.traverse((o) => { if (o.isMesh) o.material = Array.isArray(o.material) ? o.material.map((mt) => tinted(mt, spec.tint)) : tinted(o.material, spec.tint); });
   inner.rotation.y = spec.rotate;
   if (spec.scale) inner.scale.setScalar(spec.scale); // a model made in centimetres
   inner.traverse((o) => { if (o.isMesh) shade(o); });
@@ -1315,6 +1510,7 @@ export async function model(name, { width, length, height, room, stems } = {}) {
   wrap.scale.set(...s);
   const extra = { hang: !!spec.hang, height: size.y * s[1] };
   if (spec.nominal) extra.nominal = [nw * s[0], nl * s[2]];
+  if (spec.dressed) extra.dressed = true;
   return piece(wrap, name, size.x * s[0], size.z * s[2], extra);
 }
 
@@ -1359,7 +1555,7 @@ export function onWall(room, edge, at, p, { y = 0, gap, out = 0 } = {}) {
 export default {
   finish, sofa, bed, nightstand, chair, diningSet, wardrobe, kitchenRun, wc, basin, bathtub, shower, towelRail,
   coatHooks, bench, washer, bathAccessories, towelStack, laundryBasket, rug, ceilingLight,
-  MODELS, ROLES, model, credits, place, onWall, FITTINGS, BEDDING, bedding,
+  MODELS, ROLES, model, credits, place, onWall, FITTINGS, HANDLES, BEDDING, bedding, RUGS, SOFA_DRESSINGS, FURNITURE_TONES,
   // light fixtures that carry their own light (lighting.js): fx.fixture("downlight", { mount: "recessed" })
   fixture: lighting.fixture, FIXTURES: lighting.FIXTURES, lighting,
 };

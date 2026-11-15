@@ -8,7 +8,8 @@
 // The most specific wins: the piece's own setting, the room's override, the house's, the style's, the fallback
 // (the kit's defaults). The runtime reads src/style.js before buildScene; a scene without it draws in
 // DEFAULT_STYLE, today's look. A role's value may also be one entry per kind ({ default, globePendant: "white" }:
-// a fixture family's own finish).
+// a fixture family's own finish). A map role (MAPS) names an entry per name only: { "dining-chair-grey":
+// "dining-chair-black" } draws that model as the other, and a name it does not list stays itself.
 
 /** The roles, and the catalogue each one names an entry of. */
 export const ROLES = {
@@ -19,21 +20,36 @@ export const ROLES = {
   bathFloor: "the \"tile\" floor of a bath or a WC: finishes.js FLOOR_TILES",
   bedding: "bed dressing and its cushions: furnish.js BEDDING",
   featureWall: "a wall behind each double bed: interior.js FEATURE_WALLS",
+  handles: "kitchen units' handles: furnish.js HANDLES (none: handleless, a grip rail under the worktop)",
+  rug: "a rug the scene gives no colour: furnish.js RUGS",
+  sofaDressing: "cushions and a throw on every sofa: furnish.js SOFA_DRESSINGS",
+  furnitureTone: "the tone catalogue furniture prefers, per role (dining-chair, coffee-table…): furnish.js FURNITURE_TONES",
+  models: "a named model drawn as another named model or a catalogue role, per name: furnish.js MODELS and ROLES",
 };
 
+/** Roles whose value maps names to names ({ "<model>": "<model or role>" }): no default, nothing when unnamed. */
+export const MAPS = new Set(["models"]);
+
 export const STYLES = {
-  // today's look: light oak, white, grey and sand textiles, chrome; fixtures white and black, built-ins white
+  // today's look: light oak, white, grey and sand textiles, chrome, handleless kitchens; fixtures white (opal, white
+  // metal; a tripod lamp's legs oak), built-ins white
   scandinavian: {
-    fixtures: { default: "black", globePendant: "white", globeSconce: "white", mushroomLamp: "white" },
+    fixtures: "white",
     builtIns: "white",
     fittings: "chrome",
     wallTile: "white",
     bathFloor: "tile",
     bedding: "linen",
     featureWall: "none",
+    handles: "none",
+    rug: "sand",
+    sofaDressing: "none",
+    furnitureTone: "any",
+    models: {},
   },
-  // the interior pilot's (spikes/interior-pilot, sheet C): dark accents on white walls, matte black fittings, grey
-  // veined marble in the baths, olive and grey bedding, a panelled wall behind the bed
+  // the interior pilot's (spikes/interior-pilot, sheet C): dark accents on white walls, matte black fittings and
+  // handles, grey veined marble in the baths, olive and grey bedding, a panelled wall behind the bed, a charcoal rug,
+  // olive and sand cushions on the sofa, dark chairs and tables
   contemporary: {
     fixtures: "black",
     builtIns: "white",
@@ -42,6 +58,11 @@ export const STYLES = {
     bathFloor: "marble-light",
     bedding: "olive",
     featureWall: "panelled",
+    handles: "black",
+    rug: "charcoal",
+    sofaDressing: "olive",
+    furnitureTone: { default: "any", "dining-chair": "dark", "coffee-table": "dark", "side-table": "dark", sideboard: "dark" },
+    models: { "coffee-table-oval-white": "coffee-table-oval-black", "dining-chair-grey": "dining-chair-black" },
   },
 };
 
@@ -49,7 +70,7 @@ export const DEFAULT_STYLE = "scandinavian";
 
 /** The kit's defaults: what a role is when neither the scene nor the style says. */
 export const FALLBACK = { fixtures: "black", builtIns: "white", fittings: "chrome", wallTile: "white", bathFloor: "tile",
-  bedding: "linen", featureWall: "none" };
+  bedding: "linen", featureWall: "none", handles: "none", rug: "sand", sofaDressing: "none", furnitureTone: "any", models: {} };
 
 let house = {};
 
@@ -92,4 +113,4 @@ export function entry(catalogue, role, options = {}) {
   return catalogue[FALLBACK[role]];
 }
 
-export default { ROLES, STYLES, DEFAULT_STYLE, FALLBACK, setHouseStyle, styleName, look, entry };
+export default { ROLES, MAPS, STYLES, DEFAULT_STYLE, FALLBACK, setHouseStyle, styleName, look, entry };

@@ -16,6 +16,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { FLOOR_TILES, bathFloorMaterial, finishMaterial, metricUV, tileMaterial, wallTileMaterial } from "./finishes.js";
 import { entry } from "./styles.js";
+import { SOFA_DRESSINGS, dressSofa } from "./furnish.js";
 
 // plain fallbacks (no import of house.js: a page may load it under another URL, ?v=<tag>, and a
 // second instance of it would carry its own caches)
@@ -671,11 +672,54 @@ function featureWalls(root, plans) {
   return added;
 }
 
+const SOFA = (w) => (w.includes("sofa") || w.includes("couch") || w.some((x) => x.startsWith("sofa"))) && !w.includes("table");
+const SOFT = (w) => ["cushion", "cushions", "pillow", "pillows", "throw", "plaid", "blanket"].some((k) => w.includes(k));
+
+/**
+ * The house style's dressing (styles.js "sofaDressing", SOFA_DRESSINGS) on every sofa at least 1.2 m wide: cushions
+ * and a throw (furnish.js dressSofa), beside it in its parent. Skipped for a sofa dressed already (kind
+ * "sofaDressing"), modelled with its own (userData.dressed) or that the scene dressed itself (a cushion, pillow or
+ * throw of its own on it). Returns how many it dressed.
+ */
+function sofaDressings(root, plans) {
+  const sofas = [], soft = [], dressed = new Set();
+  root.traverse((o) => {
+    const u = o.userData ?? {};
+    if (u.kind === "sofaDressing") dressed.add(u.sofa);
+    else if (u.kind === "furniture" && !u.dressed && SOFA(pieceWords(u.name)) && (u.footprint?.[0] ?? 0) >= 1.2) sofas.push(o);
+    else if (SOFT(pieceWords(u.name ?? o.name))) soft.push(o);
+  });
+  const roomOf = (o) => {
+    for (const plan of plans) {
+      const p = plan.worldToLocal(o.getWorldPosition(new THREE.Vector3())), { y } = plan.userData;
+      const r = (plan.userData.rooms ?? []).find((r) => p.y > y - 0.3 && p.y < y + 2.2 && nearPolygon([p.x, p.z], r.polygon, 0.15));
+      if (r) return r.name;
+    }
+    return undefined;
+  };
+  const inside = (o, sofa) => { for (let p = o; p; p = p.parent) if (p === sofa) return true; return false; };
+  let added = 0;
+  for (const sofa of sofas) {
+    if (!sofa.parent || dressed.has(sofa.uuid)) continue;
+    const spec = entry(SOFA_DRESSINGS, "sofaDressing", { room: roomOf(sofa) });
+    if (!spec) continue;
+    const box = new THREE.Box3().setFromObject(sofa).expandByVector(new THREE.Vector3(0.05, 0.05, 0.05));
+    if (soft.some((o) => !inside(o, sofa) && box.containsPoint(o.getWorldPosition(new THREE.Vector3())))) continue;
+    const g = dressSofa(sofa, spec);
+    if (!g) continue;
+    g.userData.sofa = sofa.uuid;
+    sofa.parent.add(g);
+    added++;
+  }
+  return added;
+}
+
 /**
  * The details a builder leaves out, added to every room of every floor plan once the scene is built
  * (#43): skirting (not in rooms with tiled walls), inner window sills, curtain rails over the
  * windows with curtains, and a ceiling cornice where the floor plan asks for one (cornice: true). Skipped for a room that already has its own (kind "skirting",
- * "windowSills", "curtainRails" for that room). Then what the house style adds: a feature wall behind a double bed.
+ * "windowSills", "curtainRails" for that room). Then what the house style adds: a feature wall behind a double bed, cushions and a
+ * throw on the sofas.
  */
 export function roomDetails(root) {
   root.updateMatrixWorld(true);
@@ -707,7 +751,7 @@ export function roomDetails(root) {
       }
     }
   }
-  return added + featureWalls(root, plans);
+  return added + featureWalls(root, plans) + sofaDressings(root, plans);
 }
 
 export default { floorPlan, partition, interiorDoor, polygonArea, tileWalls, panelledWall, FEATURE_WALLS, roomEssentials, skirting, windowSills,

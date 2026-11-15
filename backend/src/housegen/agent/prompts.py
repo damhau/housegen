@@ -356,21 +356,29 @@ _DECOR_ANCHOR = "  Put small decor on a surface with fx.place(p, [x, z], rot, su
 # a renderer with named styles (kit/styles.js, #99): the house style decides the finishes the pieces leave out
 STYLE_REFERENCE = """
 ### House style — src/style.js
-The fixtures' finish, the bath and kitchen fittings, the bath tiles and floor, the bedding and a feature wall are the
-house style's: leave them out of the pieces and they agree. src/style.js holds it (plain data, no import):
+The fixtures' finish, the bath and kitchen fittings, the kitchen handles, the bath tiles and floor, the bedding, the
+rugs, a feature wall and the sofa cushions are the house style's: leave them out of the pieces and they agree.
+src/style.js holds it (plain data, no import):
   export default { style: "contemporary" }
 Without the file the house is "scandinavian". Write it when the brief names a style or asks for a finish.
-- "scandinavian": light oak, white, grey and sand textiles; fixtures black, the glass globes and the opal mushroom
-  lamp white; chrome fittings; white tiles and a light porcelain bath floor; white linen bedding.
-- "contemporary": dark accents on white walls; black fixtures; matte black fittings; grey veined marble to 1.2 m and a
+- "scandinavian": light oak, white, grey and sand textiles; white fixtures (opal, white metal, oak legs); chrome
+  fittings and a steel sink; handleless kitchen units; sand rugs; white tiles and a light porcelain bath floor; white
+  linen bedding.
+- "contemporary": dark accents on white walls; black fixtures; matte black fittings, kitchen handles, sink, hood and
+  oven trim (the fronts and the worktop stay the project's); charcoal woven rugs; grey veined marble to 1.2 m and a
   light marble floor in the baths; olive and grey layered bedding with olive cushions; a panelled wall with an oak ledge
-  behind each double bed (the kit adds it: lean framed photographs on the ledge).
+  behind each double bed (the kit adds it: lean framed photographs on the ledge); olive and sand cushions and a grey
+  throw on every sofa (the kit adds them: put no cushions of your own on a sofa); "coffee-table-oval-white" drawn as
+  "coffee-table-oval-black", "dining-chair-grey" as a black chair, and dark tables, chairs and sideboards first among
+  the catalogue's pieces.
 The built-in fixtures (downlight, track, flushCeiling, stepLight) are white in both. A role for the whole house or for
 one room (the floorPlan's room name) overrides the style, e.g. brass fixtures when the owner asks for them:
   export default { style: "contemporary", fixtures: "brass", rooms: { "Bain": { wallTile: "white" } } }
 Roles and their names: fixtures and builtIns "black"|"white"|"brass"|"chrome"|"bronze" · fittings "chrome"|"black" ·
 wallTile "white"|"marble-grey" · bathFloor "tile"|"marble-light" (a bath's or WC's "tile" floor) · bedding
-"linen"|"olive" · featureWall "none"|"panelled". A piece's own option (finish, fittings, bedding, tiles) wins over all.
+"linen"|"olive" · featureWall "none"|"panelled" · handles "none"|"black"|"steel" · rug "sand"|"charcoal" ·
+sofaDressing "none"|"olive" · furnitureTone "any"|"dark" · models { "<model name>": "<model or role name>" } (a name
+mapped to itself keeps it). A piece's own option (finish, fittings, handles, bedding, tiles, a rug's color) wins over all.
 panelledWall(width, { height=1.25, board=0.12, color="#8a8a85" }) (import { panelledWall } from "housekit/interior")
   → a panelled feature wall with an oak ledge on top (0.11 deep), against a wall: fx.onWall(room.polygon, edge, at, p,
   { y, gap: 0 }); add it to ctx.group yourself only where the style does not put one.
@@ -383,6 +391,14 @@ _STYLE_SWAPS = (
         'Every fixture takes finish: "black"|"white"|"chrome"|"bronze" ("brass" only when the brief asks for it).',
         'Leave a fixture\'s finish out: it takes the house style\'s (src/style.js); finish: "black"|"white"|'
         '"chrome"|"bronze"|"brass" on one only where the brief asks.',
+    ),
+    (
+        "  (handleless units; `oven:true`",
+        '  (handles: the house style\'s, or "none"|"black"|"steel"; `oven:true`',
+    ),
+    (
+        "  rug({ width, depth, color }) ·",
+        "  rug({ width, depth, color }) (leave color out for the house style's rug) ·",
     ),
     (
         "one finish for its fixtures (black or white, the built-in\nones white)",

@@ -11,6 +11,10 @@ kit's template for look_sheet).
 The app image (ghcr.io/damhau/housegen:latest, as the render service) brings the browser, the Python environment and
 the kit's assets; this checkout's kit modules, renderer snapshots, styles and template, backend/src and backend/scripts
 replace the image's. Assets only in this checkout (not yet in an image) go with `--assets <dir under kit/assets>,...`.
+
+Modal pulls a registry tag once and keeps that build: a `latest` pulled long ago serves 404 for every model added since
+(the page warns `housekit: licensed/…: 404` and draws the parametric fallbacks). Name the release dev runs instead:
+HOUSEGEN_IMAGE=ghcr.io/damhau/housegen:<version> (`kubectl … get deploy housegen-dev -o jsonpath=…image`).
 """
 
 from __future__ import annotations

@@ -85,6 +85,9 @@ async def render_all(
         )
         for err in res.errors:
             print(f"  [{look}] error: {err[:200]}", file=sys.stderr)
+        # a model that did not load is a warning, not an error, and changes what the sheet shows
+        for line in list(dict.fromkeys(res.console))[:20]:
+            print(f"  [{look}] {line[:200]}", file=sys.stderr)
         print(f"  {look}: {len(res.images)} views in {res.duration_ms / 1000:.0f} s")
         images[look] = res.images
     return images

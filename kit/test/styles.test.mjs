@@ -1,14 +1,16 @@
 // housekit styles (#99): every style names an entry of each role's catalogue, the precedence piece > room > house >
-// style > fallback, fixtures never brass unless asked, and what the contemporary style changes in a bedroom.
+// style > fallback, fixtures never brass unless asked, and what the contemporary style changes in a bedroom, a
+// kitchen and a living room.
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import * as house from "../house.js";
-import { DEFAULT_STYLE, FALLBACK, ROLES, STYLES, look, setHouseStyle, styleName } from "../styles.js";
+import { DEFAULT_STYLE, FALLBACK, MAPS, ROLES, STYLES, look, setHouseStyle, styleName } from "../styles.js";
 import { FINISHES } from "../lighting-parts.js";
 import { FLOOR_TILES, WALL_TILES } from "../finishes.js";
-import fx, { BEDDING, FITTINGS } from "../furnish.js";
+import fx, { BEDDING, FITTINGS, FURNITURE_TONES, HANDLES, MODELS, ROLES as PIECES, RUGS, SOFA_DRESSINGS, pickObject, resetObjects } from "../furnish.js";
 import { FIXTURES } from "../lighting.js";
+import { BUILT_IN } from "../lighting-built-in.js";
 import interior, { FEATURE_WALLS } from "../interior.js";
 
 afterEach(() => setHouseStyle({}));
@@ -21,6 +23,11 @@ const CATALOGUES = {
   bathFloor: FLOOR_TILES,
   bedding: BEDDING,
   featureWall: FEATURE_WALLS,
+  handles: HANDLES,
+  rug: RUGS,
+  sofaDressing: SOFA_DRESSINGS,
+  furnitureTone: FURNITURE_TONES,
+  models: null, // a map: model names to model or role names
 };
 
 test("every style, and the fallback, names an existing entry for every role", () => {
@@ -29,12 +36,24 @@ test("every style, and the fallback, names an existing entry for every role", ()
     for (const role of Object.keys(ROLES)) {
       const v = style[role];
       assert.ok(v != null, `${name}: no ${role}`);
+      if (MAPS.has(role)) {
+        for (const [from, to] of Object.entries(v)) {
+          assert.ok(from in MODELS, `${name}.${role}: "${from}" is not a model`);
+          assert.ok(to in MODELS || to in PIECES, `${name}.${role}: "${to}" is neither a model nor a role`);
+        }
+        continue;
+      }
       const names = typeof v === "object" ? Object.values(v) : [v];
       if (typeof v === "object") assert.ok("default" in v, `${name}.${role}: a value per kind has a default`);
       for (const n of names) assert.ok(n in CATALOGUES[role], `${name}.${role}: "${n}" is not in its catalogue`);
     }
   }
-  for (const kind of Object.keys(STYLES.scandinavian.fixtures).filter((k) => k !== "default")) assert.ok(kind in FIXTURES, kind);
+  for (const v of Object.values(STYLES).map((st) => st.fixtures).filter((v) => typeof v === "object")) {
+    for (const kind of Object.keys(v).filter((k) => k !== "default")) assert.ok(kind in FIXTURES, kind);
+  }
+  for (const v of Object.values(STYLES).map((st) => st.furnitureTone).filter((v) => typeof v === "object")) {
+    for (const kind of Object.keys(v).filter((k) => k !== "default")) assert.ok(kind in PIECES, kind);
+  }
   assert.ok(DEFAULT_STYLE in STYLES);
 });
 
@@ -42,7 +61,7 @@ test("no style: the default style; a house style, a room override and a piece ov
   assert.equal(styleName(), "scandinavian");
   assert.equal(look("fittings"), "chrome");
   assert.equal(look("fixtures", { kind: "globePendant" }), "white");
-  assert.equal(look("fixtures", { kind: "hexSconce" }), "black");
+  assert.equal(look("fixtures", { kind: "hexSconce" }), "white");
 
   setHouseStyle({ style: "contemporary", rooms: { "SDB 1": { wallTile: "white", fittings: "chrome" } } });
   assert.equal(styleName(), "contemporary");
@@ -142,4 +161,144 @@ test("contemporary puts a panelled wall behind a double bed, once, under what ha
   const off = bedroom();
   interior.roomDetails(off.root);
   assert.equal(off.plan.children.filter((c) => c.userData.kind === "featureWall").length, 0, "a room's override");
+});
+
+test("decorative fixtures are white in scandinavian and black in contemporary, built-ins white in both", () => {
+  for (const [style, finish] of [[{}, "white"], [{ style: "contemporary" }, "black"]]) {
+    setHouseStyle(style);
+    for (const name of Object.keys(FIXTURES).filter((n) => !["mirrorBar", "coveStrip", "underCabinet"].includes(n))) {
+      const f = fx.fixture(name, {});
+      const want = name in BUILT_IN ? "white" : finish;
+      if (f.userData.fixture?.finish !== undefined) assert.equal(f.userData.fixture.finish, want, `${name} (${style.style ?? "no style"})`);
+    }
+  }
+  setHouseStyle({});
+  assert.equal(fx.fixture("discArms", { finish: "black" }).userData.fixture.finish, "black", "a fixture's own finish");
+});
+
+const meshes = (o, test) => {
+  const found = [];
+  o.traverse((c) => { if (c.isMesh && test(c)) found.push(c); });
+  return found;
+};
+const named = (name) => (c) => [c.material].flat().some((m) => m?.name === name);
+
+test("a kitchen: handleless in scandinavian, black handles, sink, hood and mixer in contemporary; its fronts and worktop its own", () => {
+  const run = () => fx.kitchenRun({ length: 3.6, tall: [{ at: 0.3, width: 0.6 }, { at: 3.3, width: 0.6, oven: true }], sink: 1.2, hob: 2.4, worktop: "oak", front: "#f2f1ed" });
+  const scandi = run();
+  assert.equal(meshes(scandi, named("matte black")).length, 0);
+  setHouseStyle({ style: "contemporary" });
+  const dark = run();
+  const handles = meshes(dark, (c) => named("matte black")(c) && c.geometry.parameters?.depth === 0.026);
+  // two per base column (a drawer over a door), one per wall-unit door, two on each tall unit
+  assert.ok(handles.length >= 12, `${handles.length} handles`);
+  assert.ok(meshes(dark, named("black composite sink")).length > 0, "a black sink");
+  const fronts = (k) => new Set(meshes(k, () => true).map((c) => c.material).filter((m) => m.color?.getHexString() === new THREE.Color("#f2f1ed").getHexString()));
+  assert.deepEqual([...fronts(dark)], [...fronts(scandi)], "the same fronts");
+  const own = fx.kitchenRun({ sink: 1.2, hob: 2.4, tall: [{ at: 3.3, width: 0.6, oven: true }], handles: "none", fittings: "chrome" });
+  assert.equal(meshes(own, named("matte black")).length, 0, "the piece's own options win");
+});
+
+test("a rug given no colour is the style's, a colour wins", () => {
+  const colour = (r) => meshes(r, () => true)[0].material.color.getHexString();
+  const sand = colour(fx.rug());
+  setHouseStyle({ style: "contemporary" });
+  const charcoal = colour(fx.rug());
+  assert.notEqual(sand, charcoal);
+  assert.equal(colour(fx.rug({ color: "#d8d2c5" })), sand, "the scene's colour");
+  assert.equal(colour(fx.rug({ rug: "sand" })), sand, "the piece's own rug");
+  setHouseStyle({ style: "contemporary", rooms: { Salon: { rug: "sand" } } });
+  assert.equal(colour(fx.rug({ room: "Salon" })), sand, "a room's override");
+});
+
+// a 5 x 4 living room (x 0..5, z 0..4) with a parametric sofa against its north wall
+function livingRoom({ cushion = false } = {}) {
+  const root = new THREE.Group();
+  const room = { name: "Séjour", use: "living", polygon: [[0, 0], [5, 0], [5, 4], [0, 4]] };
+  const plan = interior.floorPlan({ y: 0, rooms: [room], partitions: [] });
+  root.add(plan);
+  const sofa = fx.onWall(room.polygon, 0, 2.5, fx.sofa({ width: 2.2 }), { y: 0.015 });
+  root.add(sofa);
+  if (cushion) {
+    const c = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.15), fx.finish.weave("#aa3333"));
+    c.name = "red cushion";
+    c.position.set(2.0, 0.7, 0.35);
+    root.add(c);
+  }
+  return { root, sofa };
+}
+const dressings = (root) => {
+  const found = [];
+  root.traverse((o) => { if (o.userData.kind === "sofaDressing") found.push(o); });
+  return found;
+};
+
+test("contemporary dresses every sofa with olive and sand cushions and a wool throw, once; not one the scene dressed", () => {
+  const plain = livingRoom();
+  interior.roomDetails(plain.root);
+  assert.equal(dressings(plain.root).length, 0, "scandinavian adds nothing");
+
+  setHouseStyle({ style: "contemporary" });
+  const { root, sofa } = livingRoom();
+  interior.roomDetails(root);
+  const [d] = dressings(root);
+  assert.ok(d, "a dressing");
+  assert.equal(d.children.length, 4, "three cushions and a throw");
+  root.updateMatrixWorld(true);
+  const seat = new THREE.Box3().setFromObject(sofa);
+  for (const c of d.children) {
+    const b = new THREE.Box3().setFromObject(c);
+    assert.ok(b.min.x > seat.min.x && b.max.x < seat.max.x && b.min.z > seat.min.z - 0.01 && b.max.z < seat.max.z + 0.06, "on the sofa");
+    assert.ok(b.max.y > 0.015 + 0.48 && b.min.y < 0.015 + 0.48 + 0.05, `on its seat: ${b.min.y.toFixed(2)}..${b.max.y.toFixed(2)}`);
+  }
+  assert.equal(interior.roomDetails(root), 0, "a second pass adds nothing");
+
+  const own = livingRoom({ cushion: true });
+  interior.roomDetails(own.root);
+  assert.equal(dressings(own.root).length, 0, "the scene's own cushion");
+  setHouseStyle({ style: "contemporary", rooms: { "Séjour": { sofaDressing: "none" } } });
+  const off = livingRoom();
+  interior.roomDetails(off.root);
+  assert.equal(dressings(off.root).length, 0, "a room's override");
+});
+
+test("a style draws a named model as another or as a role; the house can keep the name", async () => {
+  const warn = console.warn;
+  console.warn = () => {};
+  try {
+    setHouseStyle({ style: "contemporary" });
+    const table = await fx.model("coffee-table-oval-white", { width: 0.8 });
+    assert.equal(table.userData.styledFrom, "coffee-table-oval-white");
+    const chair = await fx.model("dining-chair-grey", { width: 0.44 });
+    assert.equal(chair.userData.styledFrom, "dining-chair-grey", "a dark chair (the parametric one in Node)");
+    setHouseStyle({ style: "contemporary", models: { "dining-chair-grey": "dining-chair-grey" } });
+    assert.equal((await fx.model("dining-chair-grey")).userData.styledFrom, undefined);
+    setHouseStyle({ models: { "vase-white": "vase" } });
+    const vase = await fx.model("vase-white", { height: 0.3 });
+    assert.equal(vase.userData.name, "vase");
+    setHouseStyle({});
+    assert.equal((await fx.model("coffee-table-oval-white")).userData.styledFrom, undefined, "scandinavian keeps it");
+  } finally {
+    console.warn = warn;
+  }
+});
+
+test("contemporary's catalogue tables, chairs and sideboards are dark first; scandinavian's any quiet tone", () => {
+  globalThis.__housekitSeed = "tones";
+  try {
+    for (const role of ["dining-chair", "coffee-table", "side-table", "sideboard"]) {
+      setHouseStyle({ style: "contemporary" });
+      resetObjects();
+      assert.equal(pickObject(role).piece.tone, "dark", role);
+      setHouseStyle({});
+      resetObjects();
+      assert.ok(["neutral", "dark"].includes(pickObject(role).piece.tone), role);
+    }
+    setHouseStyle({ style: "contemporary" });
+    resetObjects();
+    assert.ok(["neutral", "dark"].includes(pickObject("armchair").piece.tone), "other roles as before");
+  } finally {
+    delete globalThis.__housekitSeed;
+    resetObjects();
+  }
 });
