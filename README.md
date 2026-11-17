@@ -179,6 +179,18 @@ mirrors and prints, the ones the 3D shows in that room:
 
 A version drawn with an older renderer has no tags, and the pipeline dresses it as before.
 
+From renderer `2026-11-17-v39` (#103), the kit also adds the dressing, so the 3D tour shows the same rooms as the
+photos:
+
+- After `buildScene`, `kit/dressing.js` dresses what the builder left bare. A nightstand gets books or something
+  small, its lamp moved to the back corner. A dining table gets napkins and a centre line. A sofa gets cushions and,
+  now and then, a throw. A sideboard gets its objects. The free corners get a floor accent, and a bath gets its towels.
+  The pieces come from the house style's catalogue, plus stand-ins tagged `made` for the pipeline's own props (books, a
+  carafe, a napkin, a runner, a throw, towels). `photo/blender/catalogue.py` draws those props in place of the stand-ins.
+- In such a scene, the pipeline skips its own rules for those pieces. It keeps the rules that depend on its camera:
+  a prop cut by the frame or in front of the lens comes out, the door leaves open, and at most one pouf or basket of
+  the house style fills an empty corner in view. At the **Light** and **Empty** levels the kit's dressing is left out.
+
 The service uses the render service's token, so the app needs no new secret: it derives the URL from
 `RENDER_SERVICE_URL` (`housegen-render-web` → `housegen-photo-web`) unless `PHOTO_SERVICE_URL` is set.
 The runbook (the volume, the asset upload, the deploy) is the docstring of `deploy/modal_photo.py`.

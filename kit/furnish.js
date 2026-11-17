@@ -1342,12 +1342,13 @@ function pillowGeometry(w, h, d) {
 }
 
 /**
- * A sofa dressed (`dress`: a SOFA_DRESSINGS entry): cushions leaning on its back and a throw over the front of its
- * seat, where rays cast at the sofa find its seat, the face of its back, its arms and the seat's front. A group to add
- * to the sofa's parent, at its place and turn (unscaled: a model's wrap is), tagged kind "sofaDressing"; null when
- * no seat is found.
+ * A sofa measured by rays cast at its own meshes, in its frame (its place and turn, unscaled: a model's wrap is): the
+ * seat's height `seatY`, the face of its back `backZ`, the seat's front `frontZ`, the stretch of seat with a back
+ * between `left` and `right`, each arm's inner face, top and width (`arms[-1]`, `arms[1]`: null for an open end), the
+ * floor `floorY`. `down(x, z)` and `seatAt(x, z)` read heights there, `taken(x, z, half)` whether a cushion of the
+ * model's own is there; `toWorld` takes a point of the frame to the world. Null when no seat is found.
  */
-export function dressSofa(sofa, dress) {
+export function measureSofa(sofa) {
   sofa.updateMatrixWorld(true);
   const frame = new THREE.Matrix4().compose(sofa.position, sofa.quaternion, new THREE.Vector3(1, 1, 1));
   const toWorld = sofa.parent ? sofa.parent.matrixWorld.clone().multiply(frame) : frame;
@@ -1385,7 +1386,7 @@ export function dressSofa(sofa, dress) {
     const y = down(x, z)?.y;
     return y != null && Math.abs(y - seatY) < 0.08 ? y : seatY;
   };
-  const arm = (k) => cast([cx, seatY + 0.12, mid], [k, 0, 0])?.x ?? (k > 0 ? box.max.x : box.min.x);
+  const armAt = (k) => cast([cx, seatY + 0.12, mid], [k, 0, 0])?.x ?? null;
   // the stretch of seat with a back: between the arms, and not along an open end (a chaise, an ottoman)
   const backed = (k) => {
     let last = cx;
@@ -1396,9 +1397,30 @@ export function dressSofa(sofa, dress) {
     }
     return last;
   };
-  const left = Math.max(arm(-1), backed(-1) - 0.05), right = Math.min(arm(1), backed(1) + 0.05), inner = right - left;
+  const arms = {}, faces = {};
+  for (const k of [-1, 1]) {
+    const inner = armAt(k), edge = k > 0 ? box.max.x : box.min.x;
+    faces[k] = inner ?? edge;
+    const top = inner == null ? null : down((inner + edge) / 2, mid)?.y;
+    arms[k] = inner == null || top == null ? null : { inner, top, width: Math.abs(edge - inner) };
+  }
+  const left = Math.max(faces[-1], backed(-1) - 0.05), right = Math.min(faces[1], backed(1) + 0.05);
   // a cushion of the model's own already there
   const taken = (x, z, half) => [x - half, x, x + half].some((xx) => (down(xx, z)?.y ?? seatY) > seatY + 0.1);
+  return { toWorld, box, floorY: box.min.y, seatY, backZ, frontZ, mid, left, right, arms, down, seatAt, taken };
+}
+
+/**
+ * A sofa dressed (`dress`: a SOFA_DRESSINGS entry): cushions leaning on its back and a throw over the front of its
+ * seat, where rays cast at the sofa find its seat, the face of its back, its arms and the seat's front (measureSofa).
+ * A group to add to the sofa's parent, at its place and turn (unscaled: a model's wrap is), tagged kind
+ * "sofaDressing"; null when no seat is found.
+ */
+export function dressSofa(sofa, dress) {
+  const s = measureSofa(sofa);
+  if (!s) return null;
+  const { seatY, backZ, frontZ, mid, left, right, seatAt, taken } = s;
+  const inner = right - left;
   const g = new THREE.Group();
   const colours = inner < 1.2 ? [dress.cushions[0], dress.cushions.at(-1)] : dress.cushions;
   const tilt = -0.28;

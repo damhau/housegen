@@ -6,7 +6,7 @@ napkin, a round oak stool (bare, or with folded towels), a terry bath mat, a tow
     uv run --no-project --python 3.11 --with bpy python made/bathset.py <what> <out.glb> [rim width | seed]
 
 what: drape (over a rim `rim width` m wide, 0.10 by default) | stack | caddy | bottles | pair (no tray) |
-      books (seed: the colours and the twist) | carafe | carafe1 (no tumbler) | candles | napkin | stool | stooltowels | bathmat | rail
+      books (seed: the colours and the twist; or the covers "i-j-k", the kit's COVERS, kit/dressing.js) | carafe | carafe1 (no tumbler) | candles | napkin | stool | stooltowels | bathmat | rail
       | sofathrow (arm width-arm height-seat height, in cm: "18-62-44")
 
 Frames (Blender, z up), as photo.py places them:
@@ -33,6 +33,7 @@ WHAT, OUT = sys.argv[1], sys.argv[2]
 ARG = sys.argv[3] if len(sys.argv) > 3 else ""
 RIM = float(ARG) if ARG.replace(".", "", 1).isdigit() else 0.10
 SEED = int(ARG) if ARG.isdigit() else 0
+COVERS = [int(v) for v in ARG.split("-")] if WHAT == "books" and "-" in ARG else None
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 scene = bpy.context.scene
@@ -310,13 +311,17 @@ def bottles(tray=True):
     return out
 
 
-def books(seed=0):
+def books(seed=0, covers=None):
     """Three cloth-bound books in a stack, largest at the bottom, each a little turned: boards 3 mm proud of the
-    page block, a spine on one long side. Muted cloth colours, shuffled by `seed`."""
-    rnd = random.Random(seed)
+    page block, a spine on one long side. Muted cloth colours, shuffled by `seed`, or `covers` (their indices, bottom
+    first: the colours the kit drew the stack in)."""
+    rnd = random.Random(seed if covers is None else ARG)
     cloths = [("cover-sage", (0.30, 0.34, 0.27)), ("cover-sand", (0.55, 0.47, 0.37)), ("cover-ivory", (0.74, 0.71, 0.64)),
               ("cover-charcoal", (0.09, 0.09, 0.09)), ("cover-clay", (0.45, 0.26, 0.19)), ("cover-ink", (0.10, 0.13, 0.18))]
-    rnd.shuffle(cloths)
+    if covers is None:
+        rnd.shuffle(cloths)
+    else:
+        cloths = [cloths[k % len(cloths)] for k in covers]
     pages = mat("pages", (0.80, 0.77, 0.70), 0.85)
     out, z = [], 0.0
     for k, (w, d, h) in enumerate(((0.26, 0.19, 0.034), (0.235, 0.165, 0.026), (0.21, 0.145, 0.021))):
@@ -466,7 +471,7 @@ def sofathrow():
 
 
 made = {"drape": drape, "stack": stack, "caddy": caddy, "bottles": bottles, "pair": lambda: bottles(False),
-        "books": lambda: books(SEED), "carafe": carafe, "carafe1": lambda: carafe(False), "candles": candles, "napkin": napkin, "stool": stool,
+        "books": lambda: books(SEED, COVERS), "carafe": carafe, "carafe1": lambda: carafe(False), "candles": candles, "napkin": napkin, "stool": stool,
         "stooltowels": lambda: stool(True), "bathmat": bathmat, "rail": rail, "sofathrow": sofathrow}[WHAT]()
 bpy.ops.object.select_all(action="DESELECT")
 for o in made:

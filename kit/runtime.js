@@ -329,6 +329,7 @@ window.__house = {
   // the dollhouse (#62): storey `index` (in the order of the floor plans' levels) from above, cut at its ceiling
   dollhouse: (index) => showDollhouse(index),
   get details() { return state.details ?? null; },
+  get dressing() { return state.dressing ?? null; },
   get frameLog() { return FRAME_LOG; },
   // the last walk frame's room culling: the camera's room, the rooms drawn, where each mesh counts
   get culling() {
@@ -559,6 +560,12 @@ export async function boot(buildScene) {
     // the lamps, benches and prints the listing photos used to choose, from the catalogue (#102)
     state.decor = (await import("./decor.js")).catalogueDecor(houseGroup);
     houseGroup.userData.catalogueDecor = true; // the photo service frames these pieces, never its own (photo/blender/catalogue.py)
+    // what a stager adds to the furnished rooms, the listing photos' dressing (#103): a dressing bug never breaks a scene
+    try {
+      state.dressing = (await import("./dressing.js")).dressRooms(houseGroup);
+    } catch (err) {
+      console.warn(`housekit: the dressing failed: ${err?.stack ?? err}`);
+    }
     metricUVs(houseGroup);
     await finishesReady(); // only the texture sets the scene uses were fetched
     // which fixtures are lit (lighting.js): by day the accents only (?lamps=day|all|off)

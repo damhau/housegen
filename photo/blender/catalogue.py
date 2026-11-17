@@ -8,6 +8,11 @@ print's id, on its frame). The photo then shows those pieces and chooses none of
 - the rules that dressed a room with the library's lamps, plants, vases, branches, benches and mirrors and the wall art
   find none of those roles (objlib.pick) and leave those prints out; books, candles, trays, bowls, cushions stay theirs.
 A scene drawn by an older kit carries no tags: the photo dresses it as before.
+
+A kit that dresses the rooms itself (kit/dressing.js, v39 on: the house group's `kitDressing`) adds one group of holders
+(kind "dressing", `dressing` what each holds) on the storeys: catalogue pieces, drawn here at full resolution like the
+decor (DRESSED widens FULL to their roles), and stand-ins for this pipeline's made props (`made`, `arg`, `side`), which
+photo.py replaces with its own (made_piece). The rules that dressed what the kit now dresses then stay out (style.py).
 """
 
 import json
@@ -24,11 +29,17 @@ import objlib
 import paths
 
 OWN = False
+DRESSED = False
 # the library roles the kit's catalogue chooses for an OWN scene
 KIT_ROLES = frozenset({"table_lamp", "floor_lamp", "desk_lamp", "pendant", "chandelier", "pot_table", "pot_floor", "plant",
                        "vase", "stems", "bench", "mirror", "tall_mirror"})
 # drawn again at full resolution: those, and the rugs
 FULL = KIT_ROLES | {"rug", "runner"}
+# and, in a scene the kit dressed, the library roles of what its dressing draws from the catalogue (cushions, candles...)
+DRESSING_ROLES = frozenset({"pillow", "lumbar", "candle", "jar", "tray", "bowl", "basket", "pouf"})
+# kit/dressing.js MADE: the bathset piece (made/bathset.py) each stand-in is drawn as
+MADE = {"books": "books", "carafe": "carafe", "carafe1": "carafe1", "candles": "candles", "napkin": "napkin",
+        "sofathrow": "sofathrow", "drape": "drape", "stooltowels": "stooltowels", "rail": "rail"}
 NOT_LEAVES = ("_pot", "_dirt", "_pebbles", "_soil", "_ground")  # kit/furnish.js NOT_LEAVES
 _ENTRIES, _ART = None, None
 
@@ -38,12 +49,44 @@ def log(*a):
 
 
 def init(scene):
-    """Whether the export draws its own decor (kit v38 on): the house group's flag, or a tagged piece."""
-    global OWN
-    OWN = any(o.get("catalogueDecor") or o.get("catalogue") for o in scene.objects)
+    """Whether the export draws its own decor (kit v38 on): the house group's flag, or a tagged piece; and whether the
+    kit dressed its rooms (v39 on)."""
+    global OWN, DRESSED
+    DRESSED = any(o.get("kitDressing") for o in scene.objects)
+    OWN = DRESSED or any(o.get("catalogueDecor") or o.get("catalogue") for o in scene.objects)
     objlib.BANNED = KIT_ROLES if OWN else frozenset()
-    log("the scene's own decor" if OWN else "an older kit: the library dresses the rooms")
+    log("the scene's own decor" if OWN else "an older kit: the library dresses the rooms",
+        "and its own dressing" if DRESSED else "")
     return OWN
+
+
+def full():
+    """The library roles drawn again at full resolution in this scene."""
+    return FULL | DRESSING_ROLES if DRESSED else FULL
+
+
+def made_piece(what, arg=None, side=None):
+    """What stands in for a kit stand-in tagged `made` (kit/dressing.js): ("runner", (width, length) m) for a runner,
+    ("prop", (bathset piece, its argument, x scale)) for the others; None for one this pipeline does not make."""
+    if what == "runner":
+        try:
+            w, length = (int(v) / 100 for v in str(arg).split("-"))
+        except ValueError:
+            return None
+        return ("runner", (w, length)) if w > 0 and length > 0 else None
+    if what not in MADE:
+        return None
+    try:
+        sx = -1.0 if float(side) < 0 else 1.0
+    except (TypeError, ValueError):
+        sx = 1.0
+    return "prop", (MADE[what], None if arg in (None, "") else str(arg), sx)
+
+
+def holders(scene, sy):
+    """The kit dressing's holders still shown on the storey at height `sy`."""
+    return [o for o in scene.objects if o.get("kind") == "dressing" and o.get("dressing") and not o.hide_render
+            and sy - 0.1 <= o.matrix_world.translation.z <= sy + 2.3]
 
 
 def entries():
@@ -186,7 +229,7 @@ def redraw(scene, e, cid):
     """Tagged piece `e` drawn from its full-resolution file, fitted to its export's box in its own frame. Its library
     role, or None when it stays as exported (not a decor role, no file)."""
     path, role = source(cid)
-    if path is None or role not in FULL:
+    if path is None or role not in full():
         return None
     old = subtree(e)
     want = vertices(old, e.matrix_world)
@@ -298,6 +341,8 @@ def owner(o):
     while a is not None:
         if a.get("catalogue") or isinstance(a.get("art"), str):
             return str(a.get("catalogue") or a.get("art")), None
+        if a.get("made_for"):
+            return f"made:{a['made_for']}", None
         if a.get("kind") == "furniture":
             return None, None
         if a.parent is None and (a.get("obj_id") or a.get("art_id")):
@@ -329,9 +374,11 @@ def seen(scene, cam, trace, nx=96, ny=54, least=0.0005):
                 added[a] = added.get(a, 0) + 1
     role = {i: e["role"] for i, e in entries().items()}
 
+    def kind(k):
+        return role.get(k) or ("print" if k in prints() else "made" if k.startswith("made:") else None)
+
     def listed(counts, roles):
         return [{"id": k, "role": roles(k), "share": round(c / (nx * ny), 4)}
                 for k, c in sorted(counts.items(), key=lambda t: -t[1]) if c / (nx * ny) >= least]
 
-    return {"own": OWN, "kit": listed(kit, lambda k: role.get(k) or ("print" if k in prints() else None)),
-            "added": listed(added, lambda k: role.get(k) or ("print" if k in prints() else None))}
+    return {"own": OWN, "dressed": DRESSED, "kit": listed(kit, kind), "added": listed(added, kind)}

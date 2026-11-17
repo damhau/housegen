@@ -17,7 +17,7 @@ from housegen.projects.models import Project
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
-LATEST = "2026-11-17-v38"  # the newest snapshot
+LATEST = "2026-11-17-v39"  # the newest snapshot
 VIEWER = "2026-11-14-v36"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
 
 
@@ -180,6 +180,35 @@ def test_only_renderers_that_draw_the_photos_decor_are_told_about_wall_art() -> 
     told = for_kit(INTERIOR_SYSTEM, with_art)
     assert told.index("Decor by role") < told.index('fx.model("wall-art"') < told.index("### Light")
     assert 'fx.model("wall-art"' not in for_kit(INTERIOR_SYSTEM, before)
+
+
+def test_only_renderers_that_dress_the_rooms_tell_the_builder_to_leave_the_dressing_out() -> None:
+    from housegen.agent.prompts import (
+        BUILDER_SYSTEM,
+        INTERIOR_SYSTEM,
+        MODIFY_INTERIOR_SYSTEM,
+        for_kit,
+    )
+
+    dressing, before = kits.kit_dir(LATEST), kits.kit_dir("2026-11-17-v38")
+    assert (dressing / "dressing.js").exists()
+    assert not (before / "dressing.js").exists()
+    for system in (INTERIOR_SYSTEM, MODIFY_INTERIOR_SYSTEM):
+        told = for_kit(system, dressing)
+        assert "The kit dresses the furnished rooms" in told
+        assert (
+            told.index('fx.model("wall-art"')
+            < told.index("The kit dresses")
+            < told.index("### Light")
+        )
+        assert (
+            "the dining table laid" not in told
+        )  # the kit lays it: no second setting by the builder
+        assert "the kit lays the tables" in told
+        old = for_kit(system, before)
+        assert "The kit dresses" not in old
+        assert "the dining table laid" in old
+    assert for_kit(BUILDER_SYSTEM, dressing) == BUILDER_SYSTEM
 
 
 def test_only_renderers_with_styles_are_told_to_leave_finishes_to_the_house_style() -> None:

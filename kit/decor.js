@@ -21,7 +21,8 @@ const BROWSER = typeof window !== "undefined";
 
 // ---------------------------------------------------------------- rooms
 
-function roomsOf(root) {
+/** The scene's floor plans. */
+export function roomsOf(root) {
   const plans = [];
   root.traverse((o) => { if (o.userData?.kind === "floorPlan") plans.push(o); });
   return plans;
@@ -48,7 +49,7 @@ function distance([x, z], poly) {
 }
 
 /** The room `o` stands in (a floor plan's room, within 0.4 m of it, on the storey under it), null outside. */
-function roomOf(plans, o) {
+export function roomOf(plans, o) {
   const p = o.getWorldPosition(new THREE.Vector3());
   let best = null;
   for (const plan of plans) {

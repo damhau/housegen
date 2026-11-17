@@ -314,7 +314,7 @@ const storeyLabel = (n) => (n < 0 ? FR_NAMES.neg(n) : FR_NAMES[n] ?? `${n}e éta
 
 const DETAIL_KINDS = new Set(["furniture", "window", "door", "interiorDoor", "terrain", "leaves", "tree", "bush", "hedge",
   "car", "planter", "bench", "bicycle", "swingSet", "skirting", "windowSills", "curtainRails", "cornice", "wallTiles", "core", "wood",
-  "prop", "fence", "pathway", "groundPatch", "merged"]);
+  "prop", "fence", "pathway", "groundPatch", "merged", "dressing"]);
 
 /** Whether a mesh belongs to the envelope a height map reads (not furniture, glass, units, small parts). */
 function envelopeMesh(o, { small = true, skip = null } = {}) {

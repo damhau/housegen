@@ -362,6 +362,21 @@ The decorative fixtures (the table, desk and floor lamps, the pendants but ledRi
   lamps of the house style, standing or hanging where the fixture does, its light inside: place them as fixtures.
 """.lstrip("\n")
 
+# a renderer that dresses the furnished rooms itself (kit/dressing.js, #103)
+DRESSING_REFERENCE = """
+The kit dresses the furnished rooms once the scene is built, the same in the 3D tour and in the listing photos: books
+  and something small on a bare nightstand (its lamp moved to the back corner), napkins on a dining table's plates and a
+  candle, a carafe, a vase or a bowl of fruit on its centre line, cushions on a sofa that has none and now and then a
+  throw, something tall, books and something small on a bare sideboard, a plant, a pouf, a basket or a floor vase in a
+  room's free corners, a towel over a bath's rim, a stool with towels and a towel bar when the bath has no towel rail.
+  Leave those out: what you put on a surface, a sofa or a floor stays, and the kit dresses nothing twice.
+""".lstrip("\n")
+_STAGED_TABLE = "the dining table laid, a fruit\n  bowl or a vase on the island, a few books and small objects on shelves and sideboards."
+_STAGED_BY_THE_KIT = (
+    "a fruit bowl or a vase on\n  the island, a few books and small objects on shelves (the kit lays the tables and dresses "
+    "the rest, above)."
+)
+
 # a renderer with named styles (kit/styles.js, #99): the house style decides the finishes the pieces leave out
 STYLE_REFERENCE = """
 ### House style — src/style.js
@@ -449,6 +464,9 @@ def for_kit(system: str, kit: Path) -> str:
         roles = DECOR_ROLES_REFERENCE
         if (kit / "decor.js").exists():
             roles += CATALOGUE_DECOR_REFERENCE
+        if (kit / "dressing.js").exists():
+            roles += DRESSING_REFERENCE
+            system = system.replace(_STAGED_TABLE, _STAGED_BY_THE_KIT)
         system = system.replace(_DECOR_ANCHOR, _DECOR_ANCHOR + roles, 1)
     if _STYLE_ANCHOR in system and (kit / "styles.js").exists():
         for base, styled in _STYLE_SWAPS:

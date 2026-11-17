@@ -980,9 +980,9 @@ def dress_tables(scene, pieces):
             else:
                 r = dress.rug(scene, (t.x, -t.y), (fp[0] + 1.1, fp[1] + 1.1), floor=lo.z)  # the chairs stay on it
                 r.rotation_euler[2] = turn(o)
-        if objlib.LIB and objlib.choose(stage.room_of(o), "runner", [True, False]) is False:
+        if catalogue.DRESSED or objlib.LIB and objlib.choose(stage.room_of(o), "runner", [True, False]) is False:
             n += 1
-            continue  # no runner in this room; stage.dining sets the table
+            continue  # no runner in this room, or the kit's own (dress_made); stage.dining sets the table
         dress.runner(scene, (t.x, hi.z + 0.002, -t.y), (0.30, max(fp) - 0.3), turn(o) + (0 if along_d else math.pi / 2))
         if objlib.LIB:
             n += 1
@@ -1253,7 +1253,7 @@ def dress_tubs(scene, dg, pieces):
             caddy = in_frame(scene, f, bath_piece("caddy"), (u_c, 0.0, max(top_cf, top_cb)),
                              (1.0, (d - 0.04) / 0.80, 1.0))
             caddy.name = "bath-caddy"
-        if rim_w and 0.03 <= rim_w <= 0.2:
+        if rim_w and 0.03 <= rim_w <= 0.2 and not catalogue.DRESSED:  # a dressed scene drapes its own (dress_made)
             in_frame(scene, f, bath_piece("drape", rim_w), (u_d, -d / 2 + rim_w / 2, top_d))
         log(f"tub: rims {[(round(u, 2), round(a, 2), round(b, 2), r and round(r, 3)) for u, a, b, r in rims]}")
         n += 1
@@ -1328,12 +1328,57 @@ def dress_basins(scene, dg, pieces, floor_z):
     return n
 
 
+def adopt(o, parent):
+    """`o` (a prop placed in the world) as a child of `parent`, where it stands."""
+    bpy.context.view_layer.update()
+    mw = o.matrix_world.copy()
+    o.parent = parent
+    o.matrix_parent_inverse.identity()
+    o.matrix_world = mw
+
+
+def dress_made(scene, holders):
+    """The kit dressing's stand-ins for our made props (catalogue.made_piece) and its fruit drawn as ours, at their
+    holders' frames, under them (a piece the critic takes out is its holder)."""
+    n = 0
+    for h in holders:
+        todo = catalogue.made_piece(h.get("made"), h.get("arg"), h.get("side")) if h.get("made") else None
+        fruit = [c for c in h.children if c.get("fruit")]
+        if todo is None and not fruit:
+            continue
+        mw = h.matrix_world
+        f = Matrix.LocRotScale(mw.to_translation(), mw.to_quaternion(), None)
+        if todo is not None:
+            for c in h.children_recursive:
+                c.hide_render = True
+            kind, spec = todo
+            if kind == "runner":
+                t = f.translation
+                o = dress.runner(scene, (t.x, t.z + 0.001, -t.y), spec, f.to_euler().z)
+            else:
+                what, arg, sx = spec
+                o = in_frame(scene, f, style.prop(what, arg), (0, 0, 0), (sx, 1.0, 1.0))
+            o["made_for"] = str(h.get("made"))
+            adopt(o, h)
+            n += 1
+        for c in fruit:
+            t, turn_z = c.matrix_world.translation.copy(), c.matrix_world.to_euler().z
+            for x in (c, *c.children_recursive):
+                x.hide_render = True
+            root, _ = place(scene, model(str(c["fruit"])), to_scene(t), height=float(c.get("height") or 0.07),
+                            turn_deg=math.degrees(turn_z))
+            adopt(root, h)
+    log(f"the kit's dressing: {n} made props drawn as ours")
+    return n
+
+
 def dress_storey(scene, sy, decor=True):
     """The kit's pieces made photographic (swaps, materials) and, with `decor`, dressed (table settings, counters,
     towels and bottles, a throw, cushions)."""
     pieces = storey_pieces(scene, sy)
+    held = catalogue.holders(scene, sy)
     if catalogue.OWN:
-        catalogue.own(scene, pieces)
+        catalogue.own(scene, pieces + held)
     elif objlib.LIB:
         stage.swap_kit(scene, pieces)
     done = {
@@ -1345,8 +1390,11 @@ def dress_storey(scene, sy, decor=True):
     }
     bpy.context.view_layer.update()
     sanitaryware(scene, pieces)
+    if held:
+        done["made"] = dress_made(scene, held)
     if decor:
-        done["sofas"] = sofa_measure(scene, pieces)
+        if not catalogue.DRESSED:  # what it measures is for stage.sofa, which the kit's dressing replaces
+            done["sofas"] = sofa_measure(scene, pieces)
         done["tables"] = dress_tables(scene, pieces)
         done["counters"] = dress_counter(scene, pieces)
         dg = bpy.context.evaluated_depsgraph_get()
@@ -1359,6 +1407,9 @@ def strip_to(scene, rooms, level):
     """What `level` (staging.LEVELS) leaves out of the project's pieces, hidden before anything is dressed."""
     if level == "furnished":
         return []
+    for o in scene.objects:
+        if o.get("kind") == "dressing":  # the kit's dressing is staging
+            hide(o)
 
     def wet(o):
         r = room_at(rooms, *to_scene(o.matrix_world.translation))
@@ -2070,10 +2121,11 @@ def lit_lamps(scene, sun):
 
 def piece_top(o):
     """The removable piece an object belongs to, or None for the building: a kit piece (its outermost
-    `furniture` ancestor) or a prop this pipeline added (a top-level object other than the house)."""
+    `furniture` ancestor, or the holder of a piece of the kit's dressing) or a prop this pipeline added (a top-level
+    object other than the house)."""
     top, furn = o, None
     while top.parent is not None:
-        if top.get("kind") == "furniture":
+        if top.get("kind") == "furniture" or top.get("kind") == "dressing" and top.get("dressing"):
             furn = top
         top = top.parent
     if top.get("kind") == "furniture":
@@ -2084,7 +2136,7 @@ def piece_top(o):
 
 
 def piece_label(o):
-    return str(o.get("name") or o.name)
+    return str(o.get("name") or o.get("dressing") or o.name)
 
 
 def hide_pieces(scene, names):

@@ -207,7 +207,7 @@ export function floorPlan({ y = 0, height = 2.5, rooms = [], partitions = [], ce
  * passages of every floorPlan's partitions, and the window and door units of the shell (tagged
  * kind "window" / "door", origin at their bottom centre, x along the wall).
  */
-function wallOpenings(root) {
+export function wallOpenings(root) {
   root.updateMatrixWorld(true);
   const out = [];
   const P = (m, x, y, z) => new THREE.Vector3(x, y, z).applyMatrix4(m);
