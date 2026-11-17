@@ -238,6 +238,7 @@ def reframe(e):
     for o in subtree(e):
         if o.type != "MESH" or not o.name.startswith("art-print"):
             continue
+        upright(o.data)
         for slot in o.material_slots:
             m = slot.material
             if m is None or not m.use_nodes:
@@ -247,6 +248,18 @@ def reframe(e):
                     n.image = img
                     done = True
     return done
+
+
+def upright(me):
+    """Turn a print's UVs to read the image file as it is stored, once per mesh (the flag persists in a saved blend)."""
+    # three's GLTFExporter writes a flipY texture's image upside down and keeps the UVs, so the exported UVs only
+    # suit that flipped copy, not the file reframe swaps in
+    if me.get("uv_upright") or not me.uv_layers:
+        return
+    for layer in me.uv_layers:
+        for d in layer.data:
+            d.uv = (d.uv[0], 1.0 - d.uv[1])
+    me["uv_upright"] = True
 
 
 def tagged(pieces):
