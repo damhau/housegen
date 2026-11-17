@@ -385,6 +385,12 @@ panelledWall(width, { height=1.25, board=0.12, color="#8a8a85" }) (import { pane
 
 """.lstrip("\n")
 _STYLE_ANCHOR = '### Furniture — import fx from "housekit/furnish"'
+# a renderer whose catalogue names the styles of each piece (kit/objects.js `styles`, #100)
+STYLED_CATALOGUE_REFERENCE = """
+Decor and furniture by role draw the house style's pieces only, and each room's accent colour is the style's
+(scandinavian: warm, cool, green or none; contemporary: olive, sand or grey; the role accents "colours"|"muted").
+""".lstrip("\n")
+_STYLED_CATALOGUE_ANCHOR = "  tables, chairs and sideboards first among the catalogue's pieces.\n"
 # what the reference says of finishes, and what it says instead when the renderer has styles
 _STYLE_SWAPS = (
     (
@@ -421,7 +427,12 @@ def for_kit(system: str, kit: Path) -> str:
     if _STYLE_ANCHOR in system and (kit / "styles.js").exists():
         for base, styled in _STYLE_SWAPS:
             system = system.replace(base, styled)
-        system = system.replace(_STYLE_ANCHOR, STYLE_REFERENCE + _STYLE_ANCHOR, 1)
+        reference = STYLE_REFERENCE
+        if '"styles": ' in (kit / "objects.js").read_text(encoding="utf-8"):
+            reference = reference.replace(
+                _STYLED_CATALOGUE_ANCHOR, _STYLED_CATALOGUE_ANCHOR + STYLED_CATALOGUE_REFERENCE, 1
+            )
+        system = system.replace(_STYLE_ANCHOR, reference + _STYLE_ANCHOR, 1)
     return system
 
 

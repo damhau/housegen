@@ -2,7 +2,8 @@
 
     python export.py <scene page url> <out dir>
 
-Writes house.glb and rooms.json (the floor plans' rooms with their storey level). Lamps the light budget
+Writes house.glb and rooms.json ({"style": the house style src/style.js names or null, "rooms": the floor plans'
+rooms with their storey level}). Lamps the light budget
 hides are real lights for a path tracer; instanced foliage (Blender's importer makes one object per card)
 and custom-shader meshes are left out. The app's scene pages need a session or a token: RENDER_SERVICE_TOKEN
 from the environment goes to the page's host as the app's token cookie, and to no other host.
@@ -41,6 +42,11 @@ EXPORT = """async () => {
   return { bytes: glb.byteLength, skipped };
 }"""
 GL_PROBE = "() => window.__house.gl"
+# the scene's own file, whatever its renderer: a version drawn by a kit without styles still names the one it wants
+STYLE = """async () => {
+  try { return (await import(new URL('./src/style.js', document.baseURI).href)).default?.style ?? null; }
+  catch { return null; }
+}"""
 TOKEN_COOKIE = "housegen_token"  # the app's (backend core/config.py)
 
 
@@ -67,12 +73,14 @@ async def export(url: str, out: Path) -> dict:
         if "swiftshader" in gl.lower():
             raise RuntimeError(f"the export would draw in software: {gl}")
         rooms = await page.evaluate("async () => (await window.__house.report()).rooms")
-        (out / "rooms.json").write_text(json.dumps(rooms, ensure_ascii=False, indent=1), encoding="utf-8")
+        style = await page.evaluate(STYLE)
+        (out / "rooms.json").write_text(json.dumps({"style": style, "rooms": rooms}, ensure_ascii=False, indent=1),
+                                        encoding="utf-8")
         async with page.expect_download(timeout=600_000) as dl:
             res = await page.evaluate(EXPORT)
         await (await dl.value).save_as(str(out / "house.glb"))
         await browser.close()
-    return {"gl": gl, "bytes": res["bytes"], "skipped": res["skipped"], "rooms": len(rooms)}
+    return {"gl": gl, "bytes": res["bytes"], "skipped": res["skipped"], "rooms": len(rooms), "style": style}
 
 
 if __name__ == "__main__":

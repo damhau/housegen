@@ -46,6 +46,12 @@ def load_rooms(path):
     return rooms["rooms"] if isinstance(rooms, dict) else rooms
 
 
+def load_style(path):
+    """The house style export.py read from the scene's src/style.js; None in a list-only rooms.json (before #100)."""
+    rooms = json.load(open(path, encoding="utf-8"))
+    return rooms.get("style") if isinstance(rooms, dict) else None
+
+
 def area(poly):
     return abs(sum(x1 * z2 - x2 * z1 for (x1, z1), (x2, z2) in zip(poly, poly[1:] + poly[:1]))) / 2
 
@@ -320,7 +326,7 @@ def shoot(spec_json):
     photo.run(spec["blend"], load_rooms(spec["rooms"]), spec["camera"], spec["out"],
               int(spec.get("width", 1920)), int(spec.get("height", 1080)), int(spec.get("samples", 256)),
               sun=spec.get("sun"), room_lamps=spec.get("room_lamps"), remove=spec.get("remove") or (),
-              staging_level=spec.get("staging") or "furnished")
+              staging_level=spec.get("staging") or "furnished", house_style=load_style(spec["rooms"]))
 
 
 def main(argv):

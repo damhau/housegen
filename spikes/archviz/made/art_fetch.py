@@ -174,7 +174,9 @@ def get(ks):
         im.save(os.path.join(OUT, c["id"] + ".jpg"), quality=88)
         e = {x: c[x] for x in ("id", "source", "licence", "page", "title", "artist", "date", "died", "type", "style")}
         tone = ImageStat.Stat(im.convert("L").resize((64, 64))).mean[0] / 255  # mean brightness (artlib.DARK)
-        e.update(file=c["id"] + ".jpg", w=im.width, h=im.height, tone=round(tone, 3))
+        # the house styles, tagged by looking (#100): a refetched print keeps its own, a new one hangs once tagged
+        e.update(file=c["id"] + ".jpg", w=im.width, h=im.height, tone=round(tone, 3),
+                 styles=lib.get(c["id"], {}).get("styles", []))
         lib[c["id"]] = e
         print("got", k, c["id"], c["style"], c["died"], im.size, c["title"], "|", c["artist"][:60])
     json.dump(sorted(lib.values(), key=lambda e: e["id"]), open(mp, "w", encoding="utf-8"), indent=1, ensure_ascii=False)

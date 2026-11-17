@@ -2026,15 +2026,16 @@ def pieces_in_frame(scene, cam, nx=64, ny=36, least=0.005):
 
 
 def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=None, room_lamps=None, remove=(),
-        staging_level="furnished"):
+        staging_level="furnished", house_style=None):
     """Photograph the room the camera `cam_spec` stands in to the JPEG `out`; what was decided goes to `<out>.json`
     and is returned. `rooms`: rooms.json's list. A final from a preview replays its choices: `sun` (azimuth,
     elevation) and `room_lamps` skip the sun search; `remove` takes pieces (ids from the preview's `pieces`) out.
-    `staging_level`: how much of the furnishing shows (staging.LEVELS)."""
+    `staging_level`: how much of the furnishing shows (staging.LEVELS). `house_style`: rooms.json's "style", the
+    objects and prints that may come in (None: the default style)."""
     t0 = time.time()
     seconds = {}
-    artlib.init(rooms)
-    objlib.init(rooms)
+    artlib.init(rooms, house_style)
+    objlib.init(rooms, house_style)
     style.H = stage.H = sys.modules[__name__]
     bpy.ops.wm.open_mainfile(filepath=blend)
     kind, devices = use_gpu()

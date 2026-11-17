@@ -236,6 +236,9 @@ def make(style, palette, aspect, seed, paper):
 
 def main():
     os.makedirs(OUT, exist_ok=True)
+    before = os.path.join(OUT, "gen.json")
+    # the house styles, tagged by looking (#100): a new print hangs once tagged
+    tagged = {e["id"]: e["styles"] for e in json.load(open(before)) if "styles" in e} if os.path.exists(before) else {}
     out = []
     for style, palette, aspect, seeds, paper in PLAN:
         for s in seeds:
@@ -245,7 +248,8 @@ def main():
             out.append({"id": pid, "source": "made here (spikes/archviz/made/art_gen.py)", "licence": "made here",
                         "title": f"{style}, {palette}", "style": f"gen-{style}", "series": f"gen-{style}-{palette}",
                         "file": pid + ".jpg", "w": im.width, "h": im.height,
-                        "tone": round(ImageStat.Stat(im.convert("L").resize((64, 64))).mean[0] / 255, 3)})
+                        "tone": round(ImageStat.Stat(im.convert("L").resize((64, 64))).mean[0] / 255, 3),
+                        "styles": tagged.get(pid, [])})
             print(pid, im.size, flush=True)
     json.dump(out, open(os.path.join(OUT, "gen.json"), "w"), indent=1)
     if "sheet" in sys.argv[1:]:

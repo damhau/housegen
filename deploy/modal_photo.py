@@ -233,7 +233,8 @@ def blender(
     with ThreadPoolExecutor(max_workers=2) as pool:
         list(pool.map(step, steps.items()))
     if "rooms" in steps:
-        page = {r["name"]: r for r in json.loads((d / "rooms.json").read_text())}
+        listed = json.loads((d / "rooms.json").read_text())
+        page = {r["name"]: r for r in (listed["rooms"] if isinstance(listed, dict) else listed)}
         cams = json.loads((tmp / "cameras.json").read_text())
         for r in cams["rooms"]:  # the page's own figure, the one its SIA 416 report lists
             if page.get(r["name"], {}).get("area"):

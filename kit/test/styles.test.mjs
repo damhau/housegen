@@ -8,10 +8,11 @@ import * as house from "../house.js";
 import { DEFAULT_STYLE, FALLBACK, MAPS, ROLES, STYLES, look, setHouseStyle, styleName } from "../styles.js";
 import { FINISHES, WOODS } from "../lighting-parts.js";
 import { FLOOR_TILES, WALL_TILES } from "../finishes.js";
-import fx, { BEDDING, FITTINGS, FURNITURE_TONES, HANDLES, MODELS, ROLES as PIECES, RUGS, SOFA_DRESSINGS, pickObject, resetObjects } from "../furnish.js";
+import fx, { ACCENTS, BEDDING, FITTINGS, FURNITURE_TONES, HANDLES, MODELS, ROLES as PIECES, RUGS, SOFA_DRESSINGS, pickObject, resetObjects } from "../furnish.js";
 import { FIXTURES } from "../lighting.js";
 import { BUILT_IN } from "../lighting-built-in.js";
 import interior, { FEATURE_WALLS } from "../interior.js";
+import { OBJECTS } from "../objects.js";
 
 afterEach(() => setHouseStyle({}));
 
@@ -27,6 +28,7 @@ const CATALOGUES = {
   rug: RUGS,
   sofaDressing: SOFA_DRESSINGS,
   furnitureTone: FURNITURE_TONES,
+  accents: ACCENTS,
   models: null, // a map: model names to model or role names
 };
 
@@ -385,6 +387,74 @@ test("contemporary's catalogue tables, chairs and sideboards are dark first; sca
     setHouseStyle({ style: "contemporary" });
     resetObjects();
     assert.ok(["neutral", "dark"].includes(pickObject("armchair").piece.tone), "other roles as before");
+  } finally {
+    delete globalThis.__housekitSeed;
+    resetObjects();
+  }
+});
+
+// the catalogue by style (#100): the role and the style that have fewer than two pieces, and how many they have
+// (the libraries hold no more: a basket in dark rattan or black, a black or stone canister, a light wooden tray)
+const THIN = { basket: { contemporary: 1 }, canister: { contemporary: 1 }, tray: { scandinavian: 1 } };
+const roleOf = (o) => (o.role === "foliage" ? (o.tall ? "tall-foliage" : "foliage") : o.role);
+
+test("every catalogue piece names the styles it suits, and every role has two pieces per style but the thin ones", () => {
+  const count = {};
+  for (const o of OBJECTS) {
+    assert.ok(Array.isArray(o.styles), `${o.id} names no styles`);
+    assert.equal(new Set(o.styles).size, o.styles.length, o.id);
+    for (const s of o.styles) assert.ok(s in STYLES, `${o.id}: unknown style ${s}`);
+    count[roleOf(o)] ??= Object.fromEntries(Object.keys(STYLES).map((s) => [s, 0]));
+    for (const s of o.styles) count[roleOf(o)][s]++;
+  }
+  for (const [role, per] of Object.entries(count)) {
+    for (const [style, n] of Object.entries(per)) {
+      const thin = THIN[role]?.[style];
+      if (thin) assert.equal(n, thin, `${role} in ${style}: ${n}, THIN says ${thin}`);
+      else assert.ok(n >= 2, `${role} in ${style}: ${n} piece(s)`);
+    }
+  }
+});
+
+test("a house draws only its style's pieces, and the two styles draw different ones", () => {
+  globalThis.__housekitSeed = "styled";
+  try {
+    const drawn = {};
+    for (const style of Object.keys(STYLES)) {
+      setHouseStyle(style === DEFAULT_STYLE ? {} : { style });
+      resetObjects();
+      drawn[style] = new Set();
+      for (const role of [...Object.keys(PIECES), "foliage", "tall-foliage"]) {
+        const n = OBJECTS.filter((o) => roleOf(o) === role).length;
+        for (let k = 0; k < n; k++) {
+          const o = pickObject(role, { room: `Pièce ${k % 5}` }).piece;
+          assert.ok(o.styles.includes(style), `${style} drew ${role} ${o.id} (${o.styles.join(", ") || "no style"})`);
+          drawn[style].add(o.id);
+        }
+      }
+    }
+    const [a, b] = Object.values(drawn);
+    assert.ok([...a].some((id) => !b.has(id)) && [...b].some((id) => !a.has(id)), "the styles draw the same pieces");
+    for (const o of OBJECTS.filter((o) => !o.styles.length)) assert.ok(!a.has(o.id) && !b.has(o.id), `${o.id} suits no style`);
+  } finally {
+    delete globalThis.__housekitSeed;
+    resetObjects();
+  }
+});
+
+test("a contemporary room's accent is olive, sand or grey; a scandinavian room's warm, cool, green or none", () => {
+  globalThis.__housekitSeed = "accents";
+  try {
+    const rooms = Array.from({ length: 40 }, (_, k) => `Chambre ${k}`);
+    const tones = (house) => {
+      setHouseStyle(house);
+      resetObjects();
+      return new Set(rooms.map((room) => pickObject("cushion", { room }).accent));
+    };
+    assert.deepEqual([...tones({ style: "contemporary" })].sort(), ["green", "warm", null].sort());
+    assert.deepEqual([...tones({ style: "scandinavian" })].sort(), ["cool", "green", "warm", null].sort());
+    assert.ok(tones({ style: "contemporary", accents: "colours" }).has("cool"), "the house's own set");
+    assert.deepEqual(ACCENTS.muted.map((a) => a.name), ["olive", "sand", "grey"]);
   } finally {
     delete globalThis.__housekitSeed;
     resetObjects();

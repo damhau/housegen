@@ -87,7 +87,7 @@ test("a role draws each of its pieces once before any comes back, the same ones 
     resetObjects();
     return Array.from({ length: n }, () => pickObject("vase").piece.id);
   };
-  const n = ROLES.vase.length;
+  const n = ROLES.vase.filter((o) => o.styles.includes("scandinavian")).length; // the default style's
   const a = draw("house-a", n);
   assert.equal(new Set(a).size, n);
   assert.deepEqual(draw("house-a", n), a);
@@ -102,7 +102,8 @@ test("a role prefers a piece near the size asked, one that goes with the room's 
   const { ROLES, pickObject, resetObjects } = await import("../furnish.js");
   globalThis.__housekitSeed = "sizes";
   resetObjects();
-  const tall = Math.max(...ROLES.vase.map((o) => o.size[2]));
+  const own = (role) => ROLES[role].filter((o) => o.styles.includes("scandinavian"));
+  const tall = Math.max(...own("vase").map((o) => o.size[2]));
   const o = pickObject("vase", { height: tall }).piece;
   assert.ok(Math.abs(Math.log(tall / o.size[2])) <= Math.log(1.6), `${o.id} ${o.size[2]} m for ${tall} m`);
   for (const room of ["Séjour", "Chambre 1", "Chambre 2", "Bureau", "Cuisine"]) {
@@ -111,7 +112,7 @@ test("a role prefers a piece near the size asked, one that goes with the room's 
     assert.ok(["neutral", "dark", accent].includes(piece.tone), `${room} (${accent}) drew a ${piece.tone} cushion`);
   }
   resetObjects();
-  const quiet = ROLES.rug.filter((o) => ["neutral", "dark"].includes(o.tone)).length;
+  const quiet = own("rug").filter((o) => ["neutral", "dark"].includes(o.tone)).length;
   const rugs = ["Séjour", "Chambre 1", "Chambre 2", "Bureau"].slice(0, quiet).map((room) => pickObject("rug", { room }).piece);
   assert.deepEqual(rugs.filter((o) => !["neutral", "dark"].includes(o.tone)), [], "a rug in an accent while quiet ones were left");
   delete globalThis.__housekitSeed;

@@ -4,8 +4,11 @@
 Which object goes where is worked out once for the whole house (every room of rooms.json, the same answer in every
 process that renders one of its rooms), as for the wall art, so an object does not come back in another room until its
 role runs out:
+- only the objects that suit the house style (an entry's `styles`, tagged by looking at it, #100; the kit's styles.js
+  names; rooms.json's "style", scandinavian without one);
 - rooms in order of how likely they are to be photographed;
-- each room gets a colour accent (warm, cool, green or none), so what lands in it goes together;
+- each room gets a colour accent from its style's (scandinavian: warm, cool, green or none; contemporary: olive, sand
+  or grey), so what lands in it goes together;
 - each room gets a short list per role, more than a rule will use: a rule takes the first that fits its surface.
 
 Without a catalogue the rules fall back to their fixed objects.
@@ -47,10 +50,13 @@ SLOTS = {
     "laundry": {"basket": 1},
 }
 FEW = 2  # a room's list holds this many candidates per slot
-ACCENTS = ("warm", "cool", "green", None)
+STYLES = ("scandinavian", "contemporary")  # the kit's (kit/styles.js)
+DEFAULT_STYLE = "scandinavian"
+# the tones of a style's accents: contemporary's olive, sand and grey favour green, warm and quiet objects
+ACCENTS = {"scandinavian": ("warm", "cool", "green", None), "contemporary": ("green", "warm", None)}
 GOES = {"warm": {"neutral", "dark", "warm"}, "cool": {"neutral", "dark", "cool"}, "green": {"neutral", "dark", "green"},
         None: {"neutral", "dark"}}
-LIB, BY, ALLOC, ROOMS, TAKEN = [], {}, {}, [], {}
+LIB, BY, ALLOC, ROOMS, TAKEN, STYLE = [], {}, {}, [], {}, DEFAULT_STYLE
 
 
 def _h(s):
@@ -65,14 +71,26 @@ def path(e):
     return os.path.join(paths.ASSETS, "models", e["id"], f"{e['id']}.gltf")
 
 
-def load():
+def house_style(name):
+    """The style a house draws in: `name` when the kit knows it, else the default."""
+    if name is not None and name not in STYLES:
+        print(f"PHOTO style: unknown {name!r}, {DEFAULT_STYLE}", flush=True)
+    return name if name in STYLES else DEFAULT_STYLE
+
+
+def suits(e, style):
+    return style in (e.get("styles") or ())
+
+
+def load(style=DEFAULT_STYLE):
     cat = json.load(open(CATALOGUE, encoding="utf-8"))
-    return [e for e in cat if os.path.exists(path(e)) and not e.get("off")]
+    return [e for e in cat if not e.get("off") and suits(e, style) and os.path.exists(path(e))]
 
 
-def allocate(rooms, lib):
+def allocate(rooms, lib, style=DEFAULT_STYLE):
     """{room name: {"accent": tone, role: [ids]}} for the whole house: first every room's own picks (as many as its
-    rules may ask for), then the spare candidates, so two rooms share an object only once a deck runs out."""
+    rules may ask for), then the spare candidates, so two rooms share an object only once a deck runs out. `lib`:
+    the style's objects (load), `style` gives the rooms' accents."""
     rng = random.Random(_h("|".join(sorted(r["name"] for r in rooms))))
     decks = {}
     for e in lib:
@@ -81,7 +99,7 @@ def allocate(rooms, lib):
         rng.shuffle(d)
     used = {e["id"]: 0 for e in lib}
     out = {}
-    accents = list(ACCENTS)
+    accents = list(ACCENTS[style])
     rng.shuffle(accents)
     ordered = sorted(rooms, key=lambda r: (ORDER.index(r["use"]) if r["use"] in ORDER else 99, r["name"]))
     for k, r in enumerate(ordered):
@@ -103,18 +121,20 @@ def allocate(rooms, lib):
     return out
 
 
-def init(rooms):
-    global LIB, BY, ALLOC, ROOMS, TAKEN
+def init(rooms, style=None):
+    """The house's allocation, for its rooms and its style (rooms.json's; None: the default)."""
+    global LIB, BY, ALLOC, ROOMS, TAKEN, STYLE
     ROOMS = rooms
-    LIB = load() if os.path.exists(CATALOGUE) else []
+    STYLE = house_style(style)
+    LIB = load(STYLE) if os.path.exists(CATALOGUE) else []
     BY = {e["id"]: e for e in LIB}
-    ALLOC = allocate(rooms, LIB) if LIB else {}
+    ALLOC = allocate(rooms, LIB, STYLE) if LIB else {}
     TAKEN = {}  # how many rooms of the house hold each object
     for slots in ALLOC.values():
         for role, ids in slots.items():
             for i in ids if role != "accent" else ():
                 TAKEN[i] = TAKEN.get(i, 0) + 1
-    print(f"PHOTO objects: {len(LIB)} in the library, {len(ALLOC)} rooms", flush=True)
+    print(f"PHOTO objects: {len(LIB)} in the library ({STYLE}), {len(ALLOC)} rooms", flush=True)
 
 
 def size(e):

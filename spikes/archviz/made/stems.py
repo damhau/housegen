@@ -299,7 +299,11 @@ def main():
             make(kind, seed)
             entries.append({"id": f"{kind}-{seed}", "src": "made", "role": "stems", "tone": tone, "name": kind})
     path = os.path.join(HERE, "objects.json")
-    cat = [e for e in json.load(open(path, encoding="utf-8")) if e["role"] != "stems"]
+    old = json.load(open(path, encoding="utf-8"))
+    tagged = {e["id"]: e["styles"] for e in old if "styles" in e}  # by looking (#100): a new one is drawn once tagged
+    for e in entries:
+        e["styles"] = tagged.get(e["id"], [])
+    cat = [e for e in old if e["role"] != "stems"]
     json.dump(cat + entries, open(path, "w", encoding="utf-8"), indent=0)
 
 

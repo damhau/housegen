@@ -17,7 +17,7 @@ from housegen.projects.models import Project
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
-LATEST = "2026-11-14-v36"  # the newest snapshot
+LATEST = "2026-11-17-v37"  # the newest snapshot
 VIEWER = "2026-11-14-v36"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
 
 
@@ -199,3 +199,14 @@ def test_only_renderers_with_styles_are_told_to_leave_finishes_to_the_house_styl
     assert '"brass"|"black"' not in INTERIOR_SYSTEM
     assert "(brass or black" not in INTERIOR_SYSTEM
     assert for_kit(BUILDER_SYSTEM, styled) == BUILDER_SYSTEM
+
+
+def test_only_renderers_with_a_styled_catalogue_are_told_it_draws_the_house_style_pieces() -> None:
+    from housegen.agent.prompts import INTERIOR_SYSTEM, MODIFY_INTERIOR_SYSTEM, for_kit
+
+    tagged, untagged = kits.kit_dir("2026-11-17-v37"), kits.kit_dir("2026-11-14-v36")
+    for system in (INTERIOR_SYSTEM, MODIFY_INTERIOR_SYSTEM):
+        told = for_kit(system, tagged)
+        assert "draw the house style's pieces only" in told
+        assert told.index("draw the house style") < told.index("The built-in fixtures")
+        assert "house style's pieces only" not in for_kit(system, untagged)

@@ -11,6 +11,8 @@
 // a fixture family's own finish); a fixture family's entry may carry its parts with the finish ({ finish: "black",
 // canopy: "oak" }: lighting.js fixture()). A map role (MAPS) names an entry per name only: { "dining-chair-grey":
 // "dining-chair-black" } draws that model as the other, and a name it does not list stays itself.
+// The catalogue's decor and furniture by role (objects.js) name the styles each piece suits (`styles`, #100): a house
+// draws only its style's pieces (furnish.js pickObject); the photo pipeline's library and wall art do the same.
 
 /** The roles, and the catalogue each one names an entry of. */
 export const ROLES = {
@@ -25,6 +27,7 @@ export const ROLES = {
   rug: "a rug the scene gives no colour: furnish.js RUGS",
   sofaDressing: "cushions and a throw on every sofa: furnish.js SOFA_DRESSINGS",
   furnitureTone: "the tone catalogue furniture prefers, per role (dining-chair, coffee-table…): furnish.js FURNITURE_TONES",
+  accents: "the accents rooms take, one each, for their catalogue decor and a catalogue bed's duvet: furnish.js ACCENTS",
   models: "a named model drawn as another named model or a catalogue role, per name: furnish.js MODELS and ROLES",
 };
 
@@ -60,11 +63,12 @@ export const STYLES = {
     rug: "sand",
     sofaDressing: "none",
     furnitureTone: "any",
+    accents: "colours",
     models: {},
   },
   // the interior pilot's (spikes/interior-pilot, sheet C): dark accents on white walls, matte black fittings and
   // handles, grey veined marble in the baths, olive and grey bedding, a panelled wall behind the bed, a charcoal rug,
-  // olive and sand cushions on the sofa, dark chairs and tables
+  // olive and sand cushions on the sofa, dark chairs and tables, rooms in olive, sand or grey
   contemporary: {
     fixtures: "black",
     builtIns: "white",
@@ -77,6 +81,7 @@ export const STYLES = {
     rug: "charcoal",
     sofaDressing: "olive",
     furnitureTone: { default: "any", "dining-chair": "dark", "coffee-table": "dark", "side-table": "dark", sideboard: "dark" },
+    accents: "muted",
     // not the oval coffee tables: white and black, they are a nesting pair
     models: { "dining-chair-grey": "dining-chair-black" },
   },
@@ -86,7 +91,8 @@ export const DEFAULT_STYLE = "scandinavian";
 
 /** The kit's defaults: what a role is when neither the scene nor the style says. */
 export const FALLBACK = { fixtures: "black", builtIns: "white", fittings: "chrome", wallTile: "white", bathFloor: "tile",
-  bedding: "linen", featureWall: "none", handles: "none", rug: "sand", sofaDressing: "none", furnitureTone: "any", models: {} };
+  bedding: "linen", featureWall: "none", handles: "none", rug: "sand", sofaDressing: "none", furnitureTone: "any",
+  accents: "colours", models: {} };
 
 let house = {};
 

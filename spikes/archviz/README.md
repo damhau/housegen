@@ -810,7 +810,8 @@ What is left in Gille's 45:
 - **Three library objects shared by two rooms of the second flat:** two small plant pots and a vase. Gille has 39
   rooms, and the small roles run out (see the caveats).
 
-**The catalogue** (`made/objects.json`, one entry per model: id, role, tone, size, source, `off`):
+**The catalogue** (`made/objects.json`, one entry per model: id, role, tone, size, source, `off`, `styles`: the
+house styles of `kit/styles.js` it suits, tagged by looking at it, #100; the wall art carries the same field):
 - **488 Amazon Berkeley Objects products (CC BY 4.0, see Licences).** Real products with their own textures:
   vases, lamps, rugs, cushions, side tables, poufs, mirrors, clocks, sideboards and more. They are fetched by
   `made/obj_fetch.py` with textures shrunk to 1k (2k for rugs, runners and sideboards), 1.2 GB in all.
@@ -828,8 +829,11 @@ What is left in Gille's 45:
 
 **How objects are chosen** (`objlib.py`, the same idea as the art):
 - **One allocation for the whole house,** from `rooms.json` alone, so every process agrees.
+  - Only the objects and prints that suit the house style come in (`rooms.json`'s `style`, which `photo/export.py`
+    reads from the scene's `src/style.js`; scandinavian without one). An object with no style is never drawn.
   - Rooms are taken in order of how likely they are to be photographed.
-  - Each room gets a colour accent (warm, cool, green or none), and its objects are picked to go with it.
+  - Each room gets a colour accent from its style's (scandinavian: warm, cool, green or none; contemporary: olive,
+    sand or grey), and its objects are picked to go with it.
   - Each room gets a short list per role (`SLOTS` by room use, two candidates per slot). First every room gets its
     own count, then the spares.
 - **A rule asks for a role, not a model:** "a vase for this table", "a floor lamp for this corner". It takes the first

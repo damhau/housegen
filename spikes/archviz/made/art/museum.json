@@ -13,7 +13,10 @@
   "file": "cma-103358.jpg",
   "w": 911,
   "h": 1280,
-  "tone": 0.497
+  "tone": 0.497,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-104320",
@@ -29,7 +32,11 @@
   "file": "cma-104320.jpg",
   "w": 1280,
   "h": 908,
-  "tone": 0.555
+  "tone": 0.555,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-106088",
@@ -45,7 +52,10 @@
   "file": "cma-106088.jpg",
   "w": 1280,
   "h": 772,
-  "tone": 0.444
+  "tone": 0.444,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "cma-106968",
@@ -61,7 +71,10 @@
   "file": "cma-106968.jpg",
   "w": 834,
   "h": 1280,
-  "tone": 0.619
+  "tone": 0.619,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-107931",
@@ -77,7 +90,10 @@
   "file": "cma-107931.jpg",
   "w": 1100,
   "h": 1280,
-  "tone": 0.542
+  "tone": 0.542,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "cma-109467",
@@ -93,7 +109,11 @@
   "file": "cma-109467.jpg",
   "w": 768,
   "h": 1280,
-  "tone": 0.819
+  "tone": 0.819,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-109468",
@@ -109,7 +129,11 @@
   "file": "cma-109468.jpg",
   "w": 813,
   "h": 1280,
-  "tone": 0.816
+  "tone": 0.816,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-111648",
@@ -125,7 +149,10 @@
   "file": "cma-111648.jpg",
   "w": 882,
   "h": 1280,
-  "tone": 0.629
+  "tone": 0.629,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-111654",
@@ -141,7 +168,10 @@
   "file": "cma-111654.jpg",
   "w": 1280,
   "h": 877,
-  "tone": 0.578
+  "tone": 0.578,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-114494",
@@ -157,7 +187,11 @@
   "file": "cma-114494.jpg",
   "w": 1280,
   "h": 871,
-  "tone": 0.626
+  "tone": 0.626,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-117715",
@@ -173,7 +207,10 @@
   "file": "cma-117715.jpg",
   "w": 1280,
   "h": 1023,
-  "tone": 0.652
+  "tone": 0.652,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-117915",
@@ -189,7 +226,11 @@
   "file": "cma-117915.jpg",
   "w": 1280,
   "h": 696,
-  "tone": 0.674
+  "tone": 0.674,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-118042",
@@ -205,7 +246,10 @@
   "file": "cma-118042.jpg",
   "w": 1036,
   "h": 1280,
-  "tone": 0.6
+  "tone": 0.6,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-118181",
@@ -221,7 +265,10 @@
   "file": "cma-118181.jpg",
   "w": 1011,
   "h": 1280,
-  "tone": 0.746
+  "tone": 0.746,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-118188",
@@ -237,7 +284,10 @@
   "file": "cma-118188.jpg",
   "w": 1016,
   "h": 1280,
-  "tone": 0.733
+  "tone": 0.733,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-120286",
@@ -269,7 +319,10 @@
   "file": "cma-123046.jpg",
   "w": 1280,
   "h": 1020,
-  "tone": 0.437
+  "tone": 0.437,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-124078",
@@ -285,7 +338,10 @@
   "file": "cma-124078.jpg",
   "w": 1280,
   "h": 755,
-  "tone": 0.404
+  "tone": 0.404,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "cma-125092",
@@ -301,7 +357,10 @@
   "file": "cma-125092.jpg",
   "w": 1280,
   "h": 1028,
-  "tone": 0.608
+  "tone": 0.608,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-125234",
@@ -317,7 +376,10 @@
   "file": "cma-125234.jpg",
   "w": 1280,
   "h": 944,
-  "tone": 0.479
+  "tone": 0.479,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-128392",
@@ -333,7 +395,10 @@
   "file": "cma-128392.jpg",
   "w": 1280,
   "h": 981,
-  "tone": 0.317
+  "tone": 0.317,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-128484",
@@ -349,7 +414,10 @@
   "file": "cma-128484.jpg",
   "w": 880,
   "h": 1280,
-  "tone": 0.764
+  "tone": 0.764,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-130973",
@@ -365,7 +433,10 @@
   "file": "cma-130973.jpg",
   "w": 1280,
   "h": 1107,
-  "tone": 0.731
+  "tone": 0.731,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-131338",
@@ -381,7 +452,8 @@
   "file": "cma-131338.jpg",
   "w": 1280,
   "h": 783,
-  "tone": 0.672
+  "tone": 0.672,
+  "styles": []
  },
  {
   "id": "cma-132618",
@@ -397,7 +469,11 @@
   "file": "cma-132618.jpg",
   "w": 1280,
   "h": 1036,
-  "tone": 0.727
+  "tone": 0.727,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-132863",
@@ -413,7 +489,10 @@
   "file": "cma-132863.jpg",
   "w": 901,
   "h": 1280,
-  "tone": 0.859
+  "tone": 0.859,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-132872",
@@ -429,7 +508,10 @@
   "file": "cma-132872.jpg",
   "w": 994,
   "h": 1280,
-  "tone": 0.733
+  "tone": 0.733,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-132873",
@@ -445,7 +527,10 @@
   "file": "cma-132873.jpg",
   "w": 939,
   "h": 1280,
-  "tone": 0.711
+  "tone": 0.711,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-133056",
@@ -461,7 +546,8 @@
   "file": "cma-133056.jpg",
   "w": 984,
   "h": 1280,
-  "tone": 0.65
+  "tone": 0.65,
+  "styles": []
  },
  {
   "id": "cma-134862",
@@ -477,7 +563,11 @@
   "file": "cma-134862.jpg",
   "w": 1280,
   "h": 956,
-  "tone": 0.564
+  "tone": 0.564,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-135185",
@@ -493,7 +583,8 @@
   "file": "cma-135185.jpg",
   "w": 1280,
   "h": 1015,
-  "tone": 0.528
+  "tone": 0.528,
+  "styles": []
  },
  {
   "id": "cma-136510",
@@ -509,7 +600,10 @@
   "file": "cma-136510.jpg",
   "w": 1280,
   "h": 595,
-  "tone": 0.423
+  "tone": 0.423,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-136760",
@@ -525,7 +619,10 @@
   "file": "cma-136760.jpg",
   "w": 1280,
   "h": 1071,
-  "tone": 0.607
+  "tone": 0.607,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-141153",
@@ -541,7 +638,10 @@
   "file": "cma-141153.jpg",
   "w": 1010,
   "h": 1280,
-  "tone": 0.682
+  "tone": 0.682,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-141168",
@@ -557,7 +657,10 @@
   "file": "cma-141168.jpg",
   "w": 1280,
   "h": 914,
-  "tone": 0.46
+  "tone": 0.46,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "cma-143278",
@@ -573,7 +676,11 @@
   "file": "cma-143278.jpg",
   "w": 1262,
   "h": 1280,
-  "tone": 0.743
+  "tone": 0.743,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-144705",
@@ -589,7 +696,8 @@
   "file": "cma-144705.jpg",
   "w": 1173,
   "h": 1280,
-  "tone": 0.588
+  "tone": 0.588,
+  "styles": []
  },
  {
   "id": "cma-145373",
@@ -605,7 +713,11 @@
   "file": "cma-145373.jpg",
   "w": 988,
   "h": 1280,
-  "tone": 0.67
+  "tone": 0.67,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-146148",
@@ -637,7 +749,11 @@
   "file": "cma-147653.jpg",
   "w": 1280,
   "h": 1089,
-  "tone": 0.646
+  "tone": 0.646,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-150079",
@@ -669,7 +785,10 @@
   "file": "cma-152492.jpg",
   "w": 597,
   "h": 1280,
-  "tone": 0.619
+  "tone": 0.619,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-152496",
@@ -685,7 +804,11 @@
   "file": "cma-152496.jpg",
   "w": 850,
   "h": 1280,
-  "tone": 0.508
+  "tone": 0.508,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-152504",
@@ -701,7 +824,10 @@
   "file": "cma-152504.jpg",
   "w": 1280,
   "h": 934,
-  "tone": 0.589
+  "tone": 0.589,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-153326",
@@ -717,7 +843,10 @@
   "file": "cma-153326.jpg",
   "w": 920,
   "h": 1280,
-  "tone": 0.368
+  "tone": 0.368,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "cma-153747",
@@ -733,7 +862,8 @@
   "file": "cma-153747.jpg",
   "w": 914,
   "h": 1280,
-  "tone": 0.32
+  "tone": 0.32,
+  "styles": []
  },
  {
   "id": "cma-154193",
@@ -749,7 +879,11 @@
   "file": "cma-154193.jpg",
   "w": 1280,
   "h": 917,
-  "tone": 0.325
+  "tone": 0.325,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-156167",
@@ -765,7 +899,11 @@
   "file": "cma-156167.jpg",
   "w": 1280,
   "h": 879,
-  "tone": 0.674
+  "tone": 0.674,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-156570",
@@ -781,7 +919,8 @@
   "file": "cma-156570.jpg",
   "w": 921,
   "h": 1280,
-  "tone": 0.344
+  "tone": 0.344,
+  "styles": []
  },
  {
   "id": "cma-157153",
@@ -797,7 +936,11 @@
   "file": "cma-157153.jpg",
   "w": 865,
   "h": 1280,
-  "tone": 0.908
+  "tone": 0.908,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-159058",
@@ -813,7 +956,10 @@
   "file": "cma-159058.jpg",
   "w": 890,
   "h": 1280,
-  "tone": 0.63
+  "tone": 0.63,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-160075",
@@ -829,7 +975,11 @@
   "file": "cma-160075.jpg",
   "w": 1280,
   "h": 905,
-  "tone": 0.506
+  "tone": 0.506,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-160325",
@@ -845,7 +995,8 @@
   "file": "cma-160325.jpg",
   "w": 1280,
   "h": 893,
-  "tone": 0.674
+  "tone": 0.674,
+  "styles": []
  },
  {
   "id": "cma-162121",
@@ -861,7 +1012,11 @@
   "file": "cma-162121.jpg",
   "w": 1161,
   "h": 1280,
-  "tone": 0.493
+  "tone": 0.493,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-162339",
@@ -877,7 +1032,10 @@
   "file": "cma-162339.jpg",
   "w": 994,
   "h": 1280,
-  "tone": 0.437
+  "tone": 0.437,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "cma-162340",
@@ -893,7 +1051,10 @@
   "file": "cma-162340.jpg",
   "w": 1048,
   "h": 1280,
-  "tone": 0.316
+  "tone": 0.316,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "cma-172894",
@@ -909,7 +1070,10 @@
   "file": "cma-172894.jpg",
   "w": 869,
   "h": 1280,
-  "tone": 0.743
+  "tone": 0.743,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-290136",
@@ -925,7 +1089,11 @@
   "file": "cma-290136.jpg",
   "w": 883,
   "h": 1280,
-  "tone": 0.489
+  "tone": 0.489,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "cma-329318",
@@ -941,7 +1109,10 @@
   "file": "cma-329318.jpg",
   "w": 868,
   "h": 1280,
-  "tone": 0.805
+  "tone": 0.805,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-329319",
@@ -957,7 +1128,10 @@
   "file": "cma-329319.jpg",
   "w": 876,
   "h": 1280,
-  "tone": 0.797
+  "tone": 0.797,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-344406",
@@ -973,7 +1147,10 @@
   "file": "cma-344406.jpg",
   "w": 1280,
   "h": 998,
-  "tone": 0.403
+  "tone": 0.403,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "cma-344407",
@@ -989,7 +1166,10 @@
   "file": "cma-344407.jpg",
   "w": 1002,
   "h": 1280,
-  "tone": 0.53
+  "tone": 0.53,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "cma-74859",
@@ -1005,7 +1185,10 @@
   "file": "cma-74859.jpg",
   "w": 988,
   "h": 1280,
-  "tone": 0.74
+  "tone": 0.74,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-78717",
@@ -1021,7 +1204,10 @@
   "file": "cma-78717.jpg",
   "w": 888,
   "h": 1280,
-  "tone": 0.602
+  "tone": 0.602,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "cma-87891",
@@ -1053,6 +1239,10 @@
   "file": "cma-92480.jpg",
   "w": 1280,
   "h": 966,
-  "tone": 0.638
+  "tone": 0.638,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  }
 ]

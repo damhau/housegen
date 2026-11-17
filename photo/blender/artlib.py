@@ -6,7 +6,9 @@ process that renders one of its rooms), so no print hangs twice in a house until
 - rooms in order of how likely they are to be photographed (living, dining, bedrooms, ...);
 - each room's slots: `hang` (the print hang_art puts on the wall the camera sees most), `pair` (two prints of one
   series over a bed), `lean` (the print leaning on a sideboard), `swap1`/`swap2` (the kit's own wall art);
-- a print goes to rooms its style suits, in an order shuffled per house.
+- a print goes to rooms its style suits, in an order shuffled per house;
+- only the prints that suit the house style hang (an entry's `styles`, tagged by looking at it, #100: the kit's
+  styles.js names, not the print's own `style`, which says what it is).
 
 Without the library every slot takes the single print made/art-print.jpg.
 """
@@ -23,6 +25,7 @@ try:
 except ImportError:  # the allocation alone, outside Blender
     bpy = Vector = None
 
+import objlib
 import paths
 
 DIR = os.path.join(paths.MADE, "art")
@@ -94,7 +97,7 @@ def _dress(e):
     return frames[key % len(frames)], mount
 
 
-def load():
+def load(style=objlib.DEFAULT_STYLE):
     out = []
     for f in ("museum.json", "gen.json"):
         p = os.path.join(DIR, f)
@@ -105,7 +108,8 @@ def load():
             who = " ".join((e.get("artist") or "anon").replace(",", " ").split()[:2]).lower()
             e["series"] = f"{e['style']}-{who}"
         e["frame"], e["mount"] = _dress(e)
-    return [e for e in out if os.path.exists(os.path.join(DIR, e["file"])) and e.get("tone", 1.0) >= DARK]
+    return [e for e in out if objlib.suits(e, style) and os.path.exists(os.path.join(DIR, e["file"]))
+            and e.get("tone", 1.0) >= DARK]
 
 
 def suits(e, use):
@@ -160,10 +164,11 @@ def allocate(rooms, lib):
     return out
 
 
-def init(rooms):
+def init(rooms, style=None):
+    """The house's prints, for its rooms and its style (rooms.json's; None: the default)."""
     global LIB, BY, ALLOC, ROOMS, USED
     ROOMS = rooms
-    LIB = load()
+    LIB = load(objlib.house_style(style))
     BY = {e["id"]: e for e in LIB}
     ALLOC = allocate(rooms, LIB) if LIB else {}
     USED = {i for s in ALLOC.values() for v in s.values() for i in v}

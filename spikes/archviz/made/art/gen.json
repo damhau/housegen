@@ -9,7 +9,11 @@
   "file": "gen-organic-earth-3.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.814
+  "tone": 0.814,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-organic-earth-8",
@@ -21,7 +25,11 @@
   "file": "gen-organic-earth-8.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.801
+  "tone": 0.801,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-organic-sage-21",
@@ -33,7 +41,11 @@
   "file": "gen-organic-sage-21.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.834
+  "tone": 0.834,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-organic-sage-22",
@@ -45,7 +57,11 @@
   "file": "gen-organic-sage-22.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.814
+  "tone": 0.814,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-organic-blush-31",
@@ -57,7 +73,11 @@
   "file": "gen-organic-blush-31.jpg",
   "w": 1280,
   "h": 960,
-  "tone": 0.789
+  "tone": 0.789,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-arches-earth-1",
@@ -69,7 +89,10 @@
   "file": "gen-arches-earth-1.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.873
+  "tone": 0.873,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "gen-arches-earth-2",
@@ -81,7 +104,10 @@
   "file": "gen-arches-earth-2.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.865
+  "tone": 0.865,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "gen-arches-slate-3",
@@ -93,7 +119,11 @@
   "file": "gen-arches-slate-3.jpg",
   "w": 1280,
   "h": 1280,
-  "tone": 0.821
+  "tone": 0.821,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-arches-ochre-4",
@@ -105,7 +135,10 @@
   "file": "gen-arches-ochre-4.jpg",
   "w": 853,
   "h": 1280,
-  "tone": 0.859
+  "tone": 0.859,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "gen-field-slate-5",
@@ -117,7 +150,11 @@
   "file": "gen-field-slate-5.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.723
+  "tone": 0.723,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-field-slate-6",
@@ -129,7 +166,10 @@
   "file": "gen-field-slate-6.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.549
+  "tone": 0.549,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "gen-field-ochre-7",
@@ -141,7 +181,11 @@
   "file": "gen-field-ochre-7.jpg",
   "w": 853,
   "h": 1280,
-  "tone": 0.695
+  "tone": 0.695,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-field-sage-8",
@@ -153,7 +197,11 @@
   "file": "gen-field-sage-8.jpg",
   "w": 1280,
   "h": 960,
-  "tone": 0.75
+  "tone": 0.75,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-rings-mono-9",
@@ -165,7 +213,10 @@
   "file": "gen-rings-mono-9.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.933
+  "tone": 0.933,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "gen-rings-mono-10",
@@ -177,7 +228,10 @@
   "file": "gen-rings-mono-10.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.929
+  "tone": 0.929,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "gen-rings-earth-11",
@@ -189,7 +243,11 @@
   "file": "gen-rings-earth-11.jpg",
   "w": 1280,
   "h": 1280,
-  "tone": 0.894
+  "tone": 0.894,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-leaves-sage-12",
@@ -201,7 +259,10 @@
   "file": "gen-leaves-sage-12.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.902
+  "tone": 0.902,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "gen-leaves-sage-13",
@@ -213,7 +274,11 @@
   "file": "gen-leaves-sage-13.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.885
+  "tone": 0.885,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-leaves-mono-14",
@@ -225,7 +290,10 @@
   "file": "gen-leaves-mono-14.jpg",
   "w": 853,
   "h": 1280,
-  "tone": 0.913
+  "tone": 0.913,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "gen-leaves-mono-15",
@@ -237,7 +305,11 @@
   "file": "gen-leaves-mono-15.jpg",
   "w": 853,
   "h": 1280,
-  "tone": 0.939
+  "tone": 0.939,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-leaves-earth-16",
@@ -249,7 +321,11 @@
   "file": "gen-leaves-earth-16.jpg",
   "w": 1280,
   "h": 1280,
-  "tone": 0.887
+  "tone": 0.887,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-sun-earth-17",
@@ -261,7 +337,10 @@
   "file": "gen-sun-earth-17.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.805
+  "tone": 0.805,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "gen-sun-earth-18",
@@ -273,7 +352,10 @@
   "file": "gen-sun-earth-18.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.796
+  "tone": 0.796,
+  "styles": [
+   "scandinavian"
+  ]
  },
  {
   "id": "gen-sun-slate-19",
@@ -285,7 +367,11 @@
   "file": "gen-sun-slate-19.jpg",
   "w": 1280,
   "h": 960,
-  "tone": 0.8
+  "tone": 0.8,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-bauhaus-ochre-20",
@@ -297,7 +383,11 @@
   "file": "gen-bauhaus-ochre-20.jpg",
   "w": 1280,
   "h": 1280,
-  "tone": 0.85
+  "tone": 0.85,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-bauhaus-ochre-23",
@@ -309,7 +399,11 @@
   "file": "gen-bauhaus-ochre-23.jpg",
   "w": 1280,
   "h": 1280,
-  "tone": 0.811
+  "tone": 0.811,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-bauhaus-slate-24",
@@ -321,7 +415,10 @@
   "file": "gen-bauhaus-slate-24.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.829
+  "tone": 0.829,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "gen-hills-slate-25",
@@ -333,7 +430,11 @@
   "file": "gen-hills-slate-25.jpg",
   "w": 1280,
   "h": 853,
-  "tone": 0.661
+  "tone": 0.661,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-hills-sage-26",
@@ -345,7 +446,11 @@
   "file": "gen-hills-sage-26.jpg",
   "w": 1280,
   "h": 960,
-  "tone": 0.765
+  "tone": 0.765,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-hills-sage-27",
@@ -357,7 +462,11 @@
   "file": "gen-hills-sage-27.jpg",
   "w": 1280,
   "h": 960,
-  "tone": 0.769
+  "tone": 0.769,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  },
  {
   "id": "gen-hills-mono-28",
@@ -369,7 +478,10 @@
   "file": "gen-hills-mono-28.jpg",
   "w": 1280,
   "h": 853,
-  "tone": 0.643
+  "tone": 0.643,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "gen-strokes-mono-29",
@@ -381,7 +493,10 @@
   "file": "gen-strokes-mono-29.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.879
+  "tone": 0.879,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "gen-strokes-mono-30",
@@ -393,7 +508,10 @@
   "file": "gen-strokes-mono-30.jpg",
   "w": 960,
   "h": 1280,
-  "tone": 0.91
+  "tone": 0.91,
+  "styles": [
+   "contemporary"
+  ]
  },
  {
   "id": "gen-strokes-earth-32",
@@ -405,6 +523,10 @@
   "file": "gen-strokes-earth-32.jpg",
   "w": 1280,
   "h": 960,
-  "tone": 0.862
+  "tone": 0.862,
+  "styles": [
+   "scandinavian",
+   "contemporary"
+  ]
  }
 ]

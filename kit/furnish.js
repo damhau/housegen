@@ -17,7 +17,7 @@ import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { WALL_TILES, finishMaterial, metricUV, tileMaterial, track, wallTileMaterial } from "./finishes.js";
 import * as lighting from "./lighting.js";
 import { OBJECTS } from "./objects.js";
-import { entry, look } from "./styles.js";
+import { entry, look, styleName } from "./styles.js";
 
 // --------------------------------------------------------------------------
 // Materials
@@ -1045,7 +1045,25 @@ const PARAMETRIC = {
   nightstand: ({ width, length }) => nightstand({ width, depth: length }),
 };
 const BASE = new Set(["rug", "runner", "sideboard", "ottoman", "bench", ...FURNITURE].filter((r) => r !== "armchair"));
-const ACCENTS = ["warm", "cool", "green", null];
+/**
+ * Rooms' accents, by set (styles.js "accents"): each room of a house takes one of its style's set, the tone of the
+ * catalogue decor it favours (null: the quiet pieces) and the duvet and throw colours of a catalogue bed made up in
+ * linen. `colours` is scandinavian's (warm, cool, green or none), `muted` contemporary's (olive, sand or grey).
+ */
+export const ACCENTS = {
+  colours: [
+    { name: "warm", tone: "warm", duvets: ["#ece8e0", "#d8c7b0"], throws: ["#b4734f", "#a08a6a"] },
+    { name: "cool", tone: "cool", duvets: ["#e6e8ea", "#c9d0d6"], throws: ["#5d6f80", "#7f8c96"] },
+    { name: "green", tone: "green", duvets: ["#ece8e0", "#c8cdbd"], throws: ["#7d8a6a", "#5f6b55"] },
+    { name: "none", tone: null, duvets: ["#ece8e0", "#e4ddd0", "#d9d8d4"], throws: ["#8a8379", "#5b5e60"] },
+  ],
+  muted: [
+    { name: "olive", tone: "green", duvets: ["#ece8e0", "#c8cdbd"], throws: ["#6c6c4c", "#7d8a6a"] },
+    { name: "sand", tone: "warm", duvets: ["#ece8e0", "#e4ddd0"], throws: ["#cdbfa6", "#a08a6a"] },
+    { name: "grey", tone: null, duvets: ["#e4ddd0", "#d9d8d4"], throws: ["#8a8379", "#5b5e60"] },
+  ],
+};
+const QUIET = ACCENTS.colours[3];
 const TOO_FAR = Math.log(1.6); // a piece scaled further than this from its real size looks wrong
 
 function hash(s) {
@@ -1076,6 +1094,13 @@ function sceneKey() {
   return String(globalThis.__housekitSeed ?? String(globalThis.location?.pathname ?? "").match(/scenes\/([^/]+)/)?.[1] ?? "");
 }
 
+// the accent of the room named `room` (null without one): one of the house style's set, by the scene and the name
+function roomAccent(room) {
+  if (room == null) return null;
+  const set = entry(ACCENTS, "accents", { room });
+  return set[hash(`${sceneKey()}|room|${room}`) % set.length];
+}
+
 function before(a, b) {
   for (let k = 0; k < a.length; k++) if (a[k] !== b[k]) return a[k] < b[k];
   return false;
@@ -1103,16 +1128,22 @@ export function resetObjects() {
 }
 
 /**
- * The piece a role call draws, and the room's accent: the least drawn piece of the role in this scene (no piece
- * twice while the role has others), then one near the size asked, then one that goes with the room's accent
- * (`room`: its name; warm, cool, green or none, from the scene and the name), in the scene's own shuffled order.
+ * The piece a role call draws, and the tone of the room's accent: among the role's pieces the house style may draw
+ * (objects.js `styles`), the least drawn in this scene (no piece twice while the role has others), then one near the
+ * size asked, then one that goes with the room's accent (`room`: its name; one of the style's ACCENTS, from the scene
+ * and the name), in the scene's own shuffled order.
  */
 export function pickObject(role, { width, length, height, room } = {}) {
-  const deck = FOLIAGE[role] ?? ROLES[role];
-  if (!deck) throw new Error(`unknown role ${role}. Roles: ${Object.keys(ROLES).join(", ")}`);
+  const all = FOLIAGE[role] ?? ROLES[role];
+  if (!all) throw new Error(`unknown role ${role}. Roles: ${Object.keys(ROLES).join(", ")}`);
   const key = sceneKey();
-  if (!_decks.has(role)) _decks.set(role, shuffled(deck, hash(`${key}|${role}`)));
-  const accent = room == null ? undefined : ACCENTS[hash(`${key}|room|${room}`) % ACCENTS.length];
+  const style = styleName();
+  if (!_decks.has(`${style}|${role}`)) {
+    const own = all.filter((o) => o.styles?.includes(style));
+    if (!own.length) throw new Error(`no ${role} in the ${style} style (objects.js styles)`);
+    _decks.set(`${style}|${role}`, shuffled(own, hash(`${key}|${role}`)));
+  }
+  const accent = roomAccent(room)?.tone;
   const set = MATCHED.has(role) && room != null ? `${role}|${room}` : null;
   if (set && _matched.has(set)) return { piece: _matched.get(set), accent: accent ?? null };
   const [want, axis] = height ? [height, 2] : width ? [width, 0] : length ? [length, 1] : [0, 0];
@@ -1127,7 +1158,7 @@ export function pickObject(role, { width, length, height, room } = {}) {
     i,
   ];
   let best = null;
-  _decks.get(role).forEach((o, i) => {
+  _decks.get(`${style}|${role}`).forEach((o, i) => {
     const s = score(o, i);
     if (!best || before(s, best.s)) best = { o, s };
   });
@@ -1376,10 +1407,6 @@ export function dressSofa(sofa, dress) {
   return g;
 }
 
-// the duvet's colour, by the room's accent: quiet linen mostly, a muted colour now and then
-const DUVETS = { null: ["#ece8e0", "#e4ddd0", "#d9d8d4"], warm: ["#ece8e0", "#d8c7b0"], cool: ["#e6e8ea", "#c9d0d6"], green: ["#ece8e0", "#c8cdbd"] };
-const THROWS = { null: ["#8a8379", "#5b5e60"], warm: ["#b4734f", "#a08a6a"], cool: ["#5d6f80", "#7f8c96"], green: ["#7d8a6a", "#5f6b55"] };
-
 /**
  * The bed of a catalogue model made up: a duvet over the foot two thirds of its mattress (`mattress`: its top and
  * outline in the model, measured from above), hanging over the sides and the foot (unless a footboard is there),
@@ -1395,9 +1422,10 @@ function dressBed(wrap, o, s, room) {
     layers(g, dress, { width: w, top: y, head: head * s[2], foot: foot * s[2], cx, drop: Math.min(0.2, y - 0.12), pillows: o.pillows === false });
     return g;
   }
-  const accent = room == null ? null : ACCENTS[hash(`${sceneKey()}|room|${room}`) % ACCENTS.length];
+  // the duvet and the throw by the room's accent: quiet linen mostly, a muted colour now and then
+  const accent = roomAccent(room) ?? QUIET;
   const pick = (list, salt) => list[hash(`${sceneKey()}|${room ?? ""}|${o.id}|${salt}`) % list.length];
-  const linen = finish.linen(pick(DUVETS[accent], "duvet")), wool = finish.wool(pick(THROWS[accent], "throw"));
+  const linen = finish.linen(pick(accent.duvets, "duvet")), wool = finish.wool(pick(accent.throws, "throw"));
   const zf = foot * s[2], len = (foot - head) * s[2] * 0.68, zc = zf - len / 2 + 0.03;
   block(g, [w + 0.08, 0.06, len + 0.04], [cx, y - 0.02, zc], linen, 0.03);
   const drop = Math.min(0.22, y - 0.12);
@@ -1560,7 +1588,7 @@ export function onWall(room, edge, at, p, { y = 0, gap, out = 0 } = {}) {
 export default {
   finish, sofa, bed, nightstand, chair, diningSet, wardrobe, kitchenRun, wc, basin, bathtub, shower, towelRail,
   coatHooks, bench, washer, bathAccessories, towelStack, laundryBasket, rug, ceilingLight,
-  MODELS, ROLES, model, credits, place, onWall, FITTINGS, HANDLES, BEDDING, bedding, RUGS, SOFA_DRESSINGS, FURNITURE_TONES,
+  MODELS, ROLES, model, credits, place, onWall, FITTINGS, HANDLES, BEDDING, bedding, RUGS, SOFA_DRESSINGS, FURNITURE_TONES, ACCENTS,
   // light fixtures that carry their own light (lighting.js): fx.fixture("downlight", { mount: "recessed" })
   fixture: lighting.fixture, FIXTURES: lighting.FIXTURES, lighting,
 };
