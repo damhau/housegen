@@ -26,7 +26,6 @@ function RootLayout() {
           plan + photos → 3D, with an agent that looks at its own work
         </span>
         <div className="ml-auto flex items-center gap-3">
-          <AccountMenu />
           {build && (
             <span
               className="hidden font-mono text-[11px] tabular-nums text-muted-foreground sm:inline"
@@ -35,6 +34,7 @@ function RootLayout() {
               {build.version}
             </span>
           )}
+          <AccountMenu />
         </div>
       </header>
       <main className="min-h-0 flex-1">
