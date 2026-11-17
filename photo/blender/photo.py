@@ -980,9 +980,13 @@ def dress_tables(scene, pieces):
             else:
                 r = dress.rug(scene, (t.x, -t.y), (fp[0] + 1.1, fp[1] + 1.1), floor=lo.z)  # the chairs stay on it
                 r.rotation_euler[2] = turn(o)
-        if catalogue.DRESSED or objlib.LIB and objlib.choose(stage.room_of(o), "runner", [True, False]) is False:
+        if catalogue.DRESSED:  # the kit laid the table (dress_made drew its runner): its glasses, the runner's linen
+            style.table_glass(pieces, lo, hi)
             n += 1
-            continue  # no runner in this room, or the kit's own (dress_made); stage.dining sets the table
+            continue
+        if objlib.LIB and objlib.choose(stage.room_of(o), "runner", [True, False]) is False:
+            n += 1
+            continue  # no runner in this room; stage.dining sets the table
         dress.runner(scene, (t.x, hi.z + 0.002, -t.y), (0.30, max(fp) - 0.3), turn(o) + (0 if along_d else math.pi / 2))
         if objlib.LIB:
             n += 1
@@ -1169,7 +1173,7 @@ def bath_materials(root):
     if not BATH_MATS:
         BATH_MATS.update({"towel-white": terry((0.80, 0.79, 0.76)), "towel-sand": terry((0.52, 0.45, 0.36)),
                           "oak": oak_wood(), "glass": clear_glass(), "water": clear_glass(1.33, "archviz-water"),
-                          "napkin": cloth_weave((0.30, 0.35, 0.26), 0.04, 0.9, 0.1, "archviz-napkin"),  # sage linen, little sheen
+                          "napkin": cloth_weave((0.55, 0.46, 0.33), 0.04, 0.9, 0.1, "archviz-napkin"),  # flax linen (kit NAPKIN_LINEN)
                           "mat-terry": terry((0.78, 0.76, 0.72)), "throw-wool": dress.wool_material(tint=(1.15, 0.86, 0.62))})  # camel
     for c in family(root):
         if c.type != "MESH":

@@ -4,10 +4,12 @@
 import { afterEach, test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
-import { dressRooms, floorSpots } from "../dressing.js";
+import { boardSpot, dressRooms, floorSpots } from "../dressing.js";
 import fx, { resetObjects } from "../furnish.js";
 import { perimeterWalls } from "../house.js";
 import * as interior from "../interior.js";
+import { layout, readPieces } from "../layout.js";
+import { OBJECTS } from "../objects.js";
 import { setHouseStyle } from "../styles.js";
 
 afterEach(() => {
@@ -32,9 +34,9 @@ function sideboard() {
   return g;
 }
 
-// four rooms in a 10 x 8 m shell: a bedroom with a bed between two nightstands (a lamp on each), a bath with a tub,
-// a hall, a living room with a dining set, a sofa and a sideboard
-function flat({ dressedNightstand = false } = {}) {
+// four rooms in a 10 x 8 m shell: a bedroom with a bed between two nightstands (a lamp on each), a bath with a tub (and
+// a walk-in shower), a hall, a living room with a dining set, a sofa and a sideboard (or none)
+function flat({ dressedNightstand = false, board: withBoard = true, shower = false } = {}) {
   const root = new THREE.Group();
   root.add(perimeterWalls({ polygon: [[-0.3, -0.3], [10.3, -0.3], [10.3, 8.3], [-0.3, 8.3]], height: 2.6, thickness: 0.3 }));
   root.add(interior.floorPlan({
@@ -62,13 +64,14 @@ function flat({ dressedNightstand = false } = {}) {
     root.add(book);
   }
   const tub = on(fx.bathtub({ length: 1.7, width: 0.75 }), room("Bain"), 0, 1.25);
+  const stall = shower ? on(fx.shower({ width: 1.2, depth: 0.9, panel: 0.7 }), room("Bain"), 1, 2.6) : null;
   const table = fx.diningSet({ length: 1.8, width: 0.9 });
   table.position.set(3, 0, 5.8);
   root.add(table);
   const sofa = on(fx.sofa({ width: 2.2 }), room("Séjour"), 2, 3, 0.015);
-  const board = on(sideboard(), room("Séjour"), 3, 2.2);
+  const board = withBoard ? on(sideboard(), room("Séjour"), 3, 2.2) : null;
   root.updateMatrixWorld(true);
-  return { root, bed, stands, lamps, tub, table, sofa, board };
+  return { root, bed, stands, lamps, tub, stall, table, sofa, board };
 }
 
 const held = (root, pred = () => true) => {
@@ -145,7 +148,7 @@ test("a dining table: up to three things on its centre line, on its top, apart",
   }
 });
 
-test("a dining table's plates get a napkin each", () => {
+test("a dining table's plates get a napkin each, beside the plate on the table, its length toward the centre line", () => {
   for (const seed of ["a", "b", "c", "d"]) {
     globalThis.__housekitSeed = seed;
     resetObjects();
@@ -163,8 +166,36 @@ test("a dining table's plates get a napkin each", () => {
     const napkins = held(root, (u) => u.made === "napkin");
     assert.equal(napkins.length, plates.length, `${seed}: one napkin per plate`);
     for (const p of plates) {
-      assert.ok(napkins.some((n) => Math.hypot(at(n).x - at(p).x, at(n).z - at(p).z) < 0.01), `${seed}: a napkin on each plate`);
+      const n = napkins.find((q) => Math.abs(at(q).x - at(p).x) < 0.01 && Math.abs(Math.abs(at(q).z - at(p).z) - 0.197) < 0.01);
+      assert.ok(n, `${seed}: a napkin beside the plate at z ${at(p).z}: ${napkins.map((q) => at(q).toArray().map((v) => v.toFixed(2)))}`);
+      assert.ok(Math.abs(at(n).y - 0.7505) < 0.002, `${seed}: on the table top, not the plate`);
+      const along = new THREE.Vector3(0, 0, 1).applyQuaternion(n.getWorldQuaternion(new THREE.Quaternion()));
+      assert.ok(Math.abs(along.x) > 0.95, `${seed}: across the table (the plates are west of its centre line)`);
     }
+  }
+});
+
+test("a plate near the table's edge: its napkin beside it all on the top, moved in", () => {
+  globalThis.__housekitSeed = "a";
+  const { root } = flat();
+  const plates = [[2.68, 5.3], [3.32, 6.3]].map(([x, z]) => {
+    const p = new THREE.Group();
+    p.add(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.02, 24).translate(0, 0.01, 0), fx.finish.oak()));
+    p.userData = { kind: "furniture", name: "plate", footprint: [0.24, 0.24] };
+    p.position.set(x, 0.75, z);
+    root.add(p);
+    return p;
+  });
+  root.updateMatrixWorld(true);
+  dressRooms(root);
+  const napkins = held(root, (u) => u.made === "napkin");
+  assert.equal(napkins.length, 2);
+  for (const p of plates) {
+    const n = napkins.find((q) => Math.abs(Math.abs(at(q).z - at(p).z) - 0.197) < 0.01);
+    assert.ok(n, `beside the plate at ${at(p).x}: ${napkins.map((q) => at(q).toArray().map((v) => v.toFixed(3)))}`);
+    assert.ok(Math.abs(at(n).y - 0.7505) < 0.002, "on the table top");
+    assert.ok(Math.abs(at(n).x - 3) + 0.11 <= 0.45 - 0.02 + 0.011, `its end on the top: ${at(n).x.toFixed(3)}`);
+    assert.ok(Math.abs(at(n).x - 3) < Math.abs(at(p).x - 3), "moved toward the centre line");
   }
 });
 
@@ -235,6 +266,70 @@ test("a sideboard: something tall at one end, books at the other, nothing over i
   assert.ok(on.some((h) => ["pot-plant", "vase"].includes(h.userData.dressing)));
 });
 
+test("a living room without low storage gets the style's sideboard on a free wall, its top dressed", () => {
+  for (const style of ["scandinavian", "contemporary"]) {
+    setHouseStyle({ style });
+    for (const seed of ["a", "b"]) {
+      globalThis.__housekitSeed = seed;
+      resetObjects();
+      const { root, table, sofa } = flat({ board: false });
+      const done = dressRooms(root);
+      const boards = held(root, (u) => u.dressing === "sideboard");
+      assert.equal(done.addedSideboards, 1, `${style} ${seed}: ${JSON.stringify(done)}`);
+      assert.equal(boards.length, 1);
+      const [b] = boards, o = OBJECTS.find((q) => q.id === b.userData.model);
+      assert.ok(o && o.role === "sideboard" && o.styles.includes(style), `${style}: the style's catalogue sideboard`);
+      assert.equal(b.userData.room, "Séjour");
+      assert.ok(b.userData.furniture, "furniture the layout audit reads");
+      const [w, d, h] = o.size;
+      assert.ok(w >= 1 && w <= 2.1 && d >= 0.25 && d <= 0.6 && h >= 0.55 && h <= 1, `${o.size}`);
+      // its footprint and the 0.9 m before it, in the room, clear of the doors and the furniture
+      b.updateMatrixWorld(true);
+      const pt = (u, v) => new THREE.Vector3(u, 0, v).applyMatrix4(b.matrixWorld);
+      const boxes = [table, sofa].map((p) => new THREE.Box3().setFromObject(p));
+      const doors = [[2.6, 3.5], [4.6, 5.4], [7.6, 9.0]]; // the partition's openings along z = 3.5
+      const fromDoor = (p) => Math.min(...doors.map(([x0, x1]) => Math.hypot(Math.max(x0 - p.x, 0, p.x - x1), p.z - 3.5)));
+      for (let u = -w / 2; u <= w / 2 + 1e-9; u += w / 6) {
+        for (let v = -d / 2; v <= d / 2 + 0.9; v += 0.1) {
+          const p = pt(u, v);
+          assert.ok(p.x >= -0.01 && p.x <= 10.01 && p.z >= 3.49 && p.z <= 8.01, `${style} ${seed}: in the room: ${p.x.toFixed(2)}, ${p.z.toFixed(2)}`);
+          assert.ok(!boxes.some((bx) => inBox(p, bx)), `${style} ${seed}: clear at ${p.x.toFixed(2)}, ${p.z.toFixed(2)}`);
+          if (v <= d / 2) assert.ok(fromDoor(p) >= 0.9 - 0.02, `${style} ${seed}: clear of the doors: ${fromDoor(p).toFixed(2)}`);
+        }
+      }
+      const back = pt(0, -d / 2 - 0.02), edge = Math.min(back.x, 10 - back.x, back.z - 3.5, 8 - back.z);
+      assert.ok(edge < 0.03, `${style} ${seed}: its back against a wall: ${edge.toFixed(3)}`);
+      const top = held(root, (u) => u.room === "Séjour").filter((q) => Math.abs(at(q).y - (at(b).y + h + 0.001)) < 0.002);
+      assert.ok(top.some((q) => q.userData.made === "books"), `${style} ${seed}: books on it`);
+      // drawn (the catalogue model stands in as its box), the layout audit reads it and finds nothing wrong with it
+      b.add(new THREE.Mesh(new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0), fx.finish.oak()));
+      root.updateMatrixWorld(true);
+      assert.ok(readPieces(root).some((p) => p.obj === b && p.type === "cabinet"));
+      const bad = layout(root).findings.filter((f) => f.piece === "sideboard" || f.text.includes('"sideboard"'));
+      assert.deepEqual(bad.map((f) => f.text), [], `${style} ${seed}`);
+    }
+  }
+});
+
+test("a room with its own sideboard, or no free wall, gets none", () => {
+  globalThis.__housekitSeed = "dress";
+  const { root } = flat();
+  assert.equal(dressRooms(root).addedSideboards, 0);
+  assert.equal(held(root, (u) => u.dressing === "sideboard").length, 0);
+  const polygon = [[0, 0], [3, 0], [3, 3], [0, 3]];
+  const walls = [{ a: [0, -0.05], b: [3, -0.05], t: 0.1 }, { a: [3.05, 0], b: [3.05, 3], t: 0.1 }, { a: [3, 3.05], b: [0, 3.05], t: 0.1 }, { a: [-0.05, 3], b: [-0.05, 0], t: 0.1 }];
+  const size = { w: 1.4, d: 0.4, h: 0.75 };
+  assert.ok(boardSpot({ polygon, walls, ...size }), "a free room takes one");
+  const windows = [[0, 1.5], [1.5, 0], [3, 1.5], [1.5, 3]].map(([x, z]) => ({ a: [x - (z % 3 ? 0 : 0.5), z - (z % 3 ? 0.5 : 0)], b: [x + (z % 3 ? 0 : 0.5), z + (z % 3 ? 0.5 : 0)], y0: 1.0 }));
+  assert.equal(boardSpot({ polygon, walls, windows, ...size }), null, "a window on every wall");
+  assert.equal(boardSpot({ polygon, walls, doors: [{ a: [1.1, 0], b: [1.9, 0] }, { a: [1.1, 3], b: [1.9, 3] }, { a: [0, 1.1], b: [0, 1.9] }, { a: [3, 1.1], b: [3, 1.9] }], ...size }),
+    null, "a door in the middle of every wall");
+  assert.equal(boardSpot({ polygon, walls: walls.slice(0, 1), boxes: [{ rect: [0.5, 0.5, 2.5, 2.5], y0: 0, y1: 0.45 }], ...size }), null,
+    "one wall, a low table 0.5 m before it");
+  const spot = boardSpot({ polygon, walls, keepOut: [{ rect: [0, 0, 3, 0.8] }, { rect: [0, 0, 0.8, 3] }], ...size });
+  assert.ok(spot && spot.x > 1.1 + 0.2 && spot.z > 1.1 + 0.2, `away from the stair: ${JSON.stringify(spot)}`);
+});
+
 test("the floor: accents against the walls, clear of the doors and the furniture, more in a larger room", () => {
   globalThis.__housekitSeed = "dress";
   const { root, table, sofa, board, bed } = flat();
@@ -280,6 +375,20 @@ test("a bath: a towel on a bar on a free wall when it has no rail", () => {
   assert.ok(bar, "a towel bar");
   const p = at(bar);
   assert.ok(Math.abs(p.y - 1.2) < 1e-6 && p.x > 4 && p.x < 6.5 && p.z > 0 && p.z < 3.5, `in the bath at 1.2 m: ${p.toArray()}`);
+});
+
+test("a bath with a walk-in shower: a towel over its glass panel's top, the room side longer", () => {
+  globalThis.__housekitSeed = "dress";
+  const { root, stall } = flat({ shower: true });
+  dressRooms(root);
+  const box = new THREE.Box3().setFromObject(stall);
+  const towels = held(root, (u) => u.made === "drape" && u.arg === "0.03");
+  assert.equal(towels.length, 1, "one towel on the shower");
+  const p = at(towels[0]);
+  assert.ok(Math.abs(p.y - 2.012) < 0.01, `on the panel's top: ${p.y}`);
+  assert.ok(inBox(p, box) && p.x < box.min.x + 0.1, `on the front panel (the shower faces west): ${p.toArray().map((v) => v.toFixed(2))}`);
+  const room = new THREE.Vector3(0, 0, 1).applyQuaternion(towels[0].getWorldQuaternion(new THREE.Quaternion()));
+  assert.ok(room.x < -0.99, "its longer side toward the room");
 });
 
 test("the same scene draws the same dressing", () => {

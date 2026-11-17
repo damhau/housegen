@@ -1,12 +1,12 @@
 """Room dressing (made here, for photo.py and style.py): a towel draped over a tub's rim by cloth simulation, a stack
 of folded towels, an oak bath caddy with a candle and a soap, a pair of pump bottles on a stone tray; and the styling
 props: a stack of cloth-bound books, a glass carafe and tumbler, pillar candles on a stone tray, a folded linen
-napkin, a round oak stool (bare, or with folded towels), a terry bath mat, a towel on a wall bar.
+napkin (a slab pair, or the kit's fold), a round oak stool (bare, or with folded towels), a terry bath mat, a towel on a wall bar.
 
     uv run --no-project --python 3.11 --with bpy python made/bathset.py <what> <out.glb> [rim width | seed]
 
 what: drape (over a rim `rim width` m wide, 0.10 by default) | stack | caddy | bottles | pair (no tray) |
-      books (seed: the colours and the twist; or the covers "i-j-k", the kit's COVERS, kit/dressing.js) | carafe | carafe1 (no tumbler) | candles | napkin | stool | stooltowels | bathmat | rail
+      books (seed: the colours and the twist; or the covers "i-j-k", the kit's COVERS, kit/dressing.js) | carafe | carafe1 (no tumbler) | candles | napkin | napkin-fold (the kit's) | stool | stooltowels | bathmat | rail
       | sofathrow (arm width-arm height-seat height, in cm: "18-62-44")
 
 Frames (Blender, z up), as photo.py places them:
@@ -393,6 +393,25 @@ def napkin():
     return [join([a, b], "napkin")]
 
 
+def napkin_fold():
+    """A flax linen napkin folded in half lengthwise, 0.22 m long along y: the lower layer, the fold round on +x, the
+    top layer a little short, a soft ripple; the kit draws the same fold (kit/dressing.js NAPKIN)."""
+    s = [(-0.062, 0.0012), (-0.02, 0.0012), (0.03, 0.0012), (0.056, 0.0012)]
+    s += [(0.056 + 0.0038 * math.cos(math.radians(a)), 0.005 + 0.0038 * math.sin(math.radians(a))) for a in (-60, -20, 20, 60)]
+    s += [(0.056, 0.0088), (0.02, 0.009), (-0.03, 0.0088), (-0.055, 0.0084)]
+    rows, n = 24, len(s)
+    verts = [(x, -0.11 + 0.22 * j / rows, z + 0.0008 * math.sin(x * 23 + (-0.11 + 0.22 * j / rows) * 17))
+             for j in range(rows + 1) for x, z in s]
+    faces = [(j * n + i, j * n + i + 1, (j + 1) * n + i + 1, (j + 1) * n + i) for j in range(rows) for i in range(n - 1)]
+    me = bpy.data.meshes.new("napkin")
+    me.from_pydata(verts, [], faces)
+    o = bpy.data.objects.new("napkin", me)
+    scene.collection.objects.link(o)
+    o.data.materials.append(mat("napkin", (0.55, 0.46, 0.33), 0.9))
+    finish(o, 0.0012)
+    return [o]
+
+
 def stool(towels=False):
     """A round oak stool 0.45 m high: a 0.34 m seat with a rounded edge on three splayed, tapered legs; with
     `towels`, the towel stack on its seat."""
@@ -471,7 +490,8 @@ def sofathrow():
 
 
 made = {"drape": drape, "stack": stack, "caddy": caddy, "bottles": bottles, "pair": lambda: bottles(False),
-        "books": lambda: books(SEED, COVERS), "carafe": carafe, "carafe1": lambda: carafe(False), "candles": candles, "napkin": napkin, "stool": stool,
+        "books": lambda: books(SEED, COVERS), "carafe": carafe, "carafe1": lambda: carafe(False), "candles": candles, "napkin": napkin,
+        "napkin-fold": napkin_fold, "stool": stool,
         "stooltowels": lambda: stool(True), "bathmat": bathmat, "rail": rail, "sofathrow": sofathrow}[WHAT]()
 bpy.ops.object.select_all(action="DESELECT")
 for o in made:

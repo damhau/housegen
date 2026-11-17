@@ -396,7 +396,28 @@ def bedsides(scene, cam, room, sy, pieces):
     return n
 
 
-RUNNER = (0.22, 0.17, 0.11)  # flax linen (linear: about sRGB 0.50 0.44 0.36)
+RUNNER = (0.22, 0.17, 0.11)  # flax linen (linear: about sRGB 0.50 0.44 0.36; kit/dressing.js MADE.runner)
+
+
+def table_glass(pieces, lo, hi):
+    """The glasses standing on a table (between `lo` and `hi`) in clear glass: the export's wine glasses are an opaque
+    white "glass"; and the runners in flax linen, not near-white on a white top."""
+    glass = None
+    for g in pieces:
+        t = g.matrix_world.translation
+        if "glass" not in H.name(g) or not (lo.x <= t.x <= hi.x and lo.y <= t.y <= hi.y):
+            continue
+        glass = glass or H.clear_glass(name="archviz-glass-table")
+        for c in [g, *g.children_recursive]:
+            for sl in c.material_slots if c.type == "MESH" else []:
+                if sl.material is not None and sl.material.name.startswith("glass"):
+                    sl.material = glass
+    for m in bpy.data.materials:
+        if m.name.startswith("archviz-runner"):
+            q = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
+            q.inputs["Base Color"].default_value = (*RUNNER, 1)
+            q.inputs["Sheen Weight"].default_value = 0.12  # a white sheen at the camera's grazing angle reads grey
+            q.inputs["Sheen Tint"].default_value = (*RUNNER, 1)
 
 
 def table_extras(scene, cam, room, sy, pieces):
@@ -421,24 +442,9 @@ def table_extras(scene, cam, room, sy, pieces):
             if not (lo.x <= t.x <= hi.x and lo.y <= t.y <= hi.y):
                 continue
             rot = H.turn(o) + across + math.radians(((plates * 37) % 11) - 5)  # its long side across the table
-            put(scene, prop("napkin"), Vector((t.x, t.y, phi.z + 0.0005)), rot)
+            put(scene, prop("napkin-fold"), Vector((t.x, t.y, phi.z + 0.0005)), rot)
             plates += 1
-        glass = None
-        for g in pieces:  # the export's wine glasses are an opaque white "glass": clear glass, as on the bath pieces
-            t = g.matrix_world.translation
-            if "glass" not in H.name(g) or not (lo.x <= t.x <= hi.x and lo.y <= t.y <= hi.y):
-                continue
-            glass = glass or H.clear_glass(name="archviz-glass-table")
-            for c in [g, *g.children_recursive]:
-                for sl in c.material_slots if c.type == "MESH" else []:
-                    if sl.material is not None and sl.material.name.startswith("glass"):
-                        sl.material = glass
-        for m in bpy.data.materials:  # the runner in flax linen, not near-white on a white top
-            if m.name.startswith("archviz-runner"):
-                q = next(n for n in m.node_tree.nodes if n.type == "BSDF_PRINCIPLED")
-                q.inputs["Base Color"].default_value = (*RUNNER, 1)
-                q.inputs["Sheen Weight"].default_value = 0.12  # a white sheen at the camera's grazing angle reads grey
-                q.inputs["Sheen Tint"].default_value = (*RUNNER, 1)
+        table_glass(pieces, lo, hi)
         length = max(w, d)
         free = []
         for k in range(-8, 9):
@@ -1002,7 +1008,7 @@ def sideboard(scene, cam, room, sy, taken):
 
 
 LENS_CLEAR = 0.6  # m between the lens and the box of a prop or swapped plant (#89: a pachira around the lens)
-TALL = ("floor-plant", "vase")  # the kit dressing's floor accents that may stand in front of the lens (a floor vase's branches)
+TALL = ("floor-plant",)  # the kit dressing's floor accents that may stand in front of the lens
 ACCENTS = ("floor-plant", "pouf", "basket", "vase")  # what the kit dressing stands on a floor
 FILL = ("pouf", "basket")
 
@@ -1043,11 +1049,13 @@ def edge_clutter(scene, cam, plants):
             continue
         lo, hi = H.box(o)
         size = hi - lo
+        # a kit vase is a prop however tall its branches: cut by the frame, it goes (#103, Montelly 02)
+        prop = held and o.get("dressing") == "vase"
         if held:
             plant = o.get("dressing") in TALL and size.z > 0.7
         else:
             plant = o.name.startswith(("pachira", "potted_plant_02")) or (o.get("obj_role") == "plant" and size.z > 0.7)
-        if plant != plants or not plant and (max(size.x, size.y) > 0.5 or size.z > 0.7):
+        if plant != plants or not plant and not prop and (max(size.x, size.y) > 0.5 or size.z > 0.7):
             continue
         eye = cam.matrix_world.translation
         near = Vector([min(max(eye[k], lo[k]), hi[k]) for k in range(3)])  # the box's point closest to the lens

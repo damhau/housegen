@@ -15,7 +15,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 DRESSING = (ROOT / "kit" / "dressing.js").read_text(encoding="utf-8")
-# the catalogue roles the dressing draws: by catalogue(), pickObject() (the floor's poufs and baskets) and model()
+# the catalogue roles the dressing draws: by catalogue(), pickObject() (the floor's poufs and baskets, a sideboard in a
+# living room without one) and model()
 DRESSING_ROLES = {
     "cushion",
     "candle",
@@ -26,6 +27,7 @@ DRESSING_ROLES = {
     "pouf",
     "pot-plant",
     "floor-plant",
+    "sideboard",
 }
 
 
@@ -45,7 +47,7 @@ def _made_keys() -> set[str]:
 def _bathset_pieces() -> set[str]:
     src = (ROOT / "photo" / "blender" / "made" / "bathset.py").read_text(encoding="utf-8")
     table = src.split("made = {", 1)[1].split("}[WHAT]", 1)[0]
-    return set(re.findall(r'"(\w+)":', table))
+    return set(re.findall(r'"([\w-]+)":', table))
 
 
 def _js_rows(path: Path) -> list[dict[str, Any]]:
@@ -76,6 +78,7 @@ def test_a_stand_in_is_drawn_with_its_own_arguments(catalogue: ModuleType) -> No
     assert catalogue.made_piece("drape", "0.085") == ("prop", ("drape", "0.085", 1.0))
     assert catalogue.made_piece("books", "4-0-2") == ("prop", ("books", "4-0-2", 1.0))
     assert catalogue.made_piece("carafe") == ("prop", ("carafe", None, 1.0))
+    assert catalogue.made_piece("napkin") == ("prop", ("napkin-fold", None, 1.0))
     assert catalogue.made_piece("runner", "wide") is None
     assert catalogue.made_piece("lantern") is None
 
@@ -98,7 +101,10 @@ def test_the_books_take_the_kit_covers_in_its_order() -> None:
 def test_every_piece_the_dressing_draws_is_drawn_at_full_resolution_in_a_dressed_scene(
     catalogue: ModuleType,
 ) -> None:
-    named = set(re.findall(r'(?:catalogue|modelled)\(ctx, "([\w-]+)"', DRESSING))
+    named = set(
+        re.findall(r'(?:catalogue\(ctx, |modelled\(ctx, |pickObject\()"([\w-]+)"', DRESSING)
+    )
+    assert "sideboard" in named
     assert named <= DRESSING_ROLES, named - DRESSING_ROLES
     library = {
         e["id"]: e["role"]

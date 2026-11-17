@@ -36,9 +36,9 @@ KIT_ROLES = frozenset({"table_lamp", "floor_lamp", "desk_lamp", "pendant", "chan
 # drawn again at full resolution: those, and the rugs
 FULL = KIT_ROLES | {"rug", "runner"}
 # and, in a scene the kit dressed, the library roles of what its dressing draws from the catalogue (cushions, candles...)
-DRESSING_ROLES = frozenset({"pillow", "lumbar", "candle", "jar", "tray", "bowl", "basket", "pouf"})
+DRESSING_ROLES = frozenset({"pillow", "lumbar", "candle", "jar", "tray", "bowl", "basket", "pouf", "sideboard"})
 # kit/dressing.js MADE: the bathset piece (made/bathset.py) each stand-in is drawn as
-MADE = {"books": "books", "carafe": "carafe", "carafe1": "carafe1", "candles": "candles", "napkin": "napkin",
+MADE = {"books": "books", "carafe": "carafe", "carafe1": "carafe1", "candles": "candles", "napkin": "napkin-fold",
         "sofathrow": "sofathrow", "drape": "drape", "stooltowels": "stooltowels", "rail": "rail"}
 NOT_LEAVES = ("_pot", "_dirt", "_pebbles", "_soil", "_ground")  # kit/furnish.js NOT_LEAVES
 _ENTRIES, _ART = None, None

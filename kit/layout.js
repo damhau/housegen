@@ -112,13 +112,16 @@ function localBox(o) {
   return box;
 }
 
-/** The furniture pieces (top-level kind "furniture"), as oriented boxes in world metres. */
+/**
+ * The furniture pieces (top-level kind "furniture", and the kit dressing's own furniture: dressing.js sideboards), as
+ * oriented boxes in world metres.
+ */
 export function readPieces(root) {
   root.updateMatrixWorld(true);
   const out = [];
   root.traverse((o) => {
     const u = o.userData;
-    if (u?.kind !== "furniture") return;
+    if (u?.kind !== "furniture" && !(u?.kind === "dressing" && u.furniture)) return;
     for (let a = o.parent; a; a = a.parent) if (a.userData?.kind === "furniture") return;
     const lb = localBox(o);
     if (lb.isEmpty()) return;

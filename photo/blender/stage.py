@@ -577,25 +577,10 @@ def dining(scene, cam, room, sy, pieces):
             if not (lo.x <= t.x <= hi.x and lo.y <= t.y <= hi.y):
                 continue
             if napkin:
-                S.put(scene, S.prop("napkin"), Vector((t.x, t.y, phi.z + 0.0005)),
+                S.put(scene, S.prop("napkin-fold"), Vector((t.x, t.y, phi.z + 0.0005)),
                       H.turn(o) + across + math.radians(((plates * 37) % 11) - 5))
             plates += 1
-        glass = None
-        for g in pieces:
-            t = g.matrix_world.translation
-            if "glass" not in H.name(g) or not (lo.x <= t.x <= hi.x and lo.y <= t.y <= hi.y):
-                continue
-            glass = glass or H.clear_glass(name="archviz-glass-table")
-            for c in [g, *g.children_recursive]:
-                for sl in c.material_slots if c.type == "MESH" else []:
-                    if sl.material is not None and sl.material.name.startswith("glass"):
-                        sl.material = glass
-        for m in bpy.data.materials:
-            if m.name.startswith("archviz-runner"):
-                q = next(k for k in m.node_tree.nodes if k.type == "BSDF_PRINCIPLED")
-                q.inputs["Base Color"].default_value = (*S.RUNNER, 1)
-                q.inputs["Sheen Weight"].default_value = 0.12
-                q.inputs["Sheen Tint"].default_value = (*S.RUNNER, 1)
+        S.table_glass(pieces, lo, hi)
         length = max(w, d)
         free = []
         for k in range(-8, 9):

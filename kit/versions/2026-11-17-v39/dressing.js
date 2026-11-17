@@ -2,13 +2,14 @@
 // tour shows what the listing photos show (the photo service used to add it from its camera: photo/blender/stage.py).
 //   - a nightstand: its lamp to the back corner away from the bed, books (something small on them) or something
 //     small alone at the front corner on the bed's side, now and then a carafe at the other front corner;
-//   - a dining table: napkins on its plates, now and then a linen runner, on its centre line a candle, a carafe, a vase
-//     or a bowl of fruit;
+//   - a dining table: a napkin beside each plate, now and then a linen runner, on its centre line a candle, a carafe, a
+//     vase or a bowl of fruit;
 //   - a sofa the house style leaves bare: cushions at both ends against its back, now and then a throw over an arm;
-//   - a sideboard: something tall at one end, a jar or a vase, books with something small on them at the other;
+//   - a sideboard: something tall at one end, a jar or a vase, books with something small on them at the other; a
+//     living or dining room without low storage gets the style's catalogue sideboard on a free wall, dressed so;
 //   - the floor: a plant, a pouf, a basket or a floor vase in a free corner, more of them in a larger room;
-//   - a bath: a towel over the tub's front rim, now and then a stool with folded towels, a towel on a bar when the room
-//     has no towel rail.
+//   - a bath: a towel over the tub's front rim and over a walk-in shower's glass panel, now and then a stool with
+//     folded towels, a towel on a bar when the room has no towel rail.
 // The pieces are the house style's catalogue (pickObject: cushions, candles, jars, bowls, vases, plants, poufs,
 // baskets) and the kit's own stand-ins for the photo service's made props (books, a carafe, a napkin, a runner, a
 // throw, towels, a stool, a towel bar), tagged `made` (and `arg`): the photo service draws its own in their place
@@ -112,15 +113,19 @@ function kindOf(o) {
   return null;
 }
 
+/** A frame at world point (x, y, z) turned by `yaw` about the vertical: plan points to and from its (u, v). */
+function frameAt(x, y, z, yaw) {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const f = { x, y, z, yaw, c, s };
+  f.world = (u, v) => [f.x + u * c + v * s, f.z - u * s + v * c];
+  f.local = (px, pz) => { const dx = px - f.x, dz = pz - f.z; return [dx * c - dz * s, dx * s + dz * c]; };
+  return f;
+}
+
 /** A piece's frame (its place and turn about the vertical) and its box in that frame. */
 function frameOf(o) {
   const p = o.getWorldPosition(new THREE.Vector3());
-  const yaw = new THREE.Euler().setFromQuaternion(o.getWorldQuaternion(new THREE.Quaternion()), "YXZ").y;
-  const c = Math.cos(yaw), s = Math.sin(yaw);
-  const f = { x: p.x, y: p.y, z: p.z, yaw, c, s };
-  f.world = (u, v) => [f.x + u * c + v * s, f.z - u * s + v * c];
-  f.local = (x, z) => { const dx = x - f.x, dz = z - f.z; return [dx * c - dz * s, dx * s + dz * c]; };
-  return f;
+  return frameAt(p.x, p.y, p.z, new THREE.Euler().setFromQuaternion(o.getWorldQuaternion(new THREE.Quaternion()), "YXZ").y);
 }
 
 function localBox(o, f) {
@@ -161,9 +166,13 @@ function readScene(root) {
     return { plan, y, height: plan.userData.height ?? 2.5, rooms, walls, doors: [], windows: [] };
   });
   const storeyAt = (y) => storeys.find((s) => y > s.y - 0.3 && y < s.y + s.height - 0.2);
-  const pieces = [], loose = [], dressed = new Set(), soft = [];
+  const pieces = [], loose = [], dressed = new Set(), soft = [], stairs = [], floors = [];
   root.traverse((o) => {
     const u = o.userData ?? {};
+    if (STAIR.test(String(o.name ?? "")) && !STAIR.test(String(o.parent?.name ?? ""))) {
+      const box = new THREE.Box3().setFromObject(o);
+      if (!box.isEmpty()) stairs.push(box);
+    }
     if (u.kind === "sofaDressing" && u.sofa) dressed.add(u.sofa);
     if (u.kind === "furniture") {
       for (let a = o.parent; a; a = a.parent) if (a.userData?.kind === "furniture") return;
@@ -177,6 +186,7 @@ function readScene(root) {
       return;
     }
     if (SOFT.test(String(u.name ?? o.name ?? ""))) soft.push(o);
+    if (o.isMesh && kindOf(o) === "roomFloor") floors.push(o);
     if (o.isMesh && !STRUCTURE.has(kindOf(o)) && kindOf(o) !== "furniture" && kindOf(o) !== "sofaDressing") loose.push(o);
   });
   for (const w of readWalls(root)) {
@@ -198,7 +208,7 @@ function readScene(root) {
     const span = { a: [op.a.x, op.a.z], b: [op.b.x, op.b.z], y0: op.y0 - base, y1: op.y1 - base };
     (span.y0 < 0.3 && span.y1 - span.y0 > 1.6 ? s.doors : s.windows).push(span);
   }
-  return { plans, storeys, pieces, obstacles, dressed, soft };
+  return { plans, storeys, pieces, obstacles, dressed, soft, stairs, floors };
 }
 
 /** The plan rectangles of the obstacles on storey `s`, with their heights over its floor (what the pass adds, too). */
@@ -221,6 +231,11 @@ const doubleSided = (m) => mat(`2s:${m.uuid}`, () => { const c = m.clone(); c.si
 // the photo service's made props' colours (photo/blender/made/bathset.py), linear
 const COVERS = [[0.30, 0.34, 0.27], [0.55, 0.47, 0.37], [0.74, 0.71, 0.64], [0.09, 0.09, 0.09], [0.45, 0.26, 0.19], [0.10, 0.13, 0.18]];
 const TOWEL = [0.85, 0.84, 0.81], SAND = [0.62, 0.55, 0.46];
+// the napkin's fold across (x, y): the lower layer, a round fold, the upper layer (made/bathset.py napkin)
+const NAPKIN = [[-0.062, 0.0012], [-0.02, 0.0012], [0.03, 0.0012], [0.056, 0.0012],
+  ...[-60, -20, 20, 60].map((a) => [0.056 + 0.0038 * Math.cos(a * DEG), 0.005 + 0.0038 * Math.sin(a * DEG)]),
+  [0.056, 0.0088], [0.02, 0.009], [-0.03, 0.0088], [-0.055, 0.0084]];
+const NAPKIN_LINEN = "#c4b49c";
 
 function mesh(g, geo, material, [x, y, z] = [0, 0, 0]) {
   const m = new THREE.Mesh(geo, material);
@@ -232,12 +247,12 @@ function mesh(g, geo, material, [x, y, z] = [0, 0, 0]) {
 const slab = (g, [w, h, d], [x, y, z], material) => mesh(g, new THREE.BoxGeometry(w, h, d), material, [x, y + h / 2, z]);
 const lathe = (g, profile, material, at) => mesh(g, new THREE.LatheGeometry(profile.map(([r, y]) => new THREE.Vector2(r, y)), 32), material, at);
 
-/** A cloth band `width` wide (along z) following `profile` ([x, y] points, across), both faces drawn. */
-function band(g, profile, width, material) {
-  const pos = [], idx = [], n = profile.length, rows = 8;
+/** A cloth band `width` wide (along z) following `profile` ([x, y] points, across), both faces drawn, `wobble` its ripple. */
+function band(g, profile, width, material, wobble = 0.003, rows = 8) {
+  const pos = [], idx = [], n = profile.length;
   for (let j = 0; j <= rows; j++) {
     const z = -width / 2 + (width * j) / rows;
-    for (const [x, y] of profile) pos.push(x, y + 0.003 * Math.sin(x * 23 + z * 17), z);
+    for (const [x, y] of profile) pos.push(x, y + wobble * Math.sin(x * 23 + z * 17), z);
   }
   for (let j = 0; j < rows; j++) for (let i = 0; i < n - 1; i++) {
     const a = j * n + i, b = a + n;
@@ -293,15 +308,15 @@ const MADE = {
     }
     return { h: 0.17, r: 0.12 };
   },
+  // a flax linen napkin folded in half lengthwise, 0.22 m long along z: the fold round on +x, the top layer a little short
   napkin(g) {
-    slab(g, [0.13, 0.007, 0.24], [0, 0, 0], plain("napkin", [0.78, 0.75, 0.69], 0.9));
-    slab(g, [0.122, 0.007, 0.222], [0.003, 0.006, -0.008], plain("napkin", [0.78, 0.75, 0.69], 0.9));
-    return { h: 0.013, r: 0.13 };
+    band(g, NAPKIN, 0.22, finish.linen(NAPKIN_LINEN), 0.0008, 12);
+    return { h: 0.01, r: 0.12 };
   },
   // a linen runner `arg` = "width-length" (cm) along z
   runner(g, arg) {
     const [w, l] = String(arg).split("-").map((v) => Number(v) / 100);
-    slab(g, [w, 0.002, l], [0, 0, 0], finish.linen("#d5cfc4"));
+    slab(g, [w, 0.002, l], [0, 0, 0], finish.linen("#807060")); // flax, the photo's RUNNER (style.py)
     return { h: 0.002, r: Math.max(w, l) / 2 };
   },
   // a wool throw over a sofa's arm (the photo's sofathrow frame: the arm's inner face at x = 0, the arm on +x, the
@@ -534,12 +549,10 @@ function diningTables(ctx) {
     if (at0 == null || at0 - p.box.min.y < 0.6 || at0 - p.box.min.y > 0.85) continue;
     // the top's extent, out from its centre along each axis to its edge (a set's chairs are lower)
     const reach = (du, dv) => {
+      const level = (t) => { const y = heightAt(meshes, p.f.world(cu + du * t, cv + dv * t), from); return y != null && Math.abs(y - at0) <= 0.02; };
       let k = 0;
-      for (let t = 0.05; t < 2; t += 0.05) {
-        const y = heightAt(meshes, p.f.world(cu + du * t, cv + dv * t), from);
-        if (y == null || Math.abs(y - at0) > 0.02) break;
-        k = t;
-      }
+      for (let t = 0.05; t < 2 && level(t); t += 0.05) k = t;
+      for (let t = k + 0.01; t < k + 0.05 && level(t); t += 0.01) k = t; // to the centimetre: a napkin by a plate near the edge
       return k;
     };
     const hu = Math.min(reach(1, 0), reach(-1, 0)), hv = Math.min(reach(0, 1), reach(0, -1));
@@ -547,11 +560,24 @@ function diningTables(ctx) {
     const top = at0, alongZ = hv > hu, L = 2 * Math.max(hu, hv);
     const items = onTop(ctx, p, top), slot = `${p.room.name}|table${n}`;
     const at = (u, v, y) => { const [x, z] = p.f.world(u, v); return new THREE.Vector3(x, y, z); };
-    // napkins on every plate (the photo skipped them on a third of its tables; plates alone read as a table half laid)
+    // a napkin by every plate (plates alone read as a table half laid), beside it so the plate shows (#103: napkins
+    // over white plates on a white table read as no plates): the diner's left, else the right, else on the plate
     const plates = items.filter((i) => /^plate$/i.test(i.q.name) || i.q.type === "decor" && /plate/i.test(i.q.name));
+    const onTable = (u, v) => Math.abs(u - cu) <= hu - 0.02 && Math.abs(v - cv) <= hv - 0.02;
     plates.forEach((i, k) => {
-      const c = i.q.box.getCenter(new THREE.Vector3());
-      made(ctx, "napkin", p.room, new THREE.Vector3(c.x, i.q.box.max.y + 0.0005, c.z), p.f.yaw + (alongZ ? Math.PI / 2 : 0) + (((k * 37) % 11) - 5) * DEG);
+      const c = i.q.box.getCenter(new THREE.Vector3()), [pu, pv] = p.f.local(c.x, c.z);
+      const pr = Math.max(i.q.box.max.x - i.q.box.min.x, i.q.box.max.z - i.q.box.min.z) / 2;
+      const f = alongZ ? [-Math.sign(pu - cu) || 1, 0] : [0, -Math.sign(pv - cv) || 1]; // the diner faces the centre line
+      const others = items.filter((j) => j !== i);
+      // as far out as the plate, moved in when its end would be over the table's edge
+      const over = Math.max(0, (alongZ ? Math.abs(pu - cu) - hu : Math.abs(pv - cv) - hv) + 0.11 + 0.02);
+      const inward = over <= 0.08 ? over : 0;
+      const beside = [[f[1], -f[0]], [-f[1], f[0]]]
+        .map(([lu, lv]) => [pu + lu * (pr + 0.077) + f[0] * inward, pv + lv * (pr + 0.077) + f[1] * inward]).find(([u, v]) =>
+        [-1, 1].every((a) => [-1, 1].every((b) => onTable(u + f[0] * 0.11 * a + f[1] * 0.062 * b, v + f[1] * 0.11 * a + f[0] * 0.062 * b)))
+        && [-0.08, 0, 0.08].every((t) => free(others, [u + f[0] * t, v + f[1] * t], 0.065)));
+      const [x, z] = beside ? p.f.world(...beside) : [c.x, c.z], y = beside ? top + 0.0005 : i.q.box.max.y + 0.0005;
+      made(ctx, "napkin", p.room, new THREE.Vector3(x, y, z), p.f.yaw + Math.atan2(f[0], f[1]) + (((k * 37) % 11) - 5) * DEG);
     });
     let lift = 0;
     if (choose([true, false], `${slot}|runner`)) {
@@ -642,26 +668,141 @@ function sideboards(ctx) {
     if (top == null) continue;
     const items = onTop(ctx, p, top);
     if (items.filter((i) => !i.q.u.fixture).length >= 2) continue;
-    const slot = `${p.room.name}|board${n}`, e = choose([1, -1], `${slot}|end`);
-    const at = (u, v, y = top + 0.001) => { const [x, z] = p.f.world(u, v); return new THREE.Vector3(x, y, z); };
-    const taken = [...items];
-    const room = (u, v, r) => free(taken, [u, v], r) && Math.abs(u - cu) <= L / 2 - r * 0.6;
-    const tall = [cu + e * (L / 2 - 0.3), cv - 0.04], books = [cu - e * (L / 2 - 0.36), cv + 0.06], mid = [cu - e * (L / 2 - 0.66), cv - 0.05];
-    if (room(...tall, 0.14)) {
-      if (choose(["plant", "branches", "branches"], `${slot}|tall`) === "plant") modelled(ctx, "pot-plant", p.room, at(...tall), 20 * DEG, { height: 0.55 });
-      else modelled(ctx, "vase", p.room, at(...tall), 0, { height: 0.3, stems: true });
-      taken.push({ rect: [tall[0] - 0.14, tall[1] - 0.14, tall[0] + 0.14, tall[1] + 0.14] });
-    }
-    if (room(...books, 0.15)) {
-      const b = made(ctx, "books", p.room, at(...books), p.f.yaw - 12 * e * DEG, covers(slot));
-      small(ctx, p.room, at(books[0], books[1], top + 0.001 + b.h), 0.08, `${slot}|board`);
-      taken.push({ rect: [books[0] - 0.15, books[1] - 0.12, books[0] + 0.15, books[1] + 0.12] });
-    }
-    if (L >= 1.3 && room(...mid, 0.12)) {
-      const role = choose(["jar", "vase"], `${slot}|mid`);
-      catalogue(ctx, role, p.room, at(...mid), -35 * DEG, { k: (s) => Math.min(1, 0.24 / Math.max(s[0], s[1]), 0.32 / s[2]) });
-    }
+    dressBoard(ctx, p, top, items, `${p.room.name}|board${n}`);
     n++;
+  }
+  return n;
+}
+
+// a sideboard's top at height `top` (world): something tall at one end, books with something small on them at the
+// other, a jar or a vase between them on a long one; `items` what stands there already
+function dressBoard(ctx, p, top, items, slot) {
+  const cu = (p.lb.min.x + p.lb.max.x) / 2, cv = (p.lb.min.z + p.lb.max.z) / 2, L = p.w;
+  const e = choose([1, -1], `${slot}|end`);
+  const at = (u, v, y = top + 0.001) => { const [x, z] = p.f.world(u, v); return new THREE.Vector3(x, y, z); };
+  const taken = [...items];
+  const room = (u, v, r) => free(taken, [u, v], r) && Math.abs(u - cu) <= L / 2 - r * 0.6;
+  const tall = [cu + e * (L / 2 - 0.3), cv - 0.04], books = [cu - e * (L / 2 - 0.36), cv + 0.06], mid = [cu - e * (L / 2 - 0.66), cv - 0.05];
+  if (room(...tall, 0.14)) {
+    if (choose(["plant", "branches", "branches"], `${slot}|tall`) === "plant") modelled(ctx, "pot-plant", p.room, at(...tall), 20 * DEG, { height: 0.55 });
+    else modelled(ctx, "vase", p.room, at(...tall), 0, { height: 0.3, stems: true });
+    taken.push({ rect: [tall[0] - 0.14, tall[1] - 0.14, tall[0] + 0.14, tall[1] + 0.14] });
+  }
+  if (room(...books, 0.15)) {
+    const b = made(ctx, "books", p.room, at(...books), p.f.yaw - 12 * e * DEG, covers(slot));
+    small(ctx, p.room, at(books[0], books[1], top + 0.001 + b.h), 0.08, `${slot}|board`);
+    taken.push({ rect: [books[0] - 0.15, books[1] - 0.12, books[0] + 0.15, books[1] + 0.12] });
+  }
+  if (L >= 1.3 && room(...mid, 0.12)) {
+    const role = choose(["jar", "vase"], `${slot}|mid`);
+    catalogue(ctx, role, p.room, at(...mid), -35 * DEG, { k: (s) => Math.min(1, 0.24 / Math.max(s[0], s[1]), 0.32 / s[2]) });
+  }
+}
+
+// a living or dining room with no low storage of its own gets the house style's catalogue sideboard on a free stretch
+// of wall (#103: the photos' sideboard rule, moved into the kit so the photos show no furniture the tour lacks)
+const LIVING = /living|dining/;
+const STORAGE = /chest|lowboard|credenza|storage/i;
+const BOARD = { length: [1.0, 2.1], depth: [0.25, 0.6], height: [0.55, 1.0] }; // style.py sideboard's fit
+const BOARD_FRONT = 0.9; // free floor before it (layout.js RULES.storageFront)
+const STAIR = /stair|escalier|treppe/i;
+
+const steps = (lo, hi, step) => {
+  const n = Math.max(1, Math.ceil((hi - lo) / step - 1e-9));
+  return Array.from({ length: n + 1 }, (_, i) => lo + ((hi - lo) * i) / n);
+};
+
+function hasStorage(ctx, s, room) {
+  return ctx.scene.pieces.some((p) => p.room === room && p.box.min.y < s.y + 0.3 && p.box.max.y - p.box.min.y <= 1.1
+    && (p.type === "cabinet" || SIDEBOARD.test(p.name) || STORAGE.test(p.name)));
+}
+
+/**
+ * Where a sideboard `w` x `d` x `h` stands in room `poly` of storey `s`: against a wall along its whole length, clear of
+ * the windows (20 cm past its ends), 0.9 m from the doors, off the radiators and the stair, its footprint free and
+ * BOARD_FRONT of free floor before it inside the room. The middle of the longest free stretch, far from the doors;
+ * null for none. { x, z, yaw } (its front, +z, to the room).
+ */
+export function boardSpot({ polygon, walls = [], boxes = [], doors = [], windows = [], keepOut = [], w, d, h }) {
+  const low = boxes.filter((b) => b.y1 > 0.02 && b.y0 < h + 0.05), ahead = boxes.filter((b) => b.y1 > 0.04 && b.y0 < 1.0);
+  const clear = (q, set, r) => !set.some((b) => hits(q, r, b.rect));
+  let best = null;
+  polygon.forEach((a, i) => {
+    const b = polygon[(i + 1) % polygon.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < w + 0.1) return;
+    const t = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+    let n = [-t[1], t[0]];
+    if (!inside([(a[0] + b[0]) / 2 + n[0] * 0.1, (a[1] + b[1]) / 2 + n[1] * 0.1], polygon)) n = [t[1], -t[0]];
+    const pt = (k, q) => [a[0] + t[0] * k + n[0] * q, a[1] + t[1] * k + n[1] * q];
+    const fits = (k) => {
+      const along = steps(-w / 2, w / 2, 0.1);
+      if (!along.every((e) => walls.some((wl) => segDist(pt(k + e, 0), wl.a, wl.b).d <= wl.t + 0.12))) return false;
+      if (steps(-w / 2 - 0.2, w / 2 + 0.2, 0.1).some((e) => windows.some((o) => segDist(pt(k + e, 0), o.a, o.b).d < 0.6))) return false;
+      for (const e of along) {
+        for (const q of steps(0.01, d + 0.01, 0.1)) {
+          const p = pt(k + e, q);
+          if (!inside(p, polygon) || !clear(p, low, 0.03) || !clear(p, keepOut, 0.3)) return false;
+          if (doors.some((dr) => segDist(p, dr.a, dr.b).d < 0.9)) return false;
+        }
+        for (const q of steps(d + 0.11, d + 0.01 + BOARD_FRONT, 0.1)) {
+          const p = pt(k + e, q);
+          if (!inside(p, polygon) || !clear(p, ahead, 0.02) || !clear(p, keepOut, 0.3)) return false;
+        }
+      }
+      return true;
+    };
+    let run = [];
+    const close = () => {
+      if (!run.length) return;
+      const k = (run[0] + run.at(-1)) / 2, c = pt(k, d / 2 + 0.01);
+      const score = run.at(-1) - run[0] + 0.5 * Math.min(2, ...doors.map((dr) => segDist(c, dr.a, dr.b).d));
+      if (!best || score > best.score + 1e-9) best = { score, x: c[0], z: c[1], yaw: Math.atan2(n[0], n[1]) };
+      run = [];
+    };
+    for (const k of steps(w / 2 + 0.05, len - w / 2 - 0.05, 0.05)) {
+      if (fits(k)) run.push(k);
+      else close();
+    }
+    close();
+  });
+  return best;
+}
+
+function addSideboards(ctx) {
+  let n = 0;
+  for (const s of ctx.scene.storeys) {
+    const boxes = boxesOn(ctx, s);
+    const radiators = ctx.scene.pieces.filter((p) => p.type === "radiator" && p.storey === s)
+      .map((p) => ({ rect: [p.box.min.x - 0.15, p.box.min.z - 0.15, p.box.max.x + 0.15, p.box.max.z + 0.15], y0: 0, y1: 2 }));
+    const keepOut = ctx.scene.stairs.filter((b) => b.min.y < s.y + s.height - 0.2 && b.max.y > s.y)
+      .map((b) => ({ rect: [b.min.x, b.min.z, b.max.x, b.max.z] }));
+    for (const { room, poly } of s.rooms) {
+      if (!LIVING.test(room.use ?? "") || hasStorage(ctx, s, room)) continue;
+      let o = null;
+      try {
+        for (let i = 0; i < 3 && !o; i++) {
+          const q = pickObject("sideboard", { room: room.name }).piece, [w, d, h] = q.size;
+          if (w >= BOARD.length[0] && w <= BOARD.length[1] && d >= BOARD.depth[0] && d <= BOARD.depth[1] && h >= BOARD.height[0] && h <= BOARD.height[1]) o = q;
+        }
+      } catch {
+        continue; // the house style has no sideboard
+      }
+      if (!o) continue;
+      const [w, d, h] = o.size;
+      const spot = boardSpot({ polygon: poly, walls: s.walls, boxes: [...boxes, ...radiators], doors: s.doors, windows: s.windows, keepOut, w, d, h });
+      if (!spot) continue;
+      // on the room's floor finish (the layout audit finds a piece sunk 1 cm into it)
+      const fy = heightAt(ctx.scene.floors, [spot.x, spot.z], s.y + 1), y = fy != null && fy > s.y - 0.05 && fy < s.y + 0.1 ? fy : s.y;
+      const g = holder(ctx, "sideboard", room, new THREE.Vector3(spot.x, y, spot.z), spot.yaw, { model: o.id, name: "sideboard", furniture: true });
+      if (BROWSER) track(catalogueModel(o).then((m) => m && g.add(m[0])));
+      const f = frameAt(spot.x, y, spot.z, spot.yaw);
+      const corners = [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]].map(([u, v]) => f.world(u, v));
+      const xs = corners.map((c) => c[0]), zs = corners.map((c) => c[1]);
+      boxes.push({ rect: [Math.min(...xs), Math.min(...zs), Math.max(...xs), Math.max(...zs)], y0: 0, y1: h });
+      const lb = new THREE.Box3(new THREE.Vector3(-w / 2, 0, -d / 2), new THREE.Vector3(w / 2, h, d / 2));
+      dressBoard(ctx, { room, f, lb, w }, y + h, [], `${room.name}|added${n}`);
+      n++;
+    }
   }
   return n;
 }
@@ -731,6 +872,7 @@ function baths(ctx) {
       if (room.use !== "bath") continue;
       const here = ctx.scene.pieces.filter((p) => p.room === room);
       for (const tub of here.filter((p) => p.type === "bathtub")) n += drapeOn(ctx, tub, room) ? 1 : 0;
+      for (const shower of here.filter((p) => p.type === "shower")) n += screenTowel(ctx, shower, room) ? 1 : 0;
       if (choose([true, false], `${room.name}|stool`)) {
         const spot = floorSpots({ polygon: poly, walls: s.walls, boxes, doors: s.doors, windows: s.windows, taken: ctx.taken, r: 0.2, h: 0.6 })[0];
         if (spot) {
@@ -762,6 +904,22 @@ function drapeOn(ctx, tub, room) {
   if (rim < 0.03 || rim > 0.2 || d < 0.5) return false;
   const [x, z] = tub.f.world(u, lb.max.z - rim / 2);
   made(ctx, "drape", room, new THREE.Vector3(x, topF, z), tub.f.yaw, Math.round(rim * 1000) / 1000);
+  return true;
+}
+
+// a towel over the top of a walk-in shower's fixed glass panel, the room side longer (#103: the photos hung one by the
+// shower; the shower's back wall carries its mixer and hand shower where the way in is)
+function screenTowel(ctx, p, room) {
+  let best = null;
+  for (const m of meshesOf(p.o)) {
+    if (!m.material?.transparent || !(m.material.opacity < 0.5)) continue;
+    const b = localBox(m, p.f), L = b.max.x - b.min.x;
+    if (b.max.y - b.min.y < 1.5 || b.max.z - b.min.z > 0.03 || L < 0.4 || b.max.z < p.lb.max.z - 0.1) continue;
+    if (!best || L > best.L) best = { b, L };
+  }
+  if (!best) return false;
+  const { b } = best, [x, z] = p.f.world((b.min.x + b.max.x) / 2, (b.min.z + b.max.z) / 2);
+  made(ctx, "drape", room, new THREE.Vector3(x, p.f.y + b.max.y, z), p.f.yaw, 0.03);
   return true;
 }
 
@@ -800,7 +958,7 @@ function towelBar(ctx, s, room, poly, boxes) {
 /**
  * Dress the rooms of the scene under `root` (see the top of this file): one group added as `root`'s last child, its
  * catalogue pieces loading before the first picture (track; in Node, the kit's tests, the holders stay empty).
- * Returns { pieces, nightstands, tables, sofas, sideboards, floors, baths }.
+ * Returns { pieces, nightstands, tables, sofas, sideboards, addedSideboards, floors, baths }.
  */
 export function dressRooms(root) {
   const scene = readScene(root);
@@ -811,12 +969,12 @@ export function dressRooms(root) {
   const inv = root.matrixWorld.clone().invert();
   const ctx = { scene, group, count: 0, taken: [], boxes: new Map(), yaw0: frameOf(root).yaw, toGroup: (v) => v.clone().applyMatrix4(inv) };
   const done = {
-    nightstands: nightstands(ctx), tables: diningTables(ctx), sofas: sofas(ctx), sideboards: sideboards(ctx), baths: baths(ctx),
-    floors: floors(ctx),
+    nightstands: nightstands(ctx), tables: diningTables(ctx), sofas: sofas(ctx), sideboards: sideboards(ctx),
+    addedSideboards: addSideboards(ctx), baths: baths(ctx), floors: floors(ctx),
   };
   root.add(group);
   root.userData.kitDressing = 1; // the photo service leaves these rules to the kit (photo/blender/catalogue.py)
   return { pieces: ctx.count, ...done };
 }
 
-export default { dressRooms, floorSpots, MADE };
+export default { dressRooms, floorSpots, boardSpot, MADE };

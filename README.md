@@ -183,13 +183,17 @@ From renderer `2026-11-17-v39` (#103), the kit also adds the dressing, so the 3D
 photos:
 
 - After `buildScene`, `kit/dressing.js` dresses what the builder left bare. A nightstand gets books or something
-  small, its lamp moved to the back corner. A dining table gets napkins and a centre line. A sofa gets cushions and,
-  now and then, a throw. A sideboard gets its objects. The free corners get a floor accent, and a bath gets its towels.
+  small, its lamp moved to the back corner. A dining table gets a folded linen napkin beside each plate and a centre
+  line. A sofa gets cushions and, now and then, a throw. A sideboard gets its objects. A living or dining room without
+  low storage gets the house style's sideboard on a free wall (clear of windows, doors, radiators and the stair, 0.9 m
+  of free floor in front), when one fits. The free corners get a floor accent. A bath gets its towels, one of them over
+  a walk-in shower's glass panel.
   The pieces come from the house style's catalogue, plus stand-ins tagged `made` for the pipeline's own props (books, a
   carafe, a napkin, a runner, a throw, towels). `photo/blender/catalogue.py` draws those props in place of the stand-ins.
 - In such a scene, the pipeline skips its own rules for those pieces. It keeps the rules that depend on its camera:
-  a prop cut by the frame or in front of the lens comes out, the door leaves open, and at most one pouf or basket of
-  the house style fills an empty corner in view. At the **Light** and **Empty** levels the kit's dressing is left out.
+  a prop cut by the side of the frame (a vase however tall its branches) or a plant right in front of the lens comes
+  out, the door leaves open, and at most one pouf or basket of the house style fills an empty corner in view. It also draws the table's
+  glasses in clear glass. At the **Light** and **Empty** levels the kit's dressing is left out.
 
 The service uses the render service's token, so the app needs no new secret: it derives the URL from
 `RENDER_SERVICE_URL` (`housegen-render-web` → `housegen-photo-web`) unless `PHOTO_SERVICE_URL` is set.
