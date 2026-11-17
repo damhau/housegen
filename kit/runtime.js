@@ -1785,6 +1785,7 @@ function roomProbe(room) {
   const t0 = performance.now();
   const [cx, cz] = innerPoint(room.polygon);
   const target = new THREE.WebGLCubeRenderTarget(INDOOR.probeSize, { type: THREE.HalfFloatType });
+  const finite = finiteCube(target);
   const cube = new THREE.CubeCamera(0.05, CAMERA_FAR, target);
   cube.position.set(cx, room.y + 1.4, cz);
   scene.add(cube);
@@ -1824,7 +1825,8 @@ function roomProbe(room) {
   let env = null;
   for (let i = 0; i < INDOOR.bounces; i++) {
     cube.update(renderer, scene);
-    const next = pmrem.fromCubemap(target.texture).texture;
+    finite.update(renderer);
+    const next = pmrem.fromCubemap(finite.target.texture).texture;
     env?.dispose();
     env = next;
     scene.environment = env;
@@ -1832,20 +1834,60 @@ function roomProbe(room) {
   }
   if (hemi) hemi.intensity = fill;
   if (!state.lamps || !state.spotLamps) setLampScale(lampScale);
-  const { luminance, balance } = meterRoom(cube.position);
+  let { luminance, balance, bad } = meterRoom(cube.position);
+  if (bad) {
+    // A lamp set into a surface overflows the half-float capture (Inf), and PMREM turns that into
+    // NaN: the room would draw black, and through the storey's mean every room of its floor (#114).
+    console.warn(`housekit: the light probe of ${room.name} is not finite; the room is lit without it`);
+    env?.dispose();
+    env = null;
+    scene.environment = state.outdoor?.env ?? null; // what roomLightAt draws such a room with
+    ({ luminance, balance } = meterRoom(cube.position));
+  }
   // the room's box and where it was captured from: glossy surfaces project their reflections on it (#59)
   const xs = room.polygon.map((q) => q[0]), zs = room.polygon.map((q) => q[1]);
   const box = { min: new THREE.Vector3(Math.min(...xs), room.y, Math.min(...zs)),
     max: new THREE.Vector3(Math.max(...xs), room.y + (room.height ?? 2.6), Math.max(...zs)), at: cube.position.clone() };
   pmrem.dispose();
   target.dispose();
+  finite.dispose();
   scene.remove(cube);
   Object.assign(scene, saved);
   for (const o of hide) o.visible = true;
   // a one-off cost, not the frame rate: the slow-frame check leaves it out (a capture inside the
   // first frames after opening a project must not switch the effects off for the whole visit)
   state.probeMs = (state.probeMs ?? 0) + (performance.now() - t0);
-  return { env, luminance, balance, box };
+  return { env, luminance, balance, box: env ? box : null };
+}
+
+/**
+ * A copy of a cube capture with every texel finite. A lamp set into a surface overflows a half-float
+ * capture to Inf, and PMREM's filtering turns Inf into NaN, which then shades the whole room (#114).
+ */
+function finiteCube(source) {
+  const target = new THREE.WebGLCubeRenderTarget(source.width, { type: THREE.HalfFloatType });
+  const camera = new THREE.CubeCamera(0.1, 10, target);
+  const box = new THREE.Mesh(new THREE.BoxGeometry(5, 5, 5), new THREE.ShaderMaterial({
+    uniforms: { tCube: { value: source.texture } },
+    vertexShader: /* glsl */ `
+      varying vec3 vDir;
+      void main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: /* glsl */ `
+      uniform samplerCube tCube;
+      varying vec3 vDir;
+      void main() {
+        vec3 c = min(textureCube(tCube, vDir).rgb, vec3(60000.0));
+        gl_FragColor = vec4(any(isnan(c)) ? vec3(0.0) : max(c, vec3(0.0)), 1.0);
+      }`,
+    side: THREE.BackSide, depthTest: false, depthWrite: false, toneMapped: false,
+  }));
+  const scene = new THREE.Scene();
+  scene.add(box);
+  return {
+    target,
+    update: (renderer) => camera.update(renderer, scene),
+    dispose() { target.dispose(); box.geometry.dispose(); box.material.dispose(); },
+  };
 }
 
 /**
@@ -1864,11 +1906,17 @@ function meterRoom(position) {
   scene.remove(cube);
   const px = new Float32Array(size * size * 4);
   const all = [];
+  let bad = 0;
   for (let face = 0; face < 6; face++) {
     renderer.readRenderTargetPixels(target, 0, 0, size, size, px, face);
-    for (let i = 0; i < px.length; i += 4) all.push([0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2], px[i], px[i + 1], px[i + 2]]);
+    for (let i = 0; i < px.length; i += 4) {
+      const l = 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];
+      if (Number.isFinite(l)) all.push([l, px[i], px[i + 1], px[i + 2]]);
+      else bad++;
+    }
   }
   target.dispose();
+  if (!all.length) return { luminance: 0, balance: NEUTRAL.clone(), bad };
   all.sort((a, b) => a[0] - b[0]);
   // the room's colour cast (#58): the mean colour of its middle tones (walls, floor, furniture; not
   // the windows or the lamps), and the gains that take a share (INDOOR.wb) of it out, as a camera's
@@ -1879,7 +1927,7 @@ function meterRoom(position) {
   let gain = mean.map((m) => Math.pow(grey / Math.max(m, 1e-6), INDOOR.wb));
   const norm = 0.2126 * gain[0] + 0.7152 * gain[1] + 0.0722 * gain[2];
   gain = gain.map((g) => Math.min(1.4, Math.max(0.7, g / norm)));
-  return { luminance: all[all.length >> 1][0], balance: new THREE.Vector3(...gain) };
+  return { luminance: all[all.length >> 1][0], balance: new THREE.Vector3(...gain), bad };
 }
 
 function setLampScale(k) {
@@ -2053,7 +2101,9 @@ function roomLightAt(room) {
   let env, exposure, balance;
   if (door && probe(door.plus) && probe(door.minus)) {
     const w = THREE.MathUtils.smoothstep(door.across, -INDOOR.blend, INDOOR.blend); // 0: the minus side, 1: the plus side
-    env = blendEnv(probe(door.minus).env, probe(door.plus).env, w);
+    const [a, b] = [probe(door.minus).env, probe(door.plus).env];
+    // a room whose probe was dropped (#114) is lit by the outdoor environment, which cannot be blended with a probe
+    env = a && b ? blendEnv(a, b, w) : (w < 0.5 ? a : b) ?? state.outdoor.env;
     exposure = Math.exp(Math.log(roomExposure(door.minus)) * (1 - w) + Math.log(roomExposure(door.plus)) * w);
     balance = (state.balanceAt ??= new THREE.Vector3()).lerpVectors(probe(door.minus).balance ?? NEUTRAL, probe(door.plus).balance ?? NEUTRAL, w);
     setEnvBox(probe(w < 0.5 ? door.minus : door.plus).box);
