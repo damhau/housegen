@@ -1457,6 +1457,110 @@ def clear_edges(scene, cam, widest=0.03):
     log(f"frame: a {w * 100:.1f} % sliver at the {side} edge, camera turned {math.degrees(delta):.1f} deg")
 
 
+NEAR_PLANE_M = 0.8  # closer than this beside the lens, a wall end or a cupboard side is a blurred plane in the photo
+CROP_MOST = 0.3  # past this share of the width, the viewpoint is wrong, not the frame
+STEPS = (0.1, 0.2, 0.3, 0.4, 0.5)  # how far the camera may step forward, out of a plane's way, before cropping
+AHEAD_M = 1.0  # a step must leave at least this much room in front of the lens
+
+
+def near_planes(scene, cam, near=NEAR_PLANE_M, most=CROP_MOST):
+    """The planes standing right beside the lens, as {side: share of the frame's width} and {side: their distance}.
+    A plane is closer than `near` over most of the frame's height and ends in a step to the room behind it; a side
+    wall receding into the room has no such step."""
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    fr = cam.data.view_frame(scene=scene)
+    x0, x1 = min(c.x for c in fr), max(c.x for c in fr)
+    y0, y1 = min(c.y for c in fr), max(c.y for c in fr)
+    zc = fr[0].z
+    rot, origin = cam.matrix_world.to_3x3(), cam.matrix_world.translation
+
+    def depth(fx, fy):
+        d = (rot @ Vector((x0 + fx * (x1 - x0), y1 - fy * (y1 - y0), zc))).normalized()
+        hit = trace(scene, dg, origin, d)
+        return (hit[0] - origin).length if hit else 1e3
+
+    rows = (0.15, 0.3, 0.45, 0.6, 0.75, 0.9)
+    steps = [k * 0.005 for k in range(int(most / 0.005) + 1)]
+    bands, closest = {}, {}
+    for side in ("left", "right"):
+        widths = []
+        for fy in rows:
+            ds = []
+            for f in steps:
+                d = depth(f if side == "left" else 1 - f, fy)
+                if ds and d > 1.6 * max(ds) and d - max(ds) > 0.5:
+                    widths.append(f)
+                    break
+                ds.append(d)
+                if max(ds) >= near:
+                    break
+            closest[side] = min([closest.get(side, math.inf), *ds])
+        if len(widths) >= len(rows) - 2:
+            bands[side] = max(widths) + 0.01
+    return bands, closest
+
+
+def ahead(scene, cam, n=6):
+    """The nearest surface in the middle third of the frame, in metres."""
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    fr = cam.data.view_frame(scene=scene)
+    x0, x1 = min(c.x for c in fr), max(c.x for c in fr)
+    y0, y1 = min(c.y for c in fr), max(c.y for c in fr)
+    rot, origin = cam.matrix_world.to_3x3(), cam.matrix_world.translation
+    best = math.inf
+    for j in range(n):
+        for i in range(n):
+            fx, fy = (1 + (i + 0.5) / n) / 3, (1 + (j + 0.5) / n) / 3
+            d = (rot @ Vector((x0 + fx * (x1 - x0), y1 - fy * (y1 - y0), fr[0].z))).normalized()
+            hit = trace(scene, dg, origin, d)
+            if hit is not None:
+                best = min(best, (hit[0] - origin).length)
+    return best
+
+
+def clear_planes(scene, cam, room, near=NEAR_PLANE_M, most=CROP_MOST):
+    """A wall end, a partition or a cupboard side right beside the lens fills a side of the frame as a blurred plane
+    (Montelly's Bain, #109). The camera steps forward along its view, inside the room, until the plane is out of the
+    frame; if no step up to STEPS[-1] clears it, the frame is cropped as a photographer would, with a narrower field
+    turned away from the plane and the other edge where it was. Returns what was done."""
+    bands, closest = near_planes(scene, cam, near, most)
+    if not bands:
+        return {}
+    start = cam.location.copy()
+    yaw = cam.rotation_euler[2] + math.pi / 2
+    forward = Vector((math.cos(yaw), math.sin(yaw), 0.0))
+    for step in STEPS:
+        cam.location = start + forward * step
+        x, _, z = to_scene(cam.location)
+        if not inside(room["polygon"], x, z):
+            break
+        if not near_planes(scene, cam, near, most)[0] and ahead(scene, cam) >= AHEAD_M:
+            for side in bands:
+                log(f"frame: a plane {closest[side]:.2f} m from the lens over {bands[side] * 100:.0f} % of the {side} "
+                    f"edge, camera stepped {step:.1f} m forward")
+            return {"stepped": step}
+    cam.location = start
+    bpy.context.view_layer.update()
+    if sum(bands.values()) > most:
+        log(f"frame: a near plane over {sum(bands.values()) * 100:.0f} % of the width, too much to crop")
+        return {}
+    fr = cam.data.view_frame(scene=scene)
+    x0, x1, zc = min(c.x for c in fr), max(c.x for c in fr), fr[0].z
+    a_left = math.atan2(x0 + bands.get("left", 0.0) * (x1 - x0), -zc)
+    a_right = math.atan2(x1 - bands.get("right", 0.0) * (x1 - x0), -zc)
+    rs = scene.render
+    old = cam.data.angle_y
+    cam.data.angle_y = 2 * math.atan(math.tan((a_right - a_left) / 2) * rs.resolution_y / rs.resolution_x)
+    cam.data.shift_y *= math.tan(old / 2) / math.tan(cam.data.angle_y / 2)  # the same tilt in the narrower frame
+    cam.rotation_euler[2] -= (a_left + a_right) / 2  # a positive angle is right of the old axis: turn right
+    for side, share in bands.items():
+        log(f"frame: a plane {closest[side]:.2f} m from the lens over {share * 100:.0f} % of the {side} edge, "
+            f"cropped out ({math.degrees(old):.0f} -> {math.degrees(cam.data.angle_y):.0f} deg)")
+    return {"cropped": {side: round(share, 3) for side, share in bands.items()}}
+
+
 def camera_rays(scene, cam, rooms, sy, nx=48, ny=27):
     """Rays through a grid of the frame: each sample's pixel (fractions, from the top left), what it meets,
     and whether that is inside the storey's rooms."""
@@ -2068,6 +2172,9 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     still.camera(scene, cam_spec, width, height)
     doors = open_doors(scene, scene.camera)
     clear_edges(scene, scene.camera)
+    planes = clear_planes(scene, scene.camera, room)
+    if planes.get("stepped"):
+        doors = sorted(set(doors) | set(open_doors(scene, scene.camera)))
     final_spec = camera_spec(scene, scene.camera, max(0.5, math.hypot(tgt[0] - pos[0], tgt[2] - pos[2])))
     rays = camera_rays(scene, scene.camera, rooms, sy)
     if decor:
@@ -2124,7 +2231,8 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     sky = next(n for n in scene.world.node_tree.nodes if n.bl_idname == "ShaderNodeTexSky")
     info = {"room": room["name"], "use": room["use"], "camera": final_spec,
             "sun": f"{math.degrees(sky.sun_rotation) % 360:.1f}/{math.degrees(sky.sun_elevation):.1f}",
-            "sun_deg": [round(az, 2), round(el, 2)], "room_lamps": bool(lit), "removed": removed, "doors": doors, "pieces": pieces,
+            "sun_deg": [round(az, 2), round(el, 2)], "room_lamps": bool(lit), "removed": removed, "doors": doors,
+            "planes": planes, "pieces": pieces,
             "staging": staging_level, "staged_out": len(stripped),
             "lamps": lit_lamps(scene, lamp), "device": device, "seconds": seconds}
     with open(out + ".json", "w", encoding="utf-8") as f:

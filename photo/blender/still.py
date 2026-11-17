@@ -75,9 +75,6 @@ def base(scene):
         if o.type == "LIGHT" and o.data.type == "POINT":
             o.data.energy = 40.0
             o.data.shadow_soft_size = 0.06
-        # the kit's room ceilings sit 2 cm inside the slab: the slab's underside is the ceiling
-        if o.get("kind") == "ceiling":
-            o.hide_render = True
 
 
 def lamps_off(scene):
