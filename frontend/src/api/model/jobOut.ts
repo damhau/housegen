@@ -4,6 +4,7 @@
  * housegen
  * OpenAPI spec version: 0.1.0
  */
+import type { JobOptions } from './jobOptions';
 import type { JobOutError } from './jobOutError';
 import type { JobOutResultVersion } from './jobOutResultVersion';
 import type { JobOutMetrics } from './jobOutMetrics';
@@ -16,6 +17,7 @@ export interface JobOut {
   kind: string;
   status: string;
   request_text: string;
+  options?: JobOptions;
   error: JobOutError;
   result_version: JobOutResultVersion;
   metrics?: JobOutMetrics;

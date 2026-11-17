@@ -9,6 +9,7 @@ import type { SceneVersionOutCritique } from './sceneVersionOutCritique';
 import type { QuestionOut } from './questionOut';
 import type { SceneVersionOutRenderUrls } from './sceneVersionOutRenderUrls';
 import type { SceneVersionOutKit } from './sceneVersionOutKit';
+import type { SceneVersionOutStyle } from './sceneVersionOutStyle';
 
 export interface SceneVersionOut {
   id: string;
@@ -25,4 +26,5 @@ export interface SceneVersionOut {
   scene_url: string;
   render_urls: SceneVersionOutRenderUrls;
   kit?: SceneVersionOutKit;
+  style?: SceneVersionOutStyle;
 }

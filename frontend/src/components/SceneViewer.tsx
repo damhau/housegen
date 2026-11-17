@@ -207,6 +207,7 @@ export function SceneViewer({
   versionNumber = null,
   onPoint,
   fixedKit,
+  interiorTools,
 }: {
   sceneUrl: string | null
   reloadKey?: string | number
@@ -230,6 +231,8 @@ export function SceneViewer({
   onPoint?: (point: PointOut | null) => void
   /** the renderer to draw with, without asking for the renderer list (the share page: signed out) */
   fixedKit?: string
+  /** toolbar controls for a scene with rooms (the project page's style picker, #101) */
+  interiorTools?: ReactNode
 }) {
   const ref = useRef<HTMLIFrameElement>(null)
   const refB = useRef<HTMLIFrameElement>(null)
@@ -632,6 +635,7 @@ export function SceneViewer({
                   Plan
                 </Button>
               )}
+              {rooms.length > 0 && !compare && interiorTools}
               {projectId && measurable && !compare && (
                 <Button
                   size="sm"

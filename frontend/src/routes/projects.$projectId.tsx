@@ -28,6 +28,8 @@ import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
 import { ConversationPanel } from "@/components/ConversationPanel"
 import { FurnishDialog } from "@/components/FurnishDialog"
+import { FURNISH_AGAIN_MESSAGE, StylePicker } from "@/components/StylePicker"
+import type { HouseStyle } from "@/lib/styles"
 import { ListingPanel } from "@/components/ListingPanel"
 import { PlansPanel } from "@/components/PlansPanel"
 import { fmtUsd } from "@/components/RunSummaryCard"
@@ -98,7 +100,8 @@ function ProjectPage() {
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null)
   const [reloadKey, setReloadKey] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [furnishOpen, setFurnishOpen] = useState(false)
+  // the Furnish dialog: closed, or open with the request and style it starts from
+  const [furnishOpen, setFurnishOpen] = useState<{ message: string; style: HouseStyle | null } | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   // what the owner pointed at in the viewer, sent with the next message (#35)
   const [point, setPoint] = useState<PointOut | null>(null)
@@ -232,8 +235,8 @@ function ProjectPage() {
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
   }
-  async function onFurnish(message: string) {
-    await furnish.mutateAsync({ projectId, data: { message } })
+  async function onFurnish(message: string, style: HouseStyle) {
+    await furnish.mutateAsync({ projectId, data: { message, style } })
     setSelectedVersion(null)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getChatHistoryQueryKey(projectId) })
@@ -335,7 +338,7 @@ function ProjectPage() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setFurnishOpen(true)}
+              onClick={() => setFurnishOpen({ message: "", style: (version?.style ?? null) as HouseStyle | null })}
               disabled={furnish.isPending}
               title="Build the interior from the floor plans: rooms, partitions, doors, furniture and lights"
             >
@@ -409,6 +412,20 @@ function ProjectPage() {
           projectId={projectId}
           coverUrl={version ? (version.render_urls.southeast ?? Object.values(version.render_urls)[0] ?? null) : null}
           versionNumber={version?.number ?? null}
+          interiorTools={
+            version ? (
+              <StylePicker
+                projectId={projectId}
+                version={version.number}
+                busy={busy}
+                onRestyled={() => {
+                  setSelectedVersion(null)
+                  refreshAll()
+                }}
+                onFurnishAgain={(style) => setFurnishOpen({ message: FURNISH_AGAIN_MESSAGE, style })}
+              />
+            ) : undefined
+          }
           onPoint={
             p.current_version > 0
               ? (picked) => {
@@ -491,7 +508,13 @@ function ProjectPage() {
       </div>
       {settingsOpen && <SettingsSheet project={p} onClose={() => setSettingsOpen(false)} />}
       {furnishOpen && (
-        <FurnishDialog estimate={estimateText(intEstimate.data)} onStart={onFurnish} onClose={() => setFurnishOpen(false)} />
+        <FurnishDialog
+          estimate={estimateText(intEstimate.data)}
+          initialMessage={furnishOpen.message}
+          initialStyle={furnishOpen.style}
+          onStart={onFurnish}
+          onClose={() => setFurnishOpen(null)}
+        />
       )}
     </div>
   )

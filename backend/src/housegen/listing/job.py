@@ -141,7 +141,7 @@ async def listing(ctx: JobContext) -> None:
     st = ProjectStorage(ctx.project_id)
     out = listing_dir(st, version)
     (out / "previews").mkdir(parents=True, exist_ok=True)
-    kit = viewer_kit(s)
+    kit = str(req.get("kit") or viewer_kit(s))
     key = f"{ctx.project_id}-v{version}-{kit}-{PREPARE_REV}"
     previous = read_set(st, version)
     resumed = previous is not None and previous.get("job_id") == ctx.job_id

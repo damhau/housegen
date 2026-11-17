@@ -1,17 +1,20 @@
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
-/** A button that opens a small panel under it; a click outside or Escape closes it. */
+/** A button that opens a small panel under it (or above it: `side="top"`, in a bottom toolbar);
+ * a click outside or Escape closes it. */
 export function Menu({
   button,
   label,
   align = "end",
+  side = "bottom",
   className,
   children,
 }: {
   button: React.ReactNode
   label: string
   align?: "start" | "end"
+  side?: "top" | "bottom"
   className?: string
   children: (close: () => void) => React.ReactNode
 }) {
@@ -52,7 +55,8 @@ export function Menu({
         <div
           role="menu"
           className={cn(
-            "absolute top-full z-50 mt-1 min-w-60 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md",
+            "absolute z-50 min-w-60 rounded-lg border bg-popover p-1 text-popover-foreground shadow-md",
+            side === "top" ? "bottom-full mb-1" : "top-full mt-1",
             align === "end" ? "right-0" : "left-0",
           )}
         >

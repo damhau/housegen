@@ -62,6 +62,7 @@ from housegen.projects import crud
 from housegen.projects.models import Job
 from housegen.projects.schemas import questions_of, standard_views
 from housegen.projects.storage import PlanSheet, ProjectStorage
+from housegen.projects.style import DEFAULT_STYLE, read_style, write_style
 from housegen.render import renderer
 from housegen.render.kits import kit_dir, kit_with, pinned_kit
 
@@ -1261,11 +1262,39 @@ def _plan_gate_text(gaps: list[str], audit: list[str]) -> str:
     return text + "\n\nThen run check_scene and call finish."
 
 
+def interior_style(kit: Path, scene_dir: Path, asked: str | None) -> str | None:
+    """The house style an interior job builds in, written to src/style.js (#101): the one asked,
+    else the house's own, else the default; none with a renderer `kit` that has no styles."""
+    if not (kit / "styles.js").exists():
+        return None
+    style = asked or read_style(scene_dir) or DEFAULT_STYLE
+    write_style(scene_dir, style)
+    return style
+
+
+def house_style_text(style: str) -> str:
+    """The interior's request part that names the house style src/style.js holds (#101)."""
+    return (
+        f'## House style: "{style}"\n'
+        f'src/style.js names it (export default {{ style: "{style}" }}); it is written already, '
+        "keep it. The house style decides the fixtures' finish, the bath and kitchen fittings, the "
+        "kitchen handles, the bath tiles and floor, the bedding, the rugs' colour, the feature wall "
+        "and the sofa cushions, and draws the catalogue pieces of its style: leave all of these "
+        "out of the pieces (no finish on a fixture, no tile colour or name, no fittings, handles, "
+        "bedding or rug colour), so that the house can change style later without a new build."
+    )
+
+
 async def interior(ctx: JobContext) -> None:
-    run = await _Run.create(ctx, kit=kit_with("interior.js"))
     async with session_factory()() as session:
         job = await crud.get_job(session, ctx.job_id)
         request = job.request_text
+        options = job.options
+    run = await _Run.create(ctx, kit=options.get("kit") or kit_with("interior.js"))
+    style = interior_style(
+        kit_dir(run.kit, run.settings), run.storage.scene_dir, options.get("style")
+    )
+    logger.info("interior.started", extra={"job_id": ctx.job_id, "kit": run.kit, "style": style})
     inp = await run.inputs()
     _interior_tools(run, inp)
     ensure_interior_imports(run.storage.scene_dir / "index.html")
@@ -1280,6 +1309,8 @@ async def interior(ctx: JobContext) -> None:
         "## Request\n"
         + (request.strip() or "Furnish the interior of the house as the floor plans draw it.")
     )
+    if style:
+        parts.append(house_style_text(style))
     if inp.brief:
         parts.append(f"{BRIEF_HEADING}\n{inp.brief}")
     pages = [sh.page for sh in floor_plans] or list(range(1, len(inp.pages) + 1))
@@ -1322,6 +1353,8 @@ async def interior(ctx: JobContext) -> None:
     run.views = list(run.views) + _interior_views(probe.report)
     renders = await run.render_standard()
     label = ("Interior: " + request.strip())[:80] if request.strip() else "Interior"
+    if style and not request.strip():
+        label = f"Interior ({style})"
     version = await run.snapshot("interior", label, summary, None, renders)
     await _modify_finish(run, version, summary, None)
 
@@ -1665,6 +1698,51 @@ async def restore_to(session: Any, project_id: str, number: int) -> int:
         f"Restored from version {number}.",
     )  # fmt: skip
     return n
+
+
+async def restyle_to(session: Any, project_id: str, number: int, style: str) -> int:
+    """A saved version in another house style, recorded as a new version with no run (#101):
+    its src/style.js names the style, and the kit draws every piece that leaves its finish to the
+    style in the new one. It keeps the version's renderer and its exterior pictures; its rooms are
+    drawn again in the background. Returns the new version's number."""
+    await crud.get_version(session, project_id, number)
+    st = ProjectStorage(project_id)
+    st.restore(number)
+    # a listing set shows the old style: the new version has none until it is shot
+    shutil.rmtree(st.scene_dir / "listing", ignore_errors=True)
+    write_style(st.scene_dir, style)
+    n = st.next_version_number()
+    kit = st.version_kit(number) or kit_with("interior.js")
+    dst = st.snapshot(n, kit=kit)
+    exterior = set(standard_views(True)) | set(standard_views(False)) | {"southeast"}
+    redrawn: list[str] = []
+    for p in sorted((st.versions_dir / str(number) / "renders").glob("*.jpg")):
+        if p.stem in exterior:
+            shutil.copy2(p, dst / "renders" / p.name)
+        else:
+            redrawn.append(p.stem)
+    await crud.add_version(
+        session, project_id, n, "restyle", f"Restyled {style}",
+        f"Version {number} in the {style} style: the same rooms and pieces, the style's "
+        "finishes, fittings, textiles and decor.",
+    )  # fmt: skip
+    if redrawn:
+        _in_background(_restyle_pictures(project_id, n, kit, redrawn), f"restyle-{project_id}-{n}")
+    return n
+
+
+async def _restyle_pictures(project_id: str, n: int, kit: str, views: list[str]) -> None:
+    """The rooms' pictures of a restyled version, drawn from its own page."""
+    st = ProjectStorage(project_id)
+    url = f"{get_settings().render_base_url}{st.scene_url(n)}?kit={kit}"
+    try:
+        res = await renderer.render(url, views, st.versions_dir / str(n) / "renders", "high")
+        logger.info(
+            "restyle.pictures",
+            extra={"project_id": project_id, "version": n, "views": len(res.images)},
+        )
+    except Exception:
+        logger.exception("restyle.pictures_failed", extra={"project_id": project_id, "version": n})
 
 
 async def _chat_restore(run: _Run, number: int, reply: str) -> None:

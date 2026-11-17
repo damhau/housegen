@@ -174,6 +174,7 @@ def test_only_renderers_with_decor_roles_are_told_about_them() -> None:
 def test_only_renderers_with_styles_are_told_to_leave_finishes_to_the_house_style() -> None:
     from housegen.agent.prompts import (
         BUILDER_SYSTEM,
+        CHAT_INTERIOR_SYSTEM,
         INTERIOR_SYSTEM,
         MODIFY_INTERIOR_SYSTEM,
         for_kit,
@@ -189,12 +190,18 @@ def test_only_renderers_with_styles_are_told_to_leave_finishes_to_the_house_styl
         told = for_kit(system, styled)
         assert "### House style — src/style.js" in told
         assert told.index("### House style") < told.index("### Furniture — import fx")
-        assert "Leave a fixture's finish out" in told
+        assert "Leave every fixture's finish out" in told
         assert "one finish for its fixtures" not in told
         assert "tiles: { size:[0.3,0.6]" not in told
         assert "(handleless units" not in told
         assert "house style's rug" in told
         assert "House style" not in for_kit(system, plain)
+        assert "not a change of the pieces" in told  # a house-wide look is a line of style.js
+    # the style the request names decides the look, not a Scandinavian goal (#101)
+    assert "clear, light Scandinavian interior" in for_kit(INTERIOR_SYSTEM, plain)
+    assert "clear, light Scandinavian interior" not in for_kit(INTERIOR_SYSTEM, styled)
+    small_change = for_kit(CHAT_INTERIOR_SYSTEM, styled).split("- Hand over:")[0]
+    assert "which is one line of src/style.js" in small_change
     # without styles, brass is never offered as a default
     assert '"brass"|"black"' not in INTERIOR_SYSTEM
     assert "(brass or black" not in INTERIOR_SYSTEM

@@ -24,6 +24,7 @@ from housegen.listing.schemas import ListingOut, ListingPhotoOut, ListingRequest
 from housegen.projects import crud
 from housegen.projects.schemas import JobOut
 from housegen.projects.storage import ProjectStorage
+from housegen.render.kits import requested_kit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["listing"])
@@ -130,6 +131,8 @@ async def start_listing(
         raise InvalidInputError("this version has no interior: furnish it first")
     if body.reuse and read_set(st, version) is None:
         raise InvalidInputError("this version has no set to shoot again")
+    if body.kit:
+        requested_kit(body.kit)
     if await crud.active_job(session, project_id, ("listing",)):
         raise ConflictError("a listing set is already being shot")
     request = json.dumps(
@@ -138,6 +141,7 @@ async def start_listing(
             "reuse": body.reuse,
             "staging": body.staging,
             "exteriors": body.exteriors,
+            "kit": body.kit,
         }
     )
     stored = RunSettings.model_validate(project.settings) if project.settings else RunSettings()
@@ -160,6 +164,7 @@ async def start_listing(
             "reuse": body.reuse,
             "staging": body.staging,
             "exteriors": body.exteriors,
+            "kit": body.kit,
         },
     )
     return JobOut.model_validate(job)

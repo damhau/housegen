@@ -98,7 +98,8 @@ export function VersionList({
                   {isCurrent && <span className="text-[10px] uppercase text-primary">current</span>}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                  {v.kind} · {relTime(v.created_at)}
+                  {v.kind}
+                  {v.style && ` · ${v.style}`} · {relTime(v.created_at)}
                   {issues > 0 && ` · ${issues} finding${issues > 1 ? "s" : ""}`}
                   {suggestions > 0 && ` · ${suggestions} suggestion${suggestions > 1 ? "s" : ""}`}
                 </div>

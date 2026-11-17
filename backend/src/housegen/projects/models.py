@@ -147,12 +147,18 @@ class Job(Base):
     metrics_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # agent.run_settings.ResolvedRunSettings snapshot taken at start (#18)
     settings_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # what the request chose beyond its text (#101): the interior's house style and renderer
+    options_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
     finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
 
     @property
     def attachments(self) -> list[str]:
         return list(json.loads(self.attachments_json)) if self.attachments_json else []
+
+    @property
+    def options(self) -> dict[str, Any]:
+        return dict(json.loads(self.options_json)) if self.options_json else {}
 
     @property
     def metrics(self) -> dict[str, Any] | None:

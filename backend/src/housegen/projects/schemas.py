@@ -10,6 +10,7 @@ from housegen.agent.metrics import RunSummary
 from housegen.agent.run_settings import ResolvedRunSettings, RunSettings
 from housegen.agent.schemas import Critique, Intake
 from housegen.listing.schemas import ListingOut
+from housegen.projects.style import Style
 
 Side = Literal["north", "south", "east", "west", "other"]
 # elevated wide shots (massing, roof) + photo-like eye-level views (what the critic pairs with the photos)
@@ -107,6 +108,8 @@ class SceneVersionOut(BaseModel):
     # the renderer snapshot the pictures were drawn with (kit/versions/<name>); None for
     # versions saved before renderers were versioned
     kit: str | None = None
+    # the house style its src/style.js names (#101); None without the file
+    style: str | None = None
 
 
 class IntakeOut(Intake):
@@ -184,6 +187,13 @@ class ProjectSummaryOut(BaseModel):
     job: str | None = None
 
 
+class JobOptions(BaseModel):
+    """What a request chose beyond its text (#101)."""
+
+    style: Style | None = None  # the interior's house style
+    kit: str | None = None  # the renderer the job draws with, when not the default
+
+
 class JobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -191,6 +201,7 @@ class JobOut(BaseModel):
     kind: str
     status: str
     request_text: str
+    options: JobOptions = JobOptions()
     error: str | None
     result_version: int | None
     # time and tokens by phase and activity, cost estimate; set when the job ends (#13)
@@ -265,3 +276,29 @@ class SceneFileOut(BaseModel):
 class SceneFilesOut(BaseModel):
     version: int
     files: list[SceneFileOut]
+
+
+class LiteralValueOut(BaseModel):
+    """A piece that names its own value where the house style would decide (#101)."""
+
+    file: str
+    line: int
+    role: str  # the style's role it overrides: fixtures, fittings, handles, bedding, wallTile, rug
+    text: str  # the option as written: finish: 'brass'
+
+
+class VersionStyleOut(BaseModel):
+    """A version's house style and whether a Restyle can switch it without a run (#101)."""
+
+    version: int
+    interior: bool  # the version has rooms built with the interior kit
+    style: str | None  # what its src/style.js names; None: no file (furnished before styles)
+    styles: list[Style]  # the styles a house can take
+    restylable: bool
+    reason: str | None  # why not, for the owner
+    literals: list[LiteralValueOut]  # the first of them, in file order
+    literal_count: int
+
+
+class RestyleRequest(BaseModel):
+    style: Style = Field(description="the house style the new version draws in")

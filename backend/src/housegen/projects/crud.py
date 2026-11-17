@@ -275,12 +275,14 @@ async def create_job(
     request_text: str = "",
     settings: dict[str, Any] | None = None,
     status: str = "queued",
+    options: dict[str, Any] | None = None,
 ) -> Job:
     job = Job(
         project_id=project_id,
         kind=kind,
         request_text=request_text,
         settings_json=json.dumps(settings) if settings else None,
+        options_json=json.dumps(options) if options else None,
         status=status,
     )
     session.add(job)

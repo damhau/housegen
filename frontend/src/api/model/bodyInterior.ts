@@ -4,11 +4,17 @@
  * housegen
  * OpenAPI spec version: 0.1.0
  */
+import type { BodyInteriorStyle } from './bodyInteriorStyle';
+import type { BodyInteriorKit } from './bodyInteriorKit';
 
 export interface BodyInterior {
   /**
-   * what to furnish and how (optional): which floor or flat, a style, a use per room
+   * what to furnish and how (optional): which floor or flat, a use per room
    * @maxLength 4000
    */
   message?: string;
+  /** the house style, kept in src/style.js (default: the house's own, else scandinavian) */
+  style?: BodyInteriorStyle;
+  /** a listed renderer snapshot to build and draw with instead of the default (test runs of a renderer the viewer does not show by default yet) */
+  kit?: BodyInteriorKit;
 }

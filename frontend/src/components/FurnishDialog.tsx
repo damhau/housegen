@@ -2,30 +2,38 @@ import { useEffect, useState } from "react"
 import { Loader2, Sofa, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
-import { errorMessage } from "@/lib/utils"
+import { HOUSE_STYLES, Swatches, type HouseStyle } from "@/lib/styles"
+import { cn, errorMessage } from "@/lib/utils"
 
 const EXAMPLES = [
   "The whole house",
   "Ground floor only",
-  "Scandinavian, light oak and white",
   "A home office in the smallest bedroom",
 ]
 
 /**
  * Start the interior job (#33): the builder draws the rooms, partitions and doors from the floor
  * plans, checks them against the sheets, then furnishes and lights the rooms. The owner may say
- * which floor or flat, a style, a use per room; empty = the whole house as the plans draw it.
+ * which floor or flat, a use per room; empty = the whole house as the plans draw it. The house style
+ * (#101) is kept in src/style.js: a Restyle switches it later without a run.
  */
 export function FurnishDialog({
   estimate,
   onStart,
   onClose,
+  initialMessage = "",
+  initialStyle,
 }: {
   estimate: string | null
-  onStart: (message: string) => Promise<void>
+  onStart: (message: string, style: HouseStyle) => Promise<void>
   onClose: () => void
+  /** the request to start from (Furnish again, from the style picker) */
+  initialMessage?: string
+  /** the style of the house on screen, else the default */
+  initialStyle?: HouseStyle | null
 }) {
-  const [message, setMessage] = useState("")
+  const [message, setMessage] = useState(initialMessage)
+  const [style, setStyle] = useState<HouseStyle>(initialStyle ?? "scandinavian")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -41,7 +49,7 @@ export function FurnishDialog({
     setBusy(true)
     setError(null)
     try {
-      await onStart(message.trim())
+      await onStart(message.trim(), style)
       onClose()
     } catch (e) {
       setError(errorMessage(e))
@@ -84,6 +92,33 @@ export function FurnishDialog({
           <li>Lights, then pictures of every room: walk through them with the Walk button</li>
         </ol>
 
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-2 font-medium">Style</legend>
+          <div role="radiogroup" aria-label="Style" className="grid gap-2 sm:grid-cols-2">
+            {HOUSE_STYLES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                role="radio"
+                aria-checked={style === s.id}
+                onClick={() => setStyle(s.id)}
+                disabled={busy}
+                className={cn(
+                  "flex flex-col gap-1.5 rounded-lg border p-2.5 text-left transition-colors hover:bg-secondary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  style === s.id && "border-primary bg-secondary/60 ring-1 ring-primary",
+                )}
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{s.label}</span>
+                  <Swatches colors={s.swatches} />
+                </span>
+                <span className="text-xs leading-snug text-muted-foreground">{s.blurb}</span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Kept with the house: switch it later with Style in the viewer, without a new run.</p>
+        </fieldset>
+
         <div className="flex flex-col gap-2">
           <label htmlFor="furnish-message" className="font-medium">
             Anything to specify? <span className="font-normal text-muted-foreground">(optional)</span>
@@ -92,7 +127,7 @@ export function FurnishDialog({
             id="furnish-message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
-            placeholder="Which floor or flat, a style, a use for a room… Leave empty for the whole house."
+            placeholder="Which floor or flat, a use for a room… Leave empty for the whole house."
             rows={3}
             maxLength={4000}
             autoFocus

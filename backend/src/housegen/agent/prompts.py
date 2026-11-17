@@ -360,7 +360,9 @@ The fixtures' finish, the bath and kitchen fittings, the kitchen handles, the ba
 rugs, a feature wall and the sofa cushions are the house style's: leave them out of the pieces and they agree.
 src/style.js holds it (plain data, no import):
   export default { style: "contemporary" }
-Without the file the house is "scandinavian". Write it when the brief names a style or asks for a finish.
+Without the file the house is "scandinavian". A piece that names its own finish, tiles or colour keeps it in every
+style, so the house can no longer switch style without a new build: name roles and leave their values to the style
+(no finish on a fixture, no tile colour, no fittings, handles, bedding or rug colour on a piece).
 - "scandinavian": light oak, white, grey and sand textiles; black and white fixtures with oak and linen (black arms
   with white discs, oak canopies, collars and stems, linen shades, opal glass); chrome fittings and a steel sink; handleless kitchen units; sand rugs; white tiles and a light porcelain bath floor; white
   linen bedding.
@@ -374,11 +376,14 @@ Without the file the house is "scandinavian". Write it when the brief names a st
 The built-in fixtures (downlight, track, flushCeiling, stepLight) are white in both. A role for the whole house or for
 one room (the floorPlan's room name) overrides the style, e.g. brass fixtures when the owner asks for them:
   export default { style: "contemporary", fixtures: "brass", rooms: { "Bain": { wallTile: "white" } } }
+A look the owner asks for across the house or a room ("all the taps in black", "brass lamps in the living room", "the
+bath in white tiles", "make it contemporary") is one line of src/style.js, not a change of the pieces: fittings:
+"black"; rooms: { "Salon": { fixtures: "brass" } }; rooms: { "Bain": { wallTile: "white" } }; style: "contemporary".
 Roles and their names: fixtures and builtIns "black"|"white"|"brass"|"chrome"|"bronze" · fittings "chrome"|"black" ·
 wallTile "white"|"marble-grey" · bathFloor "tile"|"marble-light" (a bath's or WC's "tile" floor) · bedding
 "linen"|"olive" · featureWall "none"|"panelled" · handles "none"|"black"|"steel" · rug "sand"|"charcoal" ·
 sofaDressing "none"|"olive" · furnitureTone "any"|"dark" · models { "<model name>": "<model or role name>" } (a name
-mapped to itself keeps it). A piece's own option (finish, fittings, handles, bedding, tiles, a rug's color) wins over all.
+mapped to itself keeps it). A piece's own option (finish, fittings, handles, bedding, tiles, a rug's color) wins over all, in every style.
 panelledWall(width, { height=1.25, board=0.12, color="#8a8a85" }) (import { panelledWall } from "housekit/interior")
   → a panelled feature wall with an oak ledge on top (0.11 deep), against a wall: fx.onWall(room.polygon, edge, at, p,
   { y, gap: 0 }); add it to ctx.group yourself only where the style does not put one.
@@ -395,16 +400,16 @@ _STYLED_CATALOGUE_ANCHOR = "  tables, chairs and sideboards first among the cata
 _STYLE_SWAPS = (
     (
         'Every fixture takes finish: "black"|"white"|"chrome"|"bronze" ("brass" only when the brief asks for it).',
-        'Leave a fixture\'s finish out: it takes the house style\'s (src/style.js); finish: "black"|"white"|'
-        '"chrome"|"bronze"|"brass" on one only where the brief asks.',
+        "Leave every fixture's finish out, the built-in ones' too: it takes the house style's (src/style.js). A "
+        "finish the owner asks for goes in src/style.js as well (House style, above), not on the piece.",
     ),
     (
         "  (handleless units; `oven:true`",
-        '  (handles: the house style\'s, or "none"|"black"|"steel"; `oven:true`',
+        "  (handles: the house style's, leave them out; `oven:true`",
     ),
     (
         "  rug({ width, depth, color }) ·",
-        "  rug({ width, depth, color }) (leave color out for the house style's rug) ·",
+        "  rug({ width, depth }) (the house style's rug: give no color) ·",
     ),
     (
         "one finish for its fixtures (black or white, the built-in\nones white)",
@@ -413,8 +418,17 @@ _STYLE_SWAPS = (
     (
         'tiles: { size:[0.3,0.6] (w, h), color="#f3f2ee", jointColor, joint=0.003 }; pass the same\n'
         "  object to bathtub/wc({ tiles }) so their fronts match.",
-        'tiles: leave it out for the house style\'s, or a name ("white", "marble-grey"), or your own { size:[0.3,0.6]\n'
-        "  (w, h), color, jointColor, joint=0.003 }; bathtub/wc({ tiles: true }) and shower({ floor: true }) match the style.",
+        "tiles: leave it out: the house style's (src/style.js wallTile, per room too); bathtub/wc({ tiles: true }) and\n"
+        "  shower({ floor: true }) match the style.",
+    ),
+    (
+        "a clear, light Scandinavian interior (light oak, white, grey and sand textiles, a few plants)",
+        "in the house style the request names (House style, below), a few plants",
+    ),
+    (
+        "a material, a colour, a lamp, a plant, a tree.",
+        "a material, a colour, a lamp, a plant, a tree; a look the house style decides, for the house or a room "
+        "(all the taps in black, brass lamps, another style), which is one line of src/style.js.",
     ),
 )
 

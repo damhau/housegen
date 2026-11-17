@@ -25,6 +25,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from housegen.core.config import Settings, get_settings
+from housegen.core.exceptions import InvalidInputError
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,18 @@ def kit_with(module: str, settings: Settings | None = None) -> str:
         if (settings.KIT_DIR / "versions" / v["name"] / module).exists():
             return v["name"]
     return DEV
+
+
+def requested_kit(name: str, module: str | None = None, settings: Settings | None = None) -> str:
+    """The renderer a request names for its job (#101, test runs before the viewer's default
+    moves): a listed snapshot, holding `module` when the job needs it; InvalidInputError else."""
+    settings = settings or get_settings()
+    known = [v["name"] for v in _snapshots(settings)]
+    if name not in known:
+        raise InvalidInputError(f"unknown renderer '{name}' (known: {', '.join(known)})")
+    if module and not (kit_dir(name, settings) / module).exists():
+        raise InvalidInputError(f"renderer '{name}' has no {module}")
+    return name
 
 
 def kit_dir(name: str, settings: Settings | None = None) -> Path:

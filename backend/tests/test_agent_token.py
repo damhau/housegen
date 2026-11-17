@@ -39,6 +39,7 @@ ALLOWED = {
     ("POST", "/api/v1/projects/{project_id}/interior"),
     ("POST", "/api/v1/projects/{project_id}/versions/{number}/fix"),
     ("POST", "/api/v1/projects/{project_id}/versions/{number}/restore"),
+    ("POST", "/api/v1/projects/{project_id}/versions/{number}/restyle"),
     ("POST", "/api/v1/projects/{project_id}/jobs/{job_id}/cancel"),
     ("POST", "/api/v1/projects/{project_id}/listing"),
 }
@@ -109,6 +110,11 @@ async def _prepare(route: str, project_id: str) -> dict[str, Any]:
         return {"json": {"version": 1}}
     if route.endswith(("/modify", "/chat")):
         return {"data": {"message": "make the shutters green"}}
+    if route.endswith("/restyle"):
+        src = st.versions_dir / "1" / "src"
+        (src / "scene.js").write_text("import { floorPlan } from 'housekit/interior';\n")
+        (src / "style.js").write_text('export default { style: "scandinavian" };\n')
+        return {"json": {"style": "contemporary"}}
     return {}
 
 
@@ -143,7 +149,7 @@ async def test_every_allowed_route_does_its_work(
     assert r.status_code in (200, 202), r.text
     jobs = {j.id: j for j in await _jobs(pid)}
     started = [j for i, j in jobs.items() if i not in before]
-    if route.endswith("/restore"):
+    if route.endswith(("/restore", "/restyle")):
         assert r.json()["current_version"] == 2
         assert started == []
     elif route.endswith("/cancel"):

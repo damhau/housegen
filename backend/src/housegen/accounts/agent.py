@@ -15,6 +15,7 @@ AGENT_WRITES = frozenset(
         ("POST", "/api/v1/projects/{project_id}/interior"),
         ("POST", "/api/v1/projects/{project_id}/versions/{number}/fix"),
         ("POST", "/api/v1/projects/{project_id}/versions/{number}/restore"),
+        ("POST", "/api/v1/projects/{project_id}/versions/{number}/restyle"),
         ("POST", "/api/v1/projects/{project_id}/jobs/{job_id}/cancel"),
         ("POST", "/api/v1/projects/{project_id}/listing"),
     }

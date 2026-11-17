@@ -62,3 +62,8 @@ class ListingRequest(BaseModel):
         "(interior photos only); default: the set's own when shot again, else surroundings when the project has "
         "them, house without",
     )
+    kit: str | None = Field(
+        None,
+        description="a listed renderer snapshot to export the scene with instead of the viewer's default "
+        "(test runs of a renderer the viewer does not show by default yet)",
+    )

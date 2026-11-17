@@ -663,6 +663,21 @@ async def test_an_exteriors_choice_is_kept_and_another_chooses_the_building_agai
     assert r.status_code == 422
 
 
+async def test_a_shoot_can_draw_with_a_listed_renderer(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_rooms(MONTELLY))
+    _fake_service(monkeypatch, svc)
+    pid = await _furnished_project()
+    url = f"/api/v1/projects/{pid}/listing"
+    unknown = await app_client.post(url, json={"version": 1, "kit": "2099-01-01-v99"})
+    assert unknown.status_code == 422
+    r = await app_client.post(url, json={"version": 1, "kit": "2026-11-17-v37"})
+    assert r.status_code == 202, r.text
+    assert await _wait_job(r.json()["id"]) == "done"
+    assert svc.prepared == [f"{pid}-v1-2026-11-17-v37-{listing_job.PREPARE_REV}"]
+
+
 def test_a_prepare_costs_its_gpu_minute_and_its_cpu_minutes() -> None:
     p = listing_job.PRICE_PER_S
     got = listing_job._prepare_cost(

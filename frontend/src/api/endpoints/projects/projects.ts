@@ -39,12 +39,14 @@ import type {
   ProjectOut,
   ProjectSummaryOut,
   ResolvedRunSettings,
+  RestyleRequest,
   RunEstimateParams,
   RunSettings,
   SceneFilesOut,
   SceneFilesParams,
   ShareOut,
-  ShareProjectBody
+  ShareProjectBody,
+  VersionStyleOut
 } from '../../model';
 
 import { httpClient } from '../../http-client';
@@ -1355,7 +1357,7 @@ export function useChatHistory<TData = Awaited<ReturnType<typeof chatHistory>>, 
 
 /**
  * Build the interior of the current scene from the floor plans: rooms, partitions, doors,
-furniture and lights, checked against the plan sheets (#33).
+furniture and lights, checked against the plan sheets (#33), in the house style (#101).
  * @summary Interior
  */
 export const getInteriorUrl = (projectId: string,) => {
@@ -1371,6 +1373,12 @@ export const interior = async (projectId: string,
     const formUrlEncoded = new URLSearchParams();
 if(bodyInterior.message !== undefined) {
  formUrlEncoded.append(`message`, bodyInterior.message)
+ }
+if(bodyInterior.style !== undefined && bodyInterior.style !== null) {
+ formUrlEncoded.append(`style`, bodyInterior.style)
+ }
+if(bodyInterior.kit !== undefined && bodyInterior.kit !== null) {
+ formUrlEncoded.append(`kit`, bodyInterior.kit)
  }
 
   return httpClient<JobOut>(getInteriorUrl(projectId),
@@ -1975,6 +1983,191 @@ export const useRestoreVersion = <TError = HTTPValidationError,
       > => {
 
       const mutationOptions = getRestoreVersionMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * A version's house style (#101), and whether a Restyle can switch it with no run: why not,
+with the pieces that name their own finish.
+ * @summary Version Style
+ */
+export const getVersionStyleUrl = (projectId: string,
+    number: number,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/versions/${number}/style`
+}
+
+export const versionStyle = async (projectId: string,
+    number: number, options?: RequestInit): Promise<VersionStyleOut> => {
+  
+  return httpClient<VersionStyleOut>(getVersionStyleUrl(projectId,number),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getVersionStyleQueryKey = (projectId?: string,
+    number?: number,) => {
+    return [
+    `/api/v1/projects/${projectId}/versions/${number}/style`
+    ] as const;
+    }
+
+    
+export const getVersionStyleQueryOptions = <TData = Awaited<ReturnType<typeof versionStyle>>, TError = HTTPValidationError>(projectId: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof versionStyle>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getVersionStyleQueryKey(projectId,number);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof versionStyle>>> = ({ signal }) => versionStyle(projectId,number, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(projectId && number), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof versionStyle>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type VersionStyleQueryResult = NonNullable<Awaited<ReturnType<typeof versionStyle>>>
+export type VersionStyleQueryError = HTTPValidationError
+
+
+export function useVersionStyle<TData = Awaited<ReturnType<typeof versionStyle>>, TError = HTTPValidationError>(
+ projectId: string,
+    number: number, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof versionStyle>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof versionStyle>>,
+          TError,
+          Awaited<ReturnType<typeof versionStyle>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useVersionStyle<TData = Awaited<ReturnType<typeof versionStyle>>, TError = HTTPValidationError>(
+ projectId: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof versionStyle>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof versionStyle>>,
+          TError,
+          Awaited<ReturnType<typeof versionStyle>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useVersionStyle<TData = Awaited<ReturnType<typeof versionStyle>>, TError = HTTPValidationError>(
+ projectId: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof versionStyle>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Version Style
+ */
+
+export function useVersionStyle<TData = Awaited<ReturnType<typeof versionStyle>>, TError = HTTPValidationError>(
+ projectId: string,
+    number: number, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof versionStyle>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getVersionStyleQueryOptions(projectId,number,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+/**
+ * Save a version in another house style as a new version, with no run (#101, #75): the same
+rooms and pieces, the style's finishes, fittings, textiles and decor. Restore undoes it.
+ * @summary Restyle Version
+ */
+export const getRestyleVersionUrl = (projectId: string,
+    number: number,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/versions/${number}/restyle`
+}
+
+export const restyleVersion = async (projectId: string,
+    number: number,
+    restyleRequest: RestyleRequest, options?: RequestInit): Promise<ProjectOut> => {
+  
+  return httpClient<ProjectOut>(getRestyleVersionUrl(projectId,number),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      restyleRequest,)
+  }
+);}
+
+
+
+
+export const getRestyleVersionMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restyleVersion>>, TError,{projectId: string;number: number;data: RestyleRequest}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof restyleVersion>>, TError,{projectId: string;number: number;data: RestyleRequest}, TContext> => {
+
+const mutationKey = ['restyleVersion'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restyleVersion>>, {projectId: string;number: number;data: RestyleRequest}> = (props) => {
+          const {projectId,number,data} = props ?? {};
+
+          return  restyleVersion(projectId,number,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestyleVersionMutationResult = NonNullable<Awaited<ReturnType<typeof restyleVersion>>>
+    export type RestyleVersionMutationBody = RestyleRequest
+    export type RestyleVersionMutationError = HTTPValidationError
+
+    /**
+ * @summary Restyle Version
+ */
+export const useRestyleVersion = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restyleVersion>>, TError,{projectId: string;number: number;data: RestyleRequest}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof restyleVersion>>,
+        TError,
+        {projectId: string;number: number;data: RestyleRequest},
+        TContext
+      > => {
+
+      const mutationOptions = getRestyleVersionMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

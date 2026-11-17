@@ -179,6 +179,25 @@ records the renderer its pictures were drawn with. `kit/` itself is the working 
 compare it with the newest snapshot on a real version, copy it to a new snapshot when it is right, move the pin only
 after a measured run.
 
+### House styles
+
+A furnished house draws in a named style (`kit/styles.js`, renderers from `2026-11-14-v36`): `scandinavian` (the
+default) or `contemporary`. The style decides the fixtures' finish, the bath and kitchen fittings, the handles, the bath
+tiles and floor, the bedding, the rugs and the decor; the pieces name roles and leave these values out. The scene keeps
+its style in `src/style.js` (`export default { style: "contemporary" }`), with any override for the whole house or one
+room.
+
+- **Furnish** asks for the style. The interior job writes `src/style.js` before the builder runs and tells the builder to
+  leave the style's values out of the pieces.
+- **Style**, in the viewer's toolbar, saves the version on screen in the other style as a new version, with no run
+  (`POST /api/v1/projects/{id}/versions/{n}/restyle`). The new version keeps its source's renderer; its room pictures are
+  drawn again in the background. Restore brings the old style back.
+- A version without `src/style.js`, drawn with a renderer that has no styles, or whose pieces name their own finish or
+  colour can't switch: `GET …/versions/{n}/style` says why and lists those pieces, and the viewer offers a Furnish run
+  instead.
+- To test a renderer before it is the viewer's default, pass `kit=<snapshot>` to Furnish (`POST …/interior`, a form
+  field) or to a listing shoot (`POST …/listing`, JSON). An unlisted name answers 422.
+
 ### Sign-in and organisations
 
 People sign in with Google or Microsoft (OpenID Connect, `/auth/login/<provider>`); projects belong to an
@@ -226,7 +245,8 @@ cookie, so a scene page's own script can't have a browser send it.
 - Reads (GET and HEAD) work like a member's session in that organisation: its projects through `/api/v1/**` and their
   files under `/scenes/**`. Another organisation's project answers 404.
 - Writes go through an allow-list of route templates (`backend/src/housegen/accounts/agent.py`): `modify`, `chat`,
-  `interior` (Furnish), `versions/{number}/fix`, `versions/{number}/restore`, `jobs/{job_id}/cancel` and `listing`,
+  `interior` (Furnish), `versions/{number}/fix`, `versions/{number}/restore`, `versions/{number}/restyle`,
+  `jobs/{job_id}/cancel` and `listing`,
   under `/api/v1/projects/{project_id}/`. Every other write answers 403 `agent_forbidden`, including a route added
   later, until someone adds it to the list.
 - The organisation's limits apply to its jobs. The token acts as its own user, "Claude (agent token)", who is not a

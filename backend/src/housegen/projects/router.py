@@ -36,19 +36,24 @@ from housegen.projects.schemas import (
     IntakeOut,
     JobEventOut,
     JobOut,
+    LiteralValueOut,
     PhotoOut,
     PlanDocumentOut,
     PointOut,
     ProjectOut,
     ProjectSummaryOut,
+    RestyleRequest,
     SceneFileOut,
     SceneFilesOut,
     SceneVersionOut,
     ShareOut,
     ShareRequest,
+    VersionStyleOut,
     questions_of,
 )
 from housegen.projects.storage import ProjectStorage
+from housegen.projects.style import STYLES, Style, read_style, style_state
+from housegen.render.kits import kit_dir, kit_with, requested_kit
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -123,6 +128,7 @@ def _project_out(project: Project) -> ProjectOut:
                 scene_url=st.scene_url(v.number),
                 render_urls=st.render_urls(v.number),
                 kit=st.version_kit(v.number),
+                style=read_style(st.versions_dir / str(v.number)),
             )
             for v in project.versions
         ],
@@ -331,6 +337,7 @@ async def _start_job(
     photos: list[UploadFile] | None = None,
     keep_photos: bool = True,
     point: dict[str, object] | None = None,
+    options: dict[str, str] | None = None,
 ) -> Job:
     project = await crud.get_project(session, project_id)
     if kind == "chat":
@@ -343,7 +350,7 @@ async def _start_job(
     resolved = resolve(get_settings(), _run_settings(project))
     async with limits.admission(session, project.organisation_id, kind) as admitted:
         job = await crud.create_job(
-            session, project_id, kind, request_text, settings=resolved.model_dump()
+            session, project_id, kind, request_text, settings=resolved.model_dump(), options=options
         )
         admitted.record(job)
         # photos attached to a modification request (#8): stored like uploads, named after the
@@ -562,16 +569,37 @@ async def interior(
         str,
         Form(
             max_length=4000,
-            description="what to furnish and how (optional): which floor or flat, a style, a use per room",
+            description="what to furnish and how (optional): which floor or flat, a use per room",
         ),
     ] = "",
+    style: Annotated[
+        Style | None,
+        Form(
+            description="the house style, kept in src/style.js (default: the house's own, else "
+            "scandinavian)"
+        ),
+    ] = None,
+    kit: Annotated[
+        str | None,
+        Form(
+            description="a listed renderer snapshot to build and draw with instead of the default "
+            "(test runs of a renderer the viewer does not show by default yet)"
+        ),
+    ] = None,
 ) -> JobOut:
     """Build the interior of the current scene from the floor plans: rooms, partitions, doors,
-    furniture and lights, checked against the plan sheets (#33)."""
+    furniture and lights, checked against the plan sheets (#33), in the house style (#101)."""
     project = await crud.get_project(session, project_id)
     if project.current_version == 0:
         raise ConflictError("generate the exterior before the interior")
-    return JobOut.model_validate(await _start_job(session, project_id, "interior", message.strip()))
+    if kit:
+        requested_kit(kit, "interior.js")
+    if style and not (kit_dir(kit or kit_with("interior.js")) / "styles.js").exists():
+        raise InvalidInputError(f"renderer '{kit or kit_with('interior.js')}' has no styles")
+    options = {k: v for k, v in (("style", style), ("kit", kit)) if v}
+    return JobOut.model_validate(
+        await _start_job(session, project_id, "interior", message.strip(), options=options)
+    )
 
 
 async def _review_request(session: AsyncSession, project: Project, number: int) -> str:
@@ -706,6 +734,64 @@ async def restore_version(session: DbSession, project_id: str, number: int) -> P
     await session.commit()
     await session.refresh(project)
     logger.info("versions.restored", extra={"project_id": project_id, "from": number, "to": n})
+    return _project_out(project)
+
+
+def _version_style(project_id: str, number: int) -> VersionStyleOut:
+    st = ProjectStorage(project_id)
+    vdir = st.versions_dir / str(number)
+    interior = pipeline.has_interior(vdir)
+    kit = st.version_kit(number) or kit_with("interior.js")
+    try:
+        styled = (kit_dir(kit) / "styles.js").exists()
+    except KeyError:
+        styled = False
+    state = style_state(vdir, interior, styled)
+    return VersionStyleOut(
+        version=number,
+        interior=interior,
+        style=state.style,
+        styles=list(STYLES),
+        restylable=state.reason is None,
+        reason=state.reason,
+        literals=[
+            LiteralValueOut(file=v.file, line=v.line, role=v.role, text=v.text)
+            for v in state.literals[:20]
+        ],
+        literal_count=len(state.literals),
+    )
+
+
+@router.get("/{project_id}/versions/{number}/style")
+async def version_style(session: DbSession, project_id: str, number: int) -> VersionStyleOut:
+    """A version's house style (#101), and whether a Restyle can switch it with no run: why not,
+    with the pieces that name their own finish."""
+    await crud.get_version(session, project_id, number)
+    return _version_style(project_id, number)
+
+
+@router.post("/{project_id}/versions/{number}/restyle")
+async def restyle_version(
+    session: DbSession, project_id: str, number: int, body: RestyleRequest
+) -> ProjectOut:
+    """Save a version in another house style as a new version, with no run (#101, #75): the same
+    rooms and pieces, the style's finishes, fittings, textiles and decor. Restore undoes it."""
+    project = await crud.get_project(session, project_id)
+    await crud.get_version(session, project_id, number)
+    if await crud.active_job(session, project_id, pipeline.SCENE_KINDS):
+        raise ConflictError("a job is running for this project")
+    state = _version_style(project_id, number)
+    if state.reason:
+        raise ConflictError(state.reason)
+    if state.style == body.style:
+        raise InvalidInputError(f"version {number} is already {body.style}")
+    n = await pipeline.restyle_to(session, project_id, number, body.style)
+    await session.commit()
+    await session.refresh(project)
+    logger.info(
+        "versions.restyled",
+        extra={"project_id": project_id, "from": number, "to": n, "style": body.style},
+    )
     return _project_out(project)
 
 
