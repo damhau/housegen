@@ -15,6 +15,9 @@ replace the image's. Assets only in this checkout (not yet in an image) go with 
 Modal pulls a registry tag once and keeps that build: a `latest` pulled long ago serves 404 for every model added since
 (the page warns `housekit: licensed/…: 404` and draws the parametric fallbacks). Name the release dev runs instead:
 HOUSEGEN_IMAGE=ghcr.io/damhau/housegen:<version> (`kubectl … get deploy housegen-dev -o jsonpath=…image`).
+
+Scripts that read dev's pages (walk_sheet.py, look_sheet.py --scene-url) get the read-only token: AUTH_READONLY_TOKEN, else
+~/.config/housegen/readonly-token.
 """
 
 from __future__ import annotations
@@ -32,6 +35,7 @@ import modal
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = os.environ.get("HOUSEGEN_IMAGE", "ghcr.io/damhau/housegen:latest")
 GPU = os.environ.get("SHEET_GPU", "RTX-PRO-6000")
+TOKEN_FILE = Path.home() / ".config" / "housegen" / "readonly-token"
 
 app = modal.App("housegen-sheet")
 
@@ -62,7 +66,11 @@ def _tar(paths: list[tuple[Path, str]]) -> bytes:
 
 
 @app.function(image=image, gpu=GPU, timeout=1800)
-def sheet(script: str, argv: list[str], scene: bytes | None, assets: bytes | None) -> dict[str, bytes]:
+def sheet(
+    script: str, argv: list[str], scene: bytes | None, assets: bytes | None, token: str = ""
+) -> dict[str, bytes]:
+    if token:
+        os.environ["AUTH_READONLY_TOKEN"] = token
     kit = Path("/app/kit")
     for f in Path("/work/kit").glob("*.js"):
         shutil.copy(f, kit / f.name)
@@ -94,7 +102,10 @@ def main(out: str, args: str, scene: str = "", script: str = "look_sheet.py", as
     extra = None
     if assets:
         extra = _tar([(ROOT / "kit" / "assets" / a, a) for a in assets.split(",")])
-    files = sheet.remote(script, shlex.split(args), packed, extra)
+    token = os.environ.get("AUTH_READONLY_TOKEN", "")
+    if not token and TOKEN_FILE.is_file():
+        token = TOKEN_FILE.read_text(encoding="utf-8").strip()
+    files = sheet.remote(script, shlex.split(args), packed, extra, token)
     dest = Path(out)
     for name, data in files.items():
         (dest / name).parent.mkdir(parents=True, exist_ok=True)

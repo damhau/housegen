@@ -426,6 +426,8 @@ async def listing(ctx: JobContext) -> None:
                     "sun": meta.get("sun"),
                     "lamps": meta.get("lamps"),
                     "removed": meta.get("removed") or [],
+                    # the scene's own decor in the frame against what the photo added (#102)
+                    "catalogue": meta.get("catalogue"),
                     "gpu": res.get("gpu"),
                     "seconds": seconds,
                     "usd": usd,

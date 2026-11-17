@@ -32,6 +32,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import artlib  # noqa: E402
+import catalogue  # noqa: E402
 import dress  # noqa: E402
 import objlib  # noqa: E402
 import paths  # noqa: E402
@@ -546,13 +547,13 @@ def sanitaryware(scene, pieces):
 def swap_rugs(scene, pieces):
     n = 0
     for o in pieces:
-        if name(o) != "rug":
+        if name(o) != "rug" or o.get("catalogue"):  # the scene's own rug stays (catalogue.own)
             continue
         lo, _ = box(o)
         w, d = o["footprint"]
         t = o.matrix_world.translation
         hide(o)
-        if objlib.LIB:
+        if objlib.LIB and not catalogue.OWN:
             stage.rug(scene, stage.room_of(o), (t.x, -t.y), (w, d), lo.z, turn(o))
         else:
             r = dress.rug(scene, (t.x, -t.y), (w, d), floor=lo.z)
@@ -562,6 +563,8 @@ def swap_rugs(scene, pieces):
 
 
 def swap_plants(scene, pieces, sy):
+    if catalogue.OWN:
+        return 0
     n = 0
     for o in pieces:
         if not name(o).startswith("plant-") or o.hide_render:  # stage.swap_kit took it
@@ -618,7 +621,10 @@ def ledge_lift(scene, dg, at, n, w, z0, ph):
 
 def swap_art(scene, pieces):
     """The kit's wall art becomes the room's prints from the library (artlib), each fitted to the kit piece's
-    box (at most about 1 m on the long side), lifted off a half-wall or headboard it would sit on."""
+    box (at most about 1 m on the long side), lifted off a half-wall or headboard it would sit on. None in a scene that
+    frames its own (catalogue.OWN)."""
+    if catalogue.OWN:
+        return 0
     n, per_room = 0, {}
     dg = bpy.context.evaluated_depsgraph_get()
     for o in pieces:
@@ -1326,7 +1332,9 @@ def dress_storey(scene, sy, decor=True):
     """The kit's pieces made photographic (swaps, materials) and, with `decor`, dressed (table settings, counters,
     towels and bottles, a throw, cushions)."""
     pieces = storey_pieces(scene, sy)
-    if objlib.LIB:
+    if catalogue.OWN:
+        catalogue.own(scene, pieces)
+    elif objlib.LIB:
         stage.swap_kit(scene, pieces)
     done = {
         "rugs": swap_rugs(scene, pieces),
@@ -1600,8 +1608,8 @@ ART_SCALES = (1.3, 1.0)  # a hung print's sizes, tried in turn
 def hang_art(scene, rays, sy):
     """A print on the wall the camera sees most, if no print is in view: centred near the middle of what the
     camera sees of that wall, where nothing stands in front of it between 1.05 and 1.9 m (a sideboard below
-    is fine), its bottom at 1.04 m."""
-    if any(r["hit"] and any(a.name.startswith("art.glb") for a in ancestors(r["hit"][2])) for r in rays):
+    is fine), its bottom at 1.04 m. None in a scene that hangs its own (catalogue.OWN)."""
+    if catalogue.OWN or any(r["hit"] and any(a.name.startswith("art.glb") for a in ancestors(r["hit"][2])) for r in rays):
         return False
     groups = {}
     for r in rays:
@@ -2145,6 +2153,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     kind, devices = use_gpu()
     device = f"{kind}: {', '.join(devices)}"
     scene = bpy.context.scene
+    catalogue.init(scene)
     still.base(scene)
     scene.render.use_persistent_data = True
     still.lamps_off(scene)
@@ -2187,6 +2196,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
         rays = camera_rays(scene, scene.camera, rooms, sy)
     stage.report(scene, scene.camera)
     pieces = pieces_in_frame(scene, scene.camera)
+    shown = catalogue.seen(scene, scene.camera, trace)
     seconds["setup"] = round(time.time() - t0, 1)
     t = time.time()
     if sun is not None:
@@ -2232,7 +2242,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     info = {"room": room["name"], "use": room["use"], "camera": final_spec,
             "sun": f"{math.degrees(sky.sun_rotation) % 360:.1f}/{math.degrees(sky.sun_elevation):.1f}",
             "sun_deg": [round(az, 2), round(el, 2)], "room_lamps": bool(lit), "removed": removed, "doors": doors,
-            "planes": planes, "pieces": pieces,
+            "planes": planes, "pieces": pieces, "catalogue": shown,
             "staging": staging_level, "staged_out": len(stripped),
             "lamps": lit_lamps(scene, lamp), "device": device, "seconds": seconds}
     with open(out + ".json", "w", encoding="utf-8") as f:

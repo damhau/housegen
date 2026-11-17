@@ -209,6 +209,11 @@ class FakeService:
             "room_lamps": False,
             "pieces": [PIECE],
             "removed": call.get("remove") or [],
+            "catalogue": {
+                "own": True,
+                "kit": [{"id": "abo-B07ABC", "role": "vase", "share": 0.01}],
+                "added": [],
+            },
         }
         return httpx.Response(
             200,
@@ -463,6 +468,9 @@ async def test_the_editor_picks_a_previewed_viewpoint_and_a_piece_to_remove(
     assert doc["choices"]["01"]["view"] == 2
     assert doc["choices"]["01"]["by"] == "editor"
     assert doc["photos"]["01"]["removed"] == ["vase-1"]
+    assert (
+        doc["photos"]["01"]["catalogue"]["kit"][0]["id"] == "abo-B07ABC"
+    )  # what the photo shows of the 3D's
     assert doc["cost"]["previews_usd"] > 0
     assert doc["cost"]["editor_usd"] > 0
     ls = (await app_client.get(f"/api/v1/projects/{pid}/listing")).json()["listing"]

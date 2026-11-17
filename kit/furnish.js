@@ -1024,8 +1024,12 @@ export function credits() {
 // Decor by role (#90): fx.model("vase", { height }) draws one of the role's pieces (objects.js)
 // --------------------------------------------------------------------------
 
+// the lamps (#102) are drawn for light fixtures only (decor.js), never by `model`: a lamp without its light
+export const LAMP_ROLES = new Set(["table-lamp", "desk-lamp", "floor-lamp", "pendant"]);
+const byRole = (list) => list.reduce((m, o) => ((m[o.role] ??= []).push(o), m), {});
 /** The decor roles `model` takes besides the catalogue names: role -> its pieces. */
-export const ROLES = OBJECTS.filter((o) => o.role !== "foliage").reduce((m, o) => ((m[o.role] ??= []).push(o), m), {});
+export const ROLES = byRole(OBJECTS.filter((o) => o.role !== "foliage" && !LAMP_ROLES.has(o.role)));
+const LAMPS = byRole(OBJECTS.filter((o) => LAMP_ROLES.has(o.role)));
 // floor pots take the tall plants only: a low, wide one scaled to 1.3 m would spread over two metres
 const FOLIAGE = { foliage: OBJECTS.filter((o) => o.role === "foliage" && !o.tall), "tall-foliage": OBJECTS.filter((o) => o.role === "foliage" && o.tall) };
 // a plant in a pot of the catalogue: its total height by default, and the Poly Haven parts that are not its leaves
@@ -1066,13 +1070,13 @@ export const ACCENTS = {
 const QUIET = ACCENTS.colours[3];
 const TOO_FAR = Math.log(1.6); // a piece scaled further than this from its real size looks wrong
 
-function hash(s) {
+export function hash(s) {
   let h = 2166136261;
   for (const c of s) h = Math.imul(h ^ c.codePointAt(0), 16777619);
   return h >>> 0;
 }
 
-function shuffled(list, seed) {
+export function shuffled(list, seed) {
   const a = [...list];
   let t = seed;
   const rnd = () => { // mulberry32
@@ -1090,7 +1094,7 @@ function shuffled(list, seed) {
 
 // the same scene draws the same pieces: its project (scenes/<id>/… in the page's path) seeds the decks, so its
 // versions and the photo export agree; __housekitSeed overrides it
-function sceneKey() {
+export function sceneKey() {
   return String(globalThis.__housekitSeed ?? String(globalThis.location?.pathname ?? "").match(/scenes\/([^/]+)/)?.[1] ?? "");
 }
 
@@ -1134,7 +1138,7 @@ export function resetObjects() {
  * and the name), in the scene's own shuffled order.
  */
 export function pickObject(role, { width, length, height, room } = {}) {
-  const all = FOLIAGE[role] ?? ROLES[role];
+  const all = FOLIAGE[role] ?? LAMPS[role] ?? ROLES[role];
   if (!all) throw new Error(`unknown role ${role}. Roles: ${Object.keys(ROLES).join(", ")}`);
   const key = sceneKey();
   const style = styleName();
@@ -1176,6 +1180,21 @@ async function loadPiece(o) {
   return gltf;
 }
 
+/**
+ * Catalogue piece `o` bottom-centred on the origin at its real size, its meshes shaded: [the group, its size], null
+ * when it does not load. The group is tagged with the piece's id (`catalogue`): the photo service frames the same id
+ * at full resolution in its place (photo/blender/catalogue.py).
+ */
+export async function catalogueModel(o) {
+  const gltf = await loadPiece(o);
+  if (!gltf) return null;
+  const inner = gltf.scene.clone(true);
+  inner.traverse((m) => { if (m.isMesh) shade(m); });
+  const [wrap, size] = grounded(inner);
+  wrap.userData.catalogue = o.id;
+  return [wrap, size];
+}
+
 // bottom-centred on the origin: the group and its size
 function grounded(object) {
   const wrap = new THREE.Group();
@@ -1202,6 +1221,7 @@ async function pottedPlant(role, { height, room } = {}) {
     const [p, ps] = grounded(pot.scene.clone(true));
     const k = Math.min(1, (total * 0.5) / ps.y);
     p.scale.setScalar(k);
+    p.userData.catalogue = o.id;
     g.add(p);
     const rim = ps.y * k * 0.93;
     const plant = leaves.scene.clone(true);
@@ -1219,6 +1239,8 @@ async function pottedPlant(role, { height, room } = {}) {
     for (const m of parts) if (NOT_LEAVES.test(tag(m)) || (chosen && letter(m) && letter(m) !== chosen)) m.parent.remove(m);
     plant.traverse((m) => { if (m.isMesh) shade(m); });
     const [l, ls] = grounded(plant);
+    // the photo service keeps the same variant of the same plant (photo/blender/catalogue.py)
+    l.userData = { catalogue: f.id, ...(chosen ? { variant: chosen } : {}) };
     l.scale.setScalar(Math.min(Math.max(total - rim, 0.12) / ls.y, total * 1.2 / Math.max(ls.x, ls.z)));
     l.rotation.y = (hash(`${f.id}|${o.id}`) % 360) * Math.PI / 180;
     l.position.y = rim - 0.01;
@@ -1471,13 +1493,17 @@ async function roleModel(role, { width, length, height, room, stems } = {}) {
       b.position.y = tall * 0.8;
       b.rotation.y = (hash(o.id) % 360) * Math.PI / 180;
       const g = new THREE.Group();
+      wrap.userData.catalogue = o.id;
       g.add(wrap, b);
       tall = Math.max(tall, tall * 0.8 + b.userData.height);
       return piece(g, role, size.x * s[0], size.z * s[2], { height: tall, model: `${o.id}+${b.userData.model}` });
     }
-    if (role === "bed" && o.mattress) return piece(dressBed(wrap, o, s, room), role, size.x * s[0], size.z * s[2],
-      { height: tall, model: o.id, nominal: [o.nominal[0] * s[0], o.nominal[1] * s[2]] });
-    return piece(wrap, role, size.x * s[0], size.z * s[2], { height: tall, model: o.id, ...(FLAT.has(role) ? { flat: true } : {}) });
+    if (role === "bed" && o.mattress) {
+      wrap.userData.catalogue = o.id;
+      return piece(dressBed(wrap, o, s, room), role, size.x * s[0], size.z * s[2],
+        { height: tall, model: o.id, nominal: [o.nominal[0] * s[0], o.nominal[1] * s[2]] });
+    }
+    return piece(wrap, role, size.x * s[0], size.z * s[2], { height: tall, model: o.id, catalogue: o.id, ...(FLAT.has(role) ? { flat: true } : {}) });
   }
   return piece(new THREE.Group(), role, 0, 0);
 }
@@ -1496,19 +1522,29 @@ const tinted = (material, tint) => m(`tint:${material.uuid}:${tint}`, () => {
  * A role instead of a name (ROLES: "vase", "rug", "cushion"…) draws one of the role's pieces (pickObject;
  * `room` gives the room's accent) at its real size, scaled as a whole to the `height`, else `width`, else
  * `length` asked; a rug or a runner is stretched to its width and length; a vase with `stems: true` holds branches.
- * The house style may draw a name as another model or a role (styles.js "models": contemporary's dark chairs).
+ * "wall-art" frames a print (art.js), one per room of the house, once the scene is built (decor.js): as large as fits
+ * the `width` x `height` asked, centred in it, about 3 cm deep.
+ * The house style may draw a name as another model or a role (styles.js "models": contemporary's dark chairs; the
+ * kit's own decor models as catalogue roles, #102).
  */
 export async function model(name, { width, length, height, room, stems } = {}) {
-  const as = look("models", { room, kind: name });
-  if (as != null && as !== name && (MODELS[as] || ROLES[as])) {
-    const p = await drawModel(as, { width, length, height, room, stems });
+  const mapped = look("models", { room, kind: name });
+  const { as, ...opts } = mapped !== null && typeof mapped === "object" ? mapped : { as: mapped };
+  if (as != null && as !== name && (MODELS[as] || ROLES[as] || as === ART_ROLE)) {
+    const p = await drawModel(as, { width, length, height, room, stems, ...opts });
     p.userData.styledFrom = name;
     return p;
   }
   return drawModel(name, { width, length, height, room, stems });
 }
 
+const ART_ROLE = "wall-art";
+
 async function drawModel(name, { width, length, height, room, stems } = {}) {
+  if (name === ART_ROLE) {
+    const box = [width ?? 0.8, height ?? 0.6];
+    return piece(new THREE.Group(), ART_ROLE, box[0], 0.03, { height: box[1], art: { box, room: room ?? null } });
+  }
   const spec = MODELS[name];
   if (!spec && ROLES[name]) return roleModel(name, { width, length, height, room, stems });
   if (!spec) throw new Error(`unknown model ${name}. Roles: ${Object.keys(ROLES).join(", ")}. Known: ${Object.keys(MODELS).join(", ")}`);

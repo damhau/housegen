@@ -30,6 +30,7 @@ const CATALOGUES = {
   furnitureTone: FURNITURE_TONES,
   accents: ACCENTS,
   models: null, // a map: model names to model or role names
+  lamps: { kit: true, "table-lamp": true, "desk-lamp": true, "floor-lamp": true, pendant: true },
 };
 
 test("every style, and the fallback, names an existing entry for every role", () => {
@@ -39,9 +40,10 @@ test("every style, and the fallback, names an existing entry for every role", ()
       const v = style[role];
       assert.ok(v != null, `${name}: no ${role}`);
       if (MAPS.has(role)) {
-        for (const [from, to] of Object.entries(v)) {
+        for (const [from, value] of Object.entries(v)) {
+          const to = typeof value === "object" ? value.as : value; // a role with its options
           assert.ok(from in MODELS, `${name}.${role}: "${from}" is not a model`);
-          assert.ok(to in MODELS || to in PIECES, `${name}.${role}: "${to}" is neither a model nor a role`);
+          assert.ok(to in MODELS || to in PIECES || to === "wall-art", `${name}.${role}: "${to}" is neither a model nor a role`);
         }
         continue;
       }
@@ -55,6 +57,9 @@ test("every style, and the fallback, names an existing entry for every role", ()
     }
   }
   for (const v of Object.values(STYLES).map((st) => st.fixtures).filter((v) => typeof v === "object")) {
+    for (const kind of Object.keys(v).filter((k) => k !== "default")) assert.ok(kind in FIXTURES, kind);
+  }
+  for (const v of [...Object.values(STYLES), FALLBACK].map((st) => st.lamps)) {
     for (const kind of Object.keys(v).filter((k) => k !== "default")) assert.ok(kind in FIXTURES, kind);
   }
   for (const v of Object.values(STYLES).map((st) => st.furnitureTone).filter((v) => typeof v === "object")) {

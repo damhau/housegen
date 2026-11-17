@@ -57,6 +57,7 @@ ACCENTS = {"scandinavian": ("warm", "cool", "green", None), "contemporary": ("gr
 GOES = {"warm": {"neutral", "dark", "warm"}, "cool": {"neutral", "dark", "cool"}, "green": {"neutral", "dark", "green"},
         None: {"neutral", "dark"}}
 LIB, BY, ALLOC, ROOMS, TAKEN, STYLE = [], {}, {}, [], {}, DEFAULT_STYLE
+BANNED = frozenset()  # roles the scene's own catalogue chooses (catalogue.init): the rules get none of them
 
 
 def _h(s):
@@ -147,7 +148,7 @@ def size(e):
 
 def picks(room, role):
     """The room's candidates for a role, in order; a room the allocation doesn't know draws by hash."""
-    if not LIB:
+    if not LIB or role in BANNED:
         return []
     name = room["name"] if isinstance(room, dict) else room or ""
     ids = (ALLOC.get(name) or {}).get(role)
@@ -164,6 +165,8 @@ def pick(room, role, fit=None):
     """The first of the room's candidates not yet placed here that passes `fit(entry)`, then the rest of the role
     (a surface can be too small for all of its list): those no room holds first, so the room takes the same one
     whatever else this frame placed before it, in an order proper to the room; None if nothing fits."""
+    if role in BANNED:
+        return None
     name = room["name"] if isinstance(room, dict) else room or ""
     rest = sorted((e for e in LIB if e["role"] == role), key=lambda e: (TAKEN.get(e["id"], 0), _h(f"{name}|{role}|{e['id']}")))
     for e in [*picks(room, role), *rest]:

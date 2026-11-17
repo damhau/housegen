@@ -25,6 +25,7 @@ import bpy
 from bpy_extras.object_utils import world_to_camera_view
 from mathutils import Matrix, Vector
 
+import catalogue
 import objlib
 import stage
 
@@ -982,8 +983,8 @@ def sideboard(scene, cam, room, sy, taken):
     long = 0.82 * 0.78
     fw, fh = H.artlib.size(piece, long)
     aq = c - u * (e * 0.12)
-    plain = all(wall_behind(scene, dg, aq + u * a + Vector((0, 0, Hc + h)), n, D / 2 + 0.12) is not None
-                for a in (-fw / 2 - 0.05, 0.0, fw / 2 + 0.05) for h in (0.12, fh / 2, fh * 0.98))
+    plain = not catalogue.OWN and all(wall_behind(scene, dg, aq + u * a + Vector((0, 0, Hc + h)), n, D / 2 + 0.12) is not None
+                                      for a in (-fw / 2 - 0.05, 0.0, fw / 2 + 0.05) for h in (0.12, fh / 2, fh * 0.98))
     if plain:
         back = c - n * (D / 2 + 0.02) + n * (fh * math.sin(tilt) + 0.03) - u * (e * 0.12)
         ax_, _, az_ = H.to_scene(back)

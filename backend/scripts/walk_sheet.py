@@ -29,6 +29,11 @@ GPU only. Chrome for Testing 145, because newer Chrome lost WebGL on WSLg's d3d1
 then --chrome <dir>/chrome/linux-145.0.7632.159/chrome-linux64/chrome (or WALK_CHROME=...). The
 browser gets the WSLg GPU environment (GALLIUM_DRIVER=d3d12, ...). A page that draws in software
 (SwiftShader, llvmpipe) stops the run: software WebGL loads every core for minutes.
+
+On Modal's RTX PRO 6000 (the image sets RENDER_ANGLE=gl-egl, the bundled browser draws there; the
+read-only token goes along):
+    uvx modal run deploy/modal_sheet.py --script walk_sheet.py --out /tmp/walk \\
+        --args "--project fa8bd00053e6 --kit 2026-11-17-v37 --kit dev --out {out}"
 """
 
 from __future__ import annotations
@@ -53,7 +58,7 @@ from PIL import Image, ImageDraw, ImageFont
 from playwright.async_api import Browser, Page, Route, async_playwright
 
 BACKEND = Path(__file__).resolve().parents[1]
-KIT = BACKEND.parent / "kit"
+KIT = Path(os.environ.get("KIT_DIR") or BACKEND.parent / "kit")  # KIT_DIR: the app image (/app/kit)
 DEV_BASE = "https://housegen-dev.apps.dhconsulting.ch"
 # rooms a visitor does not tour: storage (cellars, garages, technical rooms) and stairs
 SKIP_USES = {"storage", "stair", "technical", "garage"}
@@ -68,6 +73,16 @@ GPU_ARGS = [
     "--use-angle=gl",
     "--enable-gpu-rasterization",
     "--ignore-gpu-blocklist",
+]
+# a Linux GPU host (deploy/modal_sheet.py): the bundled browser reaches the driver through EGL
+HOST_GPU = os.environ.get("RENDER_ANGLE") == "gl-egl"
+HOST_GPU_ARGS = [
+    "--use-gl=angle",
+    "--use-angle=gl-egl",
+    "--enable-gpu-rasterization",
+    "--ignore-gpu-blocklist",
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
 ]
 KIT_MODULE = re.compile(r"^/kit/([A-Za-z0-9_-]+\.js)$")
 GPU_LOCK = Path("/tmp/housegen-gpu.lock")
@@ -692,7 +707,7 @@ def main() -> None:
         "--out", type=Path, required=True, help="output directory (sheet, JSON, frames)"
     )
     args = ap.parse_args()
-    if not args.chrome or not Path(args.chrome).is_file():
+    if not HOST_GPU and (not args.chrome or not Path(args.chrome).is_file()):
         sys.exit("no Chrome for Testing 145: pass --chrome or set WALK_CHROME (see --help)")
     kits = args.kit or ["dev"]
     for k in kits:
@@ -715,10 +730,10 @@ def main() -> None:
     async def run() -> list[dict[str, Any]]:
         async with async_playwright() as pw:
             browser = await pw.chromium.launch(
-                executable_path=args.chrome,
+                executable_path=args.chrome or None,
                 headless=True,
-                args=GPU_ARGS,
-                env={**os.environ, **GPU_ENV},
+                args=HOST_GPU_ARGS if HOST_GPU else GPU_ARGS,
+                env=dict(os.environ) if HOST_GPU else {**os.environ, **GPU_ENV},
             )
             try:
                 return [await measure_kit(browser, url, k, args, args.out) for k in kits]

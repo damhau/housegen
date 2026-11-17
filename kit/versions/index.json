@@ -191,6 +191,11 @@
       "name": "2026-11-17-v37",
       "date": "2026-11-17",
       "note": "v36 with the catalogue tagged by style (#100): every piece of kit/objects.js names the styles it suits (\"styles\", tagged by looking at its picture), and a role call draws only the house style's pieces; a piece that suits neither (garish prints, ornate, rustic or glam pieces) is never drawn. Four Poly Haven pieces join the thin roles: two wicker baskets, a wooden bowl and a carved wooden plate. Each room's accent is the style's (styles.js \"accents\"): scandinavian keeps warm, cool, green or none; contemporary takes olive, sand or grey, for the decor it favours and a catalogue bed's duvet and throw. Thin roles: one contemporary basket and canister, one scandinavian tray. Not the viewer's default, not pinned."
+    },
+    {
+      "name": "2026-11-17-v38",
+      "date": "2026-11-17",
+      "note": "v37 with the listing photos' decor drawn by the kit (#102), so that the photos show the 3D's own pieces: the decorative fixtures (table, desk and floor lamps, pendants: styles.js \"lamps\") become real lamps of the house style from the catalogue (70 ABO lamps, each with its bulb's position and, for a pendant, its cord, which is cut to hang the lamp where the fixture hung) carrying the fixture's light; the LED fittings, wall lights and built-ins keep their shape. The entrance bench is a catalogue bench of the style. fx.model(\"wall-art\") is a framed print of kit/art.js (the photo library's 89 prints, CC0 museum works and prints made in the archviz spike, and their frames), a different one per room across the house, the living room first; the named prints, mirrors, plants and vases (\"wall-art-gallery\", \"mirror-round\", \"plant-*\", \"vase-*\") draw as those roles. Each such piece carries its catalogue id, which the photo service loads at full resolution (photo/blender/catalogue.py); a version drawn with an older renderer keeps the photo service's own picks. Carries the room probe fix of #114. Not the viewer's default, not pinned."
     }
   ]
 }

@@ -165,6 +165,20 @@ The kit's catalogue furniture (#90) is kept as the builder placed it: the pipeli
 only for the kit's parametric and named pieces. A catalogue bed keeps its frame and pillows, and gets the same
 cloth-simulated duvet and throw as the pipeline's own beds instead of the kit's block bedding.
 
+From renderer `2026-11-17-v38` (#102), the photos show the scene's own lamps, plants, vases, branches, benches,
+mirrors and prints, the ones the 3D shows in that room:
+
+- The kit draws them from its catalogue (`kit/decor.js`). The decorative fixtures become real lamps of the house style
+  with the fixture's light inside, a pendant's cord set to hang it where the fixture hung. The entrance bench becomes a
+  catalogue bench. `fx.model("wall-art")` frames a print of `kit/art.js`, a different one in each room of the house.
+- The export tags each such piece with its catalogue id. `photo/blender/catalogue.py` loads the same file at full
+  resolution in its place, and the print's full-resolution image in its frame.
+- The pipeline's rules then add none of those kinds themselves. They still add books, candles, trays, bowls, fruit,
+  cushions and towels.
+- `set.json` lists, per photo, the scene's pieces in the frame and what the pipeline added (`catalogue`).
+
+A version drawn with an older renderer has no tags, and the pipeline dresses it as before.
+
 The service uses the render service's token, so the app needs no new secret: it derives the URL from
 `RENDER_SERVICE_URL` (`housegen-render-web` → `housegen-photo-web`) unless `PHOTO_SERVICE_URL` is set.
 The runbook (the volume, the asset upload, the deploy) is the docstring of `deploy/modal_photo.py`.

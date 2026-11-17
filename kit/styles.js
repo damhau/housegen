@@ -29,10 +29,18 @@ export const ROLES = {
   furnitureTone: "the tone catalogue furniture prefers, per role (dining-chair, coffee-table…): furnish.js FURNITURE_TONES",
   accents: "the accents rooms take, one each, for their catalogue decor and a catalogue bed's duvet: furnish.js ACCENTS",
   models: "a named model drawn as another named model or a catalogue role, per name: furnish.js MODELS and ROLES",
+  lamps: "the catalogue lamp a decorative fixture is drawn as, per family: a lamp role (objects.js table-lamp, desk-lamp, floor-lamp, pendant) or \"kit\" (its own shape)",
 };
 
 /** Roles whose value maps names to names ({ "<model>": "<model or role>" }): no default, nothing when unnamed. */
 export const MAPS = new Set(["models"]);
+
+// the decorative fixtures drawn as catalogue lamps in every style (#102)
+const LAMPS = {
+  default: "kit", globeTableLamp: "table-lamp", mushroomLamp: "table-lamp", drumTableLamp: "table-lamp", deskLamp: "desk-lamp",
+  globeFloorLamp: "floor-lamp", arcFloorLamp: "floor-lamp", tripodFloorLamp: "floor-lamp", globePendant: "pendant",
+  domePendant: "pendant", facetedCluster: "pendant", discArms: "pendant", frameGlobes: "pendant", barCluster: "pendant",
+};
 
 export const STYLES = {
   // today's look: light oak, white, grey and sand textiles, chrome, handleless kitchens; decorative fixtures black and
@@ -65,6 +73,7 @@ export const STYLES = {
     furnitureTone: "any",
     accents: "colours",
     models: {},
+    lamps: LAMPS,
   },
   // the interior pilot's (spikes/interior-pilot, sheet C): dark accents on white walls, matte black fittings and
   // handles, grey veined marble in the baths, olive and grey bedding, a panelled wall behind the bed, a charcoal rug,
@@ -84,15 +93,27 @@ export const STYLES = {
     accents: "muted",
     // not the oval coffee tables: white and black, they are a nesting pair
     models: { "dining-chair-grey": "dining-chair-black" },
+    lamps: LAMPS,
   },
 };
 
 export const DEFAULT_STYLE = "scandinavian";
 
-/** The kit's defaults: what a role is when neither the scene nor the style says. */
+/**
+ * The kit's defaults: what a role is when neither the scene nor the style says. The decor the listing photos used to
+ * choose (#102) is the catalogue's: the kit's own decor models are drawn as roles (a value may carry the role's
+ * options: { as, ...options }), and the decorative fixtures as catalogue lamps carrying the fixture's light (decor.js);
+ * the LED fittings (ledRing, linearPendant), the wall lights and the built-ins keep their own shape.
+ */
 export const FALLBACK = { fixtures: "black", builtIns: "white", fittings: "chrome", wallTile: "white", bathFloor: "tile",
   bedding: "linen", featureWall: "none", handles: "none", rug: "sand", sofaDressing: "none", furnitureTone: "any",
-  accents: "colours", models: {} };
+  accents: "colours",
+  models: {
+    "wall-art-gallery": "wall-art", "mirror-round": "mirror", "plant-large": "floor-plant", "plant-leafy-white-pot": "floor-plant",
+    "plant-ficus": "pot-plant", "plant-ivy": "pot-plant", "plant-small": "pot-plant", "vase-white": "vase", "vase-dry-branches": { as: "vase", stems: true },
+  },
+  lamps: LAMPS,
+};
 
 let house = {};
 

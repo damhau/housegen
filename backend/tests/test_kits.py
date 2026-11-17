@@ -17,7 +17,7 @@ from housegen.projects.models import Project
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
-LATEST = "2026-11-17-v37"  # the newest snapshot
+LATEST = "2026-11-17-v38"  # the newest snapshot
 VIEWER = "2026-11-14-v36"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
 
 
@@ -169,6 +169,17 @@ def test_only_renderers_with_decor_roles_are_told_about_them() -> None:
     assert told.index("Put small decor") < told.index("Decor by role")
     assert for_kit(INTERIOR_SYSTEM, without) == INTERIOR_SYSTEM
     assert for_kit(BUILDER_SYSTEM, with_roles) == BUILDER_SYSTEM
+
+
+def test_only_renderers_that_draw_the_photos_decor_are_told_about_wall_art() -> None:
+    from housegen.agent.prompts import INTERIOR_SYSTEM, for_kit
+
+    with_art, before = kits.kit_dir(LATEST), kits.kit_dir("2026-11-17-v37")
+    assert (with_art / "decor.js").exists()
+    assert not (before / "decor.js").exists()
+    told = for_kit(INTERIOR_SYSTEM, with_art)
+    assert told.index("Decor by role") < told.index('fx.model("wall-art"') < told.index("### Light")
+    assert 'fx.model("wall-art"' not in for_kit(INTERIOR_SYSTEM, before)
 
 
 def test_only_renderers_with_styles_are_told_to_leave_finishes_to_the_house_style() -> None:

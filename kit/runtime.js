@@ -556,6 +556,9 @@ export async function boot(buildScene) {
       const added = (await import("./interior.js")).roomDetails(houseGroup);
       state.details = { added, ms: Math.round(performance.now() - t0) };
     }
+    // the lamps, benches and prints the listing photos used to choose, from the catalogue (#102)
+    state.decor = (await import("./decor.js")).catalogueDecor(houseGroup);
+    houseGroup.userData.catalogueDecor = true; // the photo service frames these pieces, never its own (photo/blender/catalogue.py)
     metricUVs(houseGroup);
     await finishesReady(); // only the texture sets the scene uses were fetched
     // which fixtures are lit (lighting.js): by day the accents only (?lamps=day|all|off)

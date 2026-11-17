@@ -352,6 +352,15 @@ Furniture by role, the same way (await fx.model(role, { width, length, room })):
   under 1.2 m is the kit's own) · "nightstand" (0.45 x 0.38 x 0.56) · "desk" (1.2 x 0.56 x 0.76)
 """.lstrip("\n")
 _DECOR_ANCHOR = "  Put small decor on a surface with fx.place(p, [x, z], rot, surfaceY).\n"
+# a renderer that draws the listing photos' decor from its catalogue (kit/decor.js, #102)
+CATALOGUE_DECOR_REFERENCE = r"""
+Wall art (await fx.model("wall-art", { width, height, room })): a framed print, a different one in each room of the
+  house, as large as fits width x height and centred in that box (about 3 cm deep): hang it like a model on a wall,
+  fx.onWall with { y } = the box's bottom. "wall-art-gallery", "mirror-round", "plant-large", "plant-small",
+  "plant-ficus", "plant-ivy", "plant-leafy-white-pot", "vase-white" and "vase-dry-branches" draw as these roles.
+The decorative fixtures (the table, desk and floor lamps, the pendants but ledRing and linearPendant) are drawn as real
+  lamps of the house style, standing or hanging where the fixture does, its light inside: place them as fixtures.
+""".lstrip("\n")
 
 # a renderer with named styles (kit/styles.js, #99): the house style decides the finishes the pieces leave out
 STYLE_REFERENCE = """
@@ -437,7 +446,10 @@ def for_kit(system: str, kit: Path) -> str:
     """The system prompt as the job's renderer `kit` (its directory) reads: decor by role and the house styles when it
     has them."""
     if _DECOR_ANCHOR in system and (kit / "objects.js").exists():
-        system = system.replace(_DECOR_ANCHOR, _DECOR_ANCHOR + DECOR_ROLES_REFERENCE, 1)
+        roles = DECOR_ROLES_REFERENCE
+        if (kit / "decor.js").exists():
+            roles += CATALOGUE_DECOR_REFERENCE
+        system = system.replace(_DECOR_ANCHOR, _DECOR_ANCHOR + roles, 1)
     if _STYLE_ANCHOR in system and (kit / "styles.js").exists():
         for base, styled in _STYLE_SWAPS:
             system = system.replace(base, styled)

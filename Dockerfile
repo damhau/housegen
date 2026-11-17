@@ -87,6 +87,8 @@ COPY kit/assets/licensed ./kit/assets/licensed
 COPY kit/assets/sanitary ./kit/assets/sanitary
 # decor made in the repo (fetch_objects.mjs --made): the branches the vases take
 COPY kit/assets/made ./kit/assets/made
+# the prints wall-art frames (kit/scripts/fetch_art.mjs from the archviz spike's: CC0 museum works, prints made there)
+COPY kit/assets/art ./kit/assets/art
 COPY kit/template ./kit/template
 # the presentation look's photographed sky (scripts/make_sky.py, Poly Haven CC0)
 COPY kit/sky ./kit/sky
