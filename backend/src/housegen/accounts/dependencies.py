@@ -165,3 +165,31 @@ async def api_caller(request: Request, session: DbSession) -> Caller:
 
 
 ApiCaller = Annotated[Caller, Depends(api_caller)]
+
+
+def caller_is_admin(user: User) -> bool:
+    """The administrator (#108): the user whose provider-verified email is AUTH_ADMIN_EMAIL, as
+    for the admin bootstrap; with AUTH_DISABLED, the implicit local user."""
+    settings = get_settings()
+    if user.issuer == LOCAL_ISSUER:
+        return settings.AUTH_DISABLED
+    return crud.is_admin(user, settings.AUTH_ADMIN_EMAIL)
+
+
+async def admin_caller(request: Request, session: DbSession) -> User | None:
+    """The admin routes (#108): the administrator's session, whatever organisation it works in
+    (none needed), or the read-only token on a GET or HEAD (None). Anyone else answers 403
+    `not_admin`."""
+    token = presented_token(request)
+    if token is not None:
+        require_token(request, token, frozenset({"readonly"}))
+        return None
+    user = await optional_user(request, session)
+    if user is None:
+        raise UnauthorizedError("sign in first")
+    if not caller_is_admin(user):
+        raise ForbiddenError("only the administrator can do this", reason="not_admin")
+    return user
+
+
+AdminCaller = Annotated[User | None, Depends(admin_caller)]

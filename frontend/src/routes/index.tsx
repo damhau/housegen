@@ -9,7 +9,7 @@ export const Route = createFileRoute("/")({ component: HomePage })
 
 // what the list says while a job works on a project (its status stays "ready" during a Furnish run
 // or a modification: only the job knows)
-const JOB_LABEL: Record<string, string> = {
+export const JOB_LABEL: Record<string, string> = {
   generate: "building",
   modify: "modifying",
   interior: "furnishing",

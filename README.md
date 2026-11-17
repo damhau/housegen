@@ -227,6 +227,15 @@ Each invitation is a link you copy and send yourself; housegen sends no email. T
 switches between organisations and opens the settings (`/organisation`: name, members, pending invitations). With
 `AUTH_DISABLED=1`, the app shows none of this.
 
+The administrator is the user whose provider-verified email is `AUTH_ADMIN_EMAIL`, in any case, with whichever
+provider (#108); with `AUTH_DISABLED=1`, the local user. Their account menu links to the admin view, `/admin`: every
+organisation (those nobody has joined yet included) with its members, roles and projects, and a **Move to…** action
+per project that gives it to another organisation after a confirmation. A move changes only who sees the project: its
+files, versions, listing sets and share link are stored by project id and stay as they are. A move is refused (409)
+while a job is queued, running or interrupted on the project, and logged as `admin.project_moved`. The API is under
+`/api/v1/admin/` (`GET organisations`, `GET projects`, `PUT projects/<id>/organisation`). It answers 403 `not_admin`
+to anyone else, needs no organisation of the administrator's own, and the read-only token may read it.
+
 To set it up:
 
 1. Run `deploy/auth_apps.sh` with your own `az` login. It creates the Microsoft app (work and personal accounts,
@@ -277,7 +286,7 @@ returns the defaults a project without settings runs with.
 | `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` | | sign-in with Google, offered when the id is set |
 | `AUTH_MICROSOFT_CLIENT_ID`, `AUTH_MICROSOFT_CLIENT_SECRET` | | sign-in with Microsoft (`common`: work and personal accounts) |
 | `AUTH_SESSION_SECRET` | random per process | signs the session cookie; without it every restart signs everyone out |
-| `AUTH_ADMIN_EMAIL` | | the first verified sign-in with this email owns the default organisation |
+| `AUTH_ADMIN_EMAIL` | | the administrator (the admin view, `/admin`) when the provider verified it; their first sign-in owns the default organisation |
 | `AUTH_DISABLED` | `false` | no sign-in: one implicit user in the default organisation (local dev, the tests). Without it, the app needs a provider to start |
 | `AUTH_READONLY_TOKEN` | | a bearer token that reads `/api/v1/**` and `/scenes/**` of every organisation, GET and HEAD only (checks on a deployed app) |
 | `AUTH_PUBLIC_URL` | the request's origin | where the providers send the browser back (`https://host`); by default from `X-Forwarded-Proto`/`-Host` |

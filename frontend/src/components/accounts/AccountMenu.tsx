@@ -1,6 +1,6 @@
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { Building2, Check, ChevronsUpDown, LogOut, Plus, Settings } from "lucide-react"
+import { Building2, Check, ChevronsUpDown, LogOut, Plus, Settings, ShieldCheck } from "lucide-react"
 import { getMeQueryKey, useMe, useSwitchOrganisation } from "@/api/endpoints/accounts/accounts"
 import type { MeOut, OrganisationOut } from "@/api/model"
 import { Menu, MenuItem, MenuLabel, MenuSeparator, menuItemClass } from "@/components/ui/menu"
@@ -8,10 +8,20 @@ import { PROVIDER_LABEL, refreshSession, SIGN_OUT_URL } from "@/lib/auth"
 import { errorMessage } from "@/lib/utils"
 import { Avatar } from "./Avatar"
 
-/** The header's organisation switcher and user menu, for a signed-in user (none while auth is disabled). */
+/**
+ * The header's organisation switcher and user menu, for a signed-in user. While auth is disabled
+ * there is neither, only the link to the admin view (the local user is the administrator).
+ */
 export function AccountMenu() {
   const me = useMe()
-  if (!me.data || me.data.auth.disabled || !me.data.user) return null
+  if (!me.data || !me.data.user) return null
+  if (me.data.auth.disabled)
+    return me.data.is_admin ? (
+      <Link to="/admin" className="flex items-center gap-1.5 rounded-md px-2 py-1 text-sm hover:bg-accent">
+        <ShieldCheck className="size-4 text-muted-foreground" />
+        Admin
+      </Link>
+    ) : null
   return (
     <div className="flex items-center gap-1">
       {me.data.organisation && <OrganisationMenu me={me.data} current={me.data.organisation} />}
@@ -89,7 +99,7 @@ function UserMenu({ me }: { me: MeOut }) {
   const user = me.user!
   return (
     <Menu label="Account" className="px-1" button={<Avatar name={user.name} email={user.email} picture={user.picture} />}>
-      {() => (
+      {(close) => (
         <>
           <div className="flex items-center gap-3 px-2 py-2">
             <Avatar name={user.name} email={user.email} picture={user.picture} className="size-9" />
@@ -100,6 +110,12 @@ function UserMenu({ me }: { me: MeOut }) {
             </div>
           </div>
           <MenuSeparator />
+          {me.is_admin && (
+            <Link to="/admin" role="menuitem" className={menuItemClass} onClick={close}>
+              <ShieldCheck />
+              Admin
+            </Link>
+          )}
           <a href={SIGN_OUT_URL} role="menuitem" className={menuItemClass}>
             <LogOut />
             Sign out

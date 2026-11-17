@@ -99,12 +99,23 @@ async def adopt_unassigned_projects(session: AsyncSession, organisation_id: str)
     return int(getattr(res, "rowcount", 0) or 0)
 
 
+def _has_admin_email(user: User, admin_email: str) -> bool:
+    wanted = admin_email.strip().lower()
+    return bool(wanted) and (user.email or "").strip().lower() == wanted
+
+
+def is_admin(user: User, admin_email: str) -> bool:
+    """The administrator (#108), and the admin bootstrap's rule: the user's email is
+    AUTH_ADMIN_EMAIL, in any case, and the provider verified it."""
+    return user.email_verified and _has_admin_email(user, admin_email)
+
+
 async def claim_default_organisation(
     session: AsyncSession, user: User, admin_email: str
 ) -> Organisation | None:
     """The admin bootstrap: the first sign-in of AUTH_ADMIN_EMAIL, with an email the provider
     verified, owns the default organisation while it has no owner. Returns it when claimed."""
-    if not admin_email or not user.email or user.email.lower() != admin_email.strip().lower():
+    if not _has_admin_email(user, admin_email):
         return None
     organisation, _ = await default_organisation(session)
     owners = await session.scalar(
@@ -114,7 +125,7 @@ async def claim_default_organisation(
     )
     if owners:
         return None
-    if not user.email_verified:
+    if not is_admin(user, admin_email):
         logger.warning(
             "accounts.admin_bootstrap.unverified",
             extra={"user_id": user.id, "provider": user.provider},

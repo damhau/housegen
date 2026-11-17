@@ -18,4 +18,5 @@ export interface MeOut {
   organisation: MeOutOrganisation;
   organisations: OrganisationOut[];
   auth: AuthOut;
+  is_admin: boolean;
 }

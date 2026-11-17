@@ -16,6 +16,7 @@ from housegen.accounts.dependencies import (
     SESSION_USER,
     CurrentUser,
     OptionalUser,
+    caller_is_admin,
     choose_organisation,
     member_role,
     require_owner,
@@ -178,7 +179,7 @@ async def _me(request: Request, session: DbSession, user: User | None) -> MeOut:
     settings = get_settings()
     auth = AuthOut(disabled=settings.AUTH_DISABLED, providers=configured_providers(settings))
     if user is None:
-        return MeOut(user=None, organisation=None, organisations=[], auth=auth)
+        return MeOut(user=None, organisation=None, organisations=[], auth=auth, is_admin=False)
     organisations = await crud.organisations_of(session, user)
     chosen = choose_organisation(request, organisations)
     await session.commit()  # the default organisation, when this was its first use
@@ -187,6 +188,7 @@ async def _me(request: Request, session: DbSession, user: User | None) -> MeOut:
         organisation=_organisation_out(chosen.organisation, chosen.role) if chosen else None,
         organisations=[_organisation_out(o.organisation, o.role) for o in organisations],
         auth=auth,
+        is_admin=caller_is_admin(user),
     )
 
 

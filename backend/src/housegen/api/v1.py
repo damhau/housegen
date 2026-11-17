@@ -1,6 +1,7 @@
 """/api/v1. Every route needs a session working in an organisation (or the read-only token on a GET),
 except /health, /me, an invitation link's preview and a share link's view (#105). The account routes
-ask for a signed-in user themselves: the first-login wizard runs before any organisation."""
+ask for a signed-in user themselves: the first-login wizard runs before any organisation. The admin
+routes (#108) ask for the administrator, in any organisation or none (or the read-only token)."""
 
 from typing import Annotated
 
@@ -9,6 +10,7 @@ from pydantic import BaseModel
 
 from housegen.accounts.dependencies import api_caller
 from housegen.accounts.router import router as accounts_router
+from housegen.admin.router import router as admin_router
 from housegen.agent.run_settings import Provider, ResolvedRunSettings, resolve
 from housegen.core.config import get_settings
 from housegen.core.db import DbSession
@@ -33,6 +35,7 @@ protected.include_router(listing_router)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(accounts_router)
+router.include_router(admin_router)
 
 
 @router.get("/shared/{token}", tags=["shared"])

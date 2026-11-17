@@ -20,6 +20,8 @@ export function AuthGate({ children }: { children: ReactNode }) {
     if (!signInOffered(me.data)) return children
     return <Navigate to="/signin" search={{ next: location.href }} replace />
   }
-  if (!me.data.organisation && location.pathname !== "/welcome") return <Navigate to="/welcome" replace />
+  // the administrator's view needs no organisation of their own
+  const adminView = me.data.is_admin && location.pathname === "/admin"
+  if (!me.data.organisation && location.pathname !== "/welcome" && !adminView) return <Navigate to="/welcome" replace />
   return children
 }

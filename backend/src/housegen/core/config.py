@@ -172,7 +172,8 @@ class Settings(BaseSettings):
     AUTH_MICROSOFT_CLIENT_SECRET: str = ""
     # signs the session cookie; empty = a random one per process (sessions end at every restart)
     AUTH_SESSION_SECRET: str = ""
-    # the first sign-in with this email, verified by the provider, owns the default organisation
+    # the administrator (#108) when the provider verified it; its first sign-in owns the default
+    # organisation
     AUTH_ADMIN_EMAIL: str = ""
     # where the providers send the browser back (https://host, no path); empty = this request's
     # origin, from X-Forwarded-Proto/-Host behind a proxy

@@ -42,6 +42,8 @@ class MeOut(BaseModel):
     organisation: OrganisationOut | None
     organisations: list[OrganisationOut]
     auth: AuthOut
+    # the administrator (#108): every organisation at /admin
+    is_admin: bool
 
 
 class SwitchOrganisationIn(BaseModel):

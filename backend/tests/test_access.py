@@ -140,6 +140,8 @@ async def test_signed_out_only_the_public_routes_answer(world: World) -> None:
     routes = _api_routes(world.app)
     assert len(routes) > 50
     assert ("POST", "/api/v1/projects/{project_id}/report/pdf") in routes
+    assert ("GET", "/api/v1/admin/organisations") in routes
+    assert ("PUT", "/api/v1/admin/projects/{project_id}/organisation") in routes
     for method, path in routes:
         r = await anonymous.request(method, _fill(path, pid))
         if (method, path) in PUBLIC:

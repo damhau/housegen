@@ -220,6 +220,7 @@ async def test_me_without_a_session_lists_the_providers(world: World) -> None:
         "organisation": None,
         "organisations": [],
         "auth": {"disabled": False, "providers": ["google", "microsoft"]},
+        "is_admin": False,
     }
     # the projects need a session (#105)
     assert (await browser.get("/api/v1/projects")).status_code == 401
