@@ -13,7 +13,7 @@ from PIL import Image
 
 from housegen.agent import pipeline
 from housegen.agent.pipeline import has_interior, thread_text, touched_rooms
-from housegen.agent.prompts import BUILDER_SYSTEM, INTERIOR_KIT_REFERENCE
+from housegen.agent.prompts import BUILDER_SYSTEM, INTERIOR_KIT_REFERENCE, for_kit
 from housegen.core import db
 from housegen.core.config import get_settings
 from housegen.core.db import session_factory
@@ -22,7 +22,7 @@ from housegen.llm.types import Completion, ImagePart, Message, ToolCallPart, Too
 from housegen.projects import crud
 from housegen.projects.schemas import standard_views
 from housegen.projects.storage import ProjectStorage
-from housegen.render.kits import kit_with, pinned_kit
+from housegen.render.kits import kit_dir, kit_with, pinned_kit
 from housegen.render.renderer import RenderResult
 
 ROOMS: list[dict[str, Any]] = [
@@ -209,8 +209,8 @@ async def test_a_modification_of_a_house_with_interiors_knows_the_interior_kit(
     # the builder: the interior kit, its tools, the rooms, the room the request names
     system, tools, messages = provider.builder[0]
     assert system.startswith(BUILDER_SYSTEM)
-    # the interior kit, with the decor roles of the kit the job draws with (v35 on)
-    head, tail = INTERIOR_KIT_REFERENCE.split(
+    # the interior kit as the job's renderer reads it: decor roles from v35, the house styles from v36
+    head, tail = for_kit(INTERIOR_KIT_REFERENCE, kit_dir(kit)).split(
         "Put small decor on a surface with fx.place(p, [x, z], rot, surfaceY).\n"
     )
     assert head in system

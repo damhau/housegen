@@ -18,7 +18,7 @@ from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
 LATEST = "2026-11-14-v36"  # the newest snapshot
-VIEWER = "2026-11-11-v35"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
+VIEWER = "2026-11-14-v36"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
 
 
 @pytest.fixture
@@ -179,7 +179,10 @@ def test_only_renderers_with_styles_are_told_to_leave_finishes_to_the_house_styl
         for_kit,
     )
 
-    styled, plain = kits.kit_dir(LATEST), kits.kit_dir(VIEWER)
+    styled, plain = (
+        kits.kit_dir("2026-11-14-v36"),
+        kits.kit_dir("2026-11-11-v35"),
+    )  # the first with styles, the last without
     assert (styled / "styles.js").exists()
     assert not (plain / "styles.js").exists()
     for system in (INTERIOR_SYSTEM, MODIFY_INTERIOR_SYSTEM):
