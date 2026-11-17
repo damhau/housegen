@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { Building2 } from "lucide-react"
+import { Building2, Gauge } from "lucide-react"
 import { useMe } from "@/api/endpoints/accounts/accounts"
 import {
   getAdminOrganisationsQueryKey,
@@ -9,19 +9,24 @@ import {
   useAdminOrganisations,
   useAdminProjects,
   useMoveProject,
+  useSetOrganisationLimits,
 } from "@/api/endpoints/admin/admin"
 import { getListProjectsQueryKey } from "@/api/endpoints/projects/projects"
-import type { AdminOrganisationOut, AdminProjectOut } from "@/api/model"
+import type { AdminOrganisationOut, AdminProjectOut, LimitOut, LimitsIn } from "@/api/model"
 import { Avatar } from "@/components/accounts/Avatar"
 import { CenteredCard } from "@/components/accounts/CenteredCard"
+import { LimitsList } from "@/components/accounts/Limits"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { JOB_LABEL, StatusBadge } from "@/routes/index"
+import { LIMITS, type LimitKey } from "@/lib/limits"
 import { errorMessage, formatDate, formatDay, relTime } from "@/lib/utils"
 
 export const Route = createFileRoute("/admin")({ component: AdminPage })
 
-/** The administrator's view (#108): every organisation with its members and projects, and moving projects between them. */
+/** The administrator's view (#108): every organisation with its members, projects and limits (#107), and moving projects between them. */
 function AdminPage() {
   const me = useMe()
   if (me.isPending) return <p className="p-6 text-sm text-muted-foreground">Loading…</p>
@@ -65,8 +70,8 @@ function AdminView() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Admin</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Every organisation on this server, with its members and projects. Moving a project changes who sees it; its files,
-          versions, listing photos and share link stay as they are.
+          Every organisation on this server, with its members, projects and limits. Moving a project changes who sees it; its
+          files, versions, listing photos and share link stay as they are.
         </p>
         <p className="mt-2 text-xs text-muted-foreground">
           {plural(orgs.length, "organisation", "organisations")} · {plural(projects.data.length, "project", "projects")}
@@ -120,6 +125,7 @@ function OrganisationCard({
             ))}
           </section>
         )}
+        {organisation && <LimitsSection organisation={organisation} />}
         <section className="flex flex-col gap-2">
           <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Projects</h4>
           {projects.length === 0 && <p className="text-sm text-muted-foreground">No project.</p>}
@@ -196,5 +202,127 @@ function ProjectRow({
       </select>
       {error && <p className="basis-full text-sm text-destructive">{error}</p>}
     </div>
+  )
+}
+
+type Choice = "default" | "own" | "unlimited"
+
+function choiceOf(limit: LimitOut): { choice: Choice; value: string } {
+  if (limit.override === null) return { choice: "default", value: String(limit.default) }
+  if (limit.override === "unlimited") return { choice: "unlimited", value: String(limit.default) }
+  return { choice: "own", value: String(limit.override) }
+}
+
+function LimitsSection({ organisation }: { organisation: AdminOrganisationOut }) {
+  const [editing, setEditing] = useState(false)
+  return (
+    <section className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Limits</h4>
+        {!editing && (
+          <Button variant="ghost" size="sm" onClick={() => setEditing(true)} aria-label={`Edit the limits of ${organisation.name}`}>
+            <Gauge />
+            Edit limits
+          </Button>
+        )}
+      </div>
+      {editing ? (
+        <LimitsEditor organisation={organisation} onDone={() => setEditing(false)} />
+      ) : (
+        <LimitsList limits={organisation.limits} showSource />
+      )}
+    </section>
+  )
+}
+
+function LimitsEditor({ organisation, onDone }: { organisation: AdminOrganisationOut; onDone: () => void }) {
+  const qc = useQueryClient()
+  const save = useSetOrganisationLimits()
+  const [draft, setDraft] = useState<Record<LimitKey, { choice: Choice; value: string }>>(() => ({
+    concurrent_jobs: choiceOf(organisation.limits.concurrent_jobs),
+    jobs_per_day: choiceOf(organisation.limits.jobs_per_day),
+    listing_usd_per_month: choiceOf(organisation.limits.listing_usd_per_month),
+  }))
+  const [error, setError] = useState<string | null>(null)
+  const invalid = LIMITS.filter(({ key, money }) => {
+    const { choice, value } = draft[key]
+    if (choice !== "own") return false
+    const n = Number(value)
+    return value.trim() === "" || !Number.isFinite(n) || n < 0 || (!money && !Number.isInteger(n))
+  })
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (invalid.length > 0) return
+    setError(null)
+    const body: LimitsIn = {}
+    for (const { key } of LIMITS) {
+      const { choice, value } = draft[key]
+      body[key] = choice === "default" ? null : choice === "unlimited" ? "unlimited" : Number(value)
+    }
+    try {
+      await save.mutateAsync({ organisationId: organisation.id, data: body })
+      await qc.invalidateQueries({ queryKey: getAdminOrganisationsQueryKey() })
+      onDone()
+    } catch (err) {
+      setError(errorMessage(err))
+    }
+  }
+
+  return (
+    <form onSubmit={(e) => void submit(e)} className="grid gap-3 rounded-md border p-3">
+      {LIMITS.map(({ key, label, money }) => {
+        const { choice, value } = draft[key]
+        const set = (next: Partial<{ choice: Choice; value: string }>) => setDraft((prev) => ({ ...prev, [key]: { ...prev[key], ...next } }))
+        const fallback = organisation.limits[key].default
+        return (
+          <div key={key} className="grid gap-1.5 sm:grid-cols-[1fr_auto_auto] sm:items-center sm:gap-2">
+            <span className="text-sm font-medium">{label}</span>
+            <select
+              aria-label={`${label}: which limit`}
+              value={choice}
+              onChange={(e) => set({ choice: e.target.value as Choice })}
+              className="h-8 rounded-md border bg-background px-2 text-sm sm:w-48"
+            >
+              <option value="default">Default ({money ? `$${fallback.toFixed(2)}` : fallback})</option>
+              <option value="own">Own limit</option>
+              <option value="unlimited">No limit</option>
+            </select>
+            <div className="flex items-center gap-1 sm:w-32">
+              {money && <span className="text-sm text-muted-foreground">$</span>}
+              <Input
+                type="number"
+                inputMode={money ? "decimal" : "numeric"}
+                min={0}
+                step={money ? 0.01 : 1}
+                aria-label={`${label}: own limit`}
+                value={choice === "own" ? value : ""}
+                placeholder={choice === "own" ? "" : "—"}
+                disabled={choice !== "own"}
+                onChange={(e) => set({ value: e.target.value })}
+                className="h-8"
+              />
+            </div>
+          </div>
+        )
+      })}
+      {invalid.length > 0 && (
+        <p className="text-sm text-destructive">
+          {invalid.map((l) => l.label).join(", ")}: {invalid.some((l) => !l.money) ? "a whole number, 0 or more" : "an amount, 0 or more"}.
+        </p>
+      )}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <p className="text-xs text-muted-foreground">
+        Jobs already started go on; the next job is checked against the new limits. A limit of 0 lets none start.
+      </p>
+      <div className="flex justify-end gap-2">
+        <Button type="button" variant="ghost" size="sm" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" disabled={save.isPending || invalid.length > 0}>
+          {save.isPending ? "Saving…" : "Save limits"}
+        </Button>
+      </div>
+    </form>
   )
 }

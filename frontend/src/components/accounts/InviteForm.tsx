@@ -18,7 +18,7 @@ function parseEmails(text: string): { valid: string[]; invalid: string[] } {
   return { valid, invalid: words.filter((w) => !EMAIL.test(w)) }
 }
 
-/** Email addresses → invitation links (no email is sent: the links are there to copy). */
+/** Email addresses → invitation links, emailed when the server sends email (`email_sent` on each). */
 export function InviteForm({
   organisationId,
   onCreated,

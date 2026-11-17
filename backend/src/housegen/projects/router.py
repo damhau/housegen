@@ -27,6 +27,7 @@ from housegen.core.config import get_settings
 from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
 from housegen.jobs.manager import job_manager
+from housegen.limits import service as limits
 from housegen.projects import crud
 from housegen.projects.models import ChatMessage, Job, Project
 from housegen.projects.schemas import (
@@ -340,36 +341,41 @@ async def _start_job(
         raise ConflictError("a job is already running for this project")
     # the job runs with a snapshot of the project's settings taken now (#18)
     resolved = resolve(get_settings(), _run_settings(project))
-    job = await crud.create_job(
-        session, project_id, kind, request_text, settings=resolved.model_dump()
-    )
-    # photos attached to a modification request (#8): stored like uploads, named after the
-    # job, given to the builder and the verifier as ground truth for this request and,
-    # unless the user opted out, kept as project extras for every later pass
-    attachments: list[str] = []
-    st = ProjectStorage(project_id)
-    for i, photo in enumerate(photos or [], 1):
-        if not (photo.content_type or "").startswith("image/"):
-            raise InvalidInputError(f"'{photo.filename}' is not an image")
-        filename = f"modify-{job.id}-{i}.jpg"
-        raw = await photo.read()
-        try:
-            await anyio.to_thread.run_sync(_store_photo, raw, st.photos_dir / filename)
-        except Exception as e:
-            logger.exception("projects.photo.store_failed", extra={"name": photo.filename})
-            raise InvalidInputError(f"could not read the photo '{photo.filename}': {e}") from e
-        attachments.append(filename)
-        if keep_photos:
-            await crud.add_photo(session, project, "other", filename, photo.filename or filename)
-    if attachments:
-        await crud.update_job(session, job.id, attachments=attachments)
-    if request_text:
-        # the request is the user's turn of the conversation (a modification, or the answers
-        # to the intake's questions that start a build)
-        await crud.add_chat_message(
-            session, project_id, "user", request_text, job.id, attachments=attachments, point=point
+    async with limits.admission(session, project.organisation_id, kind) as admitted:
+        job = await crud.create_job(
+            session, project_id, kind, request_text, settings=resolved.model_dump()
         )
-    await session.commit()
+        admitted.record(job)
+        # photos attached to a modification request (#8): stored like uploads, named after the
+        # job, given to the builder and the verifier as ground truth for this request and,
+        # unless the user opted out, kept as project extras for every later pass
+        attachments: list[str] = []
+        st = ProjectStorage(project_id)
+        for i, photo in enumerate(photos or [], 1):
+            if not (photo.content_type or "").startswith("image/"):
+                raise InvalidInputError(f"'{photo.filename}' is not an image")
+            filename = f"modify-{job.id}-{i}.jpg"
+            raw = await photo.read()
+            try:
+                await anyio.to_thread.run_sync(_store_photo, raw, st.photos_dir / filename)
+            except Exception as e:
+                logger.exception("projects.photo.store_failed", extra={"name": photo.filename})
+                raise InvalidInputError(f"could not read the photo '{photo.filename}': {e}") from e
+            attachments.append(filename)
+            if keep_photos:
+                await crud.add_photo(
+                    session, project, "other", filename, photo.filename or filename
+                )
+        if attachments:
+            await crud.update_job(session, job.id, attachments=attachments)
+        if request_text:
+            # the request is the user's turn of the conversation (a modification, or the
+            # answers to the intake's questions that start a build)
+            await crud.add_chat_message(
+                session, project_id, "user", request_text, job.id,
+                attachments=attachments, point=point,
+            )  # fmt: skip
+        await session.commit()
     job_manager.submit(job.id, project_id, pipeline.JOB_BODIES[kind])
     logger.info(
         "jobs.started", extra={"job_id": job.id, "kind": kind, "attachments": len(attachments)}

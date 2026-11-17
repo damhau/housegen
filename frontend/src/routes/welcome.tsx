@@ -31,7 +31,7 @@ function WelcomePage() {
         </Link>
       </CenteredCard>
     )
-  if (created) return <InviteStep organisation={created} />
+  if (created) return <InviteStep organisation={created} emailed={me.data.auth.invitation_email ?? false} />
   return <ChooseStep me={me.data} onCreated={setCreated} />
 }
 
@@ -181,7 +181,7 @@ function ChooseStep({ me, onCreated }: { me: MeOut; onCreated: (o: OrganisationO
   )
 }
 
-function InviteStep({ organisation }: { organisation: OrganisationOut }) {
+function InviteStep({ organisation, emailed }: { organisation: OrganisationOut; emailed: boolean }) {
   const navigate = useNavigate()
   const [links, setLinks] = useState<InvitationOut[]>([])
   const add = (made: InvitationOut[]) => setLinks((prev) => [...prev, ...made.filter((m) => !prev.some((p) => p.id === m.id))])
@@ -191,8 +191,11 @@ function InviteStep({ organisation }: { organisation: OrganisationOut }) {
       title="Invite coworkers"
       description={
         <>
-          Optional. Each address gets its own link to <strong>{organisation.name}</strong>: copy it and send it yourself, housegen
-          sends no email. You can invite people later from the organisation settings.
+          Optional. Each address gets its own link to <strong>{organisation.name}</strong>
+          {emailed
+            ? ", by email from housegen with you as the reply address."
+            : ": copy it and send it yourself, housegen sends no email."}{" "}
+          You can invite people later from the organisation settings.
         </>
       }
     >
@@ -201,7 +204,15 @@ function InviteStep({ organisation }: { organisation: OrganisationOut }) {
         <ul className="grid gap-2">
           {links.map((l) => (
             <li key={l.id} className="flex items-center gap-2 rounded-lg border px-3 py-2">
-              <span className="min-w-0 flex-1 truncate text-sm">{l.email}</span>
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm">{l.email}</div>
+                {l.email_sent?.sent === false && (
+                  <div className="text-xs text-destructive" title={l.email_sent.error ?? undefined}>
+                    Couldn't send the email: copy the link.
+                  </div>
+                )}
+                {l.email_sent?.sent && <div className="text-xs text-muted-foreground">emailed</div>}
+              </div>
               <CopyLinkButton url={l.url} />
             </li>
           ))}

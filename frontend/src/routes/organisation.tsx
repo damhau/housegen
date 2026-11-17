@@ -1,7 +1,7 @@
 import { useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { DoorOpen, Trash2, UserMinus } from "lucide-react"
+import { DoorOpen, Mail, Trash2, UserMinus } from "lucide-react"
 import {
   getListInvitationsQueryKey,
   getListMembersQueryKey,
@@ -9,26 +9,30 @@ import {
   useListInvitations,
   useListMembers,
   useMe,
+  useOrganisationLimits,
   useRemoveMember,
   useRenameOrganisation,
   useRevokeInvitation,
+  useSendInvitation,
 } from "@/api/endpoints/accounts/accounts"
-import type { MeOut, OrganisationOut } from "@/api/model"
+import type { InvitationOut, MeOut, OrganisationOut } from "@/api/model"
 import { ApiError } from "@/api/http-client"
 import { Avatar } from "@/components/accounts/Avatar"
 import { CenteredCard } from "@/components/accounts/CenteredCard"
 import { CopyLinkButton } from "@/components/accounts/CopyLinkButton"
 import { InviteForm } from "@/components/accounts/InviteForm"
+import { LimitsList } from "@/components/accounts/Limits"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { refreshSession } from "@/lib/auth"
-import { errorMessage, formatDay } from "@/lib/utils"
+import { amount } from "@/lib/limits"
+import { errorMessage, formatDate, formatDay, relTime } from "@/lib/utils"
 
 export const Route = createFileRoute("/organisation")({ component: OrganisationPage })
 
-/** The settings of the organisation the session works in: name, members, pending invitations. */
+/** The settings of the organisation the session works in: name, members, pending invitations, its limits. */
 function OrganisationPage() {
   const me = useMe()
   if (me.isPending) return <p className="p-6 text-sm text-muted-foreground">Loading…</p>
@@ -60,7 +64,8 @@ function OrganisationSettings({ me, organisation }: { me: MeOut; organisation: O
       </div>
       {owner && <RenameCard organisation={organisation} />}
       <MembersCard me={me} organisation={organisation} />
-      {owner && <InvitationsCard organisation={organisation} />}
+      {owner && <InvitationsCard organisation={organisation} emailed={me.auth.invitation_email ?? false} />}
+      <LimitsCard organisation={organisation} />
     </div>
   )
 }
@@ -191,13 +196,80 @@ function MembersCard({ me, organisation }: { me: MeOut; organisation: Organisati
   )
 }
 
-function InvitationsCard({ organisation }: { organisation: OrganisationOut }) {
+function LimitsCard({ organisation }: { organisation: OrganisationOut }) {
+  const limits = useOrganisationLimits(organisation.id)
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Limits</CardTitle>
+        <CardDescription>
+          The administrator of this server sets them. A job over a limit does not start: the message says which limit and when
+          it resets.
+          {limits.data &&
+            ` A listing photo set needs about ${amount(limits.data.listing_estimate_usd, true)} left in the month's budget.`}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {limits.isPending && <p className="text-sm text-muted-foreground">Loading…</p>}
+        {limits.error ? <p className="text-sm text-destructive">{errorMessage(limits.error)}</p> : null}
+        {limits.data && <LimitsList limits={limits.data} />}
+      </CardContent>
+    </Card>
+  )
+}
+
+/** What happened to an invitation's email: sent (when), or why not, or none (email off). */
+function EmailStatus({ invitation, failed }: { invitation: InvitationOut; failed: string | undefined }) {
+  // the last try failed: known from this page's own send (with Resend's reason), or from the times
+  const lastFailed =
+    failed !== undefined || (invitation.email_attempted_at != null && invitation.email_attempted_at !== invitation.emailed_at)
+  if (lastFailed)
+    return (
+      <div className="text-xs text-destructive" title={failed || undefined}>
+        Couldn't send the email: copy the link.{failed ? ` (${failed})` : ""}
+      </div>
+    )
+  if (!invitation.emailed_at) return null
+  return (
+    <div className="text-xs text-muted-foreground" title={formatDate(invitation.emailed_at)}>
+      emailed {relTime(invitation.emailed_at)}
+    </div>
+  )
+}
+
+function InvitationsCard({ organisation, emailed }: { organisation: OrganisationOut; emailed: boolean }) {
   const qc = useQueryClient()
   const invitations = useListInvitations(organisation.id)
   const revoke = useRevokeInvitation()
+  const send = useSendInvitation()
   const [fresh, setFresh] = useState<string[]>([])
+  // the invitations whose last email did not go out, with Resend's reason
+  const [failed, setFailed] = useState<Record<string, string>>({})
+  // why "Send again" did not send (too soon after the last email)
+  const [refused, setRefused] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const refresh = () => qc.invalidateQueries({ queryKey: getListInvitationsQueryKey(organisation.id) })
+
+  function noted(made: InvitationOut[]) {
+    setFailed((prev) => {
+      const next = { ...prev }
+      for (const m of made) {
+        if (m.email_sent?.sent === false) next[m.id] = m.email_sent.error ?? ""
+        else if (m.email_sent?.sent) delete next[m.id]
+      }
+      return next
+    })
+  }
+
+  async function onSendAgain(id: string) {
+    setRefused((prev) => Object.fromEntries(Object.entries(prev).filter(([k]) => k !== id)))
+    try {
+      noted([await send.mutateAsync({ organisationId: organisation.id, invitationId: id })])
+      await refresh()
+    } catch (e) {
+      setRefused((prev) => ({ ...prev, [id]: errorMessage(e) }))
+    }
+  }
 
   async function onRevoke(id: string, email: string) {
     if (!confirm(`Revoke the invitation for ${email}? Its link stops working.`)) return
@@ -215,8 +287,10 @@ function InvitationsCard({ organisation }: { organisation: OrganisationOut }) {
       <CardHeader>
         <CardTitle className="text-base">Invitations</CardTitle>
         <CardDescription>
-          Each address gets a link to copy and send yourself: housegen sends no email. Whoever opens the link and signs in joins
-          as a member, whatever account they use.
+          {emailed
+            ? "Each address gets an email with its link, from housegen with you as the reply address; the link is here to copy too."
+            : "Each address gets a link to copy and send yourself: housegen sends no email."}{" "}
+          Whoever opens the link and signs in joins as a member, whatever account they use.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -225,6 +299,7 @@ function InvitationsCard({ organisation }: { organisation: OrganisationOut }) {
           submitLabel="Invite"
           onCreated={(made) => {
             setFresh((prev) => [...prev, ...made.map((m) => m.id)])
+            noted(made)
             void refresh()
           }}
         />
@@ -245,8 +320,21 @@ function InvitationsCard({ organisation }: { organisation: OrganisationOut }) {
                   )}
                 </div>
                 <div className="text-xs text-muted-foreground">until {formatDay(i.expires_at)}</div>
+                <EmailStatus invitation={i} failed={failed[i.id]} />
               </div>
               <CopyLinkButton url={i.url} />
+              {emailed && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={`Send the invitation for ${i.email} again`}
+                  disabled={send.isPending}
+                  onClick={() => void onSendAgain(i.id)}
+                >
+                  <Mail />
+                  Send again
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="sm"
@@ -257,6 +345,7 @@ function InvitationsCard({ organisation }: { organisation: OrganisationOut }) {
                 <Trash2 />
                 Revoke
               </Button>
+              {refused[i.id] && <p className="basis-full text-xs text-destructive">{refused[i.id]}</p>}
             </div>
           ))}
           {error && <p className="text-sm text-destructive">{error}</p>}

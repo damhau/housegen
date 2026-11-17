@@ -25,6 +25,7 @@ dependencies = [
     "python-multipart>=0.0.9",
     "rasterio>=1.5.1",
     "requests>=2.32",
+    "resend>=2.53.1",
     "scipy>=1.14",
     "shapely>=2.0",
     "sqlalchemy[asyncio]>=2.0",

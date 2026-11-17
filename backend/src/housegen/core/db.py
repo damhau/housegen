@@ -66,6 +66,7 @@ def session_factory() -> async_sessionmaker[AsyncSession]:
 async def init_db() -> None:
     # Import models so metadata is populated before create_all.
     from housegen.accounts import models as _accounts  # noqa: F401
+    from housegen.limits import models as _limits  # noqa: F401
     from housegen.projects import models  # noqa: F401
 
     engine = get_engine()

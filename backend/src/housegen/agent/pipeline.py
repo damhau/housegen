@@ -53,7 +53,9 @@ from housegen.agent.tools import (
 from housegen.agent.workspace import Workspace
 from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
+from housegen.core.exceptions import TooManyRequestsError
 from housegen.jobs.manager import JobContext, JobManager
+from housegen.limits import service as limits
 from housegen.listing.job import listing
 from housegen.llm import Completion, ImagePart, Message, Usage, get_provider
 from housegen.projects import crud
@@ -1610,21 +1612,33 @@ async def _chat_hand_over(
     run: _Run, end: dict[str, Any], reply: str, busy: bool, message: str
 ) -> None:
     """A change for the builder: a modification (or the interior job) with the turn's request,
-    started now, or waiting for the running job to end."""
+    started now, or waiting for the running job to end. The organisation's limits apply to it as
+    to a job started by hand; this turn, about to end, is not one more job at once."""
     request = str(end.get("request") or "").strip() or message
     kind = "interior" if end.get("kind") == "interior" else "modify"
     _revert_to(run, run.base_version)
-    async with session_factory()() as session, session.begin():
-        project = await crud.get_project(session, run.ctx.project_id)
-        stored = RunSettings.model_validate(project.settings) if project.settings else RunSettings()
-        new = await crud.create_job(
-            session,
-            run.ctx.project_id,
-            kind,
-            request,
-            settings=resolve(get_settings(), stored).model_dump(),
-            status="waiting" if busy else "queued",
-        )
+    try:
+        async with session_factory()() as session:
+            project = await crud.get_project(session, run.ctx.project_id)
+            stored = (
+                RunSettings.model_validate(project.settings) if project.settings else RunSettings()
+            )
+            async with limits.admission(
+                session, project.organisation_id, kind, replacing=run.ctx.job_id, waiting=busy
+            ) as admitted:
+                new = await crud.create_job(
+                    session,
+                    run.ctx.project_id,
+                    kind,
+                    request,
+                    settings=resolve(get_settings(), stored).model_dump(),
+                    status="waiting" if busy else "queued",
+                )
+                admitted.record(new)
+                await session.commit()
+    except TooManyRequestsError as e:
+        await _chat_answer(run, f"I couldn't hand this change to the builder. {e.message}")
+        return
     if not busy:
         run.ctx.manager.submit(new.id, run.ctx.project_id, JOB_BODIES[kind])
     text = str(end.get("reply") or reply or "").strip() or (

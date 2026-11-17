@@ -14,6 +14,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from PIL import Image
 
+from housegen.accounts.models import Organisation
 from housegen.agent import pipeline
 from housegen.agent.pipeline import file_map, point_text, start_waiting
 from housegen.core import db
@@ -315,6 +316,33 @@ async def test_while_the_builder_works_a_change_waits_for_it(
     assert manager.started == [(waiting[0].id, pid, pipeline.modify)]
     async with session_factory()() as s:
         assert (await crud.get_job(s, waiting[0].id)).status == "queued"
+
+
+async def test_the_organisations_limits_apply_to_a_hand_over(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid = await _project(client)
+    async with session_factory()() as s, s.begin():
+        project = await crud.get_project(s, pid)
+        organisation = await s.get(Organisation, project.organisation_id)
+        assert organisation is not None
+        organisation.limits_json = json.dumps({"concurrent_jobs": 1, "jobs_per_day": 1})
+    hand_over = [[ToolCallPart(id="1", name="hand_over", input={"request": "A pergola"})]]
+    # the turn handing over is the one job at once and the first job of the day (started outside
+    # the routes here): its own end makes room
+    _, _, manager, _ = await _turn(client, monkeypatch, pid, "a pergola", hand_over)
+    assert [b for _, _, b in manager.started] == [pipeline.modify]
+    async with session_factory()() as s, s.begin():
+        for j in await crud.list_jobs(s, pid):
+            await crud.update_job(s, j.id, status="done")
+    _, _, manager, _ = await _turn(client, monkeypatch, pid, "a second pergola", hand_over)
+    assert manager.started == []
+    async with session_factory()() as s:
+        assert [j.kind for j in await crud.list_jobs(s, pid)].count("modify") == 1
+    answer = (await _chat(client, pid))[-1]["content"]
+    assert answer.startswith(
+        "I couldn't hand this change to the builder. Limit reached: jobs per day."
+    )
 
 
 async def test_a_waiting_change_can_be_cancelled(client: AsyncClient) -> None:

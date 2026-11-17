@@ -28,6 +28,7 @@ import type {
   InvitationIn,
   InvitationOut,
   InvitationPreviewOut,
+  LimitsOut,
   MeOut,
   MemberOut,
   MyInvitationOut,
@@ -462,6 +463,107 @@ export const useRenameOrganisation = <TError = HTTPValidationError,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * The organisation's spending limits and its use of them (members; only the administrator
+changes them): jobs at once, jobs started today (UTC), listing photos' spend this month.
+ * @summary Organisation Limits
+ */
+export const getOrganisationLimitsUrl = (organisationId: string,) => {
+
+
+  
+
+  return `/api/v1/organisations/${organisationId}/limits`
+}
+
+export const organisationLimits = async (organisationId: string, options?: RequestInit): Promise<LimitsOut> => {
+  
+  return httpClient<LimitsOut>(getOrganisationLimitsUrl(organisationId),
+  {      
+    ...options,
+    method: 'GET'
+    
+    
+  }
+);}
+
+
+
+
+
+export const getOrganisationLimitsQueryKey = (organisationId?: string,) => {
+    return [
+    `/api/v1/organisations/${organisationId}/limits`
+    ] as const;
+    }
+
+    
+export const getOrganisationLimitsQueryOptions = <TData = Awaited<ReturnType<typeof organisationLimits>>, TError = HTTPValidationError>(organisationId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof organisationLimits>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getOrganisationLimitsQueryKey(organisationId);
+
+  
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof organisationLimits>>> = ({ signal }) => organisationLimits(organisationId, { signal, ...requestOptions });
+
+      
+
+      
+
+   return  { queryKey, queryFn, enabled: !!(organisationId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof organisationLimits>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type OrganisationLimitsQueryResult = NonNullable<Awaited<ReturnType<typeof organisationLimits>>>
+export type OrganisationLimitsQueryError = HTTPValidationError
+
+
+export function useOrganisationLimits<TData = Awaited<ReturnType<typeof organisationLimits>>, TError = HTTPValidationError>(
+ organisationId: string, options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof organisationLimits>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof organisationLimits>>,
+          TError,
+          Awaited<ReturnType<typeof organisationLimits>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useOrganisationLimits<TData = Awaited<ReturnType<typeof organisationLimits>>, TError = HTTPValidationError>(
+ organisationId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof organisationLimits>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof organisationLimits>>,
+          TError,
+          Awaited<ReturnType<typeof organisationLimits>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useOrganisationLimits<TData = Awaited<ReturnType<typeof organisationLimits>>, TError = HTTPValidationError>(
+ organisationId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof organisationLimits>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Organisation Limits
+ */
+
+export function useOrganisationLimits<TData = Awaited<ReturnType<typeof organisationLimits>>, TError = HTTPValidationError>(
+ organisationId: string, options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof organisationLimits>>, TError, TData>>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient 
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getOrganisationLimitsQueryOptions(organisationId,options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  query.queryKey = queryOptions.queryKey ;
+
+  return query;
+}
+
+
+
+/**
  * @summary List Members
  */
 export const getListMembersUrl = (organisationId: string,) => {
@@ -734,8 +836,10 @@ export function useListInvitations<TData = Awaited<ReturnType<typeof listInvitat
 
 
 /**
- * An invitation link to copy and send (no email goes out). The link is what lets someone
-in, whatever account they sign in with; inviting the same address again gives the same link.
+ * An invitation link, emailed when this server sends email (`email_sent` says how that
+went: a failed send keeps the invitation, its link to copy). The link is what lets someone
+in, whatever account they sign in with; inviting the same address again gives the same link,
+and no second email ("Send again" does that).
  * @summary Create Invitation
  */
 export const getCreateInvitationUrl = (organisationId: string,) => {
@@ -804,6 +908,81 @@ export const useCreateInvitation = <TError = HTTPValidationError,
       > => {
 
       const mutationOptions = getCreateInvitationMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Email a pending invitation again (owners only), from the owner who sends it: replies go to
+them. 409 when this server sends no email, 429 within a minute of the last email; a failed
+send answers 200 with `email_sent.error`.
+ * @summary Send Invitation
+ */
+export const getSendInvitationUrl = (organisationId: string,
+    invitationId: string,) => {
+
+
+  
+
+  return `/api/v1/organisations/${organisationId}/invitations/${invitationId}/send`
+}
+
+export const sendInvitation = async (organisationId: string,
+    invitationId: string, options?: RequestInit): Promise<InvitationOut> => {
+  
+  return httpClient<InvitationOut>(getSendInvitationUrl(organisationId,invitationId),
+  {      
+    ...options,
+    method: 'POST'
+    
+    
+  }
+);}
+
+
+
+
+export const getSendInvitationMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendInvitation>>, TError,{organisationId: string;invitationId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof sendInvitation>>, TError,{organisationId: string;invitationId: string}, TContext> => {
+
+const mutationKey = ['sendInvitation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof sendInvitation>>, {organisationId: string;invitationId: string}> = (props) => {
+          const {organisationId,invitationId} = props ?? {};
+
+          return  sendInvitation(organisationId,invitationId,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SendInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof sendInvitation>>>
+    
+    export type SendInvitationMutationError = HTTPValidationError
+
+    /**
+ * @summary Send Invitation
+ */
+export const useSendInvitation = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof sendInvitation>>, TError,{organisationId: string;invitationId: string}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof sendInvitation>>,
+        TError,
+        {organisationId: string;invitationId: string},
+        TContext
+      > => {
+
+      const mutationOptions = getSendInvitationMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

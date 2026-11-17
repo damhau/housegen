@@ -184,6 +184,24 @@ class Settings(BaseSettings):
     # /scenes/** of every organisation, GET and HEAD only. Empty = no such token.
     AUTH_READONLY_TOKEN: str = ""
 
+    # invitation emails (#107) through Resend, on only when both are set (else: the link to copy).
+    # EMAIL_FROM is an address of a domain verified in Resend: `housegen <housegen@example.ch>`.
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = ""
+    # "Send again" on one invitation at most this often
+    EMAIL_RESEND_AFTER_S: int = 60
+
+    # spending limits per organisation (#107), each overridable per organisation (or lifted). A
+    # chat turn runs beside the build it talks about (#35) and a listing shoot beside the scene's
+    # jobs, so 3 at once lets a chat answer while two builds run; the busiest day on dev was 29
+    # jobs (21 of them chat turns)
+    LIMIT_CONCURRENT_JOBS: int = 3
+    LIMIT_JOBS_PER_DAY: int = 30
+    LIMIT_LISTING_USD_PER_MONTH: float = 40.0
+    # what a listing shoot holds of the month's budget until its cost is known: no estimate exists
+    # for a set, and the dearest one on dev cost $7.64 (7 photos, 33 previews)
+    LISTING_ESTIMATE_USD: float = 8.0
+
     @property
     def database_url(self) -> str:
         return self.DATABASE_URL or f"sqlite+aiosqlite:///{self.DATA_DIR / 'housegen.db'}"
@@ -215,6 +233,11 @@ class Settings(BaseSettings):
         """What loads the app's scene pages without a session (#105): RENDER_SERVICE_TOKEN, which
         the Modal services share, else a token of this process for its own renderer."""
         return self.RENDER_SERVICE_TOKEN or _PROCESS_TOKEN
+
+    @property
+    def email_enabled(self) -> bool:
+        """Invitations go out by email: a Resend key and a sender are both set."""
+        return bool(self.RESEND_API_KEY.strip() and self.EMAIL_FROM.strip())
 
     @property
     def page_token(self) -> str:

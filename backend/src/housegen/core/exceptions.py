@@ -42,6 +42,11 @@ class GoneError(AppError):
     code = "gone"
 
 
+class TooManyRequestsError(AppError):
+    status_code = 429
+    code = "too_many_requests"
+
+
 class LLMError(AppError):
     status_code = 502
     code = "llm_error"

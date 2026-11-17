@@ -223,17 +223,48 @@ The app fails closed: without a sign-in provider and without `AUTH_DISABLED=1`, 
 In the app, a signed-out visitor goes to `/signin`, with one button per configured provider; share links (`/s/…`) and
 invitation links stay open. A signed-in user without an organisation lands on the wizard at `/welcome`: join an
 organisation that invited your verified email (`GET /api/v1/me/invitations`), or create one and invite coworkers.
-Each invitation is a link you copy and send yourself; housegen sends no email. The organisation menu in the header
-switches between organisations and opens the settings (`/organisation`: name, members, pending invitations). With
-`AUTH_DISABLED=1`, the app shows none of this.
+Each invitation is a link. With `RESEND_API_KEY` and `EMAIL_FROM` set, housegen also emails it through Resend
+(#107), in English, from `EMAIL_FROM` with the inviting owner as Reply-To: who invites, to which organisation, the link
+and its expiry, as plain text and simple HTML, without images or tracking. The response's `email_sent` says how the send
+went, and every invitation carries `emailed_at` (the last email that went out) and `email_attempted_at` (the last try),
+so a page opened later still shows a failed send. A failed send keeps the invitation and the UI offers its link to
+copy. **Send again** on a pending invitation
+(`POST /api/v1/organisations/<id>/invitations/<id>/send`) waits `EMAIL_RESEND_AFTER_S` (60 s) between two emails of the
+same invitation (429 `rate_limited`). Without both settings, nothing is emailed and you copy the link yourself; with
+only one of them, the startup log warns `email.half_configured` and email stays off. The logs are `email.sent` and
+`email.failed` with the invitation id and Resend's message id, never the address or the key. The organisation menu in
+the header switches between organisations and opens the settings (`/organisation`: name, members, pending
+invitations, the organisation's limits). With `AUTH_DISABLED=1`, the app shows none of this.
+
+Each organisation has three spending limits (#107), checked before a job is created:
+
+- **Jobs at once**: jobs queued or running (or interrupted, waiting to resume). A chat change that waits for the
+  project's running job does not count until it starts.
+- **Jobs per day**: jobs started since midnight UTC, every kind (builds, changes, chat turns, the interior, listing
+  photos, intake).
+- **Listing photos per month**: the Modal spend of the listing sets started this calendar month (UTC), in USD. A new
+  set needs room for `LISTING_ESTIMATE_USD` ($8, a little over the dearest set measured on dev); a running set counts at
+  that estimate and at its own cost once it ends.
+
+A job over a limit answers 429 with `details: {"reason": "limit", "limit": "concurrent_jobs" | "jobs_per_day" |
+"listing_usd_per_month", "used", "allowed", "resets_at"}` and a message that names the limit, the use and when it
+resets; the UI shows it where you started the job. A change the chat hands to the builder is checked the same way,
+and the chat answers with the message when it is refused. The counts come from a ledger of started jobs
+(`usage_records`), so deleting a project does not give its jobs back. The defaults are `LIMIT_CONCURRENT_JOBS`,
+`LIMIT_JOBS_PER_DAY` and `LIMIT_LISTING_USD_PER_MONTH`; the administrator gives an organisation its own from the
+admin view (`PUT /api/v1/admin/organisations/<id>/limits`: a number, `"unlimited"`, or `null` for the default). The
+default organisation has no limits (the startup migration lifts them once). Members read their organisation's limits
+and use on `/organisation` (`GET /api/v1/organisations/<id>/limits`).
 
 The administrator is the user whose provider-verified email is `AUTH_ADMIN_EMAIL`, in any case, with whichever
 provider (#108); with `AUTH_DISABLED=1`, the local user. Their account menu links to the admin view, `/admin`: every
 organisation (those nobody has joined yet included) with its members, roles and projects, and a **Move to…** action
-per project that gives it to another organisation after a confirmation. A move changes only who sees the project: its
+per project that gives it to another organisation after a confirmation, and each organisation's limits next to its use
+of them, with **Edit limits**. A move changes only who sees the project: its
 files, versions, listing sets and share link are stored by project id and stay as they are. A move is refused (409)
 while a job is queued, running or interrupted on the project, and logged as `admin.project_moved`. The API is under
-`/api/v1/admin/` (`GET organisations`, `GET projects`, `PUT projects/<id>/organisation`). It answers 403 `not_admin`
+`/api/v1/admin/` (`GET organisations`, `GET projects`, `PUT projects/<id>/organisation`,
+`PUT organisations/<id>/limits`). It answers 403 `not_admin`
 to anyone else, needs no organisation of the administrator's own, and the read-only token may read it.
 
 To set it up:
@@ -291,6 +322,10 @@ returns the defaults a project without settings runs with.
 | `AUTH_READONLY_TOKEN` | | a bearer token that reads `/api/v1/**` and `/scenes/**` of every organisation, GET and HEAD only (checks on a deployed app) |
 | `AUTH_PUBLIC_URL` | the request's origin | where the providers send the browser back (`https://host`); by default from `X-Forwarded-Proto`/`-Host` |
 | `AUTH_SESSION_DAYS`, `AUTH_INVITATION_DAYS` | `14`, `14` | how long a session and an invitation link last |
+| `RESEND_API_KEY`, `EMAIL_FROM` | | email invitations through Resend when both are set (`EMAIL_FROM`: `housegen <housegen@your.domain>`, a domain verified in Resend) |
+| `EMAIL_RESEND_AFTER_S` | `60` | seconds between two emails of the same invitation (**Send again**) |
+| `LIMIT_CONCURRENT_JOBS`, `LIMIT_JOBS_PER_DAY`, `LIMIT_LISTING_USD_PER_MONTH` | `3`, `30`, `40` | an organisation's limits unless the administrator set its own (see "Sign-in and organisations") |
+| `LISTING_ESTIMATE_USD` | `8` | what a listing set is counted at against the month's budget until its own cost is known |
 | `MODEL_PRICES` | list prices for `claude-fable-5-2`, `claude-opus-5-5`, `claude-opus-5`, `claude-sonnet-5-5`, `gpt-6-astra` | JSON `{model: {input, cached, output[, cache_write]}}` in USD per million tokens, for the cost in each run's summary |
 
 ## Quality gates

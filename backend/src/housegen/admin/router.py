@@ -1,13 +1,15 @@
-"""The administrator's view (#108): every organisation, and moving projects between them. Not on
-the API's `protected` router: the administrator needs no organisation of their own, and a project
-of any organisation is theirs to move."""
+"""The administrator's view (#108): every organisation, moving projects between them, and each
+organisation's spending limits (#107). Not on the API's `protected` router: the administrator needs
+no organisation of their own, and a project of any organisation is theirs to move."""
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
 
+from housegen.accounts import crud as accounts
 from housegen.accounts.dependencies import AdminCaller, admin_caller
 from housegen.admin import crud
 from housegen.admin.schemas import (
@@ -17,9 +19,12 @@ from housegen.admin.schemas import (
     MoveProjectIn,
 )
 from housegen.core.db import DbSession
+from housegen.limits import service as limits
+from housegen.limits.schemas import LimitsIn, LimitsOut
 from housegen.projects import crud as projects
 from housegen.projects.models import Project
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(admin_caller)])
 
 
@@ -39,7 +44,7 @@ def _project_out(
 @router.get("/organisations")
 async def admin_organisations(session: DbSession) -> list[AdminOrganisationOut]:
     """Every organisation, oldest first, those nobody joined yet included: members and roles,
-    how many projects it holds."""
+    how many projects it holds, its spending limits and its use of them."""
     return [
         AdminOrganisationOut(
             id=o.organisation.id,
@@ -57,9 +62,30 @@ async def admin_organisations(session: DbSession) -> list[AdminOrganisationOut]:
                 for m, u in o.members
             ],
             project_count=o.project_count,
+            limits=await limits.organisation_limits(session, o.organisation),
         )
         for o in await crud.organisations(session)
     ]
+
+
+@router.put("/organisations/{organisation_id}/limits")
+async def set_organisation_limits(
+    session: DbSession, admin: AdminCaller, organisation_id: str, body: LimitsIn
+) -> LimitsOut:
+    """Set an organisation's own limits, each a number, "unlimited", or null for the server's
+    default. Jobs already started go on; the next one is checked against the new limits."""
+    organisation = await accounts.get_organisation(session, organisation_id)
+    await limits.set_limits(session, organisation, body)
+    await session.commit()
+    logger.info(
+        "admin.limits_set",
+        extra={
+            "organisation_id": organisation_id,
+            "limits": organisation.limits,
+            "by": admin.id if admin else None,
+        },
+    )
+    return await limits.organisation_limits(session, organisation)
 
 
 @router.get("/projects")

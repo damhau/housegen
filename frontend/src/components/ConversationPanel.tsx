@@ -7,7 +7,7 @@ import { Markdown } from "@/components/Markdown"
 import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import type { JobEvent, LlmProgress } from "@/hooks/useJobStream"
-import { cn, parseIso, relTime } from "@/lib/utils"
+import { cn, errorMessage, parseIso, relTime } from "@/lib/utils"
 
 /** Live state of the job the page follows (from useJobStream). */
 export interface LiveJob {
@@ -82,6 +82,8 @@ export function ConversationPanel({
   onAnswer: (answers: IntakeAnswer[], notes: string) => Promise<void>
 }) {
   const [text, setText] = useState("")
+  // a message that did not start a turn (an organisation's limit, 429): why, the text given back
+  const [sendError, setSendError] = useState<string | null>(null)
   // photos attached to the next request; kept as reference photos of the project unless unticked
   const [files, setFiles] = useState<File[]>([])
   const [keep, setKeep] = useState(true)
@@ -123,10 +125,20 @@ export function ConversationPanel({
   async function send(t = text, applyReviewOf?: number) {
     t = t.trim()
     if ((!t && applyReviewOf === undefined) || busy || disabled) return
-    const photos = t === text.trim() ? files : []
+    const typed = t === text.trim()
+    const photos = typed ? files : []
+    setSendError(null)
     setText("")
     if (photos.length > 0) setFiles([])
-    await onSend(t, photos, keep, applyReviewOf)
+    try {
+      await onSend(t, photos, keep, applyReviewOf)
+    } catch (e) {
+      setSendError(errorMessage(e))
+      if (typed) {
+        setText(t)
+        setFiles(photos)
+      }
+    }
   }
 
   const placeholder = disabled
@@ -198,6 +210,11 @@ export function ConversationPanel({
           addFiles(e.dataTransfer.files)
         }}
       >
+        {sendError && (
+          <p role="alert" className="mb-2 text-xs text-destructive">
+            {sendError}
+          </p>
+        )}
         {point && (
           <div className="mb-2 flex items-center gap-1.5 text-xs">
             <PointChip point={point} />
@@ -500,13 +517,17 @@ function IntakeForm({ intake, onSubmit }: { intake: IntakeOut; onSubmit: (answer
   const [answers, setAnswers] = useState<string[]>(() => questions.map((q) => q.suggested))
   const [notes, setNotes] = useState("")
   const [sending, setSending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   async function submit() {
     setSending(true)
+    setError(null)
     try {
       await onSubmit(
         questions.map((q, i) => ({ question: q.question, answer: answers[i] ?? "" })),
         notes,
       )
+    } catch (e) {
+      setError(errorMessage(e))
     } finally {
       setSending(false)
     }
@@ -536,6 +557,11 @@ function IntakeForm({ intake, onSubmit }: { intake: IntakeOut; onSubmit: (answer
       <Button size="sm" className="h-7" onClick={() => void submit()} disabled={sending}>
         {sending ? <Loader2 className="animate-spin" /> : <Play />} Start the build
       </Button>
+      {error && (
+        <p role="alert" className="text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

@@ -18,6 +18,7 @@ from housegen.core.config import get_settings
 from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
 from housegen.jobs.manager import job_manager
+from housegen.limits import service as limits
 from housegen.listing.job import default_exteriors, listing_dir, read_set
 from housegen.listing.schemas import ListingOut, ListingPhotoOut, ListingRequest, ListingStatusOut
 from housegen.projects import crud
@@ -140,14 +141,16 @@ async def start_listing(
         }
     )
     stored = RunSettings.model_validate(project.settings) if project.settings else RunSettings()
-    job = await crud.create_job(
-        session,
-        project_id,
-        "listing",
-        request,
-        settings=resolve(get_settings(), stored).model_dump(),
-    )
-    await session.commit()
+    async with limits.admission(session, project.organisation_id, "listing") as admitted:
+        job = await crud.create_job(
+            session,
+            project_id,
+            "listing",
+            request,
+            settings=resolve(get_settings(), stored).model_dump(),
+        )
+        admitted.record(job)
+        await session.commit()
     job_manager.submit(job.id, project_id, pipeline.JOB_BODIES["listing"])
     logger.info(
         "listing.started",

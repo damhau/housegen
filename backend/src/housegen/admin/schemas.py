@@ -5,6 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from housegen.accounts.models import Role
+from housegen.limits.schemas import LimitsOut
 
 
 class AdminMemberOut(BaseModel):
@@ -23,6 +24,7 @@ class AdminOrganisationOut(BaseModel):
     created_at: datetime
     members: list[AdminMemberOut]  # oldest membership first; empty when nobody joined yet
     project_count: int
+    limits: LimitsOut  # its spending limits and its use of them now (#107)
 
 
 class AdminProjectOut(BaseModel):

@@ -79,8 +79,18 @@ def _log_auth(settings: Settings) -> None:
             "public_url": settings.AUTH_PUBLIC_URL or None,
             "readonly_token_set": bool(settings.AUTH_READONLY_TOKEN),
             "service_token_set": bool(settings.RENDER_SERVICE_TOKEN),
+            "resend_api_key_set": bool(settings.RESEND_API_KEY.strip()),
+            "email_from_set": bool(settings.EMAIL_FROM.strip()),
+            "invitation_email": settings.email_enabled,
         },
     )
+    if bool(settings.RESEND_API_KEY.strip()) != bool(settings.EMAIL_FROM.strip()):
+        logger.warning(
+            "email.half_configured",
+            extra={
+                "missing": "EMAIL_FROM" if settings.RESEND_API_KEY.strip() else "RESEND_API_KEY"
+            },
+        )
     if not providers and not settings.AUTH_DISABLED:
         logger.error("auth.no_provider")
         raise SignInMissing(

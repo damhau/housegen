@@ -18,6 +18,7 @@ from housegen.core.db import session_factory
 from housegen.geo import context as geo_context
 from housegen.geo.swiss import lv95_to_wgs84
 from housegen.jobs.manager import JobContext
+from housegen.limits import service as limits
 from housegen.listing.client import PhotoClient
 from housegen.listing.pick import pick_exteriors, pick_view
 from housegen.listing.shots import MIN_AREA, Shot, exterior_shots, language, pick
@@ -161,6 +162,7 @@ async def listing(ctx: JobContext) -> None:
         exterior = "house"
     client = PhotoClient(s)
     t0 = time.time()
+    doc: dict[str, Any] = {}
     try:
         await ctx.emit("phase", name="prepare", message=f"Exporting version {version} to Blender")
         prepared = await client.prepare(
@@ -199,7 +201,7 @@ async def listing(ctx: JobContext) -> None:
             raise RuntimeError(
                 "no room to photograph: the version has no living room, bedroom or bathroom with a camera"
             )
-        doc: dict[str, Any] = {
+        doc = {
             "version": version,
             "kit": kit,
             "job_id": ctx.job_id,
@@ -228,7 +230,9 @@ async def listing(ctx: JobContext) -> None:
             "errors": {},
         }
         doc["cost"] = {
-            "prepare_usd": _prepare_cost(prepared),
+            # a resumed job's prepare is cached on the service: the first one's cost stays
+            "prepare_usd": _prepare_cost(prepared)
+            + (float((previous or {}).get("cost", {}).get("prepare_usd") or 0) if resumed else 0.0),
             # a set shot again keeps the earlier job's previews and choices; their cost was that job's
             "previews_usd": _spent(p for v in doc["previews"].values() for p in v.values())
             if resumed
@@ -570,3 +574,13 @@ async def listing(ctx: JobContext) -> None:
         )
     finally:
         await client.close()
+        await _record_spend(ctx.job_id, sum(float(v or 0) for v in doc.get("cost", {}).values()))
+
+
+async def _record_spend(job_id: str, usd: float) -> None:
+    """What the shoot cost, for the organisation's monthly limit (#107), however it ended."""
+    try:
+        async with session_factory()() as session, session.begin():
+            await limits.record_listing_spend(session, job_id, usd)
+    except Exception:
+        logger.exception("listing.spend_not_recorded", extra={"job_id": job_id, "usd": usd})

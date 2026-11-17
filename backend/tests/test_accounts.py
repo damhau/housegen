@@ -219,7 +219,11 @@ async def test_me_without_a_session_lists_the_providers(world: World) -> None:
         "user": None,
         "organisation": None,
         "organisations": [],
-        "auth": {"disabled": False, "providers": ["google", "microsoft"]},
+        "auth": {
+            "disabled": False,
+            "providers": ["google", "microsoft"],
+            "invitation_email": False,
+        },
         "is_admin": False,
     }
     # the projects need a session (#105)
@@ -607,7 +611,11 @@ async def test_no_provider_configured(tmp_path: Path, monkeypatch: pytest.Monkey
             r = await c.get("/api/v1/me")
             assert r.status_code == 200
             assert r.json()["user"] is None
-            assert r.json()["auth"] == {"disabled": False, "providers": []}
+            assert r.json()["auth"] == {
+                "disabled": False,
+                "providers": [],
+                "invitation_email": False,
+            }
             assert (await c.get("/auth/login/google")).status_code == 404
             # nobody can sign in, and nothing opens without a session
             assert (await c.get("/api/v1/projects")).status_code == 401
@@ -630,7 +638,11 @@ async def test_auth_disabled_is_one_implicit_user_in_the_default_organisation(
             transport=ASGITransport(app=app), base_url="https://testserver"
         ) as c:
             me = (await c.get("/api/v1/me")).json()
-            assert me["auth"] == {"disabled": True, "providers": []}
+            assert me["auth"] == {
+                "disabled": True,
+                "providers": [],
+                "invitation_email": False,
+            }
             assert me["user"]["provider"] == "local"
             assert me["organisation"]["role"] == "owner"
             assert (await c.get("/api/v1/me")).json() == me

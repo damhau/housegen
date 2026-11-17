@@ -7,9 +7,11 @@
 import type { AuthOutProvidersItem } from './authOutProvidersItem';
 
 /**
- * How people sign in here: the provider buttons to show (none while disabled).
+ * How people sign in here: the provider buttons to show (none while disabled), and whether
+invitations go out by email (else: a link to copy).
  */
 export interface AuthOut {
   disabled: boolean;
   providers: AuthOutProvidersItem[];
+  invitation_email?: boolean;
 }

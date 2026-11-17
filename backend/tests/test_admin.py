@@ -1,5 +1,5 @@
-"""The administrator's view (#108): every organisation, and moving projects between them. Signed
-out, the admin routes answer 401 (test_access.py's sweep)."""
+"""The administrator's view (#108): every organisation, moving projects between them, and the
+spending limits (#107). Signed out, the admin routes answer 401 (test_access.py's sweep)."""
 
 from __future__ import annotations
 
@@ -30,6 +30,10 @@ PROJECTS = "/api/v1/admin/projects"
 
 def _move(project_id: str) -> str:
     return f"/api/v1/admin/projects/{project_id}/organisation"
+
+
+def _limits(organisation_id: str) -> str:
+    return f"/api/v1/admin/organisations/{organisation_id}/limits"
 
 
 @pytest.fixture
@@ -79,7 +83,12 @@ async def test_only_the_administrator_opens_the_admin_routes(world: World) -> No
     work, _ = await world.sign_in("microsoft", microsoft("m-admin", ADMIN))
     fake, _ = await world.sign_in("google", google("g-fake", ADMIN, verified=False))
     anonymous = await world.browser()
-    calls = (("GET", ORGANISATIONS), ("GET", PROJECTS), ("PUT", _move(pid)))
+    calls = (
+        ("GET", ORGANISATIONS),
+        ("GET", PROJECTS),
+        ("PUT", _move(pid)),
+        ("PUT", _limits(org)),
+    )
     for browser in (member, work, fake):
         for method, path in calls:
             r = await browser.request(method, path, json={"organisation_id": org})
@@ -216,6 +225,40 @@ async def test_a_project_at_work_does_not_move(world: World) -> None:
     assert (await admin.put(_move(pid), json={"organisation_id": org_b})).status_code == 200
 
 
+async def test_the_administrator_sets_an_organisations_limits_and_its_members_see_them(
+    world: World,
+) -> None:
+    admin = await _admin(world)
+    member, org = await _member(world, "g-a", "A")
+    pid = await _project(org)
+    r = await member.post(f"/api/v1/projects/{pid}/generate")
+    assert r.status_code == 202, r.text
+    listed = {o["id"]: o for o in (await admin.get(ORGANISATIONS)).json()}
+    limits = listed[org]["limits"]
+    assert limits["concurrent_jobs"] == {**limits["concurrent_jobs"], "used": 1, "limit": 3}
+    assert limits["jobs_per_day"]["used"] == 1
+    assert limits["jobs_per_day"]["limit"] == 30
+    assert limits["listing_usd_per_month"] == {
+        **limits["listing_usd_per_month"], "used": 0.0, "limit": 40.0, "override": None,
+    }  # fmt: skip
+    default = next(o for o in listed.values() if o["is_default"])
+    assert default["limits"]["jobs_per_day"]["override"] == "unlimited"
+
+    body = {"concurrent_jobs": "unlimited", "jobs_per_day": 5, "listing_usd_per_month": None}
+    r = await admin.put(_limits(org), json=body)
+    assert r.status_code == 200, r.text
+    assert r.json()["concurrent_jobs"]["limit"] is None
+    assert r.json()["jobs_per_day"]["override"] == 5
+    assert r.json()["listing_usd_per_month"]["override"] is None
+    # the members read them; only the administrator changes them
+    seen = (await member.get(f"/api/v1/organisations/{org}/limits")).json()
+    assert seen == r.json()
+    r = await member.put(_limits(org), json={"jobs_per_day": 1000})
+    assert r.status_code == 403
+    outsider, _ = await _member(world, "g-b", "B")
+    assert (await outsider.get(f"/api/v1/organisations/{org}/limits")).status_code == 404
+
+
 async def test_the_readonly_token_reads_the_admin_routes_and_moves_nothing(world: World) -> None:
     _, org_a = await _member(world, "g-a", "A")
     _, org_b = await _member(world, "g-b", "B")
@@ -229,6 +272,11 @@ async def test_the_readonly_token_reads_the_admin_routes_and_moves_nothing(world
     r = await claude.put(_move(pid), json={"organisation_id": org_b})
     assert r.status_code == 403
     assert r.json()["error"]["details"]["reason"] == "read_only"
+    r = await claude.put(_limits(org_a), json={"jobs_per_day": 1000})
+    assert r.status_code == 403
+    assert r.json()["error"]["details"]["reason"] == "read_only"
+    listed = {o["id"]: o for o in (await claude.get(ORGANISATIONS)).json()}
+    assert listed[org_a]["limits"]["jobs_per_day"]["override"] is None
     async with session_factory()() as s:
         assert (await crud.get_project(s, pid)).organisation_id == org_a
     # the service token reads scene files, not the API

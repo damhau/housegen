@@ -20,6 +20,9 @@ stringData:
   RENDER_SERVICE_TOKEN: ""
   # Authorization: Bearer <it> reads the API and /scenes, GET and HEAD only (checks on a deployed app)
   AUTH_READONLY_TOKEN: ""
+  # invitation emails (#107): both set, or the owners copy the links; EMAIL_FROM on a domain verified in Resend
+  RESEND_API_KEY: ""
+  EMAIL_FROM: ""
 ---
 apiVersion: apps/v1
 kind: Deployment

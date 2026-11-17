@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from sqlalchemy import Boolean, ForeignKey, String, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from housegen.core.db import Base, UTCDateTime
@@ -52,6 +53,13 @@ class Organisation(Base):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=_now)
+    # its own spending limits (#107), JSON: a limit left out is the server's default, null lifts
+    # it. Null for the whole column only until the startup migration or the admin first set them
+    limits_json: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    @property
+    def limits(self) -> dict[str, float | None]:
+        return dict(json.loads(self.limits_json)) if self.limits_json else {}
 
 
 class Membership(Base):
@@ -86,3 +94,6 @@ class Invitation(Base):
     expires_at: Mapped[datetime] = mapped_column(UTCDateTime)
     accepted_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     accepted_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    # its email (#107): the last attempt (what "Send again" waits on) and the last one Resend took
+    email_attempted_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    emailed_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)

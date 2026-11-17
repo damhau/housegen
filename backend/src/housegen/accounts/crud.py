@@ -20,6 +20,7 @@ from housegen.accounts.models import (
 )
 from housegen.accounts.oidc import Identity
 from housegen.core.exceptions import ConflictError, GoneError, NotFoundError
+from housegen.limits.service import NO_LIMITS
 from housegen.projects.models import Project
 
 logger = logging.getLogger(__name__)
@@ -73,8 +74,8 @@ async def upsert_user(session: AsyncSession, identity: Identity) -> tuple[User, 
 
 
 async def default_organisation(session: AsyncSession) -> tuple[Organisation, bool]:
-    """The organisation of the projects from before accounts (made on first use). Returns
-    (organisation, created)."""
+    """The organisation of the projects from before accounts (made on first use, without
+    limits). Returns (organisation, created)."""
     res = await session.execute(
         select(Organisation)
         .where(Organisation.is_default.is_(True))
@@ -83,7 +84,9 @@ async def default_organisation(session: AsyncSession) -> tuple[Organisation, boo
     organisation = res.scalars().first()
     if organisation is not None:
         return organisation, False
-    organisation = Organisation(name=DEFAULT_ORGANISATION_NAME, is_default=True)
+    organisation = Organisation(
+        name=DEFAULT_ORGANISATION_NAME, is_default=True, limits_json=NO_LIMITS
+    )
     session.add(organisation)
     await session.flush()
     return organisation, True
@@ -254,13 +257,13 @@ def invitation_status(invitation: Invitation) -> InvitationStatus:
 
 async def create_invitation(
     session: AsyncSession, organisation_id: str, email: str, invited_by: User, days: int
-) -> Invitation:
+) -> tuple[Invitation, bool]:
     """An invitation for this email, or the one still pending for it (inviting twice gives the
-    same link)."""
+    same link). Returns (invitation, created)."""
     email = email.strip().lower()
     for invitation in await pending_invitations(session, organisation_id):
         if invitation.email == email:
-            return invitation
+            return invitation, False
     invitation = Invitation(
         organisation_id=organisation_id,
         email=email,
@@ -274,6 +277,21 @@ async def create_invitation(
         "accounts.invitation.created",
         extra={"organisation_id": organisation_id, "invitation_id": invitation.id},
     )
+    return invitation, True
+
+
+async def pending_invitation(
+    session: AsyncSession, organisation_id: str, invitation_id: str
+) -> Invitation:
+    """One of the organisation's invitations that can still be accepted."""
+    invitation = await session.get(Invitation, invitation_id)
+    if invitation is None or invitation.organisation_id != organisation_id:
+        raise NotFoundError(f"invitation {invitation_id} not found")
+    status = invitation_status(invitation)
+    if status == "accepted":
+        raise ConflictError("the invitation was already accepted")
+    if status == "expired":
+        raise GoneError("this invitation has expired", reason="expired")
     return invitation
 
 

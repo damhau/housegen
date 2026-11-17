@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Sofa, Square, Trash2 } from "lucide-react"
+import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Sofa, Square, Trash2, X } from "lucide-react"
 import {
   getChatHistoryQueryKey,
   getGetProjectQueryKey,
@@ -99,6 +99,7 @@ function ProjectPage() {
   const [reloadKey, setReloadKey] = useState(0)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [furnishOpen, setFurnishOpen] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
   // what the owner pointed at in the viewer, sent with the next message (#35)
   const [point, setPoint] = useState<PointOut | null>(null)
 
@@ -216,6 +217,15 @@ function ProjectPage() {
     await cancel.mutateAsync({ projectId, jobId: activeJob.id })
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
   }
+  // a job that does not start (an organisation's limit, 429; another job, 409) says why above the page
+  async function attempt(action: () => Promise<void>) {
+    setActionError(null)
+    try {
+      await action()
+    } catch (e) {
+      setActionError(errorMessage(e))
+    }
+  }
   async function onGenerate() {
     if (needsIntake) await intake.mutateAsync({ projectId })
     else await generate.mutateAsync({ projectId, data: null })
@@ -290,6 +300,14 @@ function ProjectPage() {
           <RefreshCw className="size-3.5 animate-spin" /> Server is restarting, reconnecting… {activeJob ? "The running job continues where it was." : ""}
         </div>
       )}
+      {actionError && (
+        <div role="alert" className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-1.5 text-xs text-destructive">
+          <span className="min-w-0 flex-1">{actionError}</span>
+          <button type="button" aria-label="Dismiss" className="rounded p-0.5 hover:bg-destructive/15" onClick={() => setActionError(null)}>
+            <X className="size-3.5" />
+          </button>
+        </div>
+      )}
       <div className="flex items-center gap-3">
         <Link to="/" className="text-sm text-muted-foreground hover:underline">
           Projects
@@ -302,13 +320,13 @@ function ProjectPage() {
         </span>
         <div className="ml-auto flex items-center gap-2">
           {p.current_version === 0 && !busy && !awaitingAnswers && (
-            <Button size="sm" onClick={() => void onGenerate()} title={genTitle}>
+            <Button size="sm" onClick={() => void attempt(onGenerate)} title={genTitle}>
               <Play /> {needsIntake ? "Read the plans" : "Generate"}
               {genHint && <span className="font-normal opacity-80">{genHint}</span>}
             </Button>
           )}
           {p.current_version > 0 && !busy && (
-            <Button size="sm" variant="outline" onClick={() => void onGenerate()} title={`Rebuild from scratch${genTitle ? ` · ${genTitle}` : ""}`}>
+            <Button size="sm" variant="outline" onClick={() => void attempt(onGenerate)} title={`Rebuild from scratch${genTitle ? ` · ${genTitle}` : ""}`}>
               <Play /> Regenerate
               {genHint && <span className="font-normal text-muted-foreground">{genHint}</span>}
             </Button>
@@ -409,7 +427,7 @@ function ProjectPage() {
               awaitingAnswers={awaitingAnswers}
               hasPhotos={hasPhotos}
               canGenerate={!busy}
-              onGenerate={() => void onGenerate()}
+              onGenerate={() => void attempt(onGenerate)}
             />
           }
         />
@@ -460,7 +478,7 @@ function ProjectPage() {
                 selected={selectedVersion}
                 onSelect={setSelectedVersion}
                 onRestore={(n) => void onRestore(n)}
-                onFix={(n) => void onFix(n)}
+                onFix={(n) => void attempt(() => onFix(n))}
                 busy={restore.isPending || fix.isPending || busy}
               />
             )}

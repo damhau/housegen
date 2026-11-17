@@ -28,7 +28,9 @@ function PrivacyPage() {
             that provider. It receives nothing else: no contacts, files, mail or calendar.
           </li>
           <li>
-            <strong>Your organisation.</strong> Its name, its members and their roles, and the invitations sent.
+            <strong>Your organisation.</strong> Its name, its members and their roles, the invitations sent (the
+            invited email address, and when its email went out), and how much of its limits it uses (jobs started,
+            listing photo spend).
           </li>
           <li>
             <strong>Your projects.</strong> The plans, photos and notes you upload, your answers and chat messages, and
@@ -78,6 +80,11 @@ function PrivacyPage() {
           </li>
           <li>
             <strong>Google</strong> and <strong>Microsoft</strong> sign you in.
+          </li>
+          <li>
+            <strong>Resend</strong> (United States) delivers the invitation emails: it receives the invited address,
+            the name and email address of the owner who invites, and the organisation's name. The emails carry no
+            tracking pixels or tracked links.
           </li>
           <li>
             <strong>swisstopo</strong>, <strong>geodienste.ch</strong> and Amazon Web Services' public terrain tiles:

@@ -27,6 +27,8 @@ import type {
   AdminOrganisationOut,
   AdminProjectOut,
   HTTPValidationError,
+  LimitsIn,
+  LimitsOut,
   MoveProjectIn
 } from '../../model';
 
@@ -39,7 +41,7 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
  * Every organisation, oldest first, those nobody joined yet included: members and roles,
-how many projects it holds.
+how many projects it holds, its spending limits and its use of them.
  * @summary Admin Organisations
  */
 export const getAdminOrganisationsUrl = () => {
@@ -139,6 +141,80 @@ export function useAdminOrganisations<TData = Awaited<ReturnType<typeof adminOrg
 
 
 /**
+ * Set an organisation's own limits, each a number, "unlimited", or null for the server's
+default. Jobs already started go on; the next one is checked against the new limits.
+ * @summary Set Organisation Limits
+ */
+export const getSetOrganisationLimitsUrl = (organisationId: string,) => {
+
+
+  
+
+  return `/api/v1/admin/organisations/${organisationId}/limits`
+}
+
+export const setOrganisationLimits = async (organisationId: string,
+    limitsIn: LimitsIn, options?: RequestInit): Promise<LimitsOut> => {
+  
+  return httpClient<LimitsOut>(getSetOrganisationLimitsUrl(organisationId),
+  {      
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      limitsIn,)
+  }
+);}
+
+
+
+
+export const getSetOrganisationLimitsMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setOrganisationLimits>>, TError,{organisationId: string;data: LimitsIn}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof setOrganisationLimits>>, TError,{organisationId: string;data: LimitsIn}, TContext> => {
+
+const mutationKey = ['setOrganisationLimits'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setOrganisationLimits>>, {organisationId: string;data: LimitsIn}> = (props) => {
+          const {organisationId,data} = props ?? {};
+
+          return  setOrganisationLimits(organisationId,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetOrganisationLimitsMutationResult = NonNullable<Awaited<ReturnType<typeof setOrganisationLimits>>>
+    export type SetOrganisationLimitsMutationBody = LimitsIn
+    export type SetOrganisationLimitsMutationError = HTTPValidationError
+
+    /**
+ * @summary Set Organisation Limits
+ */
+export const useSetOrganisationLimits = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setOrganisationLimits>>, TError,{organisationId: string;data: LimitsIn}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof setOrganisationLimits>>,
+        TError,
+        {organisationId: string;data: LimitsIn},
+        TContext
+      > => {
+
+      const mutationOptions = getSetOrganisationLimitsMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
  * Every organisation's projects, newest first.
  * @summary Admin Projects
  */

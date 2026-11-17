@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import math
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 import httpx2
@@ -9,7 +11,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import RedirectResponse
 from joserfc.errors import JoseError
 
-from housegen.accounts import crud
+from housegen.accounts import crud, emails
 from housegen.accounts.dependencies import (
     SESSION_NEXT,
     SESSION_ORGANISATION,
@@ -25,6 +27,7 @@ from housegen.accounts.models import Invitation, Organisation, Role, User
 from housegen.accounts.oidc import ProviderName, claims_options, configured_providers, identity
 from housegen.accounts.schemas import (
     AuthOut,
+    EmailOutcome,
     InvitationIn,
     InvitationOut,
     InvitationPreviewOut,
@@ -38,7 +41,9 @@ from housegen.accounts.schemas import (
 )
 from housegen.core.config import get_settings
 from housegen.core.db import DbSession
-from housegen.core.exceptions import NotFoundError
+from housegen.core.exceptions import ConflictError, NotFoundError, TooManyRequestsError
+from housegen.limits import service as limits
+from housegen.limits.schemas import LimitsOut
 
 logger = logging.getLogger(__name__)
 
@@ -66,17 +71,23 @@ def _first(header: str | None) -> str:
     return header.split(",")[0].strip() if header else ""
 
 
-def _callback_url(request: Request, provider: str) -> str:
+def _public_url(request: Request) -> str:
+    """This app's origin as browsers reach it: AUTH_PUBLIC_URL, else the request's own, from
+    X-Forwarded-Proto/-Host behind a proxy."""
     base = get_settings().AUTH_PUBLIC_URL.rstrip("/")
-    if not base:
-        proto = _first(request.headers.get("x-forwarded-proto")) or request.url.scheme
-        host = (
-            _first(request.headers.get("x-forwarded-host"))
-            or request.headers.get("host")
-            or request.url.netloc
-        )
-        base = f"{proto}://{host}"
-    return f"{base}/auth/callback/{provider}"
+    if base:
+        return base
+    proto = _first(request.headers.get("x-forwarded-proto")) or request.url.scheme
+    host = (
+        _first(request.headers.get("x-forwarded-host"))
+        or request.headers.get("host")
+        or request.url.netloc
+    )
+    return f"{proto}://{host}"
+
+
+def _callback_url(request: Request, provider: str) -> str:
+    return f"{_public_url(request)}/auth/callback/{provider}"
 
 
 def _client(request: Request, provider: str) -> tuple[ProviderName, Any]:
@@ -177,7 +188,11 @@ def _organisation_out(organisation: Organisation, role: Role) -> OrganisationOut
 
 async def _me(request: Request, session: DbSession, user: User | None) -> MeOut:
     settings = get_settings()
-    auth = AuthOut(disabled=settings.AUTH_DISABLED, providers=configured_providers(settings))
+    auth = AuthOut(
+        disabled=settings.AUTH_DISABLED,
+        providers=configured_providers(settings),
+        invitation_email=settings.email_enabled,
+    )
     if user is None:
         return MeOut(user=None, organisation=None, organisations=[], auth=auth, is_admin=False)
     organisations = await crud.organisations_of(session, user)
@@ -253,6 +268,17 @@ async def rename_organisation(
     return _organisation_out(organisation, "owner")
 
 
+@router.get("/organisations/{organisation_id}/limits")
+async def organisation_limits(
+    session: DbSession, user: CurrentUser, organisation_id: str
+) -> LimitsOut:
+    """The organisation's spending limits and its use of them (members; only the administrator
+    changes them): jobs at once, jobs started today (UTC), listing photos' spend this month."""
+    await member_role(session, user, organisation_id)
+    organisation = await crud.get_organisation(session, organisation_id)
+    return await limits.organisation_limits(session, organisation)
+
+
 @router.get("/organisations/{organisation_id}/members")
 async def list_members(
     session: DbSession, user: CurrentUser, organisation_id: str
@@ -288,14 +314,36 @@ async def remove_member(
     )
 
 
-def _invitation_out(invitation: Invitation) -> InvitationOut:
+def _invitation_out(invitation: Invitation, outcome: emails.Outcome | None = None) -> InvitationOut:
     return InvitationOut(
         id=invitation.id,
         email=invitation.email,
         url=f"/invite/{invitation.token}",
         created_at=invitation.created_at,
         expires_at=invitation.expires_at,
+        emailed_at=invitation.emailed_at,
+        email_attempted_at=invitation.email_attempted_at,
+        email_sent=EmailOutcome(sent=outcome.sent, error=outcome.error) if outcome else None,
     )
+
+
+async def _email(
+    request: Request, session: DbSession, invitation: Invitation, inviter: User
+) -> emails.Outcome:
+    """Send the invitation's email, the attempt committed first: a second "Send again" at once
+    finds it and waits."""
+    invitation.email_attempted_at = datetime.now(UTC)
+    await session.commit()
+    organisation = await crud.get_organisation(session, invitation.organisation_id)
+    outcome = await emails.send_invitation(
+        invitation,
+        organisation,
+        inviter,
+        f"{_public_url(request)}/invite/{invitation.token}",
+        invitation.email_attempted_at,
+    )
+    await session.commit()
+    return outcome
 
 
 @router.get("/organisations/{organisation_id}/invitations")
@@ -309,16 +357,53 @@ async def list_invitations(
 
 @router.post("/organisations/{organisation_id}/invitations", status_code=201)
 async def create_invitation(
-    session: DbSession, user: CurrentUser, organisation_id: str, body: InvitationIn
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    organisation_id: str,
+    body: InvitationIn,
 ) -> InvitationOut:
-    """An invitation link to copy and send (no email goes out). The link is what lets someone
-    in, whatever account they sign in with; inviting the same address again gives the same link."""
+    """An invitation link, emailed when this server sends email (`email_sent` says how that
+    went: a failed send keeps the invitation, its link to copy). The link is what lets someone
+    in, whatever account they sign in with; inviting the same address again gives the same link,
+    and no second email ("Send again" does that)."""
     await require_owner(session, user, organisation_id)
-    invitation = await crud.create_invitation(
+    invitation, created = await crud.create_invitation(
         session, organisation_id, body.email, user, get_settings().AUTH_INVITATION_DAYS
     )
     await session.commit()
-    return _invitation_out(invitation)
+    outcome = None
+    if created and get_settings().email_enabled:
+        outcome = await _email(request, session, invitation, user)
+    return _invitation_out(invitation, outcome)
+
+
+@router.post("/organisations/{organisation_id}/invitations/{invitation_id}/send")
+async def send_invitation(
+    request: Request,
+    session: DbSession,
+    user: CurrentUser,
+    organisation_id: str,
+    invitation_id: str,
+) -> InvitationOut:
+    """Email a pending invitation again (owners only), from the owner who sends it: replies go to
+    them. 409 when this server sends no email, 429 within a minute of the last email; a failed
+    send answers 200 with `email_sent.error`."""
+    await require_owner(session, user, organisation_id)
+    settings = get_settings()
+    if not settings.email_enabled:
+        raise ConflictError("this server sends no email: copy the link", reason="email_off")
+    invitation = await crud.pending_invitation(session, organisation_id, invitation_id)
+    if invitation.email_attempted_at is not None:
+        elapsed = (datetime.now(UTC) - invitation.email_attempted_at).total_seconds()
+        wait = math.ceil(settings.EMAIL_RESEND_AFTER_S - elapsed)
+        if wait > 0:
+            raise TooManyRequestsError(
+                f"Wait {wait} s before sending this invitation again.",
+                reason="rate_limited",
+                retry_after=wait,
+            )
+    return _invitation_out(invitation, await _email(request, session, invitation, user))
 
 
 @router.delete("/organisations/{organisation_id}/invitations/{invitation_id}", status_code=204)

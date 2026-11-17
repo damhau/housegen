@@ -28,10 +28,12 @@ class OrganisationOut(BaseModel):
 
 
 class AuthOut(BaseModel):
-    """How people sign in here: the provider buttons to show (none while disabled)."""
+    """How people sign in here: the provider buttons to show (none while disabled), and whether
+    invitations go out by email (else: a link to copy)."""
 
     disabled: bool
     providers: list[ProviderName]
+    invitation_email: bool = False
 
 
 class MeOut(BaseModel):
@@ -67,12 +69,24 @@ class InvitationIn(BaseModel):
     email: str = Field(max_length=320, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
+class EmailOutcome(BaseModel):
+    """This request's invitation email."""
+
+    sent: bool
+    error: str | None = None  # why Resend did not take it
+
+
 class InvitationOut(BaseModel):
     id: str
     email: str
     url: str  # the link to send: /invite/<token>
     created_at: datetime
     expires_at: datetime
+    emailed_at: datetime | None = None  # the last time its email went out
+    # the last time housegen tried to email it: later than emailed_at, that try failed
+    email_attempted_at: datetime | None = None
+    # the email this request sent (creating it, or "Send again"); null when none was sent
+    email_sent: EmailOutcome | None = None
 
 
 class MyInvitationOut(BaseModel):

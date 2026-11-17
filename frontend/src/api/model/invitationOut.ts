@@ -4,6 +4,9 @@
  * housegen
  * OpenAPI spec version: 0.1.0
  */
+import type { InvitationOutEmailedAt } from './invitationOutEmailedAt';
+import type { InvitationOutEmailAttemptedAt } from './invitationOutEmailAttemptedAt';
+import type { InvitationOutEmailSent } from './invitationOutEmailSent';
 
 export interface InvitationOut {
   id: string;
@@ -11,4 +14,7 @@ export interface InvitationOut {
   url: string;
   created_at: string;
   expires_at: string;
+  emailed_at?: InvitationOutEmailedAt;
+  email_attempted_at?: InvitationOutEmailAttemptedAt;
+  email_sent?: InvitationOutEmailSent;
 }

@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { AdminMemberOut } from './adminMemberOut';
+import type { LimitsOut } from './limitsOut';
 
 export interface AdminOrganisationOut {
   id: string;
@@ -13,4 +14,5 @@ export interface AdminOrganisationOut {
   created_at: string;
   members: AdminMemberOut[];
   project_count: number;
+  limits: LimitsOut;
 }

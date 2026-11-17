@@ -20,6 +20,7 @@ from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
 from housegen.core.exceptions import LLMError
 from housegen.geo import context as geo_context
+from housegen.limits.models import UsageRecord
 from housegen.listing import job as listing_job
 from housegen.listing.client import PhotoClient, PhotoServiceError
 from housegen.listing.pick import parse_choice, parse_exteriors
@@ -310,6 +311,12 @@ async def test_listing_job_shoots_the_set_and_serves_it(
     assert [p["caption"] for p in ls["photos"]][:2] == ["Salon, 21 m²", "Salle à Manger, 22 m²"]
     assert all(p["url"] for p in ls["photos"])
     assert ls["cost_usd"] > 0
+    # the organisation's month counts what the shoot cost, in place of its estimate (#107)
+    async with session_factory()() as s:
+        record = await s.get(UsageRecord, r.json()["id"])
+    assert record is not None
+    assert record.kind == "listing"
+    assert record.listing_usd == pytest.approx(ls["cost_usd"], abs=0.01)
     doc = json.loads((ProjectStorage(pid).versions_dir / "1" / "listing" / "set.json").read_text())
     assert doc["photos"]["01"]["camera"] == CAM + "!"
 
