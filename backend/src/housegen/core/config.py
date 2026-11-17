@@ -80,14 +80,19 @@ class Settings(BaseSettings):
     # Old render screenshots are dropped from the builder's history only once a turn's prompt
     # exceeds this many tokens (0 = never). Rewriting history costs a prompt-cache miss on the
     # whole prefix (a full-price turn, often two), which outweighs the images it saves by an
-    # order of magnitude (#5, measured 2026-09-12); it exists to keep long builds inside the
-    # context window, not to save tokens.
-    BUILDER_PRUNE_ABOVE_TOKENS: int = 200000
+    # order of magnitude (#5, measured 2026-09-12). gpt-6-astra takes 922k input tokens, but a
+    # prompt over 272k bills the whole request at twice the input price: 240k leaves a turn's
+    # growth of headroom under that step (#116).
+    BUILDER_PRUNE_ABOVE_TOKENS: int = 240000
     # Claude runs: Opus 5.5, Fable 5.2 and Sonnet 5.5 take 1M tokens and a build peaks around
     # 250k, while a prune there also drops the thinking of every later turn (it is bound to the
     # history it was written in). Fable 5.2, 2026-11-12: two prunes rewrote 218k tokens into the
     # cache, $3.50 of $16. A 200k-window Claude model (Haiku 4.5…) needs the 200k value here.
     BUILDER_PRUNE_ABOVE_TOKENS_ANTHROPIC: int = 600000
+    # After a prune, the next waits until the prompt has grown this much past what the prune left.
+    # Pruning after every render once the text alone was over the threshold cost 11 full-price
+    # turns of 41, $20 of a $33 Furnish (#116).
+    BUILDER_PRUNE_MARGIN_TOKENS: int = 30000
     # independent critic rounds after the builder is done (0 disables the critic)
     CRITIC_MAX_ITERATIONS: int = 2
     CRITIC_SCORE_THRESHOLD: int = 80

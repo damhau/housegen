@@ -84,6 +84,32 @@ def prune_render_images(messages: list[Message], keep_last: int = 1, batch: int 
     return removed
 
 
+@dataclass
+class PruneTrigger:
+    """When the builder drops old screenshots: once a prompt reaches `above` tokens (0 = never),
+    and after a prune only once the prompt has grown `margin` past what that prune left.
+
+    A prune drops the screenshots, not the text: once the text alone keeps the prompt over
+    `above`, pruning after every render paid a full-price turn each time (#116)."""
+
+    above: int
+    margin: int
+    floor: int | None = None
+    pending: bool = False
+
+    def due(self, prompt_tokens: int) -> bool:
+        if not self.above or prompt_tokens < self.above:
+            return False
+        return self.floor is None or prompt_tokens >= self.floor + self.margin
+
+    def pruned(self) -> None:
+        self.pending = True
+
+    def observe(self, prompt_tokens: int) -> None:
+        if self.pending:
+            self.floor, self.pending = prompt_tokens, False
+
+
 StepCallback = Callable[[dict[str, Any]], Awaitable[None]]
 ProgressFactory = Callable[[int], LiveProgress]
 
@@ -182,7 +208,8 @@ async def run_builder(
     require_checks: bool = True,
     effort: str | None = None,
     cache_key: str | None = None,
-    prune_above_tokens: int = 200_000,
+    prune_above_tokens: int = 240_000,
+    prune_margin_tokens: int = 30_000,
     end_tools: frozenset[str] = frozenset(),
     reply_ok: Callable[[], bool] | None = None,
 ) -> BuilderRun:
@@ -191,7 +218,8 @@ async def run_builder(
     `messages` is mutated in place so the caller can continue the same conversation
     (e.g. feed critic feedback) in a later call. `progress(step)` returns a LiveProgress
     scope used to stream the model's progress for that step. Old render screenshots are dropped
-    from `messages` only once a turn's prompt exceeds `prune_above_tokens` (0 = never).
+    from `messages` only once a turn's prompt exceeds `prune_above_tokens` (0 = never), and
+    again only after it has grown `prune_margin_tokens` past what the last prune left.
 
     The conversation's turn (#35) ends in more ways: a call of one of `end_tools` ends the loop
     like `finish` (its input in `end_input`), and a message without tool calls is the answer
@@ -200,6 +228,7 @@ async def run_builder(
     run = BuilderRun(messages=messages)
     nudges = 0
     last_prompt_tokens = 0  # input size of the previous turn: the prune trigger
+    trigger = PruneTrigger(prune_above_tokens, prune_margin_tokens)
 
     async def complete(step: int) -> Completion:
         if progress is None:
@@ -246,10 +275,11 @@ async def run_builder(
 
     while run.steps < max_steps:
         run.steps += 1
-        if prune_above_tokens and last_prompt_tokens >= prune_above_tokens:
-            prune_render_images(messages)
+        if trigger.due(last_prompt_tokens) and prune_render_images(messages):
+            trigger.pruned()
         completion = await complete(run.steps)
         last_prompt_tokens = completion.usage.input_tokens
+        trigger.observe(last_prompt_tokens)
         run.usage = run.usage + completion.usage
         messages.append(completion.message)
         turn = TurnMetric(

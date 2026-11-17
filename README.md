@@ -337,8 +337,9 @@ returns the defaults a project without settings runs with.
 | `BUILDER_EFFORT`, `CRITIC_EFFORT` | `xhigh`, `medium` | reasoning effort per role (OpenAI none…xhigh, Anthropic low…max) |
 | `LLM_MAX_TOKENS` | 96000 | per-turn output cap (reasoning tokens count against it on OpenAI) |
 | `BUILDER_MAX_STEPS` | 60 | tool calls per builder pass |
-| `BUILDER_PRUNE_ABOVE_TOKENS` | 200000 | drop old render screenshots from the builder's history once a prompt exceeds this (0 = never); a prune costs a prompt-cache miss, so only for the context window |
+| `BUILDER_PRUNE_ABOVE_TOKENS` | 240000 | drop old render screenshots from the builder's history once a prompt exceeds this (0 = never); a prune costs a prompt-cache miss. gpt-6-astra bills a prompt over 272k at twice the input price, so this stays under it |
 | `BUILDER_PRUNE_ABOVE_TOKENS_ANTHROPIC` | 600000 | the same for Claude runs: a prune there also drops the thinking of every later turn, and the models take 1M tokens; set 200000 for a 200k-window model such as Haiku 4.5 |
+| `BUILDER_PRUNE_MARGIN_TOKENS` | 30000 | after a prune, the next waits until the prompt has grown this much past what the prune left |
 | `CRITIC_MAX_ITERATIONS` | 1 | independent critic rounds (0 disables) |
 | `CRITIC_SCORE_THRESHOLD` | 80 | stop when reached with no major issue |
 | `CRITIC_FIRST_FIX` | `true` | a first build always gets one fix pass on the critic's findings (2+ rounds); the score near the threshold is noise, the findings are not |

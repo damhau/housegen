@@ -422,6 +422,7 @@ class _Run:
             effort=effort or self.rs.builder_effort,
             cache_key=cache_key or self.ctx.job_id,
             prune_above_tokens=self.settings.prune_above_for(self.rs.provider),
+            prune_margin_tokens=self.settings.BUILDER_PRUNE_MARGIN_TOKENS,
             on_step=self.on_step,
             progress=lambda step: LiveProgress(self.ctx, "builder", step=step, show_text=True),
             end_tools=end_tools,

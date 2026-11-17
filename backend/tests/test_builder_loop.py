@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import itertools
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from housegen.agent.builder import prune_render_images, run_builder
+import housegen.agent.builder as builder_module
+from housegen.agent.builder import PruneTrigger, prune_render_images, run_builder
 from housegen.agent.tools import BuilderTools
 from housegen.agent.workspace import Workspace
 from housegen.llm.types import (
@@ -204,6 +206,81 @@ async def test_prune_threshold_zero_never_prunes(tools: BuilderTools) -> None:
         provider, "m", "sys", messages, tools, max_steps=10, max_tokens=100, prune_above_tokens=0
     )
     assert _images_in(messages) == 3
+
+
+# each turn's prompt in the contemporary Furnish of TestVillaGille (job a4e0bef84382, #116)
+FURNISH_PROMPTS = [
+    24784,
+    25265,
+    30125,
+    47950,
+    79007,
+    112447,
+    117982,
+    123364,
+    124570,
+    130183,
+    134048,
+    139804,
+    147359,
+    163849,
+    169151,
+    192706,
+    215696,
+    200030,
+    187763,
+    192441,
+    196051,
+    196743,
+    203047,
+    203381,
+    203145,
+    204457,
+    205344,
+    205859,
+    217094,
+    221177,
+    223504,
+    229932,
+    232511,
+    237593,
+    240767,
+    241668,
+    243730,
+    245104,
+    247808,
+    249952,
+    247732,
+]
+
+
+def test_a_long_build_prunes_once_not_after_every_render() -> None:
+    def prunes(above: int, margin: int) -> int:
+        trigger, count = PruneTrigger(above, margin), 0
+        for before, after in itertools.pairwise(FURNISH_PROMPTS):
+            if trigger.due(before):
+                trigger.pruned()
+                count += 1
+            trigger.observe(after)
+        return count
+
+    assert prunes(200_000, 0) >= 11  # the old trigger: a full-price turn after every render
+    assert prunes(240_000, 30_000) == 1
+
+
+async def test_after_a_prune_the_loop_waits_for_the_prompt_to_grow_by_the_margin(
+    tools: BuilderTools, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls: list[int] = []
+
+    def prune(messages: list[Message]) -> int:
+        calls.append(len(messages))
+        return 1
+
+    monkeypatch.setattr(builder_module, "prune_render_images", prune)
+    provider = SizedFakeProvider(["a", "b", "c"], prompt_tokens=250_000)
+    await run_builder(provider, "m", "sys", _render_history(), tools, max_steps=10, max_tokens=100)
+    assert len(calls) == 1  # the prompt stayed at 250k: a second prune would rewrite for nothing
 
 
 def test_pruning_drops_the_thinking_bound_to_the_rewritten_history() -> None:

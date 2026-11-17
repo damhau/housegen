@@ -63,6 +63,6 @@ def test_prune_batches_to_limit_cache_invalidations() -> None:
 def test_claude_runs_prune_only_far_past_the_openai_threshold() -> None:
     from housegen.core.config import Settings
 
-    s = Settings(BUILDER_PRUNE_ABOVE_TOKENS=200000, BUILDER_PRUNE_ABOVE_TOKENS_ANTHROPIC=600000)
-    assert s.prune_above_for("openai") == 200000
+    s = Settings(BUILDER_PRUNE_ABOVE_TOKENS=240000, BUILDER_PRUNE_ABOVE_TOKENS_ANTHROPIC=600000)
+    assert s.prune_above_for("openai") == 240000
     assert s.prune_above_for("anthropic") == 600000
