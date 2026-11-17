@@ -183,6 +183,11 @@ class Settings(BaseSettings):
     # Claude's checks on a deployed app (#105): `Authorization: Bearer <token>` reads /api/v1/** and
     # /scenes/** of every organisation, GET and HEAD only. Empty = no such token.
     AUTH_READONLY_TOKEN: str = ""
+    # Claude's jobs on dev (#112): `Authorization: Bearer <token>` reads like a member of one
+    # organisation (its id) and writes only through the allow-list of accounts/agent.py. On only
+    # when both are set.
+    AUTH_AGENT_TOKEN: str = ""
+    AUTH_AGENT_ORGANISATION: str = ""
 
     # invitation emails (#107) through Resend, on only when both are set (else: the link to copy).
     # EMAIL_FROM is an address of a domain verified in Resend: `housegen <housegen@example.ch>`.
@@ -233,6 +238,16 @@ class Settings(BaseSettings):
         """What loads the app's scene pages without a session (#105): RENDER_SERVICE_TOKEN, which
         the Modal services share, else a token of this process for its own renderer."""
         return self.RENDER_SERVICE_TOKEN or _PROCESS_TOKEN
+
+    @property
+    def agent_token(self) -> str:
+        """The agent token (#112) when it is on: it and its organisation are both set."""
+        token = self.AUTH_AGENT_TOKEN.strip()
+        return token if token and self.AUTH_AGENT_ORGANISATION.strip() else ""
+
+    @property
+    def agent_organisation(self) -> str:
+        return self.AUTH_AGENT_ORGANISATION.strip()
 
     @property
     def email_enabled(self) -> bool:

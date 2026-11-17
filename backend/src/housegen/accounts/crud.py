@@ -11,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from housegen.accounts.models import (
+    AGENT_ISSUER,
+    AGENT_NAME,
     LOCAL_ISSUER,
     Invitation,
     Membership,
@@ -50,6 +52,21 @@ async def local_user(session: AsyncSession) -> tuple[User, bool]:
     session.add(user)
     await session.flush()
     logger.info("accounts.local_user.created", extra={"user_id": user.id})
+    return user, True
+
+
+async def agent_user(session: AsyncSession) -> tuple[User, bool]:
+    """The agent token's user (#112), created on first use. Returns (user, created)."""
+    res = await session.execute(
+        select(User).where(User.issuer == AGENT_ISSUER, User.subject == AGENT_ISSUER)
+    )
+    user = res.scalar_one_or_none()
+    if user is not None:
+        return user, False
+    user = User(provider="agent", issuer=AGENT_ISSUER, subject=AGENT_ISSUER, name=AGENT_NAME)
+    session.add(user)
+    await session.flush()
+    logger.info("accounts.agent_user.created", extra={"user_id": user.id})
     return user, True
 
 

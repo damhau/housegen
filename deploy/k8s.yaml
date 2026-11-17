@@ -20,6 +20,10 @@ stringData:
   RENDER_SERVICE_TOKEN: ""
   # Authorization: Bearer <it> reads the API and /scenes, GET and HEAD only (checks on a deployed app)
   AUTH_READONLY_TOKEN: ""
+  # Claude's jobs (#112), dev only: reads like a member of this organisation (its id), writes through an
+  # allow-list of routes. Both set, or the token stays off; leave both empty in prod
+  AUTH_AGENT_TOKEN: ""
+  AUTH_AGENT_ORGANISATION: ""
   # invitation emails (#107): both set, or the owners copy the links; EMAIL_FROM on a domain verified in Resend
   RESEND_API_KEY: ""
   EMAIL_FROM: ""

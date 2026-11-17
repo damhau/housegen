@@ -218,6 +218,28 @@ is sent as `Authorization: Bearer <token>` or as the `housegen_token` cookie:
       https://housegen-dev.apps.dhconsulting.ch/api/v1/projects
   ```
 
+A third token, the agent token (#112), lets Claude start jobs on dev. It is set on dev only. It is on when both
+`AUTH_AGENT_TOKEN` and `AUTH_AGENT_ORGANISATION` (an organisation id) are set; with only one of them, startup logs
+`auth.agent.half_configured` and the token stays off. It counts only as `Authorization: Bearer <token>`, never as the
+cookie, so a scene page's own script can't have a browser send it.
+
+- Reads (GET and HEAD) work like a member's session in that organisation: its projects through `/api/v1/**` and their
+  files under `/scenes/**`. Another organisation's project answers 404.
+- Writes go through an allow-list of route templates (`backend/src/housegen/accounts/agent.py`): `modify`, `chat`,
+  `interior` (Furnish), `versions/{number}/fix`, `versions/{number}/restore`, `jobs/{job_id}/cancel` and `listing`,
+  under `/api/v1/projects/{project_id}/`. Every other write answers 403 `agent_forbidden`, including a route added
+  later, until someone adds it to the list.
+- The organisation's limits apply to its jobs. The token acts as its own user, "Claude (agent token)", who is not a
+  member and can't sign in. Its writes log `auth.agent.write` (route, project, job) and its refusals
+  `auth.agent.denied`.
+
+Its copy for Claude is in `~/.config/housegen/agent-token`:
+
+```bash
+curl -X POST -H "Authorization: Bearer $(cat ~/.config/housegen/agent-token)" -F message="…" \
+    https://housegen-dev.apps.dhconsulting.ch/api/v1/projects/<id>/chat
+```
+
 The app fails closed: without a sign-in provider and without `AUTH_DISABLED=1`, it does not start.
 
 In the app, a signed-out visitor goes to `/signin`, with one button per configured provider; share links (`/s/…`) and
@@ -320,6 +342,7 @@ returns the defaults a project without settings runs with.
 | `AUTH_ADMIN_EMAIL` | | the administrator (the admin view, `/admin`) when the provider verified it; their first sign-in owns the default organisation |
 | `AUTH_DISABLED` | `false` | no sign-in: one implicit user in the default organisation (local dev, the tests). Without it, the app needs a provider to start |
 | `AUTH_READONLY_TOKEN` | | a bearer token that reads `/api/v1/**` and `/scenes/**` of every organisation, GET and HEAD only (checks on a deployed app) |
+| `AUTH_AGENT_TOKEN`, `AUTH_AGENT_ORGANISATION` | | the agent token (dev only): a bearer token that reads like a member of that organisation (its id) and writes through an allow-list of routes; on only when both are set |
 | `AUTH_PUBLIC_URL` | the request's origin | where the providers send the browser back (`https://host`); by default from `X-Forwarded-Proto`/`-Host` |
 | `AUTH_SESSION_DAYS`, `AUTH_INVITATION_DAYS` | `14`, `14` | how long a session and an invitation link last |
 | `RESEND_API_KEY`, `EMAIL_FROM` | | email invitations through Resend when both are set (`EMAIL_FROM`: `housegen <housegen@your.domain>`, a domain verified in Resend) |

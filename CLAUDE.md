@@ -132,8 +132,11 @@ by the Vite plugin: run `vite build` before `tsc` on a clean checkout (the Docke
 - **The deployed API needs a session (#105).** Claude reads it with the read-only token, every organisation, GET and
   HEAD only: `curl -H "Authorization: Bearer $(cat ~/.config/housegen/readonly-token)" https://housegen-dev…/api/v1/projects`
   (the same header on `/scenes/**`). `walk_sheet.py`, `look_sheet.py --scene-url` and the archviz lab scripts send it
-  by themselves (as a cookie of dev's host only), from `AUTH_READONLY_TOKEN` or that file. Local runs and the tests
-  use `AUTH_DISABLED=1`: without it and without a sign-in provider the app does not start.
+  by themselves (as a cookie of dev's host only), from `AUTH_READONLY_TOKEN` or that file. The agent token
+  (`~/.config/housegen/agent-token`, #112) starts jobs on dev in the Default organisation, through the allow-list of
+  `accounts/agent.py` (modify, chat, interior, fix, restore, cancel, listing), as a bearer header only; it is dev only,
+  prod never has it. Local runs and the tests use `AUTH_DISABLED=1`: without it and without a sign-in provider the app
+  does not start.
 - Commits: Conventional Commits (`feat:` → minor, `fix:`/`perf:` → patch, anything else → no release), plain
   messages, **no Co-Authored-By**. Every push to `main` runs python-semantic-release (a release tags the pushed
   commit `vX.Y.Z`; no file is bumped, `project.version` is unused), builds the image and deploys it to the dev environment

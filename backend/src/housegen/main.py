@@ -9,13 +9,15 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
+from housegen.accounts.dependencies import agent_guard
 from housegen.accounts.migrations import migrate_organisations
+from housegen.accounts.models import Organisation
 from housegen.accounts.oidc import build_oauth, configured_providers
 from housegen.accounts.router import auth_router
 from housegen.agent.pipeline import resume_interrupted_jobs, start_all_waiting, start_waiting
 from housegen.api.v1 import router as api_router
 from housegen.core.config import Settings, get_settings
-from housegen.core.db import dispose_db, init_db
+from housegen.core.db import dispose_db, init_db, session_factory
 from housegen.core.exceptions import register_exception_handlers
 from housegen.core.logging import RequestLoggingMiddleware, configure_logging
 from housegen.jobs.manager import job_manager
@@ -52,6 +54,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     await migrate_plans(settings.projects_dir)  # one-off: plan.pdf + plan/ → plans/1/ (#10)
     await migrate_organisations()  # one-off: the projects from before accounts (#104)
+    await _check_agent_organisation(settings)
     # jobs the previous process left behind (deploy, reload, crash) continue with the same id
     resumed = await resume_interrupted_jobs(job_manager)
     if resumed:
@@ -78,6 +81,8 @@ def _log_auth(settings: Settings) -> None:
             "admin_email_set": bool(settings.AUTH_ADMIN_EMAIL),
             "public_url": settings.AUTH_PUBLIC_URL or None,
             "readonly_token_set": bool(settings.AUTH_READONLY_TOKEN),
+            "agent_token_set": bool(settings.agent_token),
+            "agent_organisation": settings.agent_organisation or None,
             "service_token_set": bool(settings.RENDER_SERVICE_TOKEN),
             "resend_api_key_set": bool(settings.RESEND_API_KEY.strip()),
             "email_from_set": bool(settings.EMAIL_FROM.strip()),
@@ -91,6 +96,15 @@ def _log_auth(settings: Settings) -> None:
                 "missing": "EMAIL_FROM" if settings.RESEND_API_KEY.strip() else "RESEND_API_KEY"
             },
         )
+    if bool(settings.AUTH_AGENT_TOKEN.strip()) != bool(settings.agent_organisation):
+        logger.warning(
+            "auth.agent.half_configured",
+            extra={
+                "missing": "AUTH_AGENT_ORGANISATION"
+                if settings.AUTH_AGENT_TOKEN.strip()
+                else "AUTH_AGENT_TOKEN"
+            },
+        )
     if not providers and not settings.AUTH_DISABLED:
         logger.error("auth.no_provider")
         raise SignInMissing(
@@ -99,6 +113,18 @@ def _log_auth(settings: Settings) -> None:
         )
     if providers and not settings.AUTH_SESSION_SECRET:
         logger.warning("auth.session_secret_missing")
+
+
+async def _check_agent_organisation(settings: Settings) -> None:
+    """A mistyped AUTH_AGENT_ORGANISATION shows at startup, not at the agent's first call."""
+    if not settings.agent_token:
+        return
+    async with session_factory()() as session:
+        if await session.get(Organisation, settings.agent_organisation) is None:
+            logger.error(
+                "auth.agent.unknown_organisation",
+                extra={"organisation_id": settings.agent_organisation},
+            )
 
 
 def create_app() -> FastAPI:
@@ -111,6 +137,8 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
         # short operationIds → clean generated hook names (useListProjects, …)
         generate_unique_id_function=lambda route: route.name,
+        # on every route, the routers' own guards after it: the agent token's writes (#112)
+        dependencies=[Depends(agent_guard)],
     )
     app.add_middleware(RequestLoggingMiddleware)
     # the session cookie: who signed in, the organisation they work in, Authlib's login state

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
@@ -20,6 +21,10 @@ from housegen.projects.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# the jobs a request created, when someone listens: a write of the agent token logs the job it
+# started (#112)
+jobs_created: ContextVar[list[str] | None] = ContextVar("jobs_created", default=None)
 
 
 async def get_project(session: AsyncSession, project_id: str) -> Project:
@@ -281,6 +286,9 @@ async def create_job(
     session.add(job)
     await session.flush()
     logger.info("jobs.created", extra={"project_id": project_id, "job_id": job.id, "kind": kind})
+    listening = jobs_created.get()
+    if listening is not None:
+        listening.append(job.id)
     return job
 
 

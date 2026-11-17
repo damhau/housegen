@@ -1,5 +1,6 @@
-"""Who may see a project (#105): the members of its organisation, and the tokens that read every
-organisation. Another organisation's project answers 404, as one that does not exist."""
+"""Who may see a project (#105): the members of its organisation, the agent token in its own
+(#112), and the tokens that read every organisation. Another organisation's project answers 404,
+as one that does not exist."""
 
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from housegen.accounts.dependencies import (
     ApiCaller,
+    agent_organisation,
     optional_access,
     optional_user,
     presented_token,
@@ -39,12 +41,14 @@ async def project_in_scope(request: Request, session: DbSession, caller: ApiCall
 
 
 async def check_scene_access(request: Request, session: AsyncSession, project_id: str) -> None:
-    """`/scenes/<project>/…`: a token reads any project's files; a session reads those of the
-    organisation it works in."""
+    """`/scenes/<project>/…`: the service and read-only tokens read any project's files; a
+    session, and the agent token (#112), those of the organisation they work in."""
     token = presented_token(request)
     try:
         if token is not None:
-            require_token(request, token, frozenset({"service", "readonly"}))
+            name = require_token(request, token, frozenset({"service", "readonly", "agent"}))
+            if name == "agent":
+                await _check(session, project_id, (await agent_organisation(session)).id)
             return
         user = await optional_user(request, session)
         if user is None:

@@ -14,6 +14,10 @@ Role = Literal["owner", "member"]
 # the implicit user of AUTH_DISABLED: no provider can mint this issuer, and a session naming
 # that user is ignored once sign-in is on
 LOCAL_ISSUER = "local"
+# the agent token's user (#112): no provider mints this issuer either, a session naming it is
+# ignored, and it has no membership, so no member list or admin view shows it
+AGENT_ISSUER = "agent"
+AGENT_NAME = "Claude (agent token)"
 
 
 def _uid() -> str:
