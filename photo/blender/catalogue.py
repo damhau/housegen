@@ -206,9 +206,11 @@ def redraw(scene, e, cid):
     if any(not 0.67 <= v <= 1.5 for v in s):
         log(f"{cid}: its file is {[round(v, 2) for v in s]} of the export's box, fitted all the same")
     fit = Matrix.Translation(Vector([wlo[i] - hlo[i] * s[i] for i in range(3)])) @ Matrix.Diagonal((*s, 1.0))
-    for o in [o for o in old if o.type == "MESH"]:
+    meshes = [o for o in old if o.type == "MESH"]
+    nodes = sorted((o for o in old if o.type != "MESH"), key=lambda o: -depth(o))  # read before any removal
+    for o in meshes:
         bpy.data.objects.remove(o, do_unlink=True)
-    for o in sorted((o for o in old if o.type != "MESH"), key=lambda o: -depth(o)):
+    for o in nodes:
         if not o.children:  # a tagged piece inside keeps the nodes it hangs from
             bpy.data.objects.remove(o, do_unlink=True)
     for o in new:
