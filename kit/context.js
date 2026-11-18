@@ -17,6 +17,7 @@ import * as THREE from "three";
 import { finishMaterial, finishesReady, loadTexture, metricUV } from "./finishes.js";
 import { leafBush, leafTree, treeStand } from "housekit"; // the page's own instance (its import map)
 import { horizonProfile, lv95ToWgs84 } from "./sun.js";
+import { Blockers, FLAT_BEYOND, RENDERS, houseHash, openingMeshes, planOpenings, roofLook } from "./neighbours.js";
 
 const RING = 5; // metres over which the real ground joins the builder's (short: a longer ring tilts the roads beside the plot)
 const SINK = 3; // metres the real ground lies under the builder's inside its plot
@@ -27,6 +28,7 @@ const SITE_MARGIN = 3; // metres of the builder's ground kept around its site
 // default), thinning out over BLEND_3D beyond it, like the ground by type
 const NEAR_TREES = 35, MAX_NEAR_TREES = 30, MID_TREES = 70;
 const NEAR_3D = 120, BLEND_3D = 15;
+const WALL_LIKE = 0.35; // a lidar roof's face steeper than 70° is drawn as a wall (drawnAs)
 // metres from the camera over which the ground's finishes lose their texture for its mean colour (#74)
 const COVER_DETAIL = [40, 160];
 const DEG = Math.PI / 180;
@@ -208,10 +210,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
 
   // ---- the neighbours: roofs wear the photo (seen from above: their real colour, panels, windows),
   // walls a render; anything standing on the scene's own ground is the old state of the plot: left out
-  const roofPos = [], roofUv = [], wallPos = [], facade = [], wallLook = [];
-  // the roofs of houses newer than the photo (from the lidar, geo/lidar.py): the photo shows a building
-  // site there, so they wear roof tiles (pitched) or gravel (flat) instead
-  const tiledPos = [], flatPos = [];
+  const houses = [];
   let skipped = 0;
   for (const b of buildings.buildings ?? []) {
     const p = b.positions;
@@ -219,25 +218,40 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     for (let k = 0; k < p.length; k += 3) pts.push(toScene(p[k], p[k + 1], p[k + 2]));
     const cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cz = pts.reduce((s, q) => s + q[2], 0) / pts.length;
     if (own.boxes.some((bx) => distToBox(cx, cz, bx) <= 0)) { skipped++; continue; }
-    if (b.source === "lidar") {
-      for (let t = 0; t < b.roof.length; t += 3) {
-        const [qa, qb, qc] = [pts[b.roof[t]], pts[b.roof[t + 1]], pts[b.roof[t + 2]]];
-        const n = new THREE.Vector3(qb[0] - qa[0], qb[1] - qa[1], qb[2] - qa[2])
-          .cross(new THREE.Vector3(qc[0] - qa[0], qc[1] - qa[1], qc[2] - qa[2])).normalize();
-        (n.y > 0.97 ? flatPos : tiledPos).push(...qa, ...qb, ...qc);
+    // each house its render (a Swiss palette, picked by its id so it stays)
+    houses.push({ id: b.id, source: b.source, local: p, pts, wall: b.wall, roof: b.roof, render: RENDERS[houseHash(b.id) % RENDERS.length] });
+  }
+  const groundAt = (x, z) => { const [lx, lz] = toLocal(x, z); return joined(x, z, realY(lx, lz)); };
+  let t0 = performance.now();
+  const newer = newerRoofs(houses, photo, R);
+  // what the neighbours took to build (ms), for the load time (#124)
+  const built = { roofs: Math.round(performance.now() - t0) };
+  const roofPos = [], roofUv = [], wallPos = [], wallLook = [];
+  const tiled = { pos: [], col: [] }, flat = { pos: [], col: [] };
+  for (const h of houses) {
+    const look = newer.get(h);
+    const { roof, wall } = drawnAs(h);
+    if (look) {
+      // a house newer than the photo (the lidar's, geo/lidar.py), where the photo shows a building site: roof
+      // tiles (pitched) or gravel (flat) in the colours of the neighbourhood's photographed roofs
+      for (let t = 0; t < roof.length; t += 3) {
+        const [qa, qb, qc] = [h.pts[roof[t]], h.pts[roof[t + 1]], h.pts[roof[t + 2]]];
+        const level = levelness(qa, qb, qc) > 0.97, into = level ? flat : tiled, c = level ? look.flat : look.tiled;
+        into.pos.push(...qa, ...qb, ...qc);
+        for (let k = 0; k < 3; k++) into.col.push(c.r, c.g, c.b);
       }
     } else {
-      for (const i of b.roof) {
-        roofPos.push(...pts[i]);
-        roofUv.push((p[i * 3] + R) / (2 * R), 1 - (p[i * 3 + 2] + R) / (2 * R));
+      for (const i of roof) {
+        roofPos.push(...h.pts[i]);
+        roofUv.push((h.local[i * 3] + R) / (2 * R), 1 - (h.local[i * 3 + 2] + R) / (2 * R));
       }
     }
-    for (const i of b.wall) wallPos.push(...pts[i]);
-    facades(pts, b.roof, b.wall, facade);
-    // each house its render (a Swiss palette, picked by its id so it stays) and, for some, shutters
-    const hash = [...String(b.id)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) >>> 0, 7);
-    const tint = RENDERS[hash % RENDERS.length], shutters = (hash >>> 8) % 3 === 0 ? 1 : 0;
-    for (let k = 0; k < b.wall.length; k++) wallLook.push(tint.r, tint.g, tint.b, shutters);
+    for (const i of wall) {
+      const q = h.pts[i];
+      wallPos.push(...q);
+      // the render and the height above the ground (the wall's foot darker)
+      wallLook.push(h.render.r, h.render.g, h.render.b, q[1] - groundAt(q[0], q[2]));
+    }
   }
   const group = new THREE.Group();
   group.name = "Surroundings";
@@ -249,39 +263,63 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     g.setAttribute("position", new THREE.Float32BufferAttribute(roofPos, 3));
     g.setAttribute("uv", new THREE.Float32BufferAttribute(roofUv, 2));
     g.computeVertexNormals();
-    const roofs = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: photo, roughness: 0.85 }));
-    roofs.castShadow = roofs.receiveShadow = true;
-    roofs.name = "Surroundings: roofs";
-    group.add(roofs);
+    const mesh = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ map: photo, roughness: 0.85 }));
+    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.name = "Surroundings: roofs";
+    group.add(mesh);
   }
-  for (const [pos, finish, color, name] of [[tiledPos, "roof-tiles", "#5e5a56", "tiled"], [flatPos, "gravel", "#9a968f", "flat"]]) {
-    if (!pos.length) continue;
+  const finished = [[tiled, "roof-tiles", "tiled"], [flat, "gravel", "flat"]].filter(([list]) => list.pos.length);
+  // the finishes matched to white: each roof's vertex colour is then its mean colour
+  const shared = finished.map(([, finish]) => finishMaterial(finish, { color: "#ffffff" }));
+  const render = wallPos.length ? finishMaterial("render", { color: "#ffffff" }) : null;
+  await finishesReady();
+  finished.forEach(([list, , name], k) => {
     const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute("position", new THREE.Float32BufferAttribute(list.pos, 3));
+    g.setAttribute("color", new THREE.Float32BufferAttribute(list.col, 3));
     g.computeVertexNormals();
     metricUV(g);
-    const mat = finishMaterial(finish, { color }) ?? new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
-    const roofs = new THREE.Mesh(g, mat);
-    roofs.castShadow = roofs.receiveShadow = true;
-    roofs.name = `Surroundings: newer ${name} roofs`;
-    group.add(roofs);
-  }
+    const mat = shared[k] ? shared[k].clone() : new THREE.MeshStandardMaterial({ roughness: 0.9 });
+    mat.vertexColors = true;
+    const mesh = new THREE.Mesh(g, mat);
+    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.name = `Surroundings: newer ${name} roofs`;
+    group.add(mesh);
+  });
   if (wallPos.length) {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(wallPos, 3));
     g.computeVertexNormals();
     metricUV(g);
-    g.setAttribute("facade", new THREE.Float32BufferAttribute(facade, 4));
     g.setAttribute("wallLook", new THREE.Float32BufferAttribute(wallLook, 4));
-    // the render the house's walls wear, copied (windows are drawn on the neighbours' copy only)
-    const shared = finishMaterial("render", { color: "#ffffff" });
-    await finishesReady();
-    const mat = shared ? shared.clone() : new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.95 });
-    withWindows(mat);
+    // the render the house's walls wear, copied (each house's colour is drawn on the neighbours' copy only)
+    const mat = render ? render.clone() : new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.95 });
+    withRenders(mat);
     const walls = new THREE.Mesh(g, mat);
     walls.castShadow = walls.receiveShadow = true;
     walls.name = "Surroundings: walls";
     group.add(walls);
+  }
+  // their doors and windows (neighbours.js), the front door toward the road the survey's asphalt shows
+  if (houses.length) {
+    t0 = performance.now();
+    const blockers = new Blockers(houses);
+    const road = roadFinder(cover, meta, toLocal);
+    built.road = Math.round(performance.now() - t0);
+    t0 = performance.now();
+    // ?lod=0: every opening in full, a far house seen up close (a sheet's close view)
+    const lod = new URLSearchParams(location.search).get("lod") !== "0";
+    const far = (h) => {
+      if (!lod) return false;
+      let x = 0, z = 0;
+      for (const q of h.pts) { x += q[0]; z += q[2]; }
+      return Math.hypot(x / h.pts.length - siteCentre.x, z / h.pts.length - siteCentre.z) > FLAT_BEYOND;
+    };
+    const openings = houses.flatMap((h) => planOpenings(h, { groundAt, road, blockers, flat: far(h) }).openings);
+    built.plan = Math.round(performance.now() - t0);
+    t0 = performance.now();
+    if (openings.length) group.add(openingMeshes(openings));
+    built.meshes = Math.round(performance.now() - t0);
   }
   const trees = placeTrees(treeList, { toScene, realY, joined, own, radius3d: nearRadius });
   if (trees) group.add(trees);
@@ -295,6 +333,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     meta,
     skipped,
     clipped,
+    built,
     trees: trees ? { near: trees.userData.near, far: trees.userData.far } : null,
     cover: Boolean(coverUniforms),
     near: nearRadius,
@@ -622,95 +661,160 @@ function grain(n) {
   return t;
 }
 
-// renders seen on Swiss houses (linear): cream, beige, off-white, light grey, pale yellow, sand
-const RENDERS = ["#efe7d6", "#e7dcc6", "#f2efe8", "#dddcd6", "#efe4c2", "#e3d6bd"].map((c) => new THREE.Color(c));
+/**
+ * The triangles a house is drawn with as roof and as wall. The lidar's roofs (geo/lidar.py) hold near-vertical
+ * faces, the step between two roof heights or a facet of a shape it traced badly: neither the photo seen from
+ * above (stretched into streaks) nor tiles cover those, the house's render does.
+ */
+function drawnAs(h) {
+  if (h.source !== "lidar") return { roof: h.roof, wall: h.wall };
+  const roof = [], wall = [...h.wall];
+  for (let t = 0; t < h.roof.length; t += 3) {
+    const tri = [h.roof[t], h.roof[t + 1], h.roof[t + 2]];
+    (levelness(...tri.map((i) => h.pts[i])) < WALL_LIKE ? wall : roof).push(...tri);
+  }
+  return { roof, wall };
+}
+
+
+const levelness = (a, b, c) => {
+  const n = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).cross(new THREE.Vector3(c[0] - a[0], c[1] - a[1], c[2] - a[2]));
+  return Math.abs(n.y) / (n.length() || 1);
+};
 
 /**
- * Per wall vertex of a building, where it lies on its façade: [distance along the façade from its left
- * end, the façade's length, height above the building's foot, the eaves' height above it; negative
- * length on the longest façade: it gets the door]. A façade = the wall triangles of one plane.
+ * The pixels of a loaded texture's image, `size` pixels across at most: RGBA bytes, and whether its rows run
+ * upwards (loadTexture flips an ImageBitmap as it decodes). `exact`: through WebGL, at full size, which keeps the
+ * colour of a pixel whose alpha is 0 (a 2D canvas premultiplies it away, and cover.png's masks are its channels).
  */
-function facades(pts, roof, wall, out) {
-  let base = Infinity, top = -Infinity, eave = Infinity;
-  for (const q of pts) { base = Math.min(base, q[1]); top = Math.max(top, q[1]); }
-  for (const i of roof) eave = Math.min(eave, pts[i][1]);
-  if (!Number.isFinite(eave)) eave = top;
-  const planes = new Map();
-  for (let t = 0; t < wall.length; t += 3) {
-    const [a, b, c] = [pts[wall[t]], pts[wall[t + 1]], pts[wall[t + 2]]];
-    const ux = b[0] - a[0], uz = b[2] - a[2], vx = c[0] - a[0], vz = c[2] - a[2], vy = c[1] - a[1], uy = b[1] - a[1];
-    let nx = uy * vz - uz * vy, nz = ux * vy - uy * vx;
-    const l = Math.hypot(nx, nz) || 1; nx /= l; nz /= l;
-    const off = a[0] * nx + a[2] * nz;
-    const key = `${Math.round(Math.atan2(nz, nx) * 20)}:${Math.round(off * 3)}`;
-    if (!planes.has(key)) planes.set(key, { tx: -nz, tz: nx, tris: [] });
-    planes.get(key).tris.push(t);
-  }
-  let longest = null, best = 0;
-  for (const f of planes.values()) {
-    let lo = Infinity, hi = -Infinity;
-    for (const t of f.tris) for (let k = 0; k < 3; k++) {
-      const q = pts[wall[t + k]], u = q[0] * f.tx + q[2] * f.tz;
-      lo = Math.min(lo, u); hi = Math.max(hi, u);
+function pixelsOf(texture, { size = Infinity, exact = false } = {}) {
+  const image = texture?.image;
+  if (!image?.width) return null;
+  const k = exact ? 1 : Math.min(1, size / image.width), w = Math.round(image.width * k), h = Math.round(image.height * k);
+  // (WebGL reads the texture through a framebuffer of its own: its canvas needs no size)
+  const [cw, ch] = exact ? [1, 1] : [w, h];
+  const canvas = typeof OffscreenCanvas !== "undefined" ? new OffscreenCanvas(cw, ch) : Object.assign(document.createElement("canvas"), { width: cw, height: ch });
+  try {
+    if (exact) {
+      const gl = canvas.getContext("webgl2");
+      if (!gl) return null;
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, gl.createFramebuffer());
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+      const data = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      gl.getExtension("WEBGL_lose_context")?.loseContext();
+      return { data, w, h, flipped: !texture.flipY };
     }
-    Object.assign(f, { lo, len: hi - lo });
-    if (f.len > best) { best = f.len; longest = f; }
-  }
-  const byTri = new Map();
-  for (const f of planes.values()) for (const t of f.tris) byTri.set(t, f);
-  for (let t = 0; t < wall.length; t += 3) {
-    const f = byTri.get(t);
-    for (let k = 0; k < 3; k++) {
-      const q = pts[wall[t + k]];
-      out.push(q[0] * f.tx + q[2] * f.tz - f.lo, f === longest ? -f.len : f.len, q[1] - base, eave - base);
-    }
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(image, 0, 0, w, h);
+    return { data: ctx.getImageData(0, 0, w, h).data, w, h, flipped: !texture.flipY };
+  } catch (e) {
+    console.warn("context: cannot read an image's pixels", e);
+    return null;
   }
 }
 
+/** The offset of the pixel at (fx, fz) in 0..1 (x east, z south) of a north-up picture's `pix`, -1 off it. */
+const pixelAt = (pix, fx, fz) => {
+  const col = Math.floor(fx * pix.w), row = Math.floor(fz * pix.h);
+  if (col < 0 || row < 0 || col >= pix.w || row >= pix.h) return -1;
+  return ((pix.flipped ? pix.h - 1 - row : row) * pix.w + col) * 4;
+};
+
 /**
- * Generic windows and a door on a render: a row of windows per storey (2.8 m) below the eaves, 1.2 m
- * wide every 3 m along each façade, centred; the door in the middle of the longest façade's ground floor.
+ * `road(x, z, dx, dz, max)` for the doors (neighbours.js): the metres from the scene point (x, z) along (dx, dz) to
+ * the survey's asphalt (cover.png's red), Infinity within `max` or without the cover.
  */
-function withWindows(mat) {
+function roadFinder(cover, meta, toLocal) {
+  const pix = cover && meta.cover ? pixelsOf(cover, { exact: true }) : null;
+  if (!pix) return () => Infinity;
+  const E = meta.cover.extent;
+  return (x, z, dx, dz, max) => {
+    for (let d = 1; d <= max; d++) {
+      const [lx, lz] = toLocal(x + dx * d, z + dz * d);
+      const i = pixelAt(pix, lx / (2 * E) + 0.5, lz / (2 * E) + 0.5);
+      if (i >= 0 && pix.data[i] > 127) return d;
+    }
+    return Infinity;
+  };
+}
+
+/**
+ * The houses newer than the aerial photo (the lidar's) that it shows as a building site, a field or a tree, each
+ * with the roof colours it wears instead: { tiled, flat } (linear), those of a photographed roof of the
+ * neighbourhood picked by the house's id, a little lighter or darker. Those it shows finished keep the photo.
+ */
+function newerRoofs(houses, photo, R) {
+  const out = new Map();
+  const newer = houses.filter((h) => h.source === "lidar");
+  if (!newer.length) return out;
+  const pix = pixelsOf(photo, { size: 1800 });
+  const samples = (h, keep = () => true) => {
+    const p = h.local, list = [];
+    let cx = 0, cz = 0;
+    for (const i of h.roof) { cx += p[i * 3]; cz += p[i * 3 + 2]; }
+    cx /= h.roof.length || 1; cz /= h.roof.length || 1;
+    for (let t = 0; t < h.roof.length; t += 3) {
+      const [a, b, c] = [h.roof[t], h.roof[t + 1], h.roof[t + 2]];
+      if (!keep(h.pts[a], h.pts[b], h.pts[c])) continue;
+      const ax = p[a * 3], az = p[a * 3 + 2], ex = p[b * 3] - ax, ez = p[b * 3 + 2] - az, fx = p[c * 3] - ax, fz = p[c * 3 + 2] - az;
+      const n = Math.min(400, Math.max(1, Math.round(Math.abs(ex * fz - ez * fx) / 2 / 0.25)));
+      for (let k = 0; k < n; k++) {
+        // spread evenly over the triangle, drawn in toward the roof's middle (its edges blur into the ground)
+        let u = (k * 0.618034 + 0.31) % 1, v = (k * 0.754878 + 0.17) % 1;
+        if (u + v > 1) { u = 1 - u; v = 1 - v; }
+        const x = ax + u * ex + v * fx, z = az + u * ez + v * fz;
+        const i = pixelAt(pix, (cx + (x - cx) * 0.85 + R) / (2 * R), (cz + (z - cz) * 0.85 + R) / (2 * R));
+        if (i >= 0) list.push([pix.data[i] / 255, pix.data[i + 1] / 255, pix.data[i + 2] / 255]);
+      }
+    }
+    return list;
+  };
+  const median = (list) => [0, 1, 2].map((c) => list.map((s) => s[c]).sort((a, b) => a - b)[list.length >> 1]);
+  const colours = { tiled: [], flat: [] };
+  if (pix) {
+    const kinds = [["tiled", (a, b, c) => levelness(a, b, c) <= 0.97], ["flat", (a, b, c) => levelness(a, b, c) > 0.97]];
+    for (const h of houses) {
+      if (h.source === "lidar") continue;
+      for (const [kind, keep] of kinds) {
+        const list = samples(h, keep);
+        if (list.length >= 20) colours[kind].push(median(list));
+      }
+    }
+  }
+  const fallback = { tiled: [0.37, 0.35, 0.34], flat: [0.6, 0.59, 0.56] };
+  for (const h of newer) {
+    if (pix && roofLook(samples(h)) === "photo") continue;
+    const hash = houseHash(h.id), shade = 0.92 + ((hash >>> 4) % 17) / 100;
+    const look = {};
+    for (const kind of ["tiled", "flat"]) {
+      const list = colours[kind].length ? colours[kind] : [fallback[kind]];
+      const [r, g, b] = list[(hash >>> 9) % list.length];
+      look[kind] = new THREE.Color().setRGB(r * shade, g * shade, b * shade, THREE.SRGBColorSpace);
+    }
+    out.set(h, look);
+  }
+  return out;
+}
+
+/** Each neighbour's render on the walls (the attribute wallLook: its colour, the height above the ground), darker at the foot. */
+function withRenders(mat) {
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute vec4 facade;\nattribute vec4 wallLook;\nvarying vec4 vFacade;\nvarying vec4 vWallLook;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFacade = facade;\nvWallLook = wallLook;");
+      .replace("#include <common>", "#include <common>\nattribute vec4 wallLook;\nvarying vec4 vWallLook;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvWallLook = wallLook;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying vec4 vFacade;\nvarying vec4 vWallLook;\nfloat glassAmount = 0.0;")
+      .replace("#include <common>", "#include <common>\nvarying vec4 vWallLook;")
       .replace("#include <map_fragment>", `#include <map_fragment>
-        {
-          float along = vFacade.x, len = abs(vFacade.y), h = vFacade.z, eave = vFacade.w;
-          // the house's render, a little darker toward its foot (splashes, the ground's shade)
-          diffuseColor.rgb *= vWallLook.rgb * mix(0.8, 1.0, smoothstep(0.0, 0.7, h));
-          bool doorFacade = vFacade.y < 0.0;
-          float storey = 2.8, pitch = 3.0;
-          float n = floor((len - 1.2) / pitch);
-          float margin = (len - n * pitch) * 0.5;
-          float x = along - margin, cell = mod(x, pitch), slot = floor(x / pitch);
-          float floorIndex = floor(h / storey), y = h - floorIndex * storey;
-          bool rowFits = floorIndex * storey + 2.25 < eave - 0.15;
-          bool inRow = n >= 1.0 && x > 0.0 && x < n * pitch && rowFits;
-          float middle = floor(n * 0.5);
-          bool doorHere = doorFacade && floorIndex < 0.5 && inRow && slot == middle;
-          // the door: 1.0 m wide, 2.1 m high, dark wood with a thin frame
-          if (doorHere && abs(cell - 1.5) < 0.5 && y < 2.1) {
-            bool frame = abs(cell - 1.5) > 0.44 || y > 2.04;
-            diffuseColor.rgb = frame ? vec3(0.85) : vec3(0.22, 0.16, 0.11);
-          } else if (inRow && !doorHere && cell > 0.8 && cell < 2.2 && y > 0.8 && y < 2.3) {
-            // a window, 1.4 x 1.5 m: a light frame around glass reflecting the sky, split by a mullion
-            bool frame = cell < 0.87 || cell > 2.13 || y < 0.87 || y > 2.23 || abs(cell - 1.5) < 0.03;
-            diffuseColor.rgb = frame ? vec3(0.9) : vec3(0.1, 0.13, 0.17);
-            glassAmount = frame ? 0.0 : 1.0;
-          } else if (inRow && !doorHere && vWallLook.a > 0.5 && y > 0.8 && y < 2.3 && ((cell > 0.28 && cell < 0.78) || (cell > 2.22 && cell < 2.72))) {
-            // shutters either side, painted, with their slats
-            float slat = step(0.5, fract(y * 14.0));
-            diffuseColor.rgb = vec3(0.30, 0.38, 0.32) * (0.85 + 0.15 * slat);
-          }
-        }`)
-      .replace("#include <roughnessmap_fragment>", "#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.08, glassAmount);");
+        // splashes and the ground's shade toward the foot
+        diffuseColor.rgb *= vWallLook.rgb * mix(0.8, 1.0, smoothstep(0.0, 0.7, vWallLook.a));`);
   };
-  mat.customProgramCacheKey = () => "housekit-context-windows";
+  mat.customProgramCacheKey = () => "housekit-context-renders";
   return mat;
 }
 
