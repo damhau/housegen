@@ -5,7 +5,8 @@
   terrain.bin     altitudes, float32 little-endian, (2R/step + 1)² samples, rows north → south
   photo.jpg       the aerial photo over the same square, north up
   buildings.json  the neighbours: positions (local x, altitude, local z) and roof / wall triangles;
-                  swissBUILDINGS3D's, then the newer ones the lidar has (source "lidar", geo/lidar.py)
+                  swissBUILDINGS3D's, then the newer ones the lidar has (source "lidar", geo/lidar.py):
+                  the survey's outline where it has one (geo/landcover.py), the lidar's heights (#73)
   trees.json      the lidar's trees and bushes: [local x, foot altitude, local z, height, crown radius, kind]
   cover.png       the ground by type near the house (geo/landcover.py): masks, R asphalt, G lawn, B paving, A gravel
 
@@ -83,27 +84,35 @@ async def build(
         ground = await ground_task
         buildings = await swiss.buildings(e0, n0, radius, client, ground, step)
         photo = await photo_task
-        # the newest lidar: the houses swissBUILDINGS3D does not have yet (#66). Optional
-        cloud: lidar.Cloud | None = None
-        newer: list[swiss.Building] = []
-        trees: list[lidar.Tree] = []
-        try:
-            cloud = await cloud_task
-            if cloud is not None:
-                newer = await asyncio.to_thread(
-                    lidar.new_buildings, cloud, buildings, ground, radius, step
-                )
-                # and its trees and bushes (#50)
-                trees = await asyncio.to_thread(lidar.trees, cloud, ground, radius, step)
-        except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
-            logger.warning("geo.lidar_failed", extra={"error": str(e)})
-        buildings = [*buildings, *newer]
         # the ground by type near the house (#50): the cadastral survey's land cover. Optional
         cover: list[landcover.Surface] = []
         try:
             cover = await cover_task
         except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
             logger.warning("geo.cover_failed", extra={"error": str(e)})
+        # the newest lidar: the houses swissBUILDINGS3D does not have yet (#66), on the survey's
+        # outlines where it has them (#73). Optional
+        cloud: lidar.Cloud | None = None
+        newer: list[swiss.Building] = []
+        trees: list[lidar.Tree] = []
+        try:
+            cloud = await cloud_task
+            if cloud is not None:
+                survey = await _survey(e0, n0, cloud, buildings, radius, cover, client)
+                newer = await asyncio.to_thread(
+                    lidar.new_buildings,
+                    cloud,
+                    buildings,
+                    ground,
+                    radius,
+                    step,
+                    landcover.polygons(survey, "batiment"),
+                )
+                # and its trees and bushes (#50)
+                trees = await asyncio.to_thread(lidar.trees, cloud, ground, radius, step)
+        except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
+            logger.warning("geo.lidar_failed", extra={"error": str(e)})
+        buildings = [*buildings, *newer]
         # the far landscape (the horizon: the lake, the Alps, the Jura): optional, the rest stands without it
         try:
             far_heights = await far.heights(e0, n0, client, ground, radius, step)
@@ -206,6 +215,42 @@ async def build(
     shutil.rmtree(out, ignore_errors=True)
     tmp.replace(out)
     return ctx
+
+
+SURVEY_ROUNDS = 3  # attached houses: each round finds one more of a row the land cover missed
+
+
+async def _survey(
+    e0: float,
+    n0: float,
+    cloud: lidar.Cloud,
+    known: list[swiss.Building],
+    radius: int,
+    cover: list[landcover.Surface],
+    client: httpx.AsyncClient,
+) -> list[landcover.Surface]:
+    """The survey's surfaces under the lidar's new buildings (#73): the land cover's, and, under a part
+    of one it does not cover (beyond its extent, a building too small for its outline image), the one
+    the survey has at a point inside."""
+    found = list(cover)
+    seen = {s.key for s in found}
+    for _ in range(SURVEY_ROUNDS):
+        points = await asyncio.to_thread(
+            lidar.unsurveyed, cloud, known, radius, landcover.polygons(found)
+        )
+        if not points:
+            break
+        try:
+            more = await landcover.surfaces_at(e0, n0, points, client)
+        except (httpx.HTTPError, RuntimeError, ValueError) as e:
+            logger.warning("geo.survey_failed", extra={"error": str(e)})
+            break
+        new = [s for s in more if s.key not in seen]
+        if not new:
+            break
+        seen |= {s.key for s in new}
+        found += new
+    return found
 
 
 # a plan title block: "BF N°3013 A MONT-SUR-LAUSANNE 1052", "Parcelle n° 412, Commune de Savigny"

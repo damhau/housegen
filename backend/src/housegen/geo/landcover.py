@@ -17,6 +17,7 @@ import io
 import logging
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 import httpx
 import numpy as np
@@ -79,6 +80,13 @@ class Surface:
     rings: list[list[tuple[float, float]]] = field(
         default_factory=list
     )  # local (x, z); the first outer
+
+    @property
+    def key(self) -> tuple[str, int, int]:
+        """The same surface found from two points has the same key."""
+        xs = [p[0] for p in self.rings[0]]
+        zs = [p[1] for p in self.rings[0]]
+        return (self.kind, round(min(xs) + max(xs)), round(min(zs) + max(zs)))
 
 
 def _params(e0: float, n0: float, ext: float, size: int) -> dict[str, str | int]:
@@ -178,14 +186,54 @@ async def surfaces(e0: float, n0: float, ext: float, client: httpx.AsyncClient) 
             res = await client.get(WMS, params=params, timeout=60)
         res.raise_for_status()
         for s in parse_features(res.text, e0, n0):
-            xs = [p[0] for p in s.rings[0]]
-            zs = [p[1] for p in s.rings[0]]
-            key = (s.kind, round(min(xs) + max(xs)), round(min(zs) + max(zs)))
-            if key not in seen:
-                seen.add(key)
+            if s.key not in seen:
+                seen.add(s.key)
                 out.append(s)
 
     await asyncio.gather(*(ask(i, j) for i, j in points))
+    return out
+
+
+PROBE = 10.25  # metres around a point asked about: a 41 px square at CELL, the point in its middle pixel
+
+
+async def surfaces_at(
+    e0: float, n0: float, points: list[tuple[float, float]], client: httpx.AsyncClient
+) -> list[Surface]:
+    """The land cover's surface under each local point (x, z), where `surfaces` did not reach: beyond
+    its extent, or a building too small for its outline image (#73). Whole, holes included."""
+    sem = asyncio.Semaphore(CONCURRENCY)
+    size = round(2 * PROBE / CELL)
+
+    async def ask(x: float, z: float) -> list[Surface]:
+        params = {
+            **_params(e0 + x, n0 - z, PROBE, size),
+            "REQUEST": "GetFeatureInfo",
+            "QUERY_LAYERS": "LCSF",
+            "I": size // 2,
+            "J": size // 2,
+            "INFO_FORMAT": "application/vnd.ogc.gml",
+            "FEATURE_COUNT": 1,
+        }
+        async with sem:
+            res = await client.get(WMS, params=params, timeout=60)
+        res.raise_for_status()
+        return parse_features(res.text, e0, n0)
+
+    found = await asyncio.gather(*(ask(x, z) for x, z in points))
+    return [s for f in found for s in f]
+
+
+def polygons(found: list[Surface], kind: str | None = None) -> list[Any]:
+    """The surfaces (of `kind`, or all) as shapely polygons, holes included."""
+    from shapely.geometry import Polygon
+
+    out = []
+    for s in found:
+        if kind is not None and s.kind != kind:
+            continue
+        poly = Polygon(s.rings[0], s.rings[1:]).buffer(0)
+        out += [p for p in getattr(poly, "geoms", [poly]) if not p.is_empty]
     return out
 
 

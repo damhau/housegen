@@ -133,7 +133,38 @@ def test_a_house_and_its_lower_garage_are_two_volumes_each_with_its_roof() -> No
     assert _steepest(b) < 36
 
 
-def test_an_l_shaped_house_under_one_roof_comes_as_two_gabled_wings() -> None:
+def _footprint(b: swiss.Building) -> Any:
+    """The ground plan of `b`: its roof triangles seen from above, as one polygon."""
+    from shapely import unary_union
+    from shapely.geometry import Polygon
+
+    p = np.asarray(b.positions).reshape(-1, 3)[:, [0, 2]]
+    tris = [Polygon(p[t]) for t in np.asarray(b.roof).reshape(-1, 3)]
+    return unary_union([t.buffer(1e-6) for t in tris if t.area > 1e-9]).simplify(0.05)
+
+
+def _corners(g: Any) -> list[float]:
+    """The angles (degrees, 0-180) between each corner's two walls in the outline of `g`."""
+    ring = np.asarray(g.exterior.coords)[:-1]
+    out = []
+    for i in range(len(ring)):
+        a, c = ring[i - 1] - ring[i], ring[(i + 1) % len(ring)] - ring[i]
+        cos = a @ c / (np.linalg.norm(a) * np.linalg.norm(c))
+        out.append(float(np.degrees(np.arccos(np.clip(cos, -1, 1)))))
+    return out
+
+
+def _turned(pts: np.ndarray, deg: float, cx: float, cz: float) -> np.ndarray:
+    """`pts` turned by `deg` around (cx, cz)."""
+    t = np.radians(deg)
+    x, z = pts[:, 0] - cx, pts[:, 1] - cz
+    out = pts.copy()
+    out[:, 0] = cx + x * np.cos(t) - z * np.sin(t)
+    out[:, 1] = cz + x * np.sin(t) + z * np.cos(t)
+    return out
+
+
+def _l_house() -> np.ndarray:
     # a 16 x 8 m bar along x and an 8 x 8 m wing south of its east half, both gabled (eaves 5 m,
     # ridges 8 m), the wing's roof running on into the bar's to the valleys: no step to split at,
     # and no simple roof over the L
@@ -147,21 +178,124 @@ def test_an_l_shaped_house_under_one_roof_comes_as_two_gabled_wings() -> None:
         np.where(wing, 8 - 3 * np.abs(x - 4) / 4, -np.inf),
     )
     keep = bar | wing
-    pts = np.c_[x[keep], z[keep], GROUND + h[keep], np.full(int(keep.sum()), lidar.BUILDING)]
-    found = lidar.new_buildings(_cloud(pts), [], _ground(), RADIUS)
+    return np.c_[x[keep], z[keep], GROUND + h[keep], np.full(int(keep.sum()), lidar.BUILDING)]
+
+
+def test_an_l_shaped_house_under_one_roof_comes_as_a_plain_gable_over_its_l() -> None:
+    # the owner's rule (#73): when no simple roof fits, a plain gable at the lidar's eaves and ridge,
+    # never the faceted roof or the overlapping wings that used to follow the valleys
+    found = lidar.new_buildings(_cloud(_l_house()), [], _ground(), RADIUS)
     assert len(found) == 1
     b = found[0]
-    for (px, pz), want in {
-        (-6, 0): 8.0,  # the bar's ridge
-        (-6, 3): 5.75,
-        (4, 10): 8.0,  # the wing's ridge
-        (7, 10): 5.75,
-        (4, 0): 8.0,  # where the ridges cross
-        (2, -2): 6.5,  # the valleys
-        (6, 2): 6.5,
-    }.items():
-        assert _top(b, px, pz) == pytest.approx(GROUND + want, abs=0.25), (px, pz)
-    assert _steepest(b) < 39  # the gables' 37°, nothing steeper
+    plan = _footprint(b)
+    assert plan.geom_type == "Polygon"
+    assert plan.area == pytest.approx(16 * 8 + 8 * 8, rel=0.04)
+    assert len(plan.exterior.coords) - 1 == 6  # the L
+    assert all(abs(a - 90) < 1 for a in _corners(plan))
+    t = np.asarray(b.positions).reshape(-1, 3)[np.asarray(b.roof)].reshape(-1, 3, 3)
+    n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+    n /= np.linalg.norm(n, axis=1)[:, None]
+    # two slopes facing away from each other, nothing else: no facets
+    pitch = np.degrees(np.arccos(n[:, 1]))
+    facing = np.degrees(np.arctan2(n[:, 2], n[:, 0]))
+    assert np.ptp(pitch) < 2
+    assert np.abs((facing - facing[0] + 90) % 180 - 90).max() < 2.5  # positions are to the cm
+    roof = t.reshape(-1, 3)[:, 1]
+    assert roof.max() == pytest.approx(GROUND + 8.0, abs=0.3)
+    assert _steepest(b) < 37
+
+
+def test_a_tilted_house_the_survey_lacks_is_squared_on_its_own_axes() -> None:
+    pts = _turned(_house(0, 0, 13, 9), 27, 0, 0)
+    (b,) = lidar.new_buildings(_cloud(pts), [], _ground(), RADIUS)
+    plan = _footprint(b)
+    assert len(plan.exterior.coords) - 1 == 4
+    assert all(abs(a - 90) < 1 for a in _corners(plan))
+    assert plan.area == pytest.approx(13 * 9, rel=0.06)
+    ring = np.asarray(plan.exterior.coords)
+    sides = np.diff(ring, axis=0)
+    deg = np.degrees(np.arctan2(sides[:, 1], sides[:, 0])) % 90
+    assert np.allclose(deg, 27, atol=1.5)
+    assert _top(b, 0, 0) == pytest.approx(GROUND + 8.0, abs=0.2)  # the lidar's ridge
+
+
+def test_a_house_takes_the_survey_outline_and_the_lidar_heights() -> None:
+    from shapely import affinity
+    from shapely.geometry import box
+
+    # the survey's walls 0.4 m in from the lidar's roof edge (the eaves) and 2° off its axes
+    survey = affinity.rotate(box(4.4, -9.1, 15.6, -0.9), 2, origin=(10, -5))
+    (b,) = lidar.new_buildings(
+        _cloud(_house(10, -5, 12, 9)), [], _ground(), RADIUS, survey=[survey]
+    )
+    plan = _footprint(b)
+    assert plan.symmetric_difference(survey).area < 0.5
+    assert _top(b, 10, -5) == pytest.approx(GROUND + 8.0, abs=0.3)
+    assert _top(b, 10, -1.5) == pytest.approx(GROUND + 5.7, abs=0.4)
+
+
+def test_a_survey_outline_over_a_house_and_its_garage_keeps_both_roofs() -> None:
+    from shapely.geometry import box
+
+    survey = box(-6, -4.5, 12, 4.5)
+    cloud = _cloud(_house(0, 0, 12, 9), _house(9, 0, 6, 9, "flat", eave=3.0))
+    (b,) = lidar.new_buildings(cloud, [], _ground(), RADIUS, survey=[survey])
+    assert _footprint(b).symmetric_difference(survey).area < 0.5
+    assert _top(b, -3, 0) == pytest.approx(GROUND + 8.0, abs=0.2)
+    assert _top(b, 9, 0) == pytest.approx(GROUND + 3.0, abs=0.1)
+    assert _steepest(b) < 36
+
+
+def test_two_attached_houses_keep_their_own_survey_outlines() -> None:
+    from shapely.geometry import box
+
+    # a pair of semi-detached houses under one roof: the survey parts them, the lidar cannot
+    left, right = box(-8, -4.5, 0, 4.5), box(0, -4.5, 8, 4.5)
+    (b,) = lidar.new_buildings(
+        _cloud(_house(0, 0, 16, 9)), [], _ground(), RADIUS, survey=[left, right]
+    )
+    assert _footprint(b).symmetric_difference(left.union(right)).area < 0.5
+    assert _top(b, -4, 0) == pytest.approx(GROUND + 8.0, abs=0.2)
+    assert _top(b, 4, 3) == pytest.approx(GROUND + 6.0, abs=0.2)
+
+
+def test_the_plain_roof_is_flat_when_the_heights_barely_vary() -> None:
+    from shapely.geometry import box
+
+    rng = np.random.default_rng(1)
+    outline = box(0, 0, 14, 8)
+    lumpy = GROUND + 4 + rng.normal(0, 0.15, 500)  # a flat roof with its plant and parapets
+    at, creases = lidar._plain_roof(lumpy, outline)
+    assert creases == []
+    assert at(3, 3) == pytest.approx(float(np.median(lumpy)))
+    spread = GROUND + rng.uniform(4, 9, 500)
+    at, creases = lidar._plain_roof(spread, outline)
+    (start, end), *_ = creases
+    assert start[1] == pytest.approx(4)  # the ridge along the long side
+    assert end[1] == pytest.approx(4)
+    assert at(7, 4) == pytest.approx(float(np.percentile(spread, 95)))
+    assert at(7, 0) == pytest.approx(float(np.percentile(spread, 5)))
+
+
+async def test_the_survey_is_asked_only_about_the_houses_it_does_not_cover(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    asked: list[list[tuple[float, float]]] = []
+    house = landcover.Surface("batiment", [[(4.4, -9.1), (15.6, -9.1), (15.6, -0.9), (4.4, -0.9)]])
+
+    async def at(e0: float, n0: float, points: list[tuple[float, float]], client: Any) -> Any:
+        asked.append(points)
+        return [house]
+
+    monkeypatch.setattr(landcover, "surfaces_at", at)
+    cloud = _cloud(_house(10, -5, 12, 9), _house(-15, 10, 10, 8))
+    garden = landcover.Surface("jardin", [[(-25, 0), (-5, 0), (-5, 20), (-25, 20)]])
+    found = await context._survey(0, 0, cloud, [], RADIUS, [garden], None)  # type: ignore[arg-type]
+    assert len(asked) == 1  # the house in the garden is known to be no building of the survey's
+    ((x, z),) = asked[0]
+    assert x == pytest.approx(10, abs=4)
+    assert z == pytest.approx(-5, abs=3)
+    assert [s.kind for s in found] == ["jardin", "batiment"]
 
 
 def test_a_roof_splits_into_volumes_where_it_steps_not_at_a_chimney() -> None:
