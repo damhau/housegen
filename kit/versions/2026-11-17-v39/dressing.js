@@ -8,8 +8,9 @@
 //   - a sideboard: something tall at one end, a jar or a vase, books with something small on them at the other; a
 //     living or dining room without low storage gets the style's catalogue sideboard on a free wall, dressed so;
 //   - the floor: a plant, a pouf, a basket or a floor vase in a free corner, more of them in a larger room;
-//   - a bath: a towel over the tub's front rim and over a walk-in shower's glass panel, now and then a stool with
-//     folded towels, a towel on a bar when the room has no towel rail.
+//   - a bath: a towel over the tub's front rim, a towel over a walk-in shower's glass panel (on a bar across its
+//     fittings when the panel is too narrow), now and then a stool with folded towels, a towel on a bar when the room
+//     has neither a towel rail nor a shower's bar.
 // The pieces are the house style's catalogue (pickObject: cushions, candles, jars, bowls, vases, plants, poufs,
 // baskets) and the kit's own stand-ins for the photo service's made props (books, a carafe, a napkin, a runner, a
 // throw, towels, a stool, a towel bar), tagged `made` (and `arg`): the photo service draws its own in their place
@@ -872,7 +873,14 @@ function baths(ctx) {
       if (room.use !== "bath") continue;
       const here = ctx.scene.pieces.filter((p) => p.room === room);
       for (const tub of here.filter((p) => p.type === "bathtub")) n += drapeOn(ctx, tub, room) ? 1 : 0;
-      for (const shower of here.filter((p) => p.type === "shower")) n += screenTowel(ctx, shower, room) ? 1 : 0;
+      let barred = false;
+      for (const shower of here.filter((p) => p.type === "shower")) {
+        if (screenTowel(ctx, shower, room)) n++;
+        else if (showerBar(ctx, s, shower, room)) {
+          barred = true;
+          n++;
+        }
+      }
       if (choose([true, false], `${room.name}|stool`)) {
         const spot = floorSpots({ polygon: poly, walls: s.walls, boxes, doors: s.doors, windows: s.windows, taken: ctx.taken, r: 0.2, h: 0.6 })[0];
         if (spot) {
@@ -882,7 +890,7 @@ function baths(ctx) {
           n++;
         }
       }
-      if (!here.some((p) => p.type === "towels") && towelBar(ctx, s, room, poly, boxes)) n++;
+      if (!barred && !here.some((p) => p.type === "towels") && towelBar(ctx, s, room, poly, boxes)) n++;
     }
   }
   return n;
@@ -920,6 +928,29 @@ function screenTowel(ctx, p, room) {
   if (!best) return false;
   const { b } = best, [x, z] = p.f.world((b.min.x + b.max.x) / 2, (b.min.z + b.max.z) / 2);
   made(ctx, "drape", room, new THREE.Vector3(x, p.f.y + b.max.y, z), p.f.yaw, 0.03);
+  return true;
+}
+
+const BAR = 0.6; // the towel bar's length (MADE.rail)
+
+// a towel on a bar on a walk-in shower's back wall when its glass panel is too narrow to take one: across its mixer
+// and hand shower, where a camera framing the shower looks (#103: the owner's reference photo, Montelly 04 v20, hangs
+// it there; beside them, the only clear stretch, it fell out of that frame)
+function showerBar(ctx, s, p, room) {
+  const { lb } = p, back = lb.min.z, lo = lb.min.x + 0.03, hi = lb.max.x - 0.03;
+  if (hi - lo < BAR) return false;
+  if (!s.walls.some((w) => segDist(p.f.world((lb.min.x + lb.max.x) / 2, back), w.a, w.b).d <= w.t / 2 + 0.06)) return false;
+  let a = Infinity, b = -Infinity;
+  for (const m of meshesOf(p.o)) {
+    if (m.material?.transparent && m.material.opacity < 0.5) continue;
+    const box = localBox(m, p.f);
+    if (box.min.z > back + 0.15 || box.max.y < RAIL_H - 0.5 || box.min.y > RAIL_H + 0.1) continue;
+    a = Math.min(a, box.min.x);
+    b = Math.max(b, box.max.x);
+  }
+  const u = Math.min(Math.max(a < b ? (a + b) / 2 : (lo + hi) / 2, lo + BAR / 2), hi - BAR / 2);
+  const [x, z] = p.f.world(u, back + 0.075);
+  made(ctx, "rail", room, new THREE.Vector3(x, p.f.y + RAIL_H, z), p.f.yaw);
   return true;
 }
 

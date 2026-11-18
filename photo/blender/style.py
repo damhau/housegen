@@ -10,7 +10,7 @@ knows a room or a camera: it reads the export's pieces, the rooms the camera see
   living room or kitchen the camera sees most a sideboard against a plain wall, styled; each room a floor accent (a
   tall plant in a corner, else branches in a floor vase); deep window sills a bud vase; a balcony or terrace seen
   through the glass a bistro set.
-- `edge_clutter`, last: small props cut by a side of the frame, and a plant right in front of the lens, go.
+- `edge_clutter`, last: small props cut by a side of the frame, and a plant or a kit lamp right in front of the lens, go.
 
 In a scene the kit dressed (catalogue.DRESSED, kit/dressing.js) the nightstands, the dining table, the sofa, the
 sideboard, the floor accents and the bath's towels are the kit's, the same in the 3D tour: those rules stay out, and what
@@ -1008,6 +1008,7 @@ def sideboard(scene, cam, room, sy, taken):
 
 
 LENS_CLEAR = 0.6  # m between the lens and the box of a prop or swapped plant (#89: a pachira around the lens)
+EDGE_NEAR = 2.0  # m: a plant or a lamp cut by a side of the frame goes when nearer the lens than this
 TALL = ("floor-plant",)  # the kit dressing's floor accents that may stand in front of the lens
 ACCENTS = ("floor-plant", "pouf", "basket", "vase")  # what the kit dressing stands on a floor
 FILL = ("pouf", "basket")
@@ -1038,20 +1039,69 @@ def fill(scene, cam, room, sy, taken):
     return None
 
 
+def kit_lamps(scene):
+    """The kit's standing lamps (catalogue.STANDING_LAMPS), each as the fixture holding its model and its lights."""
+    out = []
+    for o in scene.objects:
+        cid = o.get("catalogue")
+        if not cid or o.hide_render:
+            continue
+        if (o.get("obj_role") or catalogue.entries().get(str(cid), {}).get("role")) not in catalogue.STANDING_LAMPS:
+            continue
+        top = o.parent
+        while top is not None and top.get("kind") != "furniture":
+            top = top.parent
+        out.append(top or o)
+    return out
+
+
+def cut_near(scene, cam, ny=36):
+    """The objects a side of the frame cuts within EDGE_NEAR of the lens: rays down the frame's outer columns (a box
+    beside the camera, partly behind its plane, does not project)."""
+    bpy.context.view_layer.update()
+    dg = bpy.context.evaluated_depsgraph_get()
+    fr = cam.data.view_frame(scene=scene)
+    x0, x1 = min(c.x for c in fr), max(c.x for c in fr)
+    y0, y1 = min(c.y for c in fr), max(c.y for c in fr)
+    rot, eye = cam.matrix_world.to_3x3(), cam.matrix_world.translation
+    names = set()
+    for fx in (0.002, 0.998):
+        for j in range(ny):
+            d = (rot @ Vector((x0 + fx * (x1 - x0), y1 - (j + 0.5) / ny * (y1 - y0), fr[0].z))).normalized()
+            hit = H.trace(scene, dg, eye, d)
+            if hit is not None and (hit[0] - eye).length < EDGE_NEAR:
+                names.add(hit[2].name)
+    return names
+
+
 def edge_clutter(scene, cam, plants):
-    """A small prop cut by a side of the frame reads as clutter, a plant right in front of the lens and cut as a
-    dark blob: a stager takes both out of the shot. Only our props, swapped plants and the pieces of the kit's
-    dressing (no kit piece). Plants first, before the rules (so a floor accent may take a tall plant), props last."""
+    """A small prop cut by a side of the frame reads as clutter, a plant or a lamp right in front of the lens and cut
+    as a dark blob: a stager takes them out of the shot. Only our props, swapped plants, the pieces of the kit's
+    dressing and the kit's standing lamps (no other kit piece). Plants and lamps first, before the rules (so a floor
+    accent may take a tall plant), props last."""
     n = 0
+    lamps = {o.name for o in kit_lamps(scene)} if plants else set()
+    cut = cut_near(scene, cam)
+
+    def out(o, why):
+        nonlocal n
+        H.hide(o)
+        o["out_of_shot"] = True  # photo.lamps_on leaves its lights off
+        log(f"edge: {o.name} {why}, taken out")
+        n += 1
+
     for o in list(scene.objects):
         held = o.get("kind") == "dressing" and bool(o.get("dressing"))
-        if o.hide_render or not held and (o.parent is not None or o.type != "EMPTY" or o.get("kind") is not None):
+        lamp = o.name in lamps
+        if o.hide_render or not (held or lamp) and (o.parent is not None or o.type != "EMPTY" or o.get("kind") is not None):
             continue
         lo, hi = H.box(o)
         size = hi - lo
         # a kit vase is a prop however tall its branches: cut by the frame, it goes (#103, Montelly 02)
         prop = held and o.get("dressing") == "vase"
-        if held:
+        if lamp:
+            plant = True  # a lamp cut at the lens goes, one further in stays (#103, Montelly 01)
+        elif held:
             plant = o.get("dressing") in TALL and size.z > 0.7
         else:
             plant = o.name.startswith(("pachira", "potted_plant_02")) or (o.get("obj_role") == "plant" and size.z > 0.7)
@@ -1060,9 +1110,10 @@ def edge_clutter(scene, cam, plants):
         eye = cam.matrix_world.translation
         near = Vector([min(max(eye[k], lo[k]), hi[k]) for k in range(3)])  # the box's point closest to the lens
         if (near - eye).length < LENS_CLEAR:  # around the lens or right against it: leaves or a prop over the frame
-            H.hide(o)
-            log(f"edge: {o.name} {(near - eye).length:.2f} m from the lens, taken out")
-            n += 1
+            out(o, f"{(near - eye).length:.2f} m from the lens")
+            continue
+        if (lamp or not plant) and any(c.name in cut for c in H.family(o)):
+            out(o, f"cut by the frame's side within {EDGE_NEAR} m of the lens")
             continue
         vs = [world_to_camera_view(scene, cam, Vector((a, b, cc))) for a in (lo.x, hi.x) for b in (lo.y, hi.y)
               for cc in (lo.z, hi.z)]
@@ -1072,11 +1123,9 @@ def edge_clutter(scene, cam, plants):
         inside = [0 <= v.x <= 1 and 0 <= v.y <= 1 for v in vs]
         if not any(inside) or not any(side_out):
             continue
-        if plant and min(v.z for v in vs) > 2.0:
+        if plant and min(v.z for v in vs) > EDGE_NEAR:
             continue
-        H.hide(o)
-        log(f"edge: {o.name} cut by the frame's side{' in front of the lens' if plant else ''}, taken out")
-        n += 1
+        out(o, f"cut by the frame's side{' in front of the lens' if plant else ''}")
     return n
 
 

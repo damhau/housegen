@@ -33,6 +33,8 @@ DRESSED = False
 # the library roles the kit's catalogue chooses for an OWN scene
 KIT_ROLES = frozenset({"table_lamp", "floor_lamp", "desk_lamp", "pendant", "chandelier", "pot_table", "pot_floor", "plant",
                        "vase", "stems", "bench", "mirror", "tall_mirror"})
+# the kit's lamps a stager may lift out of a shot (a pendant or a wall lamp is fixed)
+STANDING_LAMPS = frozenset({"table_lamp", "floor_lamp", "desk_lamp"})
 # drawn again at full resolution: those, and the rugs
 FULL = KIT_ROLES | {"rug", "runner"}
 # and, in a scene the kit dressed, the library roles of what its dressing draws from the catalogue (cushions, candles...)

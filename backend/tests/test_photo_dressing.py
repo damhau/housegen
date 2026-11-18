@@ -122,3 +122,18 @@ def test_a_scene_from_an_older_kit_draws_only_its_decor_again(catalogue: ModuleT
     assert "pillow" not in catalogue.full()
     catalogue.DRESSED = True
     assert {"pillow", "candle", "pouf"} <= catalogue.full()
+
+
+def test_the_lamps_a_photo_may_take_out_are_the_kits_standing_ones(catalogue: ModuleType) -> None:
+    library = {
+        e["id"]: e["role"]
+        for e in json.loads((ROOT / "spikes/archviz/made/objects.json").read_text(encoding="utf-8"))
+    }
+    standing = {
+        library.get(o["id"])
+        for o in _js_rows(ROOT / "kit" / "objects.js")
+        if o["role"] in ("table-lamp", "floor-lamp", "desk-lamp")
+    }
+    assert standing == set(catalogue.STANDING_LAMPS), standing
+    assert catalogue.STANDING_LAMPS <= catalogue.KIT_ROLES
+    assert not {"pendant", "chandelier"} & catalogue.STANDING_LAMPS

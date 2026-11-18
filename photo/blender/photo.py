@@ -1795,6 +1795,8 @@ def lamps_on(scene, room):
         x, y, z = to_scene(o.matrix_world.translation)
         if not (room["y"] + 1.0 <= y <= room["y"] + 3.2 and inside(room["polygon"], x, z)):
             continue
+        if any(a.get("out_of_shot") for a in ancestors(o.parent)):  # its lamp was taken out (style.edge_clutter)
+            continue
         o.hide_render = False
         o.data.color = (1.0, 0.78, 0.56)
         # warm accents under the window's light, not the key: at full strength (18-25 W) the room read as lit
