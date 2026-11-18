@@ -48,7 +48,10 @@ planter({ length, position, rotationY, color })
 terrain({ size:[w,d], center:[x,z], points:[[x,z,y],...] | heightAt:(x,z)=>y, edgeHeight, material })
     Sloped/shaped ground from spot heights (interpolated) or a function. Registers itself: afterwards groundY(x,z) and every
     landscape component below sit on it. Hide the flat base ground when you use it: ctx.ground.visible = false.
-groundY(x, z) → ground height           rod(from:[x,y,z], to:[x,y,z], radius, material) → thin cylinder (branches, rails, posts)
+    The viewer draws the real surroundings (surveyed ground, aerial photo, neighbouring houses) around the plot: end your
+    ground with the plot, no lawn or backdrop beyond it, and give every ground mesh you build yourself
+    userData.kind = "terrain" (terrain() does).
+groundY(x, z) → ground height          rod(from:[x,y,z], to:[x,y,z], radius, material) → thin cylinder (branches, rails, posts)
 ribbon({ points:[[x,z],...], width, lift, material })     path / drive draped on the ground
 pebbleStrip({ from:[x,z], to:[x,z], width, density, seed })   river stones along a foundation
 pathway({ points, width, material })  (flat)   groundPatch({ polygon, y, material })  (flat lawn/gravel/terrace areas)

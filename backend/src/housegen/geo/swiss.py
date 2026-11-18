@@ -48,6 +48,10 @@ class Building:
     roof: list[int] = field(default_factory=list)  # triangles (vertex indices)
     wall: list[int] = field(default_factory=list)
     source: str = "swissbuildings3d"  # or "lidar": newer than swissBUILDINGS3D (geo/lidar.py)
+    # a pitched roof's overhang (the lidar's, #123): its top, soffit and fascia. Apart from `roof`, which
+    # ends at the walls: a reader of roof and wall alone (the openings' blockers, outside.py) draws the
+    # house without its eaves rather than taking them for a lower roof in front of its windows
+    eave: list[int] = field(default_factory=list)
 
 
 def _plain(label: str) -> str:

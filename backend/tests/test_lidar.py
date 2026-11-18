@@ -133,14 +133,34 @@ def test_a_house_and_its_lower_garage_are_two_volumes_each_with_its_roof() -> No
     assert _steepest(b) < 36
 
 
-def _footprint(b: swiss.Building) -> Any:
-    """The ground plan of `b`: its roof triangles seen from above, as one polygon."""
+def _footprint(b: swiss.Building, eaves: bool = False) -> Any:
+    """The ground plan of `b`: its roof triangles seen from above (the walls' outline), as one
+    polygon; with `eaves`, its eaves' too (the roof's outline)."""
     from shapely import unary_union
     from shapely.geometry import Polygon
 
     p = np.asarray(b.positions).reshape(-1, 3)[:, [0, 2]]
     tris = [Polygon(p[t]) for t in np.asarray(b.roof).reshape(-1, 3)]
+    if eaves:
+        tris += [Polygon(p[t]) for t in np.asarray(b.eave, dtype=np.int64).reshape(-1, 3)]
     return unary_union([t.buffer(1e-6) for t in tris if t.area > 1e-9]).simplify(0.05)
+
+
+def _walls(b: swiss.Building) -> Any:
+    """The walls' outline of `b` seen from above."""
+    from shapely import unary_union
+    from shapely.geometry import LineString
+
+    p = np.asarray(b.positions).reshape(-1, 3)[:, [0, 2]]
+    sides = [LineString(p[t]) for t in np.asarray(b.wall).reshape(-1, 3)]
+    return unary_union([s for s in sides if s.length > 1e-6]).convex_hull
+
+
+def _eave_faces(b: swiss.Building) -> tuple[np.ndarray, np.ndarray]:
+    """The eaves' triangles of `b` (n x 3 x 3) and their unit normals."""
+    t = np.asarray(b.positions).reshape(-1, 3)[np.asarray(b.eave, dtype=np.int64)].reshape(-1, 3, 3)
+    n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+    return t, n / np.linalg.norm(n, axis=1)[:, None]
 
 
 def _corners(g: Any) -> list[float]:
@@ -187,7 +207,7 @@ def test_an_l_shaped_house_under_one_roof_comes_as_a_plain_gable_over_its_l() ->
     found = lidar.new_buildings(_cloud(_l_house()), [], _ground(), RADIUS)
     assert len(found) == 1
     b = found[0]
-    plan = _footprint(b)
+    plan = _footprint(b, eaves=True)
     assert plan.geom_type == "Polygon"
     assert plan.area == pytest.approx(16 * 8 + 8 * 8, rel=0.04)
     assert len(plan.exterior.coords) - 1 == 6  # the L
@@ -208,7 +228,7 @@ def test_an_l_shaped_house_under_one_roof_comes_as_a_plain_gable_over_its_l() ->
 def test_a_tilted_house_the_survey_lacks_is_squared_on_its_own_axes() -> None:
     pts = _turned(_house(0, 0, 13, 9), 27, 0, 0)
     (b,) = lidar.new_buildings(_cloud(pts), [], _ground(), RADIUS)
-    plan = _footprint(b)
+    plan = _footprint(b, eaves=True)
     assert len(plan.exterior.coords) - 1 == 4
     assert all(abs(a - 90) < 1 for a in _corners(plan))
     assert plan.area == pytest.approx(13 * 9, rel=0.06)
@@ -232,6 +252,144 @@ def test_a_house_takes_the_survey_outline_and_the_lidar_heights() -> None:
     assert plan.symmetric_difference(survey).area < 0.5
     assert _top(b, 10, -5) == pytest.approx(GROUND + 8.0, abs=0.3)
     assert _top(b, 10, -1.5) == pytest.approx(GROUND + 5.7, abs=0.4)
+
+
+def _offset(a: Any, b: Any) -> float:
+    """How far outline `a` reaches past outline `b` on average (m)."""
+    return float((a.area - b.area) / b.length)
+
+
+def test_a_pitched_roof_reaches_past_the_survey_walls_as_far_as_the_lidar_sees_it() -> None:
+    from shapely.geometry import box
+
+    # #123: the lidar's roof reaches 0.8 m past the survey's walls (its edge across the cells, as a
+    # real roof's falls); the walls stay on the survey, the roof goes on to its edge
+    survey = box(4.95, -8.75, 15.05, -1.25)
+    (b,) = lidar.new_buildings(
+        _cloud(_house(10, -5, 11.7, 9.1)), [], _ground(), RADIUS, survey=[survey]
+    )
+    assert _footprint(b).symmetric_difference(survey).area < 0.5
+    assert _walls(b).symmetric_difference(survey).area < 0.5
+    roof = _footprint(b, eaves=True)
+    assert _offset(roof, survey) == pytest.approx(0.8, abs=0.25)
+    # the eaves carry the roof's planes on, down to the lidar's eaves (5 m), with a fascia under their
+    # edge and a soffit back to the walls, facing down
+    t, n = _eave_faces(b)
+    tops = t[n[:, 1] > 0.3]
+    assert tops[:, :, 1].min() == pytest.approx(GROUND + 5.0, abs=0.35)
+    assert len(t[np.abs(n[:, 1]) < 0.1])
+    assert len(t[n[:, 1] < -0.3])
+    depth: dict[tuple[float, float], list[float]] = {}
+    for x, y, z in t.reshape(-1, 3):
+        depth.setdefault((round(x, 2), round(z, 2)), []).append(y)
+    assert max(np.ptp(ys) for ys in depth.values()) == pytest.approx(lidar.FASCIA, abs=0.02)
+
+
+def test_eaves_reach_past_survey_walls_within_their_range() -> None:
+    from shapely.geometry import box
+
+    # the survey's walls 3 m in from the lidar's roof on each side (a terrace roof, a misplaced
+    # outline): no eaves that wide, the usual ones
+    survey = box(7, -7, 13, -3)
+    (b,) = lidar.new_buildings(
+        _cloud(_house(10, -5, 12, 10)), [], _ground(), RADIUS, survey=[survey]
+    )
+    assert _offset(_footprint(b, eaves=True), survey) == pytest.approx(lidar.EAVE, abs=0.1)
+
+
+def test_the_walls_of_a_house_the_survey_lacks_stand_inside_its_roof() -> None:
+    # the lidar's outline is the roof's, eaves included: the walls stand EAVE inside it
+    (b,) = lidar.new_buildings(_cloud(_house(0, 0, 13, 9)), [], _ground(), RADIUS)
+    roof = _footprint(b, eaves=True)
+    assert roof.area == pytest.approx(13 * 9, rel=0.06)
+    walls = _footprint(b)
+    assert walls.area == pytest.approx((13 - 2 * lidar.EAVE) * (9 - 2 * lidar.EAVE), rel=0.06)
+    assert _walls(b).symmetric_difference(walls).area < 0.5
+    assert roof.buffer(0.01).contains(walls)
+    # inset, they still face outward: a wall facing in reads as the inside of a building to the openings' probes
+    p = np.asarray(b.positions).reshape(-1, 3)
+    centre = np.asarray(walls.centroid.coords[0])
+    for t in np.asarray(b.wall).reshape(-1, 3):
+        n = np.cross(p[t[1]] - p[t[0]], p[t[2]] - p[t[0]])
+        if np.hypot(n[0], n[2]) > 1e-6:
+            assert n[0] * (p[t, 0].mean() - centre[0]) + n[2] * (p[t, 2].mean() - centre[1]) > 0
+
+
+def test_a_flat_roof_has_no_eaves() -> None:
+    (b,) = lidar.new_buildings(_cloud(_house(0, 0, 13, 9, "flat", eave=6.0)), [], _ground(), RADIUS)
+    assert b.eave == []
+    assert _footprint(b).area == pytest.approx(13 * 9, rel=0.06)
+
+
+def test_a_house_beside_its_garage_keeps_their_common_wall_under_its_eaves() -> None:
+    # the house's walls stand in from its roof's edge, but not along the garage it meets
+    cloud = _cloud(_house(0, 0, 12, 9), _house(9, 0, 6, 9, "flat", eave=3.0))
+    (b,) = lidar.new_buildings(cloud, [], _ground(), RADIUS)
+    walls = _footprint(b)
+    x0, z0, x1, _ = walls.bounds
+    assert x0 == pytest.approx(-6 + lidar.EAVE, abs=0.3)
+    assert x1 == pytest.approx(12, abs=0.3)  # the garage's far end: a flat roof, no eaves
+    assert z0 == pytest.approx(-4.5, abs=0.3)  # the garage is as wide as the house's roof
+    assert _top(b, 5.8, 0) == pytest.approx(GROUND + 8.0, abs=0.4)  # the house's walls meet it
+
+
+def test_eaves_do_not_reach_into_a_known_building() -> None:
+    from shapely.geometry import box
+
+    # a new house whose survey outline meets an old one (a semi-detached pair, the old half known)
+    survey = box(0, -4, 10, 4)
+    cloud = _cloud(_house(5, 0, 11.5, 9), _house(-6, 0, 12, 8))
+    (b,) = lidar.new_buildings(cloud, [_known(-6, 0, 12, 8)], _ground(), RADIUS, survey=[survey])
+    assert _footprint(b, eaves=True).intersection(box(-12, -4, 0, 4)).area < 0.05
+
+
+def test_a_gables_overhang_passes_over_a_garage_well_under_it() -> None:
+    from shapely import unary_union
+    from shapely.geometry import Polygon, box
+
+    # a gabled house (eaves 5 m) and a flat garage against its east gable: the overhang runs on above
+    # a 3 m garage; one nearly up to the eaves would take it through its roof, so it stops there
+    house, garage = box(-5.5, -4, 5.5, 4), box(5.5, -3, 11, 3)
+    for height, over in ((3.0, True), (4.8, False)):
+        cloud = _cloud(_house(0, 0, 12, 9), _house(8.5, 0, 5, 6, "flat", eave=height))
+        (b,) = lidar.new_buildings(cloud, [], _ground(), RADIUS, survey=[house, garage])
+        t, n = _eave_faces(b)
+        tops = unary_union([Polygon(q[:, [0, 2]]) for q in t[n[:, 1] > 0.3]])
+        assert (tops.intersection(box(5.5, -2.5, 6.5, 2.5)).area > 1.5) is over
+
+
+def test_where_a_lower_wing_meets_a_house_its_eaves_run_to_the_walls() -> None:
+    from shapely.geometry import Polygon, box
+
+    # a gabled wing (eaves 3.5 m) against the house's east wall (eaves 5 m): round the corner where
+    # they meet, the wing's eave runs on to the house's wall; the house's stood out over it as a ledge
+    house, wing = box(-5.5, -4, 5.5, 4), box(5.5, -2.5, 11.5, 2.5)
+    cloud = _cloud(_house(0, 0, 12, 9), _house(9, 0, 6, 6, eave=3.5, ridge=5.0))
+    (b,) = lidar.new_buildings(cloud, [], _ground(), RADIUS, survey=[house, wing])
+    t, n = _eave_faces(b)
+    corner = box(5.5, 2.5, 5.8, 2.8)
+    over = [q for q in t[n[:, 1] > 0.3] if Polygon(q[:, [0, 2]]).intersection(corner).area > 0.005]
+    assert sum(Polygon(q[:, [0, 2]]).intersection(corner).area for q in over) > 0.08
+    assert max(q[:, 1].max() for q in over) < GROUND + 4.0
+
+
+def test_a_narrow_part_gets_no_gable() -> None:
+    # a 10 x 3 m part with a gable in the lidar: too narrow for one (#123), a single slope or flat
+    (b,) = lidar.new_buildings(
+        _cloud(_house(0, 0, 10, 3, eave=3.0, ridge=4.0)), [], _ground(), RADIUS
+    )
+    t = np.asarray(b.positions).reshape(-1, 3)[np.asarray(b.roof)].reshape(-1, 3, 3)
+    n = np.cross(t[:, 1] - t[:, 0], t[:, 2] - t[:, 0])
+    n /= np.linalg.norm(n, axis=1)[:, None]
+    assert np.abs(n - n[0]).max() < 0.02  # one plane
+
+
+def test_no_roof_is_steeper_than_max_pitch() -> None:
+    # a 6 m wide gable rising 4 m (53°): a single slope or flat instead
+    (b,) = lidar.new_buildings(
+        _cloud(_house(0, 0, 10, 6, eave=3.0, ridge=7.0)), [], _ground(), RADIUS
+    )
+    assert _steepest(b) <= lidar.MAX_PITCH + 0.5
 
 
 def test_a_survey_outline_over_a_house_and_its_garage_keeps_both_roofs() -> None:
@@ -264,17 +422,37 @@ def test_the_plain_roof_is_flat_when_the_heights_barely_vary() -> None:
 
     rng = np.random.default_rng(1)
     outline = box(0, 0, 14, 8)
+    x, z = rng.uniform(0, 14, 500), rng.uniform(0, 8, 500)
     lumpy = GROUND + 4 + rng.normal(0, 0.15, 500)  # a flat roof with its plant and parapets
-    at, creases = lidar._plain_roof(lumpy, outline)
+    at, creases, slope = lidar._plain_roof(x, z, lumpy, outline)
     assert creases == []
+    assert slope == 0
     assert at(3, 3) == pytest.approx(float(np.median(lumpy)))
-    spread = GROUND + rng.uniform(4, 9, 500)
-    at, creases = lidar._plain_roof(spread, outline)
+    spread = GROUND + rng.uniform(4, 7, 500)
+    at, creases, slope = lidar._plain_roof(x, z, spread, outline)
     (start, end), *_ = creases
     assert start[1] == pytest.approx(4)  # the ridge along the long side
     assert end[1] == pytest.approx(4)
     assert at(7, 4) == pytest.approx(float(np.percentile(spread, 95)))
     assert at(7, 0) == pytest.approx(float(np.percentile(spread, 5)))
+    assert np.degrees(np.arctan(slope)) < 45
+
+
+def test_a_plain_roof_too_steep_for_a_gable_leans_one_way_or_lies_flat() -> None:
+    from shapely.geometry import box
+
+    # #123: a part whose heights span 5 m over 3 m stood as a wedge
+    rng = np.random.default_rng(2)
+    x, z = rng.uniform(0, 5, 400), rng.uniform(0, 3, 400)
+    leaning = GROUND + 4 + 0.6 * z + rng.normal(0, 0.9, 400)
+    at, creases, slope = lidar._plain_roof(x, z, leaning, box(0, 0, 5, 3))
+    assert creases == []
+    assert slope == pytest.approx(0.6, abs=0.15)
+    assert at(2, 3) > at(2, 0)
+    wall_like = GROUND + 4 + 1.8 * z + rng.normal(0, 0.9, 400)
+    at, creases, slope = lidar._plain_roof(x, z, wall_like, box(0, 0, 5, 3))
+    assert (creases, slope) == ([], 0.0)
+    assert at(2, 0) == at(2, 3) == pytest.approx(float(np.median(wall_like)))
 
 
 async def test_the_survey_is_asked_only_about_the_houses_it_does_not_cover(

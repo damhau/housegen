@@ -9,7 +9,8 @@ Classes (ASPRS, as swisstopo uses them): 2 ground, 3 vegetation, 6 building.
 
 A new building's walls are the survey's outline (AV/MO, the land cover's "batiment") where one lies
 under it, else its lidar outline squared; its roofs are simple (flat, a single pitch, a gable, a hip)
-or, where none fits, a plain gable or flat at the measured heights (#73).
+or, where none fits, a plain gable or flat at the measured heights (#73). A pitched roof reaches past
+its walls: its eaves, with a fascia and a soffit (#123).
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ import asyncio
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import pairwise
 from typing import Any
 
 import httpx
@@ -56,6 +58,20 @@ NOTCH_GAIN = 0.04
 NOTCH_SIDE = 2.0  # m
 SQUARE_CELL = 0.25  # m
 SNAP = 1.5  # m: a squared part this close to walls already drawn is grown to meet them
+# a pitched roof reaches past its walls (#123). Where the survey gives the walls, as far as the lidar's
+# roof does, within EAVE_RANGE (EAVE where the two disagree); a squared lidar outline is the roof's own,
+# eaves included, so its walls stand EAVE inside it. FASCIA: the overhang's thickness at its edge
+EAVE = 0.5  # m
+EAVE_RANGE = (0.3, 1.0)
+FASCIA = 0.2  # m
+# a part whose roof stays this far under another's eaves lets them pass over it: a gable's overhang
+# runs on above the garage in front of it
+EAVE_CLEAR = 1.0  # m
+# a part narrower than NARROW gets no gable or hip, and no part a roof steeper than MAX_PITCH: a narrow
+# part's gable stood as a wedge (#123); a single slope or a flat roof at the lidar's heights instead
+NARROW = 4.0  # m
+MAX_PITCH = 45.0  # degrees
+PITCHED = 5.0  # degrees: a roof less steep is flat (no eaves; gravel in the viewer)
 
 
 @dataclass
@@ -65,6 +81,17 @@ class Cloud:
     y: np.ndarray  # altitude (LN02)
     cls: np.ndarray  # ASPRS class
     year: int | None  # the flight
+
+
+@dataclass
+class _Piece:
+    outline: Any  # its walls' (a lidar outline: its roof's, eaves included)
+    kind: str  # the outline's: "survey", "squared", "traced"
+    at: Any  # the roof's height at a point
+    creases: list[tuple[np.ndarray, np.ndarray]]
+    pitch: float  # degrees
+    top: float  # the roof's height (p95)
+    reach: float  # how far its eaves reach past its walls (m)
 
 
 async def cloud(e0: float, n0: float, radius: int, client: httpx.AsyncClient) -> Cloud | None:
@@ -222,6 +249,7 @@ def new_buildings(
     polys = [p for p in survey if p.geom_type == "Polygon" and p.area >= 1.0]
     owners = _owners(polys, labels, transform)
     size = ground.shape[0]
+    beside = _Footprints(known)
 
     def ground_at(x: float, z: float) -> float:
         gi = int(np.clip(round((x + radius) / step), 0, size - 1))
@@ -260,22 +288,31 @@ def new_buildings(
         positions: list[np.ndarray] = []
         roof_tris: list[int] = []
         wall_tris: list[int] = []
+        eave_tris: list[int] = []
         plain = False
-        for wall, _ in walls:
+        pieces: list[_Piece] = []
+        for wall, kind in walls:
             inside = contains_xy(wall, hx, hz)
+            reach = EAVE
+            if kind == "survey":
+                reach = _overhang(wall, [w for w, _ in walls if w is not wall], m, here)
             for piece, lv in _split(wall, hx[inside], hz[inside], hl[inside]):
                 own = contains_xy(piece, hx, hz)
                 if (own & (hl == lv)).sum() >= 16:
                     own &= hl == lv
                 if own.sum() < 4:
                     continue
-                at, creases, simple = _roof(hx[own], hz[own], hh[own], piece)
+                at, creases, simple, pitch = _roof(hx[own], hz[own], hh[own], piece)
                 plain |= not simple
-                p, r, w = _mesh(piece, at, creases, base)
-                k0 = len(positions)
-                positions += p
-                roof_tris += [k0 + t for t in r]
-                wall_tris += [k0 + t for t in w]
+                top_ = float(np.percentile(hh[own], 95))
+                pieces.append(_Piece(piece, kind, at, creases, pitch, top_, reach))
+        for pc, inner, outer in _eaves(pieces, beside(unary_union([w for w, _ in walls]))):
+            p, r, w, e = _mesh(inner, pc.at, pc.creases, base, outer, pc.reach)
+            k0 = len(positions)
+            positions += p
+            roof_tris += [k0 + t for t in r]
+            wall_tris += [k0 + t for t in w]
+            eave_tris += [k0 + t for t in e]
         if not roof_tris:
             continue
         kinds = {kind for _, kind in walls}
@@ -291,6 +328,7 @@ def new_buildings(
                 positions=[round(float(q), 2) for p in positions for q in p],
                 roof=[int(t) for t in roof_tris],
                 wall=[int(t) for t in wall_tris],
+                eave=[int(t) for t in eave_tris],
                 source="lidar",
             )
         )
@@ -667,59 +705,78 @@ def roof_shape(
     """The roof that fits the lidar's heights best: flat, a single pitch, a gable or a hip along either
     axis of the outline's rectangle, or (none fits within ROOF_FIT) a plain one (_plain_roof). Returns
     the height at a point and the creases (ridges: segments the mesh must have edges along)."""
-    at, creases, _ = _roof(x, z, h, outline)
+    at, creases, _, _ = _roof(x, z, h, outline)
     return at, creases
 
 
 def _roof(
     x: np.ndarray, z: np.ndarray, h: np.ndarray, outline: Any
-) -> tuple[Any, list[tuple[np.ndarray, np.ndarray]], bool]:
-    """roof_shape's, and whether a simple shape fits."""
-    rms, at, creases = _simple_roof(x, z, h, outline)
+) -> tuple[Any, list[tuple[np.ndarray, np.ndarray]], bool, float]:
+    """roof_shape's, whether a simple shape fits, and its pitch (degrees)."""
+    rms, at, creases, slope = _simple_roof(x, z, h, outline)
     if rms <= ROOF_FIT:
-        return at, creases, True
-    at, creases = _plain_roof(h, outline)
-    return at, creases, False
+        return at, creases, True, float(np.degrees(np.arctan(slope)))
+    at, creases, slope = _plain_roof(x, z, h, outline)
+    return at, creases, False, float(np.degrees(np.arctan(slope)))
 
 
-def _plain_roof(h: np.ndarray, outline: Any) -> tuple[Any, list[tuple[np.ndarray, np.ndarray]]]:
-    """A roof the simple shapes do not fit, drawn calm: flat (at the heights' median) where half of
-    them lie within FLAT_IQR, else a gable along the outline's long axis from the eaves to the ridge the
-    lidar measured (its low and high heights)."""
-    q25, q75 = np.percentile(h, [25, 75])
-    if q75 - q25 < FLAT_IQR:
-        level = float(np.median(h))
-        return (lambda px, pz: level), []
-    eave, ridge = (float(v) for v in np.percentile(h, [5, 95]))
+def _axes(outline: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray, float, float]:
+    """The outline's smallest rectangle: its centre, long and short axes (unit), length and width."""
     rect = np.asarray(outline.minimum_rotated_rectangle.exterior.coords)[:4]
     e1, e2 = rect[1] - rect[0], rect[2] - rect[1]
     long_, short_ = (e1, e2) if np.hypot(*e1) >= np.hypot(*e2) else (e2, e1)
-    u = long_ / max(float(np.hypot(*long_)), 1e-9)
-    v = short_ / max(float(np.hypot(*short_)), 1e-9)
-    half = max(float(np.hypot(*short_)) / 2, 1e-6)
-    c = rect.mean(axis=0)
+    L, W = max(float(np.hypot(*long_)), 1e-6), max(float(np.hypot(*short_)), 1e-6)
+    return rect.mean(axis=0), long_ / L, short_ / W, L, W
 
-    def at(px: float, pz: float) -> float:
-        off = abs(float((np.array([px, pz]) - c) @ v))
-        return ridge - (ridge - eave) * min(1.0, off / half)
 
-    big = float(np.hypot(*long_)) + 2 * half
-    return at, [(c - u * big, c + u * big)]
+def _plain_roof(
+    x: np.ndarray, z: np.ndarray, h: np.ndarray, outline: Any
+) -> tuple[Any, list[tuple[np.ndarray, np.ndarray]], float]:
+    """A roof the simple shapes do not fit, drawn calm: flat (at the heights' median) where half of
+    them lie within FLAT_IQR, else a gable along the outline's long axis from the eaves to the ridge the
+    lidar measured (its low and high heights); on a part too narrow for it, or where it would be steeper
+    than MAX_PITCH, the single slope the heights lean on (flat at their median when that is too steep
+    too). Returns the height at a point, the creases and the slope (rise over run)."""
+    level = float(np.median(h))
+    flat: tuple[Any, list[tuple[np.ndarray, np.ndarray]], float] = (lambda px, pz: level), [], 0.0
+    q25, q75 = np.percentile(h, [25, 75])
+    if q75 - q25 < FLAT_IQR:
+        return flat
+    steep = float(np.tan(np.radians(MAX_PITCH)))
+    eave, ridge = (float(v) for v in np.percentile(h, [5, 95]))
+    c, u, v, L, W = _axes(outline)
+    half = W / 2
+    if W >= NARROW and (ridge - eave) / half <= steep:
+
+        def gable(px: float, pz: float) -> float:
+            off = abs(float((np.array([px, pz]) - c) @ v))
+            return ridge - (ridge - eave) * off / half
+
+        big = L + W
+        return gable, [(c - u * big, c + u * big)], (ridge - eave) / half
+    fits = []
+    for axis in (u, v):
+        t = (np.c_[x, z] - c) @ axis
+        a = np.c_[np.ones_like(t), t]
+        coef, *_ = np.linalg.lstsq(a, h, rcond=None)
+        fits.append((float(np.sqrt(np.mean((a @ coef - h) ** 2))), axis, coef))
+    _, axis, coef = min(fits, key=lambda f: f[0])
+    r0, s0 = float(coef[0]), float(coef[1])
+    if abs(s0) > steep:
+        return flat
+    return (lambda px, pz: r0 + s0 * float((np.array([px, pz]) - c) @ axis)), [], abs(s0)
 
 
 def _simple_roof(
     x: np.ndarray, z: np.ndarray, h: np.ndarray, outline: Any
-) -> tuple[float, Any, list[tuple[np.ndarray, np.ndarray]]]:
+) -> tuple[float, Any, list[tuple[np.ndarray, np.ndarray]], float]:
     """The simple roof shape (flat, a single pitch, a gable, a hip) that fits the heights best, with
-    its RMS off them: (rms, the height at a point, the creases)."""
-    rect = np.asarray(outline.minimum_rotated_rectangle.exterior.coords)[:4]
-    e1, e2 = rect[1] - rect[0], rect[2] - rect[1]
-    long_, short_ = (e1, e2) if np.hypot(*e1) >= np.hypot(*e2) else (e2, e1)
-    L, W = float(np.hypot(*long_)), float(np.hypot(*short_))
-    u, v = long_ / L, short_ / W
-    c = rect.mean(axis=0)
+    its RMS off them: (rms, the height at a point, the creases, the slope: rise over run). No gable or
+    hip on a part narrower than NARROW, no shape steeper than MAX_PITCH."""
+    c, u, v, L, W = _axes(outline)
     pts = np.c_[x, z] - c
     tu, tv = pts @ u, pts @ v
+    steep = float(np.tan(np.radians(MAX_PITCH)))
 
     def fit(feature: np.ndarray) -> tuple[float, np.ndarray]:
         a = np.c_[np.ones_like(feature), feature]
@@ -730,16 +787,19 @@ def _simple_roof(
     candidates.append(
         (float(np.std(h)), "flat", None, np.array([float(np.percentile(h, 60)), 0.0]))
     )
+    shaped: list[tuple[float, str, Any, np.ndarray]] = []
     for name, t in (("pitch-u", tu), ("pitch-v", tv)):
         rms, coef = fit(t)
-        candidates.append((rms, name, None, coef))
-    for name, t, span in (("gable-u", tv, W), ("gable-v", tu, L)):
-        for d0 in np.arange(-span / 4, span / 4 + 1e-6, 0.25):
-            rms, coef = fit(-np.abs(t - d0))
-            candidates.append((rms + 0.02, name, float(d0), coef))
+        shaped.append((rms, name, None, coef))
     half = max(0.0, (L - W) / 2)
-    rms, coef = fit(-np.maximum(np.abs(tv), np.abs(tu) - half))
-    candidates.append((rms + 0.04, "hip", half, coef))
+    if W >= NARROW:
+        for name, t, span in (("gable-u", tv, W), ("gable-v", tu, L)):
+            for d0 in np.arange(-span / 4, span / 4 + 1e-6, 0.25):
+                rms, coef = fit(-np.abs(t - d0))
+                shaped.append((rms + 0.02, name, float(d0), coef))
+        rms, coef = fit(-np.maximum(np.abs(tv), np.abs(tu) - half))
+        shaped.append((rms + 0.04, "hip", half, coef))
+    candidates += [k for k in shaped if abs(float(k[3][1])) <= steep]
     rms, name, d0, coef = min(candidates, key=lambda k: k[0])
     spread = float(np.percentile(h, 95) - np.percentile(h, 5))
     if spread < 0.8:
@@ -774,19 +834,155 @@ def _simple_roof(
         for sx in (-1, 1):
             for sy in (-1, 1):
                 creases.append((c + sx * e, c + sx * e + (sx * u + sy * v) * big))
-    return rms, at, creases
+    return rms, at, creases, 0.0 if name == "flat" else abs(s0)
+
+
+def _overhang(wall: Any, others: list[Any], cells: np.ndarray, transform: Any) -> float:
+    """How far the lidar's roof reaches past survey walls: its cells in a strip around them (not under
+    the building's `others` walls) over the walls' free length, less half a cell (a cell the roof's edge
+    crosses holds a point of it), within EAVE_RANGE; EAVE where that is no overhang (the outline and
+    the lidar disagree: none, or wider than any)."""
+    from rasterio.features import rasterize
+    from shapely import unary_union
+
+    around = wall.buffer(EAVE_RANGE[1] + 1.0, join_style="mitre")
+    edge = wall.exterior
+    if others:
+        near = unary_union(others)
+        around = around.difference(near)
+        edge = edge.difference(near.buffer(0.3))
+    if around.is_empty or edge.length < 1.0:
+        return EAVE
+    # the cells around and under the walls, less the walls' own area (a cell on the walls' line is
+    # neither in nor out)
+    count = rasterize([(around, 1)], out_shape=cells.shape, transform=transform, fill=0) > 0
+    width = (float((count & cells).sum()) * CELL * CELL - wall.area) / edge.length - CELL / 2
+    if not 0.1 <= width <= 1.5:
+        return EAVE
+    return float(np.clip(width, *EAVE_RANGE))
+
+
+class _Footprints:
+    """Where the known buildings stand near a region (their roofs seen from above), each outline made once."""
+
+    def __init__(self, known: list[swiss.Building]) -> None:
+        self.known = known
+        self.boxes = np.full((len(known), 4), np.nan)
+        for i, b in enumerate(known):
+            p = np.asarray(b.positions, dtype=np.float64).reshape(-1, 3)
+            if len(p):
+                self.boxes[i] = (p[:, 0].min(), p[:, 2].min(), p[:, 0].max(), p[:, 2].max())
+        self.made: dict[int, Any] = {}
+
+    def __call__(self, region: Any) -> Any:
+        from shapely import unary_union
+        from shapely.geometry import Polygon
+
+        x0, z0, x1, z1 = region.bounds
+        reach = EAVE_RANGE[1] + 1.0
+        b = self.boxes
+        near = np.nonzero(
+            (b[:, 0] <= x1 + reach)
+            & (b[:, 2] >= x0 - reach)
+            & (b[:, 1] <= z1 + reach)
+            & (b[:, 3] >= z0 - reach)
+        )[0]
+        out = []
+        for i in near.tolist():
+            if i not in self.made:
+                p = np.asarray(self.known[i].positions, dtype=np.float64).reshape(-1, 3)
+                r = np.asarray(self.known[i].roof, dtype=np.int64).reshape(-1, 3)
+                tris = [Polygon(p[t][:, [0, 2]]) for t in r]
+                self.made[i] = unary_union([t.buffer(0.02) for t in tris if t.area > 1e-4])
+            out.append(self.made[i])
+        return unary_union(out) if out else None
+
+
+def _eaves(pieces: list[_Piece], beside: Any) -> list[tuple[_Piece, Any, Any]]:
+    """Each piece with its walls and its roof's outline (None where the roof ends at the walls: a flat
+    one). A pitched roof reaches past survey walls by the piece's reach; a lidar outline is its roof's,
+    so its walls stand EAVE inside it, except where they meet the building's other pieces. No eave
+    reaches over another piece but one EAVE_CLEAR under it; a higher roof's stops where a lower one's
+    eaves begin (round the corner where they meet, it stood out over them as a ledge), and a lower
+    one's runs on to the higher walls under nothing else's. None reaches into the buildings `beside`."""
+    from shapely import unary_union
+
+    pitched = [pc.pitch >= PITCHED for pc in pieces]
+    walls = []
+    for i, pc in enumerate(pieces):
+        w = pc.outline
+        if pitched[i] and pc.kind != "survey":
+            others = [q.outline for j, q in enumerate(pieces) if j != i]
+            grown = pc.outline
+            if others:
+                grown = grown.union(unary_union(others).buffer(EAVE + 0.05, join_style="mitre"))
+            inset = _largest(grown.buffer(-EAVE, join_style="mitre").intersection(pc.outline))
+            if inset is not None and inset.area >= 0.5 * pc.outline.area:
+                w = inset
+        walls.append(w)
+    zones = [
+        pc.outline.buffer(pc.reach, join_style="mitre")
+        if pitched[i] and pc.kind == "survey"
+        else pc.outline
+        for i, pc in enumerate(pieces)
+    ]
+    low = [_eave_level(pc, w) for pc, w in zip(pieces, walls, strict=True)]
+    roofs: list[Any] = [None] * len(pieces)
+    taken = beside
+    done: set[int] = set()
+    for i in sorted(range(len(pieces)), key=lambda k: -pieces[k].top):
+        pc = pieces[i]
+        if not pitched[i]:
+            continue
+        done.add(i)
+        r = pc.outline
+        if pc.kind == "survey":
+            r = r.buffer(pc.reach, join_style="mitre")
+        cut = [
+            pieces[j].outline if j in done else zones[j]
+            for j in range(len(pieces))
+            if j != i and pieces[j].top + EAVE_CLEAR > low[i]
+        ]
+        cut += [taken] if taken is not None else []
+        if cut:
+            r = r.difference(unary_union(cut))
+        r = r.union(walls[i])
+        polys = [g for g in getattr(r, "geoms", [r]) if g.geom_type == "Polygon"]
+        r = max(polys, key=lambda g: g.intersection(walls[i]).area) if polys else None
+        if r is None or r.area - walls[i].area < 0.5:
+            continue
+        roofs[i] = r
+        taken = r if taken is None else taken.union(r)
+    return [(pc, w, r) for pc, w, r in zip(pieces, walls, roofs, strict=True)]
+
+
+def _eave_level(pc: _Piece, walls: Any) -> float:
+    """The roof's height where it is lowest over the walls: the eaves' top."""
+    ring = walls.exterior
+    return float(
+        min(pc.at(*ring.interpolate(d).coords[0]) for d in np.arange(0.0, ring.length, 0.5))
+    )
 
 
 def _mesh(
-    outline: Any, roof_at: Any, creases: list[tuple[np.ndarray, np.ndarray]], base: float
-) -> tuple[list[np.ndarray], list[int], list[int]]:
+    outline: Any,
+    roof_at: Any,
+    creases: list[tuple[np.ndarray, np.ndarray]],
+    base: float,
+    roof_outline: Any = None,
+    reach: float = EAVE,
+) -> tuple[list[np.ndarray], list[int], list[int], list[int]]:
     """A closed house: the outline's edges split every metre and where a crease crosses them, the roof
     triangulated over those points, a 1 m grid inside and points along the creases, the walls from
-    `base` up to the roof along every edge piece."""
+    `base` up to the roof along every edge piece; and, where `roof_outline` reaches past the walls, the
+    eaves (_eave_mesh: `reach` is how far)."""
     from scipy.spatial import Delaunay
     from shapely import contains_xy
     from shapely.geometry import LineString
+    from shapely.geometry.polygon import orient
 
+    # the walls face outward only along a counter-clockwise ring: an inset or cut outline may come clockwise
+    outline = orient(outline, sign=1.0)
     ring = np.asarray(outline.exterior.coords)[:-1]
     edge_pts: list[np.ndarray] = []
     lines = [LineString([a, b]) for a, b in creases]
@@ -831,7 +1027,13 @@ def _mesh(
     pts2 = np.r_[outer, grid, np.asarray(crease_pts).reshape(-1, 2)]
     tri = Delaunay(pts2).simplices
     cen = pts2[tri].mean(axis=1)
-    tri = tri[contains_xy(outline, cen[:, 0], cen[:, 1])]
+    # qhull leaves slivers along a straight edge's points: flat seen from above, they stood upright
+    # over the walls' top
+    a, b, cc = (pts2[tri[:, k]] for k in range(3))
+    plan = np.abs(
+        (b[:, 0] - a[:, 0]) * (cc[:, 1] - a[:, 1]) - (b[:, 1] - a[:, 1]) * (cc[:, 0] - a[:, 0])
+    )
+    tri = tri[contains_xy(outline, cen[:, 0], cen[:, 1]) & (plan > 2e-3)]
     heights = np.array([roof_at(x, z) for x, z in pts2])
     positions = [np.array([x, hh, z]) for (x, z), hh in zip(pts2, heights, strict=True)]
     roof_tris: list[int] = []
@@ -854,7 +1056,84 @@ def _mesh(
         nrm = np.cross(positions[v0 + 1] - positions[v0], positions[v0 + 2] - positions[v0])
         quad = [v0, v0 + 1, v0 + 2, v0, v0 + 2, v0 + 3]
         wall_tris += quad if float(nrm @ out_dir) > 0 else [v0, v0 + 2, v0 + 1, v0, v0 + 3, v0 + 2]
-    return positions, roof_tris, wall_tris
+    eave_tris: list[int] = []
+    if roof_outline is not None:
+        eave_tris = _eave_mesh(
+            roof_outline.difference(outline), outline, roof_at, lines, reach, positions
+        )
+    return positions, roof_tris, wall_tris, eave_tris
+
+
+def _eave_mesh(
+    eave: Any, walls: Any, roof_at: Any, lines: list[Any], reach: float, positions: list[np.ndarray]
+) -> list[int]:
+    """The eaves over `eave` (the roof's outline past the walls), their points added to `positions`:
+    the roof's planes drawn on (cut along the creases, so each piece is one plane), a fascia FASCIA
+    deep at their edge and the soffit under them, from the fascia's foot back to the walls' top."""
+    from shapely import constrained_delaunay_triangles
+    from shapely.geometry import LineString, Point
+    from shapely.geometry.polygon import orient
+    from shapely.ops import split
+
+    parts = [
+        g for g in getattr(eave, "geoms", [eave]) if g.geom_type == "Polygon" and g.area > 0.05
+    ]
+    if not parts:
+        return []
+    tables: tuple[dict[tuple[float, float], int], dict[tuple[float, float], int]] = ({}, {})
+
+    def vertex(x: float, z: float, under: bool) -> int:
+        key = (round(x, 3), round(z, 3))
+        table = tables[under]
+        if key not in table:
+            y = roof_at(x, z)
+            if under:
+                y -= FASCIA * min(1.0, walls.distance(Point(x, z)) / max(reach, 1e-6))
+            table[key] = len(positions)
+            positions.append(np.array([x, y, z]))
+        return table[key]
+
+    def facing(a: int, b: int, c: int, want: np.ndarray) -> list[int]:
+        n = np.cross(positions[b] - positions[a], positions[c] - positions[a])
+        if float(n @ n) < 1e-10:
+            return []
+        return [a, b, c] if float(n @ want) > 0 else [a, c, b]
+
+    tris: list[int] = []
+    up, down = np.array([0.0, 1.0, 0.0]), np.array([0.0, -1.0, 0.0])
+    for part in parts:
+        planes = [part]
+        for ln in lines:
+            planes = [q for g in planes for q in getattr(split(g, ln), "geoms", [g])]
+        for plane in planes:
+            for t in constrained_delaunay_triangles(plane).geoms:
+                xy = np.asarray(t.exterior.coords)[:3]
+                if t.area < 1e-3:
+                    continue
+                for under, want in ((False, up), (True, down)):
+                    a, b, c = (vertex(float(x), float(z), under) for x, z in xy)
+                    tris += facing(a, b, c, want)
+        # the fascia along the eaves' edge (not where they meet the walls), split at the creases
+        ring_part = orient(part, sign=1.0)
+        for ring in (ring_part.exterior, *ring_part.interiors):
+            pts = np.asarray(ring.coords)
+            for a2, b2 in pairwise(pts):
+                if walls.distance(Point(*((a2 + b2) / 2))) < 1e-3:
+                    continue
+                cuts = [0.0, 1.0]
+                seg = np.hypot(*(b2 - a2))
+                for ln in lines:
+                    hit = ln.intersection(LineString([a2, b2]))
+                    if hit.geom_type == "Point":
+                        cuts.append(float(np.hypot(hit.x - a2[0], hit.y - a2[1]) / max(seg, 1e-9)))
+                out_dir = np.array([b2[1] - a2[1], 0.0, -(b2[0] - a2[0])])
+                ts = sorted(set(cuts))
+                for t0, t1 in pairwise(ts):
+                    p0, p1 = a2 + (b2 - a2) * t0, a2 + (b2 - a2) * t1
+                    ta, tb = vertex(p0[0], p0[1], False), vertex(p1[0], p1[1], False)
+                    ua, ub = vertex(p0[0], p0[1], True), vertex(p1[0], p1[1], True)
+                    tris += facing(ta, ua, ub, out_dir) + facing(ta, ub, tb, out_dir)
+    return tris
 
 
 @dataclass

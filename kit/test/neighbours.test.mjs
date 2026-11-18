@@ -1,7 +1,7 @@
 // The neighbours' doors and windows (#124): in proportion to each house, on its walls, the door toward the road.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { Blockers, PER_WINDOW, facadesOf, houseHash, openingMeshes, planOpenings, roofLook } from "../neighbours.js";
+import { Blockers, FLAT_ROOF, PER_WINDOW, ROOF_TINTS, facadesOf, houseHash, openingMeshes, planOpenings, roofFamily, roofLook, roofTint } from "../neighbours.js";
 
 /**
  * A gabled box as buildings.json gives it (scene frame): `w` along x, `d` along z, walls from `foot` to `eave`, the
@@ -219,4 +219,43 @@ test("roofLook: a finished roof keeps the photo, a field or a building site gets
   assert.equal(roofLook(field), "tiles");
   assert.equal(roofLook(site), "tiles");
   assert.equal(roofLook([]), "tiles");
+});
+
+test("a roof face is gravel only when flat (under 5°): a 10° lean-to or a 14° hip is tiles (#123)", () => {
+  const level = (deg) => Math.cos((deg * Math.PI) / 180);
+  for (const deg of [0, 2, 4.5]) assert.ok(level(deg) > FLAT_ROOF, `${deg}°`);
+  for (const deg of [6, 10, 14, 30]) assert.ok(level(deg) <= FLAT_ROOF, `${deg}°`);
+});
+
+test("roofFamily: the aerial photo's pale roofs (Le Mont-sur-Lausanne's medians) read as real roof colours", () => {
+  // medians of photographed roofs: warm ones are clay, grey ones fibre cement or concrete
+  assert.equal(roofFamily([0.66, 0.58, 0.53]), "terracotta");
+  assert.equal(roofFamily([0.6, 0.48, 0.41]), "terracotta");
+  assert.equal(roofFamily([0.46, 0.41, 0.37]), "brown");
+  assert.equal(roofFamily([0.35, 0.3, 0.27]), "brown");
+  assert.equal(roofFamily([0.48, 0.46, 0.45]), "grey");
+  assert.equal(roofFamily([0.45, 0.47, 0.5]), "grey");
+  assert.equal(roofFamily([0.32, 0.31, 0.31]), "anthracite");
+  assert.equal(roofFamily([0.38, 0.37, 0.35]), "anthracite");
+});
+
+test("roofTint: a real roof colour, never the photo's pale grey, varying from house to house", () => {
+  const lum = ([r, g, b]) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  const all = Object.values(ROOF_TINTS).flat();
+  const tints = [];
+  for (let k = 0; k < 40; k++) {
+    const hash = houseHash(`lidar-${k}-${k * 3}`);
+    for (const photographed of [[0.48, 0.46, 0.45], [0.6, 0.48, 0.41], [0.35, 0.3, 0.27], null]) {
+      const t = roofTint(photographed, hash);
+      tints.push(t);
+      assert.ok(t.every((v) => v >= 0 && v <= 1));
+      // a palette colour, a few per cent lighter or darker
+      assert.ok(all.some((p) => p.every((v, i) => Math.abs(t[i] - v) <= 0.07 * v + 1e-9)), JSON.stringify(t));
+      assert.ok(lum(t) < 0.46, `too pale: ${JSON.stringify(t)}`);
+    }
+    const tile = roofTint([0.6, 0.48, 0.41], hash);
+    assert.ok(tile[0] > tile[1] * 1.5, `terracotta: ${JSON.stringify(tile)}`);
+  }
+  assert.ok(new Set(tints.map((t) => t.map((v) => v.toFixed(3)).join())).size > 20);
+  assert.deepEqual(roofTint([0.6, 0.48, 0.41], 12345), roofTint([0.6, 0.48, 0.41], 12345));
 });

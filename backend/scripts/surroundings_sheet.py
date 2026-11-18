@@ -18,6 +18,9 @@ as neighbours_sheet.py does); on Modal it goes up in the scene directory's src/:
 
     uvx modal run deploy/modal_sheet.py --script surroundings_sheet.py --scene <dir with src/gilles.json> \\
         --out /tmp/surroundings --args "--project bb4dc4652d41 --buildings {scene}/src/gilles.json ..."
+
+`--kit-buildings KIT=PATH` serves it to that column only: before and after a geo change in one sheet, the old
+renderer with dev's buildings.json beside the new one with this checkout's (#123).
 """
 
 from __future__ import annotations
@@ -102,7 +105,13 @@ async def shoot_kit(
     if extra:
         url += "&" + extra
     page = await browser.new_page(viewport={"width": w, "height": h})
-    result: dict[str, Any] = {"kit": kit, "console": [], "views": []}
+    buildings = args.kit_buildings.get(kit, args.buildings)
+    result: dict[str, Any] = {
+        "kit": kit,
+        "buildings": buildings.name if buildings else None,
+        "console": [],
+        "views": [],
+    }
     page.on(
         "console",
         lambda m: (
@@ -112,7 +121,7 @@ async def shoot_kit(
         ),
     )
     await serve_local_kit(page, kit_files(name), False)
-    await serve_buildings(page, args.buildings)
+    await serve_buildings(page, buildings)
     sizes: list[int] = []
     page.on("requestfinished", lambda r: asyncio.ensure_future(_size(r, sizes)))
     await present_token(page, url)
@@ -175,7 +184,7 @@ async def warm_up(browser: Browser, url: str, kit: str, args: argparse.Namespace
     caches (shader programs, the GPU process)."""
     page = await browser.new_page(viewport={"width": args.size[0], "height": args.size[1]})
     await serve_local_kit(page, kit_files(kit.partition("?")[0]), False)
-    await serve_buildings(page, args.buildings)
+    await serve_buildings(page, args.kit_buildings.get(kit, args.buildings))
     await present_token(page, url)
     t0 = time.monotonic()
     await page.goto(url)
@@ -219,7 +228,8 @@ def write_sheet(
     for k, r in enumerate(results):
         draw.text(
             (k * cell + 8, 8),
-            f"{r['kit']}  ·  ready {r['ready_s']} s  ·  {r['render_ms']} ms/frame",
+            f"{r['kit']}{' + ' + r['buildings'] if r.get('buildings') else ''}  ·  ready {r['ready_s']} s"
+            f"  ·  {r['render_ms']} ms/frame",
             fill="black",
             font=font,
         )
@@ -262,6 +272,13 @@ def main() -> None:
         "--buildings", type=Path, help="a local buildings.json served instead of the project's"
     )
     ap.add_argument(
+        "--kit-buildings",
+        action="append",
+        default=[],
+        metavar="KIT=PATH",
+        help="a local buildings.json for that --kit column only (repeat per column)",
+    )
+    ap.add_argument(
         "--size", default="1600x1000", type=lambda s: tuple(int(v) for v in s.split("x"))
     )
     ap.add_argument("--wait", type=int, default=700, help="ms after a camera move before the shot")
@@ -283,6 +300,10 @@ def main() -> None:
     if not HOST_GPU and (not args.chrome or not Path(args.chrome).is_file()):
         sys.exit("no Chrome for Testing 145: pass --chrome or set WALK_CHROME (see walk_sheet.py)")
     kits = args.kit or ["dev"]
+    args.kit_buildings = {k: Path(v) for k, _, v in (s.partition("=") for s in args.kit_buildings)}
+    for k in args.kit_buildings:
+        if k not in kits:
+            sys.exit(f"--kit-buildings names {k}, which no --kit is")
     for k in kits:
         kit_files(k.partition("?")[0])
     page = f"versions/{args.version}" if args.version is not None else "scene"

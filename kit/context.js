@@ -7,22 +7,21 @@
 //
 // The files are in a local frame around the searched point (x east, z south, y the altitude); the
 // alignment in context.json places the scene in it (see geo/context.py). The builder's site (the house,
-// the garden, its fences and hedges: everything but its ground, plus SITE_MARGIN) keeps the builder's
-// ground; beyond it the real ground takes over: the builder's ground is clipped there (a lawn drawn out
-// to 85 m or a 350 m backdrop would otherwise lie over the real land as a green square, #65), the real
-// ground is sunk under the site and blended into its rim over a ring, and it fades into the meadow at
-// the rim of the disc
+// the garden, its fences and hedges: ground.js) keeps the builder's ground; beyond it the real ground
+// takes over: the builder's ground is clipped there, tagged or not (a lawn drawn out to 90 m or a 350 m
+// backdrop would otherwise lie over the real land as a green square, #65, #123), the real ground is sunk
+// under the site and blended into its rim over a ring, and it fades into the meadow at the rim of the disc
 
 import * as THREE from "three";
 import { finishMaterial, finishesReady, loadTexture, metricUV } from "./finishes.js";
 import { leafBush, leafTree, treeStand } from "housekit"; // the page's own instance (its import map)
 import { horizonProfile, lv95ToWgs84 } from "./sun.js";
-import { Blockers, FLAT_BEYOND, RENDERS, houseHash, openingMeshes, planOpenings, roofLook } from "./neighbours.js";
+import { Blockers, FLAT_BEYOND, FLAT_ROOF, RENDERS, houseHash, openingMeshes, planOpenings, roofLook, roofTint } from "./neighbours.js";
+import { clipToSite, ownGround } from "./ground.js";
 
 const RING = 5; // metres over which the real ground joins the builder's (short: a longer ring tilts the roads beside the plot)
 const SINK = 3; // metres the real ground lies under the builder's inside its plot
 const RIM = 25; // metres over which the photo fades into the meadow at the edge of the disc
-const SITE_MARGIN = 3; // metres of the builder's ground kept around its site
 // the trees of the lidar (trees.json, #50): made branch by branch near the site (leafTree, leafBush),
 // a lighter stand farther out; within the owner's radius of the house (alignment.near, #51; NEAR_3D by
 // default), thinning out over BLEND_3D beyond it, like the ground by type
@@ -44,42 +43,6 @@ function transforms(a) {
   };
   const toLocal = (x, z) => [a.x + c * x - s * z, a.z + s * x + c * z];
   return { toScene, toLocal };
-}
-
-/**
- * The scene's own ground: the box of the builder's site (every mesh but its ground and what it excludes
- * from framing, like the viewer's framing), SITE_MARGIN wider, and its ground meshes (`kind: "terrain"`;
- * none: flat ground at y = 0).
- */
-function ownGround(houseGroup) {
-  const site = new THREE.Box3(), tmp = new THREE.Box3(), terrains = [];
-  houseGroup.traverse((o) => {
-    if (!o.isMesh) return;
-    if (o.userData?.kind === "terrain") { terrains.push(o); return; }
-    if (o.userData?.excludeFromBounds) return;
-    for (let p = o.parent; p && p !== houseGroup; p = p.parent) if (p.userData?.excludeFromBounds || p.userData?.kind === "terrain") return;
-    tmp.setFromObject(o);
-    if (!tmp.isEmpty()) site.union(tmp);
-  });
-  const flat = !terrains.some((t) => !t.userData.excludeFromBounds);
-  return { boxes: site.isEmpty() ? [] : [site.expandByScalar(SITE_MARGIN)], flat, terrains };
-}
-
-/** Clip the builder's ground meshes to the site's box (the real ground beyond it): returns how many. */
-function clipToSite(terrains, box) {
-  const planes = [
-    new THREE.Plane(new THREE.Vector3(1, 0, 0), -box.min.x), new THREE.Plane(new THREE.Vector3(-1, 0, 0), box.max.x),
-    new THREE.Plane(new THREE.Vector3(0, 0, 1), -box.min.z), new THREE.Plane(new THREE.Vector3(0, 0, -1), box.max.z),
-  ];
-  for (const t of terrains) {
-    for (const m of Array.isArray(t.material) ? t.material : [t.material]) {
-      if (!m) continue;
-      m.clippingPlanes = planes;
-      m.clipShadows = true;
-      m.needsUpdate = true;
-    }
-  }
-  return terrains.length;
 }
 
 const distToBox = (x, z, b) => Math.hypot(Math.max(b.min.x - x, x - b.max.x, 0), Math.max(b.min.z - z, z - b.max.z, 0));
@@ -109,7 +72,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
   const own = ownGround(houseGroup);
   const ownY = (x, z) => (own.flat ? 0 : (Number.isFinite(heightAt?.(x, z)) ? heightAt(x, z) : 0));
   // the builder's ground ends with its site (the page enables local clipping when `clipped`)
-  const clipped = own.boxes.length ? clipToSite(own.terrains, own.boxes[0]) : 0;
+  const clipped = own.boxes.length ? clipToSite(houseGroup, own.terrains, own.boxes[0]) : 0;
   const siteCentre = own.boxes[0]?.getCenter(new THREE.Vector3()) ?? new THREE.Vector3();
   // the 3D near the house (trees, ground by type), the photo beyond: the owner's radius (#51)
   const nearRadius = Number.isFinite(meta.alignment?.near) ? meta.alignment.near : NEAR_3D;
@@ -219,7 +182,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     const cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cz = pts.reduce((s, q) => s + q[2], 0) / pts.length;
     if (own.boxes.some((bx) => distToBox(cx, cz, bx) <= 0)) { skipped++; continue; }
     // each house its render (a Swiss palette, picked by its id so it stays)
-    houses.push({ id: b.id, source: b.source, local: p, pts, wall: b.wall, roof: b.roof, render: RENDERS[houseHash(b.id) % RENDERS.length] });
+    houses.push({ id: b.id, source: b.source, local: p, pts, wall: b.wall, roof: b.roof, eave: b.eave ?? [], render: RENDERS[houseHash(b.id) % RENDERS.length] });
   }
   const groundAt = (x, z) => { const [lx, lz] = toLocal(x, z); return joined(x, z, realY(lx, lz)); };
   let t0 = performance.now();
@@ -236,7 +199,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
       // tiles (pitched) or gravel (flat) in the colours of the neighbourhood's photographed roofs
       for (let t = 0; t < roof.length; t += 3) {
         const [qa, qb, qc] = [h.pts[roof[t]], h.pts[roof[t + 1]], h.pts[roof[t + 2]]];
-        const level = levelness(qa, qb, qc) > 0.97, into = level ? flat : tiled, c = level ? look.flat : look.tiled;
+        const level = levelness(qa, qb, qc) > FLAT_ROOF, into = level ? flat : tiled, c = level ? look.flat : look.tiled;
         into.pos.push(...qa, ...qb, ...qc);
         for (let k = 0; k < 3; k++) into.col.push(c.r, c.g, c.b);
       }
@@ -333,6 +296,9 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     meta,
     skipped,
     clipped,
+    // what the site is made of (ground.js): the large flat meshes taken for the builder's ground, the garden
+    // pieces left out of the framing that widened it, its box (min x, min z, max x, max z)
+    ground: { sheets: own.sheets, garden: own.garden, box: own.boxes[0] ? [own.boxes[0].min.x, own.boxes[0].min.z, own.boxes[0].max.x, own.boxes[0].max.z].map((v) => Math.round(v * 10) / 10) : null },
     built,
     trees: trees ? { near: trees.userData.near, far: trees.userData.far } : null,
     cover: Boolean(coverUniforms),
@@ -673,6 +639,13 @@ function drawnAs(h) {
     const tri = [h.roof[t], h.roof[t + 1], h.roof[t + 2]];
     (levelness(...tri.map((i) => h.pts[i])) < WALL_LIKE ? wall : roof).push(...tri);
   }
+  // the eaves (#123): their top is the roof's, their fascia and soffit wear the house's render
+  for (let t = 0; t < h.eave.length; t += 3) {
+    const tri = [h.eave[t], h.eave[t + 1], h.eave[t + 2]];
+    const [a, b, c] = tri.map((i) => h.pts[i]);
+    const up = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]) > 0;
+    (up && levelness(a, b, c) >= WALL_LIKE ? roof : wall).push(...tri);
+  }
   return { roof, wall };
 }
 
@@ -746,8 +719,9 @@ function roadFinder(cover, meta, toLocal) {
 
 /**
  * The houses newer than the aerial photo (the lidar's) that it shows as a building site, a field or a tree, each
- * with the roof colours it wears instead: { tiled, flat } (linear), those of a photographed roof of the
- * neighbourhood picked by the house's id, a little lighter or darker. Those it shows finished keep the photo.
+ * with the roof colours it wears instead: { tiled, flat } (linear). Tiles: a real roof colour of the kind of a
+ * photographed roof of the neighbourhood picked by the house's id (roofTint); gravel: that roof's own colour, a
+ * little lighter or darker. Those it shows finished keep the photo.
  */
 function newerRoofs(houses, photo, R) {
   const out = new Map();
@@ -778,7 +752,7 @@ function newerRoofs(houses, photo, R) {
   const median = (list) => [0, 1, 2].map((c) => list.map((s) => s[c]).sort((a, b) => a - b)[list.length >> 1]);
   const colours = { tiled: [], flat: [] };
   if (pix) {
-    const kinds = [["tiled", (a, b, c) => levelness(a, b, c) <= 0.97], ["flat", (a, b, c) => levelness(a, b, c) > 0.97]];
+    const kinds = [["tiled", (a, b, c) => levelness(a, b, c) <= FLAT_ROOF], ["flat", (a, b, c) => levelness(a, b, c) > FLAT_ROOF]];
     for (const h of houses) {
       if (h.source === "lidar") continue;
       for (const [kind, keep] of kinds) {
@@ -787,17 +761,16 @@ function newerRoofs(houses, photo, R) {
       }
     }
   }
-  const fallback = { tiled: [0.37, 0.35, 0.34], flat: [0.6, 0.59, 0.56] };
   for (const h of newer) {
     if (pix && roofLook(samples(h)) === "photo") continue;
     const hash = houseHash(h.id), shade = 0.92 + ((hash >>> 4) % 17) / 100;
-    const look = {};
-    for (const kind of ["tiled", "flat"]) {
-      const list = colours[kind].length ? colours[kind] : [fallback[kind]];
-      const [r, g, b] = list[(hash >>> 9) % list.length];
-      look[kind] = new THREE.Color().setRGB(r * shade, g * shade, b * shade, THREE.SRGBColorSpace);
-    }
-    out.set(h, look);
+    const photographed = (kind) => (colours[kind].length ? colours[kind][(hash >>> 9) % colours[kind].length] : null);
+    const [r, g, b] = (photographed("flat") ?? [0.6, 0.59, 0.56]).map((v) => v * shade);
+    out.set(h, {
+      // the photo's haze pales its roofs: tiles take a real roof colour of the photographed one's kind
+      tiled: new THREE.Color().setRGB(...roofTint(photographed("tiled"), hash), THREE.SRGBColorSpace),
+      flat: new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace),
+    });
   }
   return out;
 }

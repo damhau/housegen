@@ -1,5 +1,5 @@
 // housekit/neighbours — the doors and windows of the neighbouring houses in the surroundings (#124), and how the
-// roofs of houses newer than the aerial photo look. Generic but in proportion to each house: the count follows a
+// roofs of houses newer than the aerial photo look (#123: tiles down to 5°, in real roof colours). Generic but in proportion to each house: the count follows a
 // façade's length and its storeys (about one window per PER_WINDOW metres and storey at most), spaced irregularly
 // by the house's id, stacked in columns; a gable gets one attic window when it is tall enough; a small low volume
 // gets a garage door or one small window; a house one front door, on the façade facing the nearest road. Each
@@ -10,6 +10,7 @@
 //   const plan = planOpenings(house, { groundAt, road, blockers })   → { openings, rows, small }
 //   const group = openingMeshes(openings)                  a few InstancedMeshes
 //   roofLook(pixels)                                       "photo" when the photo shows a finished roof there
+//   roofTint(photographed, hash)                           a tiled roof's colour: a real one, of a photographed roof's kind
 //
 // A house: { id, source, pts: [[x, y, z]…] in the scene, wall: [i…], roof: [i…], render: THREE.Color }.
 // Façade frame: n the wall's outward normal (the triangles wind counter-clockwise seen from outside), t along it
@@ -45,6 +46,17 @@ const FRAMES = { white: "#eeeeea", anthracite: "#3b3e42", wood: "#7a5a3e" };
 const DOORS = ["#6a4a33", "#3b3e42", "#7d5c3f", "#2e4756", "#556b52", "#7c3d31", "#5d554c"];
 const STONE = "#cbc3b0"; // a molasse surround
 const TRIM = ["#b9b6ae", "#a7a39a", "#cfccc4"]; // sills, canopies, steps
+
+// a roof face more level than 5° is flat (gravel); steeper, it is tiled: a 10° lean-to or a low hip is tiles
+export const FLAT_ROOF = Math.cos((5 * Math.PI) / 180);
+const srgb = (hex) => [0, 2, 4].map((k) => parseInt(hex.slice(1 + k, 3 + k), 16) / 255);
+// the region's roofs (sRGB): clay tiles, terracotta and brown; fibre cement and concrete tiles, grey and anthracite
+export const ROOF_TINTS = {
+  terracotta: ["#86523f", "#8f5843", "#7a4b3b"].map(srgb),
+  brown: ["#6b3d2e", "#5a3a2e", "#7a4632"].map(srgb),
+  grey: ["#666560", "#6e6d69", "#5a5d61"].map(srgb),
+  anthracite: ["#4a4c4f", "#525458", "#44464a"].map(srgb),
+};
 
 /** The id's hash: the render a house wears (RENDERS) and the seed of its choices. */
 export function houseHash(id) {
@@ -777,4 +789,34 @@ export function roofLook(pixels) {
   return like / pixels.length >= 0.62 && spread <= 0.25 ? "photo" : "tiles";
 }
 
-export default { RENDERS, PER_WINDOW, houseHash, houseStyle, facadesOf, Blockers, planOpenings, openingMeshes, roofLook };
+/**
+ * Which real roof colour a photographed roof (its median, sRGB 0–1) is: the aerial photo's haze greys and pales
+ * them all, so a little warmth is clay (terracotta when light, else brown), none fibre cement or concrete (grey
+ * when light, else anthracite).
+ */
+export function roofFamily([r, g, b]) {
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), light = (mx + mn) / 2;
+  const sat = mx > mn ? (mx - mn) / (1 - Math.abs(2 * light - 1)) : 0;
+  let hue = 0;
+  if (mx > mn) {
+    const d = mx - mn;
+    hue = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    hue = (hue * 60 + 360) % 360;
+  }
+  if ((hue <= 40 || hue >= 340) && sat >= 0.06) return light >= 0.47 ? "terracotta" : "brown";
+  return light >= 0.45 ? "grey" : "anthracite";
+}
+
+/**
+ * A tiled roof's colour (sRGB 0–1 [r, g, b]) for a house the photo shows unbuilt: a real roof colour of the family
+ * of `photographed` (a neighbour's photographed roof, sRGB; none: any family), picked and shaded by the house's
+ * hash, so neighbours differ.
+ */
+export function roofTint(photographed, hash) {
+  const families = Object.keys(ROOF_TINTS);
+  const family = photographed ? roofFamily(photographed) : families[(hash >>> 17) % families.length];
+  const list = ROOF_TINTS[family], shade = 0.94 + ((hash >>> 4) % 13) / 100;
+  return list[(hash >>> 13) % list.length].map((v) => Math.min(1, v * shade));
+}
+
+export default { RENDERS, PER_WINDOW, FLAT_ROOF, ROOF_TINTS, houseHash, houseStyle, facadesOf, Blockers, planOpenings, openingMeshes, roofLook, roofFamily, roofTint };
