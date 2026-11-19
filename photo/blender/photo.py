@@ -6,7 +6,9 @@ What it decides, from the export (house.blend from export.py's GLB) and rooms.js
   (finish_textures), plaster relief and a faint unevenness on paint, glazed tiles, linen curtains;
 - dressing, from the kit's own pieces (userData name + footprint) and the object library: rugs, plants, wall art,
   armchairs with a throw, beds with cloth-simulated bedding (made/bedset.py, cached per size), cushions on sofas,
-  tables, counters and bathrooms dressed;
+  tables, counters and bathrooms dressed; in a scene the kit dressed (catalogue.DRESSED) none of it: the room as the
+  3D tour shows it, its own pieces at full resolution, with only the camera's rules (doors swung out of the frame,
+  what is cut right in front of the lens taken out);
 - the sun: a real sun position for the site's latitude that puts sun patches in the room the camera sees (camera
   rays, then shadow rays toward each candidate, then thumbnails);
 - the grade: AgX High Contrast; exposure and white balance from a preview, to a target median of the room and the
@@ -974,6 +976,10 @@ def dress_tables(scene, pieces):
         fp = o["footprint"]
         lo, hi = box(o)
         t = o.matrix_world.translation
+        if catalogue.DRESSED:  # the kit laid the table (dress_made drew its runner): its glasses, the runner's linen
+            style.table_glass(pieces, lo, hi)
+            n += 1
+            continue
         along_d = fp[1] >= fp[0]
         rugs = [r for r in pieces if name(r) == "rug"]
         if not any(box(r)[0].x <= t.x <= box(r)[1].x and box(r)[0].y <= t.y <= box(r)[1].y for r in rugs):
@@ -982,10 +988,6 @@ def dress_tables(scene, pieces):
             else:
                 r = dress.rug(scene, (t.x, -t.y), (fp[0] + 1.1, fp[1] + 1.1), floor=lo.z)  # the chairs stay on it
                 r.rotation_euler[2] = turn(o)
-        if catalogue.DRESSED:  # the kit laid the table (dress_made drew its runner): its glasses, the runner's linen
-            style.table_glass(pieces, lo, hi)
-            n += 1
-            continue
         if objlib.LIB and objlib.choose(stage.room_of(o), "runner", [True, False]) is False:
             n += 1
             continue  # no runner in this room; stage.dining sets the table
@@ -1259,7 +1261,7 @@ def dress_tubs(scene, dg, pieces):
             caddy = in_frame(scene, f, bath_piece("caddy"), (u_c, 0.0, max(top_cf, top_cb)),
                              (1.0, (d - 0.04) / 0.80, 1.0))
             caddy.name = "bath-caddy"
-        if rim_w and 0.03 <= rim_w <= 0.2 and not catalogue.DRESSED:  # a dressed scene drapes its own (dress_made)
+        if rim_w and 0.03 <= rim_w <= 0.2:
             in_frame(scene, f, bath_piece("drape", rim_w), (u_d, -d / 2 + rim_w / 2, top_d))
         log(f"tub: rims {[(round(u, 2), round(a, 2), round(b, 2), r and round(r, 3)) for u, a, b, r in rims]}")
         n += 1
@@ -1379,28 +1381,35 @@ def dress_made(scene, holders):
 
 
 def dress_storey(scene, sy, decor=True):
-    """The kit's pieces made photographic (swaps, materials) and, with `decor`, dressed (table settings, counters,
-    towels and bottles, a throw, cushions)."""
+    """The kit's pieces made photographic (materials, the scene's own decor and dressing at full resolution) and, in a
+    scene the kit did not dress, swapped and, with `decor`, dressed (rugs, beds, table settings, counters, towels and
+    bottles, a throw, cushions)."""
     pieces = storey_pieces(scene, sy)
     held = catalogue.holders(scene, sy)
     if catalogue.OWN:
         catalogue.own(scene, pieces + held)
     elif objlib.LIB:
         stage.swap_kit(scene, pieces)
-    done = {
-        "rugs": swap_rugs(scene, pieces),
-        "plants": swap_plants(scene, pieces, sy),
-        "art": swap_art(scene, pieces),
-        "armchairs": swap_armchairs(scene, pieces, decor),
-        "beds": swap_beds(scene, pieces, decor),
-    }
+    # agencies publish the photos: a room the kit dressed is shown as the 3D tour shows it, its beds, rugs, tables,
+    # counters and baths as the kit made them (#122)
+    restyle = not catalogue.DRESSED
+    done = {}
+    if restyle:
+        done = {
+            "rugs": swap_rugs(scene, pieces),
+            "plants": swap_plants(scene, pieces, sy),
+            "art": swap_art(scene, pieces),
+            "armchairs": swap_armchairs(scene, pieces, decor),
+            "beds": swap_beds(scene, pieces, decor),
+        }
     bpy.context.view_layer.update()
     sanitaryware(scene, pieces)
     if held:
         done["made"] = dress_made(scene, held)
-    if decor:
-        if not catalogue.DRESSED:  # what it measures is for stage.sofa, which the kit's dressing replaces
-            done["sofas"] = sofa_measure(scene, pieces)
+    if decor and not restyle:
+        done["tables"] = dress_tables(scene, pieces)
+    elif decor:
+        done["sofas"] = sofa_measure(scene, pieces)
         done["tables"] = dress_tables(scene, pieces)
         done["counters"] = dress_counter(scene, pieces)
         dg = bpy.context.evaluated_depsgraph_get()
@@ -2278,7 +2287,8 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     stripped = strip_to(scene, rooms, staging_level)
     decor = staging_level == "furnished"
     dress.linen(scene)
-    upholster_chairs(scene)
+    if not catalogue.DRESSED:  # the kit's chairs as the 3D tour draws them (#122)
+        upholster_chairs(scene)
     dress_storey(scene, sy, decor)
     scene.render.resolution_x, scene.render.resolution_y = width, height  # view_frame() reads the aspect from it
     still.camera(scene, cam_spec, width, height)

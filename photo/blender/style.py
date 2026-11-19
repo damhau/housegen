@@ -12,11 +12,9 @@ knows a room or a camera: it reads the export's pieces, the rooms the camera see
   through the glass a bistro set.
 - `edge_clutter`, last: small props cut by a side of the frame, and a plant or a kit lamp right in front of the lens, go.
 
-In a scene the kit dressed (catalogue.DRESSED, kit/dressing.js) the nightstands, the dining table, the sofa, the
-sideboard, the floor accents and the bath's towels are the kit's, the same in the 3D tour: those rules stay out, and what
-depends on the camera stays here: edge_clutter (the dressing's pieces too) and at most one `fill`, a pouf or a basket of
-the house's style in a free corner the frame shows of the room it shows most floor of, when no accent of the kit's is in
-view there.
+In a scene the kit dressed (catalogue.DRESSED, kit/dressing.js) the rooms are the kit's, the same in the 3D tour, and
+agencies publish the photos: none of these rules runs (#122), only edge_clutter, which depends on the camera alone (the
+dressing's pieces and the kit's standing lamps too).
 
 photo.py calls `style(scene, cam, rays, rooms, sy, pieces)` after the camera is set, and passes itself as `H` (its
 helpers: trace, kinds, box, frame_of, in_frame, place, model...).
@@ -1010,33 +1008,6 @@ def sideboard(scene, cam, room, sy, taken):
 LENS_CLEAR = 0.6  # m between the lens and the box of a prop or swapped plant (#89: a pachira around the lens)
 EDGE_NEAR = 2.0  # m: a plant or a lamp cut by a side of the frame goes when nearer the lens than this
 TALL = ("floor-plant",)  # the kit dressing's floor accents that may stand in front of the lens
-ACCENTS = ("floor-plant", "pouf", "basket", "vase")  # what the kit dressing stands on a floor
-FILL = ("pouf", "basket")
-
-
-def fill(scene, cam, room, sy, taken):
-    """A dressed scene: a pouf or a basket of the house's style in a free corner of `room` the frame shows, when it
-    shows no floor accent of the kit's dressing in the room (the kit chose its corners without a camera)."""
-    for o in scene.objects:
-        if (o.get("kind") == "dressing" and o.get("dressing") in ACCENTS and not o.hide_render
-                and abs(o.matrix_world.translation.z - sy) < 0.1 and in_room(o, room) and shown(scene, cam, o)):
-            log(f"fill: the kit's {o.get('dressing')} is in view in {room['name']}")
-            return None
-    first = objlib.choose(room, "fill", list(FILL))
-    for role in (first, *(r for r in FILL if r != first)):
-        e = objlib.pick(room, role, fit=stage.within(0.7, 0.7, 0.55))
-        if e is None:
-            continue
-        r = max(objlib.size(e)[:2]) / 2
-        corner = [s for s in floor_spots(scene, cam, room, sy, r, objlib.size(e)[2], taken) if s[2]]
-        if not corner:
-            log(f"fill: no free corner in view in {room['name']}")
-            return None
-        _, (x, y), _, fx = corner[0]
-        stage.put(scene, room, e, (x, sy, -y), turn_deg=objlib._h(e["id"]) % 90)
-        log(f"fill: {role} {e['id']} in a corner of {room['name']} (frame x {fx:.2f})")
-        return (x, y, r)
-    return None
 
 
 def kit_lamps(scene):
@@ -1130,7 +1101,11 @@ def edge_clutter(scene, cam, plants):
 
 
 def style(scene, cam, rays, rooms, sy, pieces):
-    """The rules, room by room, for the rooms the camera sees enough floor of."""
+    """The rules, room by room, for the rooms the camera sees enough floor of; in a scene the kit dressed, only the
+    camera's (edge_clutter)."""
+    if catalogue.DRESSED:  # the room as the 3D tour shows it (#122)
+        log("done:", [("edge", edge_clutter(scene, cam, plants=True) + edge_clutter(scene, cam, plants=False))])
+        return
     pieces = H.storey_pieces(scene, sy)  # what is still shown (the swaps hid the kit's pieces they replaced)
     lib = bool(objlib.LIB)
     if edge_clutter(scene, cam, plants=True):
@@ -1140,35 +1115,23 @@ def style(scene, cam, rays, rooms, sy, pieces):
     log("rooms seen:", [(r["name"], c) for r, c in seen])
     done = []
     taken = []
-    kit = catalogue.DRESSED  # the kit dressed the rooms: its rules stay out
     for i, (room, count) in enumerate(seen):
         if count < 25:
             continue
         use = room["use"]
         if use == "bedroom":
             done.append(("rug", bed_rug(scene, room, sy)))
-            if not kit:
-                done.append(("bedside", (stage.nightstand if lib else bedsides)(scene, cam, room, sy, pieces)))
+            done.append(("bedside", (stage.nightstand if lib else bedsides)(scene, cam, room, sy, pieces)))
             done.append(("bedart", bed_art(scene, room, sy)))
-        if not kit:
-            done.append(("table", (stage.dining if lib else table_extras)(scene, cam, room, sy, pieces)))
+        done.append(("table", (stage.dining if lib else table_extras)(scene, cam, room, sy, pieces)))
         done.append(("coffee", (stage.coffee if lib else coffee_table)(scene, cam, room, sy, pieces)))
-        if not kit:
-            done.append(("sofa", (stage.sofa if lib else sofa_dress)(scene, cam, room, sy, pieces)))
+        done.append(("sofa", (stage.sofa if lib else sofa_dress)(scene, cam, room, sy, pieces)))
         bpy.context.view_layer.update()
         if lib:
             done.append(("desk", stage.desk(scene, cam, room, sy, pieces)))
             done.append(("sofa side", stage.sofa_side(scene, cam, room, sy, pieces, taken)))
             done.append(("bed foot", stage.bed_foot(scene, cam, room, sy, taken)))
             bpy.context.view_layer.update()
-        if kit:
-            if i == 0 and use not in ("wc", "stair", "storage"):
-                t = fill(scene, cam, room, sy, taken)
-                done.append(("fill", int(bool(t))))
-                if t:
-                    taken.append(t)
-                bpy.context.view_layer.update()
-            continue
         if use in ("bath",) and (not lib or objlib.choose(room, "stool", [True, False])):
             t = stool(scene, cam, room, sy, taken)
             if t:
@@ -1192,7 +1155,7 @@ def style(scene, cam, rays, rooms, sy, pieces):
     if lib and most:
         done.append(("wall", stage.wall(scene, cam, most[0][0], sy)))
         bpy.context.view_layer.update()
-    if most and most[0][0]["use"] == "bath" and not catalogue.DRESSED:
+    if most and most[0][0]["use"] == "bath":
         done.append(("rail", int(bool(towel_rail(scene, cam, most[0][0], sy)))))
         bpy.context.view_layer.update()
     done.append(("sill", sills(scene, cam, rays, sy)))

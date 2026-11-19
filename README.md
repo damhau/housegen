@@ -163,8 +163,8 @@ unless you pick another:
   bathrooms, wardrobes, radiators and the fixed lights.
 
 `photo/blender/staging.py` sorts the pieces by their names. The exteriors are shot the same way at every level.
-The kit's catalogue furniture (#90) is kept as the builder placed it: the pipeline swaps its own bed and armchair
-only for the kit's parametric and named pieces. A catalogue bed keeps its frame and pillows, and gets the same
+The kit's catalogue furniture (#90) is kept as the builder placed it: in a scene the kit did not dress (below), the
+pipeline swaps its own bed and armchair only for the kit's parametric and named pieces. A catalogue bed keeps its frame and pillows, and gets the same
 cloth-simulated duvet and throw as the pipeline's own beds instead of the kit's block bedding.
 
 From renderer `2026-11-17-v38` (#102), the photos show the scene's own lamps, plants, vases, branches, benches,
@@ -192,10 +192,13 @@ photos:
   a walk-in shower's glass panel, or on a bar across its fittings when the panel is too narrow to take it.
   The pieces come from the house style's catalogue, plus stand-ins tagged `made` for the pipeline's own props (books, a
   carafe, a napkin, a runner, a throw, towels). `photo/blender/catalogue.py` draws those props in place of the stand-ins.
-- In such a scene, the pipeline skips its own rules for those pieces. It keeps the rules that depend on its camera:
+- In such a scene, the photo shows the rooms as the 3D tour does, because agencies publish it (#122). The pipeline
+  swaps, adds and removes none of the room's pieces: no bed remade, no rug swapped or added, no table, desk or counter
+  set or cleared, no towel, chair cover or floor accent of its own. It keeps only the rules that depend on its camera:
   a prop cut by the side of the frame (a vase however tall its branches), a plant right in front of the lens, or a
-  table, desk or floor lamp of the kit's cut by the side within 2 m of the lens comes out, the door leaves open, and at most one pouf or basket of the house style fills an empty corner in view. It also draws the table's
-  glasses in clear glass. At the **Light** and **Empty** levels the kit's dressing is left out.
+  table, desk or floor lamp of the kit's cut by the side within 2 m of the lens comes out, the door leaves open, and
+  the picture editor may take out one piece. It also draws the table's glasses in clear glass. At the **Light** and
+  **Empty** levels the kit's dressing is left out.
 
 The service uses the render service's token, so the app needs no new secret: it derives the URL from
 `RENDER_SERVICE_URL` (`housegen-render-web` → `housegen-photo-web`) unless `PHOTO_SERVICE_URL` is set.
