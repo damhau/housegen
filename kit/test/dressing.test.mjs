@@ -199,6 +199,44 @@ test("a plate near the table's edge: its napkin beside it all on the top, moved 
   }
 });
 
+test("a napkin laid on a plate is not what the plate stands on: on a table taller than asked, the audit finds the plates on its top (#134)", () => {
+  globalThis.__housekitSeed = "a";
+  const { root, table } = flat();
+  // a catalogue table 1.5 cm taller than the 75 cm the scene asked for, its plates on its own top as a scene seats them
+  table.scale.y = 0.765 / 0.75;
+  root.updateMatrixWorld(true);
+  const top = 0.765;
+  // three plates close together: the middle one has no room for its napkin beside it and gets it on top
+  const plates = [5.5, 5.8, 6.1].map((z) => {
+    const p = new THREE.Group();
+    p.add(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.1, 0.02, 24).translate(0, 0.01, 0), fx.finish.oak()));
+    p.userData = { kind: "furniture", name: "plate", footprint: [0.24, 0.24] };
+    p.position.set(2.75, top, z);
+    root.add(p);
+    return p;
+  });
+  root.updateMatrixWorld(true);
+  dressRooms(root);
+  const napkins = held(root, (u) => u.made === "napkin");
+  assert.equal(napkins.length, 3);
+  const laid = napkins.filter((n) => Math.abs(at(n).z - 5.8) < 0.01 && Math.abs(at(n).x - 2.75) < 0.01);
+  assert.equal(laid.length, 1, `a napkin on the middle plate: ${napkins.map((q) => at(q).toArray().map((v) => v.toFixed(3)))}`);
+  assert.ok(Math.abs(at(laid[0]).y - (top + 0.0205)) < 0.002, "on the plate, not the table");
+  // what the dressing laid still holds its own: stems in one of its vases stand on the vase
+  const vase = new THREE.Group();
+  vase.userData = { kind: "dressing", dressing: "vase", room: "Séjour" };
+  vase.position.set(7, 0, 5.8);
+  vase.add(new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.3, 16).translate(0, 0.15, 0), fx.finish.oak()));
+  const stems = new THREE.Group();
+  stems.userData = { kind: "furniture", name: "stems", footprint: [0.1, 0.1] };
+  stems.add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.4, 0.1).translate(0, 0.2, 0), fx.finish.oak()));
+  stems.position.y = 0.3;
+  vase.add(stems);
+  root.children.at(-1).add(vase);
+  const bad = layout(root).findings.filter((f) => ["plate", "stems"].includes(f.piece) || /"(plate|stems)"/.test(f.text));
+  assert.deepEqual(bad.map((f) => f.text), []);
+});
+
 test("a bare sofa gets cushions against its back; a sofa the house style dressed, none", () => {
   globalThis.__housekitSeed = "dress";
   const { root, sofa } = flat();

@@ -586,6 +586,12 @@ function backGap(p, meshes, owner) {
   return Math.max(0, gaps[0]);
 }
 
+// laid by the kit's dressing, after the scene was built
+function laid(o) {
+  for (let a = o; a; a = a.parent) if (a.userData?.kind === "dressing") return true;
+  return false;
+}
+
 /** Supports: rays down against the meshes under each piece (not its own, not rugs). */
 function supports(root, pieces, add, rules) {
   const meshes = [];
@@ -595,7 +601,7 @@ function supports(root, pieces, add, rules) {
     if (["terrain", "leaves", "ceiling"].includes(k)) return;
     // a rug is no support (a piece stands through it on the floor)
     for (let a = o; a; a = a.parent) if (a.userData?.kind === "furniture" && (a.userData.flat || pieceType(a.userData.name) === "rug")) return;
-    meshes.push({ o, box: new THREE.Box3().setFromObject(o) });
+    meshes.push({ o, box: new THREE.Box3().setFromObject(o), laid: laid(o) });
   });
   const owner = new Map();
   for (const p of pieces) p.obj.traverse((c) => owner.set(c, p));
@@ -618,8 +624,11 @@ function supports(root, pieces, add, rules) {
   for (const p of pieces) {
     p.restsOn = new Set();
     if (p.hang || p.flat || p.type === "curtain" || !p.room) continue;
+    // what the dressing laid holds none of the scene's pieces, only its own (stems in its vase): a plate under the
+    // napkin the dressing laid on it read as sunk into "the floor" (#134)
+    const under = laid(p.obj) ? meshes : meshes.filter((m) => !m.laid);
     const xs = p.corners.map((q) => q[0]), zs = p.corners.map((q) => q[1]);
-    const near = meshes.filter(({ o, box }) => owner.get(o) !== p && box.max.x >= Math.min(...xs) - 0.01 && box.min.x <= Math.max(...xs) + 0.01
+    const near = under.filter(({ o, box }) => owner.get(o) !== p && box.max.x >= Math.min(...xs) - 0.01 && box.min.x <= Math.max(...xs) + 0.01
       && box.max.z >= Math.min(...zs) - 0.01 && box.min.z <= Math.max(...zs) + 0.01 && box.max.y <= p.y0 + 0.16 && box.max.y >= p.y0 - 1.5).map((m) => m.o);
     // 5 × 5 points over 80 % of the footprint, each its first surface below (from 15 cm over the base)
     const hits = [];
@@ -640,7 +649,7 @@ function supports(root, pieces, add, rules) {
     if (p.wallHung) {
       // a wall-hung piece: its back on a wall (rays backwards from its back to the walls, partitions,
       // tiles and boxes behind it), or resting on something
-      const back = backGap(p, meshes, owner) ?? p.wall?.d ?? Infinity;
+      const back = backGap(p, under, owner) ?? p.wall?.d ?? Infinity;
       if (back > rules.fixed && on.length < rules.supported * 25) {
         add("support", `"${p.name}" in "${p.room.name}" is fixed to nothing: its back is ${cm(back)} from the nearest wall${on.length ? "" : " and nothing is under it"} (put it against the wall)`, { room: p.room.name, piece: p.name });
       }
