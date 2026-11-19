@@ -505,11 +505,14 @@ TILE_TONE = 0.05
 
 
 SANITARY = ("bathtub", "basin", "wc", "bidet", "shower", "sink", "toilet")
+POLISHED = 0.1  # a metal the kit draws this smooth or smoother is polished (its chrome: 0.08)
+POLISH = 0.06  # a polished metal's roughness in Cycles: the bevel's highlight a thin bright line
 
 
 def sanitaryware(scene, pieces):
-    """The kit's sanitaryware: a fired glaze (glossy, faint unevenness) and chrome, both with rounded edges (a 3 mm
-    bevel in the shading) that catch a highlight, as moulded and pressed pieces do."""
+    """The kit's sanitaryware: a fired glaze (glossy, faint unevenness) and its metals, both with rounded edges (a 3 mm
+    bevel in the shading) that catch a highlight, as moulded and pressed pieces do. A metal keeps the kit's finish
+    (chrome, brushed steel, black, brass): its own colour and roughness, a polished one polished a little further."""
     done = {}
     for o in pieces:
         if not any(name(o).lower().startswith(s) for s in SANITARY):
@@ -534,9 +537,12 @@ def sanitaryware(scene, pieces):
                 bev.samples = 6
                 nt.links.new(bev.outputs["Normal"], p.inputs["Normal"])
                 if metal:
-                    col.default_value = (0.86, 0.87, 0.88, 1)
-                    p.inputs["Roughness"].default_value = 0.06
-                    done[m.name] = "chrome"
+                    # agencies publish the photos: a black flush plate or a brass mixer stays black or brass (#130)
+                    rough = p.inputs["Roughness"]
+                    polished = not rough.is_linked and rough.default_value <= POLISHED
+                    if polished:
+                        rough.default_value = POLISH
+                    done[m.name] = "polished" if polished else "metal"
                     continue
                 wave = node(nt, "ShaderNodeTexNoise", Scale=14.0, Detail=2.0)
                 r = node(nt, "ShaderNodeMapRange", **{"To Min": 0.035, "To Max": 0.09})
