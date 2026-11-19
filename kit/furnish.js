@@ -1110,14 +1110,28 @@ function before(a, b) {
   return false;
 }
 
-// furniture is stretched to the width and length asked, from its mattress for a bed: 0 within 10 %, 1 within
-// STRETCH, 2 beyond
+// A catalogue bed is stretched round the mattress asked with the kit's own frame (bed()), whatever its model: every
+// bed of every style takes the same place, so a Restyle moves no bed, no nightstand and closes no passage (#120): a
+// model's own frame is up to 35 cm longer and 28 cm wider than its mattress.
+const BED_FRAME = [0.06, 0.08];
+const BED_SIZE = [1.6, 2.0];
+
+// [x, z] factors that stretch a catalogue bed's box (`sx` x `sz`) round the mattress asked and BED_FRAME
+const bedScale = (sx, sz, width, length) => [(width + BED_FRAME[0]) / sx, (length + BED_FRAME[1]) / sz];
+
+const off = (a, b) => (a && b ? Math.abs(Math.log(a / b)) : 0);
+const band = (r) => (r <= Math.log(1.1) ? 0 : r <= Math.log(STRETCH) ? 1 : 2);
+
+// furniture is stretched to the width and length asked: 0 within 10 %, 1 within STRETCH, 2 beyond; a bed, stretched
+// round its frame, must also draw its own mattress within 10 % of the size asked
 function misfit(o, width, length) {
-  const dims = o.nominal ?? o.size;
-  return [[width, 0], [length, 1]].reduce((m, [v, i]) => {
-    const r = v ? Math.abs(Math.log(v / dims[i])) : 0;
-    return Math.max(m, r <= Math.log(1.1) ? 0 : r <= Math.log(STRETCH) ? 1 : 2);
-  }, 0);
+  if (!o.mattress) {
+    const [w, l] = o.nominal ?? o.size;
+    return Math.max(band(off(width, w)), band(off(length, l)));
+  }
+  const k = bedScale(o.size[0], o.size[1], width, length);
+  const mattress = Math.max(off(o.nominal[0] * k[0], width), off(o.nominal[1] * k[1], length));
+  return mattress > Math.log(1.1) ? 2 : Math.max(...k.map((v) => band(off(v, 1))));
 }
 
 const _decks = new Map();
@@ -1206,11 +1220,29 @@ function grounded(object) {
   return [wrap, box.getSize(new THREE.Vector3())];
 }
 
+// how far the meshes of `object` reach from its vertical axis, in its own frame: the same however it is turned
+function reach(object) {
+  object.updateMatrixWorld(true);
+  const inv = object.matrixWorld.clone().invert(), m = new THREE.Matrix4(), v = new THREE.Vector3();
+  let r = 0;
+  object.traverse((o) => {
+    const p = o.isMesh && o.geometry.attributes.position;
+    if (!p) return;
+    m.multiplyMatrices(inv, o.matrixWorld);
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).applyMatrix4(m);
+      r = Math.max(r, Math.hypot(v.x, v.z));
+    }
+  });
+  return r;
+}
+
 /**
  * A plant of the catalogue's foliage in a pot of the role, `height` tall in all: the pot at its real size (no more
- * than half the plant's height), the leaves from its rim, a little soil. The spike's potted() (stage.py).
+ * than half the plant's height), the leaves from its rim, a little soil. The spike's potted() (stage.py). `spread`
+ * bounds the leaves to that diameter round the pot.
  */
-async function pottedPlant(role, { height, room } = {}) {
+async function pottedPlant(role, { height, room, spread } = {}) {
   const total = height ?? POTTED[role];
   for (let attempt = 0; attempt < 3; attempt++) {
     const { piece: o } = pickObject(role, { height: total * 0.4, room });
@@ -1241,7 +1273,7 @@ async function pottedPlant(role, { height, room } = {}) {
     const [l, ls] = grounded(plant);
     // the photo service keeps the same variant of the same plant (photo/blender/catalogue.py)
     l.userData = { catalogue: f.id, ...(chosen ? { variant: chosen } : {}) };
-    l.scale.setScalar(Math.min(Math.max(total - rim, 0.12) / ls.y, total * 1.2 / Math.max(ls.x, ls.z)));
+    l.scale.setScalar(Math.min(Math.max(total - rim, 0.12) / ls.y, total * 1.2 / Math.max(ls.x, ls.z), spread ? spread / 2 / reach(l) : Infinity));
     l.rotation.y = (hash(`${f.id}|${o.id}`) % 360) * Math.PI / 180;
     l.position.y = rim - 0.01;
     g.add(l);
@@ -1486,8 +1518,9 @@ function dressBed(wrap, o, s, room) {
   return g;
 }
 
-async function roleModel(role, { width, length, height, room, stems } = {}) {
-  if (POTTED[role]) return pottedPlant(role, { height, room });
+async function roleModel(role, { width, length, height, room, stems, spread } = {}) {
+  if (POTTED[role]) return pottedPlant(role, { height, room, spread });
+  if (role === "bed") [width, length] = [width ?? BED_SIZE[0], length ?? BED_SIZE[1]];
   for (let attempt = 0; attempt < 3; attempt++) {
     const { piece: o } = pickObject(role, { width, length, height, room });
     // no model near the size (the catalogue has no single bed): the kit's own piece, drawn at it
@@ -1500,18 +1533,20 @@ async function roleModel(role, { width, length, height, room, stems } = {}) {
     let s;
     if (FLAT.has(role)) s = [width ? width / size.x : 1, 1, length ? length / size.z : 1];
     else if (FURNITURE.has(role)) {
-      const [nw, nl] = o.nominal ?? [size.x, size.z];
       const fit = (k) => Math.min(STRETCH, Math.max(1 / STRETCH, k));
-      s = [width ? fit(width / nw) : 1, height ? height / size.y : 1, length ? fit(length / nl) : 1];
+      const [kx, kz] = o.mattress ? bedScale(size.x, size.z, width, length) : [width ? width / size.x : 1, length ? length / size.z : 1];
+      s = [fit(kx), height ? height / size.y : 1, fit(kz)];
     } else {
       const k = height ? height / size.y : width ? width / size.x : length ? length / size.z : 1;
-      s = [k, k, k];
+      // within `spread` round its axis, so turned any way it keeps to the spot it was given: one style's stems spread
+      // twice as far as another's (#120)
+      s = Array(3).fill(spread ? Math.min(k, spread / 2 / reach(wrap)) : k);
     }
     wrap.scale.set(...s);
     let tall = size.y * s[1];
     if (role === "vase" && stems) {
       // branches from the vase's mouth, half as tall again as the vase: the spike's vase_with (stage.py)
-      const b = await roleModel("stems", { height: Math.max(tall * 1.5, 0.3), room });
+      const b = await roleModel("stems", { height: Math.max(tall * 1.5, 0.3), room, spread });
       b.position.y = tall * 0.8;
       b.rotation.y = (hash(o.id) % 360) * Math.PI / 180;
       const g = new THREE.Group();
@@ -1544,31 +1579,33 @@ const tinted = (material, tint) => m(`tint:${material.uuid}:${tint}`, () => {
  * A role instead of a name (ROLES: "vase", "rug", "cushion"…) draws one of the role's pieces (pickObject;
  * `room` gives the room's accent) at its real size, scaled as a whole to the `height`, else `width`, else
  * `length` asked; a rug or a runner is stretched to its width and length; a vase with `stems: true` holds branches.
+ * `spread` (m) bounds such a piece (a vase and its branches, a potted plant's leaves) to that diameter round its axis.
+ * A "bed" is given the mattress (1.6 x 2.0 when not given) and takes it plus 6 x 8 cm of frame in every style.
  * "wall-art" frames a print (art.js), one per room of the house, once the scene is built (decor.js): as large as fits
  * the `width` x `height` asked, centred in it, about 3 cm deep.
  * The house style may draw a name as another model or a role (styles.js "models": contemporary's dark chairs; the
  * kit's own decor models as catalogue roles, #102).
  */
-export async function model(name, { width, length, height, room, stems } = {}) {
+export async function model(name, { width, length, height, room, stems, spread } = {}) {
   const mapped = look("models", { room, kind: name });
   const { as, ...opts } = mapped !== null && typeof mapped === "object" ? mapped : { as: mapped };
   if (as != null && as !== name && (MODELS[as] || ROLES[as] || as === ART_ROLE)) {
-    const p = await drawModel(as, { width, length, height, room, stems, ...opts });
+    const p = await drawModel(as, { width, length, height, room, stems, spread, ...opts });
     p.userData.styledFrom = name;
     return p;
   }
-  return drawModel(name, { width, length, height, room, stems });
+  return drawModel(name, { width, length, height, room, stems, spread });
 }
 
 const ART_ROLE = "wall-art";
 
-async function drawModel(name, { width, length, height, room, stems } = {}) {
+async function drawModel(name, { width, length, height, room, stems, spread } = {}) {
   if (name === ART_ROLE) {
     const box = [width ?? 0.8, height ?? 0.6];
     return piece(new THREE.Group(), ART_ROLE, box[0], 0.03, { height: box[1], art: { box, room: room ?? null } });
   }
   const spec = MODELS[name];
-  if (!spec && ROLES[name]) return roleModel(name, { width, length, height, room, stems });
+  if (!spec && ROLES[name]) return roleModel(name, { width, length, height, room, stems, spread });
   if (!spec) throw new Error(`unknown model ${name}. Roles: ${Object.keys(ROLES).join(", ")}. Known: ${Object.keys(MODELS).join(", ")}`);
   const file = spec.licensed ? `licensed/${spec.licensed}` : spec.file ?? `polyhaven/${spec.id}/${spec.id}.gltf`;
   // models are fetched compressed (meshopt geometry, WebP textures at 1k: scripts/fetch_models.mjs)

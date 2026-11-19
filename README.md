@@ -188,7 +188,8 @@ photos:
   small, its lamp moved to the back corner. A dining table gets a folded linen napkin beside each plate and a centre
   line. A sofa gets cushions and, now and then, a throw. A sideboard gets its objects. A living or dining room without
   low storage gets the house style's sideboard on a free wall (clear of windows, doors, radiators and the stair, 0.9 m
-  of free floor in front), when one fits. The free corners get a floor accent. A bath gets its towels, one of them over
+  of free floor in front), when one fits. The free corners get a floor accent, never one that leaves the walk less than
+  its 50 cm passage between two parts of the room (from v43). A bath gets its towels, one of them over
   a walk-in shower's glass panel, or on a bar across its fittings when the panel is too narrow to take it.
   The pieces come from the house style's catalogue, plus stand-ins tagged `made` for the pipeline's own props (books, a
   carafe, a napkin, a runner, a throw, towels). `photo/blender/catalogue.py` draws those props in place of the stand-ins.

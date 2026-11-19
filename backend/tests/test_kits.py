@@ -17,7 +17,7 @@ from housegen.projects.models import Project
 from housegen.render import kits
 
 BASELINE = "2026-09-12-baseline"
-LATEST = "2026-11-19-v42"  # the newest snapshot
+LATEST = "2026-11-19-v43"  # the newest snapshot
 VIEWER = "2026-11-17-v39"  # the viewer's default (index.json "viewer"), set when a reviewed snapshot is approved
 
 

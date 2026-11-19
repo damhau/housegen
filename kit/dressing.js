@@ -104,6 +104,62 @@ export function floorSpots({ polygon, walls = [], boxes = [], doors = [], window
   return out.sort((a, b) => b.score - a.score || a.x - b.x || a.z - b.z);
 }
 
+const WALKER = 0.25; // walk.js: the walker's radius
+const CELL = 0.05;
+
+// a room's floor as the walk reads it (walk.js reach): the 5 cm cells WALKER from its edges and from what stands 0.2 to
+// 1.9 m over the floor in `boxes`
+function walkFloor(polygon, boxes) {
+  const xs = polygon.map((p) => p[0]), zs = polygon.map((p) => p[1]);
+  const x0 = Math.min(...xs), z0 = Math.min(...zs);
+  const nx = Math.ceil((Math.max(...xs) - x0) / CELL), nz = Math.ceil((Math.max(...zs) - z0) / CELL);
+  const edges = polygon.map((p, i) => [p, polygon[(i + 1) % polygon.length]]);
+  const solid = boxes.filter((b) => b.y0 < 1.9 && b.y1 > 0.2).map((b) => b.rect);
+  const ok = new Uint8Array(nx * nz);
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      const p = [x0 + (i + 0.5) * CELL, z0 + (j + 0.5) * CELL];
+      ok[j * nx + i] = inside(p, polygon) && edges.every(([a, b]) => segDist(p, a, b).d >= WALKER) && !solid.some((r) => hits(p, WALKER, r)) ? 1 : 0;
+    }
+  }
+  return { ok, nx, nz, x0, z0 };
+}
+
+// the floor `f` with a piece `r` in radius standing at (x, z)
+function closed(f, x, z, r) {
+  const ok = f.ok.slice(), d = r + WALKER;
+  const i0 = Math.max(0, Math.floor((x - d - f.x0) / CELL)), i1 = Math.min(f.nx - 1, Math.floor((x + d - f.x0) / CELL));
+  const j0 = Math.max(0, Math.floor((z - d - f.z0) / CELL)), j1 = Math.min(f.nz - 1, Math.floor((z + d - f.z0) / CELL));
+  for (let j = j0; j <= j1; j++) {
+    for (let i = i0; i <= i1; i++) if (Math.hypot(f.x0 + (i + 0.5) * CELL - x, f.z0 + (j + 0.5) * CELL - z) < d) ok[j * f.nx + i] = 0;
+  }
+  return { ...f, ok };
+}
+
+// the areas one can walk to on floor `f`: its connected cells, a patch under 0.2 m² is none (walk.js reach)
+function walkAreas({ ok, nx, nz }) {
+  const seen = new Uint8Array(nx * nz);
+  let n = 0;
+  for (let k0 = 0; k0 < nx * nz; k0++) {
+    if (!ok[k0] || seen[k0]) continue;
+    const stack = [k0];
+    let cells = 0;
+    seen[k0] = 1;
+    while (stack.length) {
+      const k = stack.pop(), i = k % nx;
+      cells++;
+      for (const m of [i + 1 < nx ? k + 1 : -1, i > 0 ? k - 1 : -1, k + nx, k - nx]) {
+        if (m >= 0 && m < nx * nz && ok[m] && !seen[m]) {
+          seen[m] = 1;
+          stack.push(m);
+        }
+      }
+    }
+    if (cells * CELL * CELL >= 0.2) n++;
+  }
+  return n;
+}
+
 // ---------------------------------------------------------------- reading the scene
 
 const STRUCTURE = new Set(["wall", "perimeter", "slab", "roof", "roomFloor", "ceiling", "partition", "interiorDoor", "door", "window",
@@ -815,6 +871,9 @@ const FLOOR_PLANS = {
   other: [["plant", "pouf"], ["basket", "plant"], ["plant", "pouf", "vase"], ["vase", "basket"], ["plant", "basket"], ["pouf", "plant"]],
 };
 const FLOOR_ACCENT = /plant|ficus|palm|pouf|ottoman|basket|vase/i;
+// how far a floor plant's leaves and a floor vase's stems reach from their spot, whatever the style's pick (#120): left
+// to their models, a calathea's leaves spread 1.5 m, one style's stems 0.9 m and the other's 0.4 m
+const FLOOR_PLANT = 0.45, FLOOR_VASE = 0.25;
 
 function floors(ctx) {
   let n = 0;
@@ -828,32 +887,38 @@ function floors(ctx) {
       if (budget <= 0) continue;
       const plans = ["bath", "wc", "laundry"].includes(room.use) ? FLOOR_PLANS.wet : room.use === "kitchen" ? FLOOR_PLANS.kitchen : FLOOR_PLANS.other;
       let plant = mine.some((p) => p.type === "plant"), placed = 0;
+      // an accent never closes a passage: the walk finds no more areas in the room once it stands (#120)
+      let floor = walkFloor(poly, boxes), parts = walkAreas(floor);
       for (let what of choose(plans, `${room.name}|floor`)) {
         if (placed >= budget) break;
         if (what === "plant" && plant) what = "vase";
-        let pick = null, r = 0.3, h = 1.3;
+        let pick = null, r = 0.3, h = 1.3, reach = FLOOR_PLANT;
         if (what === "plant") h = choose([1.5, 1.05, 1.15], `${room.name}|floor-plant`);
-        else if (what === "vase") [r, h] = [0.16, 1.3];
+        else if (what === "vase") [r, h, reach] = [FLOOR_VASE, 1.3, FLOOR_VASE];
         else {
           for (let i = 0; i < 3 && !pick; i++) {
             const o = pickObject(what, { room: room.name }).piece;
             if (o.size[0] <= 0.7 && o.size[1] <= 0.7 && o.size[2] <= 0.55) pick = o;
           }
           if (!pick) continue;
-          [r, h] = [Math.max(pick.size[0], pick.size[1]) / 2, pick.size[2]];
+          // turned any way, its corners
+          [r, h, reach] = [Math.max(pick.size[0], pick.size[1]) / 2, pick.size[2], Math.hypot(pick.size[0], pick.size[1]) / 2];
         }
         const spots = floorSpots({ polygon: poly, walls: s.walls, boxes, doors: s.doors, windows: s.windows, taken: ctx.taken, r, h });
-        const spot = what === "plant" ? spots.find((q) => q.corner) ?? spots[0] : spots[0];
+        const spot = spots.slice(0, 60).find((q) => walkAreas(closed(floor, q.x, q.z, reach)) <= parts);
         if (!spot) continue;
         const at = new THREE.Vector3(spot.x, s.y, spot.z), turn = (roll(`${room.name}|${what}|${placed}`) % 360) * DEG;
-        if (what === "plant") modelled(ctx, "floor-plant", room, at, turn, { height: h });
-        else if (what === "vase") modelled(ctx, "vase", room, at, turn, { height: choose([0.46, 0.55], `${room.name}|floor-vase`), stems: true });
-        else {
+        if (what === "plant") modelled(ctx, "floor-plant", room, at, turn, { height: h, spread: 2 * reach });
+        else if (what === "vase") {
+          modelled(ctx, "vase", room, at, turn, { height: choose([0.46, 0.55], `${room.name}|floor-vase`), stems: true, spread: 2 * reach });
+        } else {
           const g = holder(ctx, what, room, at, turn, { model: pick.id });
           if (BROWSER) track(catalogueModel(pick).then((m) => m && g.add(m[0])));
         }
         ctx.taken.push([spot.x, spot.z, r]);
-        boxes.push({ rect: [spot.x - r, spot.z - r, spot.x + r, spot.z + r], y0: 0, y1: h });
+        boxes.push({ rect: [spot.x - reach, spot.z - reach, spot.x + reach, spot.z + reach], y0: 0, y1: h });
+        floor = closed(floor, spot.x, spot.z, reach);
+        parts = walkAreas(floor);
         if (what === "plant") plant = true;
         placed++;
         n++;

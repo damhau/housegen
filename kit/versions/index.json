@@ -216,6 +216,11 @@
       "name": "2026-11-19-v42",
       "date": "2026-11-19",
       "note": "v41 with a mirror that reflects across all its glass through a photographer's frame (#115, kit/mirror.js): the mirrored camera takes the camera's own frame, mirrored left to right, its cut included (a photo's shift lens, a jitter); it used the shift lens's taller field of view at the screen's proportions, so the rectangle drawn for the reflection missed the part of the glass toward the frame's edge, which drew black (TestVillaGille's attic bath, photo-34). The viewer's walk (no shift lens) draws as before. Not the viewer's default, not pinned."
+    },
+    {
+      "name": "2026-11-19-v43",
+      "date": "2026-11-19",
+      "note": "v42 with every bed in the same place in every style, and the dressing's floor accents that never close a passage (#120). kit/furnish.js: a catalogue bed is stretched round the mattress asked with the kit's own frame (6 cm wider and 8 cm longer, the size of bed()), whatever its model, and is drawn only when its own mattress then stays within 10 % of the size asked (else the kit's bed, which takes the same place); fitted by its mattress, a bed took its model's frame, up to 28 cm wider and 35 cm longer than the mattress, so a Restyle moved its foot, its nightstands and its rug by up to 12 cm. A bed asked with no size is 1.6 x 2.0. model() takes `spread`, the diameter a vase with its stems or a potted plant's leaves keeps to round its axis. kit/dressing.js: a floor accent goes to the first free spot where the walk still finds as many areas in the room (walk.js reach: 25 cm from everything, patches under 0.2 m² not counted), the accent counted at its full reach (a pouf turned any way, the floor vase's stems 25 cm, the floor plant's leaves 45 cm, both now bounded to it); the spot was found for 16 and 30 cm while one style's stems spread 0.9 m and a calathea 1.5 m, so a Restyle to scandinavian cut TestVillaGille's Chambre 4 — App. 1 in two (its pouf, 52 cm and turned, at the bathroom's jutting corner) and Chambre 2 — App. 2 (the calathea's leaves, turned by the style's pot). Not the viewer's default, not pinned."
     }
   ]
 }
