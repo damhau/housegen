@@ -71,5 +71,6 @@ by a person.
 - OpenAI prompt-cache misses right after every new long prefix (routing); the remedy is `prompt_cache_key` per job.
 - Pruning of `inspect_image` crops throws away far more cached tokens than it saves at the current prices; the
   batch-of-3 rule from #5 predates the price table.
-- The cache-miss flag in the run summary compares the current prompt's ratio; it should compare `cached` with the
-  previous turn's input.
+- The cache-miss flag in the run summary compared the current prompt's ratio. Since #28 a builder turn is a miss when
+  it read less than 90 % of the previous turn's prompt in the same conversation (`agent/metrics.py`); the turn right
+  after a prune counts, and its `turn` event says how many screenshots the prune dropped (`pruned_images`).

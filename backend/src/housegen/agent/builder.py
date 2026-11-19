@@ -84,6 +84,12 @@ def prune_render_images(messages: list[Message], keep_last: int = 1, batch: int 
     return removed
 
 
+def previous_prompt_tokens(messages: list[Message]) -> int:
+    """The prompt of the conversation's previous model call (0 before its first), however many
+    `run_builder` passes it took: a critic round or a plan gate continues the same list."""
+    return next((m.prompt_tokens for m in reversed(messages) if m.role == "assistant"), 0)
+
+
 @dataclass
 class PruneTrigger:
     """When the builder drops old screenshots: once a prompt reaches `above` tokens (0 = never),
@@ -267,6 +273,7 @@ async def run_builder(
                 "cached": turn.cached_tokens,
                 "out": turn.output_tokens,
                 "cache_hit": round(turn.cache_hit, 3),
+                "cache_miss": turn.cache_miss,
                 "tools": _group_tools(turn.tool_calls),
             },
         )
@@ -275,12 +282,15 @@ async def run_builder(
 
     while run.steps < max_steps:
         run.steps += 1
-        if trigger.due(last_prompt_tokens) and prune_render_images(messages):
+        prev_prompt_tokens = previous_prompt_tokens(messages)
+        pruned = prune_render_images(messages) if trigger.due(last_prompt_tokens) else 0
+        if pruned:
             trigger.pruned()
         completion = await complete(run.steps)
         last_prompt_tokens = completion.usage.input_tokens
         trigger.observe(last_prompt_tokens)
         run.usage = run.usage + completion.usage
+        completion.message.prompt_tokens = last_prompt_tokens
         messages.append(completion.message)
         turn = TurnMetric(
             step=run.steps,
@@ -293,6 +303,8 @@ async def run_builder(
             cache_write_tokens=completion.usage.cache_write_tokens,
             output_tokens=completion.usage.output_tokens,
             reasoning_tokens=completion.usage.reasoning_tokens,
+            prev_input_tokens=prev_prompt_tokens,
+            pruned_images=pruned,
         )
         render_ms_before = tools.render_ms_total
         tools_started = time.perf_counter()

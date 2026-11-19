@@ -52,7 +52,8 @@ def test_run_summary_totals_and_cost(monkeypatch) -> None:  # type: ignore[no-un
             duration_ms=5_000,
             thinking_ms=1_000,
             input_tokens=150_000,
-            cached_tokens=10_000,  # lost the cache
+            cached_tokens=10_000,  # lost the cache: step 1's prompt was 100k
+            prev_input_tokens=100_000,
             output_tokens=500,
             tool_calls=[ToolCallMetric(name="edit_file")],
         )

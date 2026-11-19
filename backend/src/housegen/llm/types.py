@@ -64,6 +64,9 @@ class Message(BaseModel):
     # The provider checks `raw` against every message before it (Anthropic's thinking
     # signatures): after an earlier message is rewritten, `raw` must go, `content` replays.
     raw_bound_to_history: bool = False
+    # the whole prompt of the call that wrote this assistant message: what the conversation's
+    # next call should find in the provider's cache (#28)
+    prompt_tokens: int = 0
 
     @classmethod
     def user(cls, *parts: Part | str) -> Message:

@@ -17,9 +17,10 @@ from housegen.core.config import Settings
 Role = Literal["builder", "critic", "intake"]
 EDIT_TOOLS = {"write_file", "edit_file", "apply_patch", "delete_file"}
 RENDER_TOOLS = {"render_views", "check_scene"}
-# a builder turn whose prompt is this big and mostly uncached lost the provider's prefix cache
+# the previous turn's prompt is the prefix a builder turn should read from the provider's cache
+# (#28): reading less than this share of it lost the cache, once that prefix is worth caching
 CACHE_MISS_MIN_INPUT = 20_000
-CACHE_MISS_HIT_RATIO = 0.5
+CACHE_MISS_PREFIX_SHARE = 0.9
 
 
 class ToolCallMetric(BaseModel):
@@ -42,20 +43,25 @@ class TurnMetric(BaseModel):
     cache_write_tokens: int = 0
     output_tokens: int = 0
     reasoning_tokens: int = 0
+    # the prompt of the previous turn of the same conversation (0: its first turn), and the
+    # screenshots pruned from that conversation just before this call (a prefix rewritten on
+    # purpose, so its loss has a known cause)
+    prev_input_tokens: int = 0
+    pruned_images: int = 0
     tool_calls: list[ToolCallMetric] = Field(default_factory=list)
 
     @property
     def cache_hit(self) -> float:
+        """The cached share of this prompt; informational, new tool results lower it."""
         return self.cached_tokens / self.input_tokens if self.input_tokens else 0.0
 
     @property
     def cache_miss(self) -> bool:
-        """A big prompt that should have been cached and was not (never the first step)."""
+        """A builder turn that did not read the previous turn's prompt from the cache."""
         return (
             self.role == "builder"
-            and self.step > 1
-            and self.input_tokens >= CACHE_MISS_MIN_INPUT
-            and self.cache_hit < CACHE_MISS_HIT_RATIO
+            and self.prev_input_tokens >= CACHE_MISS_MIN_INPUT
+            and self.cached_tokens < CACHE_MISS_PREFIX_SHARE * self.prev_input_tokens
         )
 
     @property
