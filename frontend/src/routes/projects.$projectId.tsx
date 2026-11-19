@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQueryClient } from "@tanstack/react-query"
-import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Sofa, Square, Trash2, X } from "lucide-react"
+import { Check, Download, Link2, Loader2, Play, RefreshCw, Settings2, Sofa, Square, Trash2, Unlink, X } from "lucide-react"
 import {
   getChatHistoryQueryKey,
   getGetProjectQueryKey,
@@ -23,6 +23,7 @@ import {
   useRevokeShare,
 } from "@/api/endpoints/projects/projects"
 import type { IntakeAnswer, PointOut } from "@/api/model"
+import { type Action, ActionBar } from "@/components/ActionBar"
 import { BuildingPlaceholder } from "@/components/BuildingPlaceholder"
 import { CodePanel } from "@/components/CodePanel"
 import { ComparePanel } from "@/components/ComparePanel"
@@ -36,7 +37,6 @@ import { fmtUsd } from "@/components/RunSummaryCard"
 import { SceneViewer } from "@/components/SceneViewer"
 import { SettingsSheet } from "@/components/SettingsSheet"
 import { VersionList } from "@/components/VersionList"
-import { Button } from "@/components/ui/button"
 import { useJobStream } from "@/hooks/useJobStream"
 import { cn, errorMessage, parseIso } from "@/lib/utils"
 import { StatusBadge } from "@/routes/index"
@@ -295,8 +295,73 @@ function ProjectPage() {
     { id: "code", label: "Code" },
   ]
 
+  const presetLabel = p.effective_settings.preset === "quick" ? "Quick draft" : p.effective_settings.preset === "full" ? "Full quality" : "Custom"
+  const shareLabel = copied ? "Link copied" : p.share ? "Shared" : "Share"
+  const headerActions: Action[] = [
+    ...(p.current_version === 0 && !busy && !awaitingAnswers
+      ? [{ id: "generate", primary: true, variant: "default" as const, icon: <Play />, label: needsIntake ? "Read the plans" : "Generate", hint: genHint, title: genTitle, onSelect: () => void attempt(onGenerate) }]
+      : []),
+    ...(p.current_version > 0 && !busy
+      ? [
+          { id: "regenerate", icon: <Play />, label: "Regenerate", hint: genHint, title: `Rebuild from scratch${genTitle ? ` · ${genTitle}` : ""}`, onSelect: () => void attempt(onGenerate) },
+          {
+            id: "furnish",
+            icon: <Sofa />,
+            label: "Furnish",
+            hint: estimateText(intEstimate.data),
+            title: "Build the interior from the floor plans: rooms, partitions, doors, furniture and lights",
+            disabled: furnish.isPending,
+            onSelect: () => setFurnishOpen({ message: "", style: (version?.style ?? null) as HouseStyle | null }),
+          },
+        ]
+      : []),
+    {
+      id: "settings",
+      variant: "ghost",
+      icon: <Settings2 />,
+      label: presetLabel,
+      menuLabel: `Run settings · ${presetLabel}`,
+      title: `Run settings · ${p.effective_settings.model} · ${p.effective_settings.builder_effort} · ${p.effective_settings.critic_rounds} round(s) · ${p.effective_settings.max_steps} steps`,
+      onSelect: () => setSettingsOpen(true),
+    },
+    ...(busy && activeJob
+      ? [
+          {
+            id: "stop",
+            primary: true,
+            icon: cancel.isPending ? <Loader2 className="animate-spin" /> : <Square />,
+            label: "Stop",
+            title: "Stop the run now. The scene keeps what the builder wrote so far; restore a version to discard it.",
+            disabled: cancel.isPending || activeJob.status === "interrupted",
+            onSelect: () => void onStop(),
+          },
+        ]
+      : []),
+    ...(p.current_version > 0
+      ? [
+          { id: "export", icon: <Download />, label: "Export", href: `/api/v1/projects/${projectId}/export${selectedVersion !== null ? `?version=${selectedVersion}` : ""}` },
+          {
+            id: "share",
+            icon: copied ? <Check /> : <Link2 />,
+            label: shareLabel,
+            menuLabel: copied ? shareLabel : p.share ? "Copy the shared link" : "Share a read-only link",
+            title: p.share
+              ? `Shared read-only at ${p.share.url}${p.share.version != null ? ` (pinned to v${p.share.version})` : " (current version)"}: click to copy the link again${selectedVersion !== null ? ` and pin v${selectedVersion}` : ""}`
+              : `Create a read-only link${selectedVersion !== null ? ` pinned to v${selectedVersion}` : " to the current scene"} and copy it`,
+            disabled: share.isPending,
+            keepMenuOpen: true,
+            onSelect: () => void onShare(),
+          },
+        ]
+      : []),
+    ...(p.share
+      ? [{ id: "revoke", variant: "ghost" as const, muted: true, icon: <Unlink />, label: "Revoke", menuLabel: "Revoke the shared link", title: "Revoke the shared link", disabled: revoke.isPending, onSelect: () => void onRevoke() }]
+      : []),
+    { id: "delete", variant: "ghost", iconOnly: true, muted: true, destructive: true, icon: <Trash2 />, label: "Delete project", disabled: busy, onSelect: () => void onDelete() },
+  ]
+
   return (
-    <div className="grid h-full grid-rows-[auto_1fr] gap-3 p-3">
+    <div className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr] gap-3 p-3">
       <div className="grid gap-2">
       {reconnecting && (
         <div role="status" className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
@@ -311,98 +376,36 @@ function ProjectPage() {
           </button>
         </div>
       )}
-      <div className="flex items-center gap-3">
-        <Link to="/" className="text-sm text-muted-foreground hover:underline">
-          Projects
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <h1 className="text-lg font-semibold tracking-tight">{p.name}</h1>
-        <StatusBadge status={p.status} />
-        <span className="text-xs text-muted-foreground">
-          {selectedVersion === null ? `current v${p.current_version}` : `viewing v${selectedVersion}`}
-        </span>
-        <div className="ml-auto flex items-center gap-2">
-          {p.current_version === 0 && !busy && !awaitingAnswers && (
-            <Button size="sm" onClick={() => void attempt(onGenerate)} title={genTitle}>
-              <Play /> {needsIntake ? "Read the plans" : "Generate"}
-              {genHint && <span className="font-normal opacity-80">{genHint}</span>}
-            </Button>
-          )}
-          {p.current_version > 0 && !busy && (
-            <Button size="sm" variant="outline" onClick={() => void attempt(onGenerate)} title={`Rebuild from scratch${genTitle ? ` · ${genTitle}` : ""}`}>
-              <Play /> Regenerate
-              {genHint && <span className="font-normal text-muted-foreground">{genHint}</span>}
-            </Button>
-          )}
-          {p.current_version > 0 && !busy && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => setFurnishOpen({ message: "", style: (version?.style ?? null) as HouseStyle | null })}
-              disabled={furnish.isPending}
-              title="Build the interior from the floor plans: rooms, partitions, doors, furniture and lights"
-            >
-              <Sofa /> Furnish
-              {estimateText(intEstimate.data) && (
-                <span className="font-normal text-muted-foreground">{estimateText(intEstimate.data)}</span>
-              )}
-            </Button>
-          )}
-          <Button size="sm" variant="ghost" onClick={() => setSettingsOpen(true)} title={`Run settings · ${p.effective_settings.model} · ${p.effective_settings.builder_effort} · ${p.effective_settings.critic_rounds} round(s) · ${p.effective_settings.max_steps} steps`}>
-            <Settings2 /> {p.effective_settings.preset === "quick" ? "Quick draft" : p.effective_settings.preset === "full" ? "Full quality" : "Custom"}
-          </Button>
-          {busy && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" /> agent running
-              {elapsed && <span className="font-mono tabular-nums">· {elapsed}</span>}
-            </span>
-          )}
-          {busy && activeJob && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void onStop()}
-              disabled={cancel.isPending || activeJob.status === "interrupted"}
-              title="Stop the run now. The scene keeps what the builder wrote so far; restore a version to discard it."
-            >
-              {cancel.isPending ? <Loader2 className="animate-spin" /> : <Square />} Stop
-            </Button>
-          )}
-          {p.current_version > 0 && (
-            <a href={`/api/v1/projects/${projectId}/export${selectedVersion !== null ? `?version=${selectedVersion}` : ""}`}>
-              <Button size="sm" variant="outline">
-                <Download /> Export
-              </Button>
-            </a>
-          )}
-          {p.current_version > 0 && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => void onShare()}
-              disabled={share.isPending}
-              title={
-                p.share
-                  ? `Shared read-only at ${p.share.url}${p.share.version != null ? ` (pinned to v${p.share.version})` : " (current version)"}: click to copy the link again${selectedVersion !== null ? ` and pin v${selectedVersion}` : ""}`
-                  : `Create a read-only link${selectedVersion !== null ? ` pinned to v${selectedVersion}` : " to the current scene"} and copy it`
-              }
-            >
-              {copied ? <Check /> : <Link2 />} {copied ? "Link copied" : p.share ? "Shared" : "Share"}
-            </Button>
-          )}
-          {p.share && (
-            <Button size="sm" variant="ghost" className="text-muted-foreground" onClick={() => void onRevoke()} disabled={revoke.isPending} title="Revoke the shared link">
-              Revoke
-            </Button>
-          )}
-          <Button size="icon" variant="ghost" className="text-muted-foreground" onClick={() => void onDelete()} disabled={busy} title="Delete project">
-            <Trash2 />
-          </Button>
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+          <Link to="/" className="shrink-0 text-sm text-muted-foreground hover:underline">
+            Projects
+          </Link>
+          <span className="text-muted-foreground">/</span>
+          <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight" title={p.name}>
+            {p.name}
+          </h1>
+          <StatusBadge status={p.status} />
+          <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+            {selectedVersion === null ? `current v${p.current_version}` : `viewing v${selectedVersion}`}
+          </span>
         </div>
+        <ActionBar
+          className="ml-auto"
+          actions={headerActions}
+          status={
+            busy && (
+              <span className="flex items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+                <Loader2 className="size-3 animate-spin" /> agent running
+                {elapsed && <span className="font-mono tabular-nums">· {elapsed}</span>}
+              </span>
+            )
+          }
+        />
       </div>
       </div>
 
-      <div className="grid min-h-0 gap-3 lg:grid-cols-[1fr_420px] xl:grid-cols-[1fr_520px] 2xl:grid-cols-[1fr_560px]">
+      <div className="grid min-h-0 grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[1fr_420px] xl:grid-cols-[1fr_520px] 2xl:grid-cols-[1fr_560px]">
         <SceneViewer
           sceneUrl={hasScene ? sceneUrl : null}
           reloadKey={`${reloadKey}-${selectedVersion ?? "c"}`}

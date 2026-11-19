@@ -31,9 +31,11 @@ function SharedPage() {
   const renders = Object.entries(s.render_urls)
   const listing = (s.listing?.photos ?? []).filter((p) => p.url)
   return (
-    <div className="grid h-full grid-rows-[auto_1fr_auto_auto] gap-3 p-3">
-      <div className="flex items-center gap-3">
-        <h1 className="text-lg font-semibold tracking-tight">{s.name}</h1>
+    <div className="grid h-full grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr_auto_auto] gap-3 p-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+        <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight" title={s.name}>
+          {s.name}
+        </h1>
         <span className="text-xs text-muted-foreground">
           version {s.version}
           {s.pinned ? " (pinned)" : ""} · read-only
