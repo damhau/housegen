@@ -48,6 +48,27 @@ test("onWall puts the back against the wall and the front into the room, on ever
   }
 });
 
+test("a towel rail's two towels share no face: where their falls overlap, they hang in different planes (#131)", () => {
+  for (const opts of [{}, { width: 0.6, height: 1.2 }, { towels: ["#ece8e0", "#ece8e0"] }]) {
+    const rail = fx.towelRail(opts);
+    rail.updateMatrixWorld(true);
+    // a towel's falls are its 12 mm slabs, front then back, added towel by towel
+    const falls = rail.children.filter((c) => c.isMesh && box(c).getSize(new THREE.Vector3()).z < 0.02 && box(c).getSize(new THREE.Vector3()).y > 0.1);
+    assert.equal(falls.length, 4, "two towels, two falls each");
+    for (let i = 0; i < falls.length; i++) {
+      for (let j = i + 1; j < falls.length; j++) {
+        if (i >> 1 === j >> 1) continue;
+        const a = box(falls[i]), b = box(falls[j]);
+        const across = Math.min(a.max.x, b.max.x) - Math.max(a.min.x, b.min.x), up = Math.min(a.max.y, b.max.y) - Math.max(a.min.y, b.min.y);
+        if (across <= 0 || up <= 0) continue;
+        for (const fa of [a.min.z, a.max.z]) for (const fb of [b.min.z, b.max.z]) {
+          assert.ok(Math.abs(fa - fb) > 0.001, `${JSON.stringify(opts)}: falls ${i} and ${j} share the plane z ${fa.toFixed(4)} over ${across.toFixed(2)} × ${up.toFixed(2)} m`);
+        }
+      }
+    }
+  }
+});
+
 test("a kitchen run keeps its tall units out of the worktop and the sink out of a tall unit", () => {
   const k = fx.kitchenRun({ length: 3.6, tall: [{ at: 0.3, width: 0.6 }], sink: 0.3, hob: 2.0 });
   const b = box(k);

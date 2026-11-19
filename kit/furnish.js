@@ -714,13 +714,14 @@ export function towelRail({ width = 0.5, height = 0.9, towels = ["#ece8e0", "#c9
     r.position.set(0, 0.06 + (i * (height - 0.12)) / (rungs - 1), z);
     g.add(r);
   }
-  // each towel folded over a rung near the top: a front and a back fall, a round fold on the bar
+  // each towel folded over a rung near the top: a front and a back fall, a round fold on the bar. The lower towel hangs
+  // 3 mm out, over the upper one's falls: in the same planes their faces fought (Cycles drew them black, #131)
   towels.slice(0, 2).forEach((col, k) => {
     const t = finish.towel(col);
-    const barY = height - 0.08 - k * 0.2, tw = width - 0.1, fall = 0.42 - k * 0.1;
-    block(g, [tw, fall, 0.012], [0, barY - fall, z + 0.018], t, 0.006);
-    block(g, [tw, fall * 0.8, 0.012], [0, barY - fall * 0.8, z - 0.018], t, 0.006);
-    const fold = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, tw, 16, 1, false, 0, Math.PI), t));
+    const barY = height - 0.08 - k * 0.2, tw = width - 0.1, fall = 0.42 - k * 0.1, out = 0.018 + k * 0.003;
+    block(g, [tw, fall, 0.012], [0, barY - fall, z + out], t, 0.006);
+    block(g, [tw, fall * 0.8, 0.012], [0, barY - fall * 0.8, z - out], t, 0.006);
+    const fold = shade(new THREE.Mesh(new THREE.CylinderGeometry(out + 0.006, out + 0.006, tw, 16, 1, false, 0, Math.PI), t));
     fold.rotation.z = Math.PI / 2;
     fold.position.set(0, barY, z);
     g.add(fold);
