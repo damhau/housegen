@@ -163,10 +163,20 @@ export class Mirrors {
     vc.position.copy(view);
     vc.up.set(0, 1, 0).applyMatrix4(t.rot).reflect(n);
     vc.lookAt(target);
-    vc.fov = camera.fov; vc.aspect = camera.aspect; vc.near = camera.near; vc.far = camera.far; vc.zoom = camera.zoom;
-    vc.clearViewOffset();
+    vc.fov = camera.fov; vc.near = camera.near; vc.far = camera.far; vc.zoom = camera.zoom;
+    // Its frame is the camera's own, mirrored left to right, cut included (a photo's shift lens, a
+    // jitter): the rectangle drawn must hold all the glass the camera sees, or the glass outside it
+    // samples the cleared target and draws black (#115).
+    const cut = camera.view?.enabled ? camera.view : null;
+    const fw = cut ? cut.width / cut.fullWidth : 1, fh = cut ? cut.height / cut.fullHeight : 1;
+    const fx = cut ? 1 - cut.offsetX / cut.fullWidth - fw : 0, fy = cut ? cut.offsetY / cut.fullHeight : 0;
+    const frame = (x, y, w, h) => {
+      vc.setViewOffset(W, H, (fx + x * fw) * W, (fy + y * fh) * H, w * fw * W, h * fh * H);
+      vc.aspect = camera.aspect; // setViewOffset takes W / H for it: the full frustum is the camera's
+      vc.updateProjectionMatrix();
+    };
+    frame(0, 0, 1, 1);
     vc.updateMatrixWorld();
-    vc.updateProjectionMatrix();
     // the part of the frame the mirror covers, seen from the mirrored camera: only that is drawn
     let x0 = W, y0 = H, x1 = 0, y1 = 0, behind = false;
     t.m.multiplyMatrices(vc.projectionMatrix, vc.matrixWorldInverse);
@@ -180,8 +190,7 @@ export class Mirrors {
     x0 = Math.max(0, Math.floor(x0) - 2); y0 = Math.max(0, Math.floor(y0) - 2);
     x1 = Math.min(W, Math.ceil(x1) + 2); y1 = Math.min(H, Math.ceil(y1) + 2);
     if (x1 - x0 < 2 || y1 - y0 < 2) return false;
-    vc.setViewOffset(W, H, x0, y0, x1 - x0, y1 - y0);
-    vc.updateProjectionMatrix();
+    frame(x0 / W, y0 / H, (x1 - x0) / W, (y1 - y0) / H);
     // one target at the frame's size (scaled), the rectangle drawn into its corner
     const RW = Math.max(1, Math.ceil(W * this.scale)), RH = Math.max(1, Math.ceil(H * this.scale));
     if (!this.target) {

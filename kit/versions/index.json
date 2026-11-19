@@ -211,6 +211,11 @@
       "name": "2026-11-18-v41",
       "date": "2026-11-18",
       "note": "v40 with the builder's ground ending at its site under the real surroundings (#123, kit/ground.js): a large flat mesh left out of the framing is the builder's ground whatever its tags (a lawn drawn out to 90 m round the plot, untagged, lay over the real land and buried the neighbours below it) and is clipped to the site like a tagged terrain; the site grows over the garden pieces left out of the framing (paths, driveway, planting, boundaries) where they lie on the builder's ground, so the real ground no longer comes up through the garden; trees, hedges and garden pieces are never clipped (a material they share with the ground is cloned first). The neighbours' roofs: the lidar's eaves drawn (their top as the roof, fascia and soffit in the house's render, buildings.json `eave`), gravel only under 5° (a 10° lean-to is tiles), tiles of a newer house in a real roof colour (terracotta, brown, grey or anthracite, the family of a photographed roof of the neighbourhood, varying by house) instead of the photo's pale grey. Needs the surroundings fetched again for the eaves. Not the viewer's default, not pinned."
+    },
+    {
+      "name": "2026-11-19-v42",
+      "date": "2026-11-19",
+      "note": "v41 with a mirror that reflects across all its glass through a photographer's frame (#115, kit/mirror.js): the mirrored camera takes the camera's own frame, mirrored left to right, its cut included (a photo's shift lens, a jitter); it used the shift lens's taller field of view at the screen's proportions, so the rectangle drawn for the reflection missed the part of the glass toward the frame's edge, which drew black (TestVillaGille's attic bath, photo-34). The viewer's walk (no shift lens) draws as before. Not the viewer's default, not pinned."
     }
   ]
 }
