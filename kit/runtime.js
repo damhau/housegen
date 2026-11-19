@@ -60,6 +60,7 @@ import { planData, planStoreys, planSVG, roomNameParts } from "./plan2d.js";
 import { loadContext } from "./context.js";
 import { createSunStudy } from "./sunstudy.js";
 import { isMirror, Mirrors } from "./mirror.js";
+import { jitterFrame, photoLens, unshift, walkLens, WALK_LENS } from "./lens.js";
 import { applyLampMode } from "./lighting.js";
 import { setHouseStyle } from "./styles.js";
 
@@ -1356,14 +1357,8 @@ class RestPass extends Pass {
     if (this.count === 0 || this.done) return null;
     const halton = (i, b) => { let f = 1, r = 0; for (let k = i; k > 0; k = Math.floor(k / b)) { f /= b; r += f * (k % b); } return r; };
     const jx = halton(this.count, 2) - 0.5, jy = halton(this.count, 3) - 0.5;
-    const v = camera.view?.enabled ? { ...camera.view } : null;
     renderer.getDrawingBufferSize(this.size);
-    if (v) camera.setViewOffset(v.fullWidth, v.fullHeight, v.offsetX + (jx * v.width) / this.size.x, v.offsetY + (jy * v.height) / this.size.y, v.width, v.height);
-    else camera.setViewOffset(this.size.x, this.size.y, jx, jy, this.size.x, this.size.y);
-    return () => {
-      if (v) camera.setViewOffset(v.fullWidth, v.fullHeight, v.offsetX, v.offsetY, v.width, v.height);
-      else camera.clearViewOffset();
-    };
+    return jitterFrame(camera, jx, jy, this.size.x, this.size.y);
   }
 
   render(renderer, writeBuffer, readBuffer) {
@@ -1443,11 +1438,12 @@ class AccumulatePass extends Pass {
   addSample(renderer) {
     const i = this.count;
     const { width, height } = this.sample;
+    let undo = null;
     if (i === 0) {
       this.sun.position.copy(this.sunBase);
     } else {
-      // camera: sub-pixel offset of the whole frustum
-      this.camera.setViewOffset(width, height, halton(i, 2) - 0.5, halton(i, 3) - 0.5, width, height);
+      // camera: sub-pixel offset of the whole frustum, on top of a photographer's shift lens
+      undo = jitterFrame(this.camera, halton(i, 2) - 0.5, halton(i, 3) - 0.5, width, height);
       // sun: a point of the disc, area-weighted
       const r = Math.tan(this.radius * Math.sqrt(halton(i, 5)));
       const phi = 2 * Math.PI * halton(i, 7);
@@ -1461,7 +1457,7 @@ class AccumulatePass extends Pass {
     syncShadows();
     renderer.setRenderTarget(this.sample);
     renderer.render(this.scene, this.camera);
-    this.camera.clearViewOffset();
+    undo?.();
     // headless: keep the script in step with the GPU (a readback cannot return before every
     // queued command has run), or the screenshot waits behind samples not yet drawn
     const from = this.average[i % 2], to = this.average[(i + 1) % 2];
@@ -3092,6 +3088,7 @@ async function restoreCamera(c) {
 
 async function startWalk(roomName, given = null) {
   endDollhouse();
+  if (state.walk) walkLens(state.walk, state.camera);
   const rooms = sceneRooms();
   const room = rooms.find((r) => r.name === roomName)
     ?? rooms.find((r) => r.use === "hall")
@@ -3116,14 +3113,14 @@ async function startWalk(roomName, given = null) {
       // stand in the room, at eye height above its floor, looking along it
       let cx = 0, cz = 0;
       for (const [x, z] of room.polygon) { cx += x / room.polygon.length; cz += z / room.polygon.length; }
-      camera.position.set(cx, room.y + 0.02 + 1.45, cz);
+      camera.position.set(cx, room.y + 0.02 + WALK_LENS.eye, cz);
       camera.lookAt(cx + 1, room.y + 1.5, cz);
     }
     state.savedFov = camera.fov;
-    camera.fov = 70;
+    camera.fov = WALK_LENS.fov;
     camera.updateProjectionMatrix();
     state.controls.enabled = false;
-    state.walk = new Walk({ camera, canvas: state.renderer.domElement, root: state.houseGroup, renderer: state.renderer,
+    state.walk = new Walk({ camera, canvas: state.renderer.domElement, root: state.houseGroup, renderer: state.renderer, eye: WALK_LENS.eye,
       onChange: () => { state.needsRender = true; } });
     if (room) state.walk.jumpTo(room, given ?? givenView(room));
     window.__walk = state.walk; // debugging
@@ -3375,6 +3372,7 @@ async function goToRoom(roomName) {
     return "fade";
   }
   const w = state.walk;
+  walkLens(w, state.camera);
   const given = givenView(room);
   if (Math.abs(room.y - w.floorY) < 0.5) {
     const v = w.viewpoint(room, given);
@@ -3453,28 +3451,16 @@ function givenView(room) {
   return { at: [v.pos[0], v.pos[2]], look: t };
 }
 
-// The photographer's view of a room (#43), for stills: where the walk stands (its viewpoint sees the
-// most of the room, a window in frame), lower (1.3 m), a 24 mm lens, level (vertical lines stay
-// vertical) and the frame shifted down rather than tilted, as a shift lens does: less ceiling.
-const PHOTO = { eye: 1.3, fov: 53, shift: 0.12 };
-
+// the photographer's view of a room (#43), for stills: lens.js PHOTO_LENS
 function photoFrame() {
-  const w = state.walk, camera = state.camera;
-  if (!w) return;
-  w.eye = PHOTO.eye;
-  camera.position.y = w.floorY + PHOTO.eye; // level: jumpTo leaves the pitch at 0
-  // a frame `shift` of its height lower inside a taller one, at the lens's field of view
-  const size = state.renderer.getSize(new THREE.Vector2());
-  const tall = 1 + 2 * PHOTO.shift;
-  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(THREE.MathUtils.degToRad(PHOTO.fov) / 2) * tall));
-  camera.setViewOffset(size.x, size.y * tall, 0, size.y * 2 * PHOTO.shift, size.x, size.y);
-  camera.updateProjectionMatrix();
+  if (!state.walk) return;
+  photoLens(state.walk, state.camera, state.renderer.getSize(new THREE.Vector2()));
   state.accumulate?.reset();
 }
 
 function stopWalk() {
   if (!state.walk) return;
-  state.camera.clearViewOffset();
+  unshift(state.camera);
   state.walk.dispose();
   if (document.pointerLockElement) document.exitPointerLock();
   state.walk = null;
@@ -3492,7 +3478,7 @@ function stopWalk() {
 
 async function setView(name) {
   endDollhouse();
-  state.camera.clearViewOffset();
+  unshift(state.camera);
   // interiors: an eye-height view of a room (room-<n>, 1-based in the order of the rooms), the
   // photographer's view of it (photo-<n>), or the plan section of a storey (plan-section-<n>) drawn
   // at the framing report() gives
