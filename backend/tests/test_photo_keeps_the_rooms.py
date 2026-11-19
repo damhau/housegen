@@ -1,7 +1,9 @@
-"""A listing photo of a scene the kit dressed shows the rooms as the 3D tour does (#122): agencies publish the photos,
-so no bed is remade, no rug swapped or added, no table cleared or set, no prop added; only the camera's rules run.
-A scene drawn by an older kit keeps the photo's own dressing. A sanitary piece's metal keeps the kit's finish, black
-and brass as much as chrome (#130); its towels and throws keep the kit's colours, and a camera spec frames as the 3D's
+"""A listing photo of a scene the kit dressed keeps the 3D tour's furniture setup (#136): agencies publish the photos,
+so no bed, armchair, plant or print is swapped, nothing added to what the kit's dressing already did; its rugs and its
+layered bedding are drawn photographically in their colours and places, and the small staging the 3D lacks comes in
+(a rug under a bed and under the dining table, the table laid, desk stationery, the bath's caddy and bottles). A scene
+drawn by an older kit keeps the photo's own dressing. A sanitary piece's metal keeps the kit's finish, black and brass
+as much as chrome (#130); its towels and throws keep the kit's colours, and a camera spec frames as the 3D's
 photographer frame does (#133). photo.py and style.py run under Blender: its modules are stand-ins here, the
 decisions are not."""
 
@@ -21,17 +23,23 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 BLENDER_DIR = ROOT / "photo" / "blender"
 BLENDER = ("bpy", "bmesh", "addon_utils", "mathutils", "bpy_extras", "bpy_extras.object_utils")
-RESTYLING = (
-    "swap_rugs",
-    "swap_plants",
-    "swap_art",
-    "swap_armchairs",
-    "swap_beds",
-    "sofa_measure",
-    "dress_counter",
-    "dress_tubs",
-    "dress_basins",
+# the photo's own furniture and dressing choices, which a scene the kit dressed has made already
+SWAPPING = ("swap_rugs", "swap_plants", "swap_art", "swap_armchairs", "sofa_measure")
+# the soft things and the small staging, in every scene
+DRESSING = ("swap_beds", "dress_tables", "dress_counter", "dress_tubs", "dress_basins")
+# style.py's rules the kit's dressing (kit/dressing.js) plays already, and the nightstands, sofas, sideboards, floor
+# corners, bath stools and towel bars it decides on
+KIT_PLAYS = (
+    "bedsides",
+    "table_extras",
+    "coffee_table",
+    "sofa_dress",
+    "stool",
+    "sideboard",
+    "accent",
+    "towel_rail",
 )
+KIT_PLAYS_LIB = ("nightstand", "dining", "sofa", "sofa_side", "bed_foot", "floor", "wall")
 
 
 class Restyled(Exception):
@@ -45,8 +53,9 @@ def photo(monkeypatch: pytest.MonkeyPatch) -> Iterator[ModuleType]:
     monkeypatch.syspath_prepend(str(BLENDER_DIR))
     before = set(sys.modules)
     module = importlib.import_module("photo")
-    module.style.H = module
+    module.style.H = module.stage.H = module
     monkeypatch.setattr(module, "log", lambda *a: None)
+    monkeypatch.setattr(module.style, "log", lambda *a: None)
     yield module
     # the pipeline's modules hold the stand-ins: the next test imports them afresh (numpy cannot be imported twice)
     for name in set(sys.modules) - before:
@@ -54,72 +63,323 @@ def photo(monkeypatch: pytest.MonkeyPatch) -> Iterator[ModuleType]:
             del sys.modules[name]
 
 
+def _record(called: list[str], name: str, result: Any = 0) -> Any:
+    def call(*a: Any, **k: Any) -> Any:
+        called.append(name)
+        return result
+
+    return call
+
+
 def _calls(photo: ModuleType, monkeypatch: pytest.MonkeyPatch, dressed: bool) -> list[str]:
     called: list[str] = []
-
-    def record(name: str, result: Any = 0) -> Any:
-        def call(*a: Any, **k: Any) -> Any:
-            called.append(name)
-            return result
-
-        return call
-
     monkeypatch.setattr(photo.catalogue, "DRESSED", dressed)
     monkeypatch.setattr(photo.catalogue, "OWN", True)
     monkeypatch.setattr(photo.catalogue, "holders", lambda scene, sy: ["holder"])
-    monkeypatch.setattr(photo.catalogue, "own", record("own"))
+    monkeypatch.setattr(photo.catalogue, "own", _record(called, "own"))
     monkeypatch.setattr(photo, "storey_pieces", lambda scene, sy: ["piece"])
-    for name in (*RESTYLING, "sanitaryware", "rail_towels", "dress_made", "dress_tables"):
-        monkeypatch.setattr(photo, name, record(name))
+    for name in (*SWAPPING, *DRESSING, "kit_rugs", "sanitaryware", "rail_towels", "dress_made"):
+        monkeypatch.setattr(photo, name, _record(called, name))
     photo.dress_storey(SimpleNamespace(), 0.0, decor=True)
     return called
 
 
-def test_a_dressed_scene_keeps_its_beds_rugs_tables_counters_and_baths(
+def test_a_dressed_scene_keeps_the_3d_furniture_and_dresses_its_soft_things(
     photo: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     called = _calls(photo, monkeypatch, dressed=True)
-    assert not set(called) & set(RESTYLING), called
-    assert {"own", "sanitaryware", "rail_towels", "dress_made", "dress_tables"} <= set(called)
+    assert not set(called) & set(SWAPPING), called
+    assert {*DRESSING, "kit_rugs", "own", "sanitaryware", "rail_towels", "dress_made"} <= set(
+        called
+    )
 
 
 def test_a_scene_from_an_older_kit_is_still_dressed_by_the_photo(
     photo: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     called = _calls(photo, monkeypatch, dressed=False)
-    assert set(RESTYLING) <= set(called), called
+    assert {*SWAPPING, *DRESSING} <= set(called), called
+    assert "kit_rugs" not in called
 
 
-def test_a_dressed_scene_lays_its_table_with_no_rug_added(
+class _V:
+    def __init__(self, v: Any) -> None:
+        self.x, self.y, self.z = (float(c) for c in v)
+
+    def __add__(self, o: _V) -> _V:
+        return _V((self.x + o.x, self.y + o.y, self.z + o.z))
+
+    def __sub__(self, o: _V) -> _V:
+        return _V((self.x - o.x, self.y - o.y, self.z - o.z))
+
+    def __mul__(self, k: float) -> _V:
+        return _V((self.x * k, self.y * k, self.z * k))
+
+    def __truediv__(self, k: float) -> _V:
+        return self * (1 / k)
+
+    def __getitem__(self, i: int) -> float:
+        return (self.x, self.y, self.z)[i]
+
+    @property
+    def length(self) -> float:
+        return math.sqrt(self.x**2 + self.y**2 + self.z**2)
+
+
+class _Shift:
+    """A frame turned by nothing: a translation, as a bed's or a table's frame along the axes."""
+
+    def __init__(self, x: float = 0.0, y: float = 0.0, z: float = 0.0) -> None:
+        self.translation = _V((x, y, z))
+
+    def __matmul__(self, o: Any) -> Any:
+        if isinstance(o, _Shift):
+            return _Shift(*(self.translation + o.translation))
+        return self.translation + o
+
+    def inverted(self) -> _Shift:
+        return _Shift(*(self.translation * -1))
+
+    def to_euler(self) -> SimpleNamespace:
+        return SimpleNamespace(z=0.0)
+
+
+class _Matrix:
+    @staticmethod
+    def Translation(v: Any) -> _Shift:
+        return _Shift(*v)
+
+    @staticmethod
+    def Rotation(*a: Any) -> _Shift:
+        return _Shift()
+
+
+@pytest.mark.parametrize(
+    ("dims", "depth", "role"),
+    [
+        ((0.78, 0.48, 0.17), 0.32, "pillow"),  # layers() on a 0.9 m bed 8 cm from the head wall
+        ((0.46, 0.13, 0.42), 0.39, "upright"),
+        ((0.40, 0.12, 0.34), 0.51, "cushion"),
+        ((0.72, 0.5, 0.13), 0.4, "pillow"),  # dressBed's
+        ((1.1, 0.48, 0.17), 1.66, None),  # layers()'s throw, past the middle
+        ((1.06, 1.14, 0.08), 1.6, None),  # the duvet
+    ],
+)
+def test_a_kit_beds_pillows_and_cushions_are_read_by_their_size_at_its_head(
+    photo: ModuleType, dims: tuple[float, float, float], depth: float, role: str | None
+) -> None:
+    assert photo.soft_role(dims, depth) == role
+
+
+def _span(lo: tuple[float, float, float], hi: tuple[float, float, float]) -> tuple[_V, _V]:
+    return _V(lo), _V(hi)
+
+
+def test_a_layered_beds_mattress_is_found_under_its_duvet(photo: ModuleType) -> None:
+    # layers() over a 0.9 x 2.0 mattress 0.1 m from the head wall, its top at 0.5: the duvet 16 cm wider, from 4 % of
+    # the length before the middle to 6 cm past the foot, 4 cm over the top; the sheet under it
+    sheet, duvet = "sheet", "duvet"
+    parts = {"mattress": [], "drapes": [sheet, duvet], "blocks": []}
+    spans = {
+        sheet: _span((-0.52, -2.15, 0.45), (0.52, -0.86, 0.6)),
+        duvet: _span((-0.53, -2.16, 0.3), (0.53, -1.02, 0.6)),
+    }
+    w, head, foot, top, cx = photo.mattress_of(parts, spans, {sheet: 0.525, duvet: 0.54})
+    assert (w, head, foot, top, cx) == pytest.approx((0.9, 0.1, 2.1, 0.5, 0.0))
+
+
+def test_a_single_layer_beds_mattress_is_found_under_its_duvet(photo: ModuleType) -> None:
+    # dressBed over a 1.4 x 2.0 mattress 0.1 m from the head wall: the duvet 8 cm wider, 68 % of the length + 4 cm,
+    # 5 cm past the foot, from 2 cm under the top
+    duvet, flap = "duvet", "flap"
+    parts = {"mattress": [], "drapes": [], "blocks": [duvet, flap]}
+    spans = {
+        duvet: _span((-0.74, -2.15, 0.48), (0.74, -0.75, 0.54)),
+        flap: _span((0.7, -2.15, 0.3), (0.73, -0.75, 0.52)),
+    }
+    w, head, foot, top, _ = photo.mattress_of(parts, spans, {})
+    assert (w, head, foot, top) == pytest.approx((1.4, 0.1, 2.1, 0.5))
+
+
+def test_a_kit_mattress_is_the_mattress(photo: ModuleType) -> None:
+    m = "mattress"
+    spans = {m: _span((-0.44, -2.04, 0.3), (0.44, -0.08, 0.5))}
+    parts = {"mattress": [m], "drapes": ["duvet"], "blocks": []}
+    assert photo.mattress_of(parts, spans, {}) == pytest.approx((0.88, 0.08, 2.04, 0.5, 0.0))
+
+
+def test_a_dressed_scene_makes_up_every_bed_and_keeps_its_frame(
     photo: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(photo.catalogue, "DRESSED", True)
-    table = _Piece(footprint=(1.6, 0.9))
-    monkeypatch.setattr(photo, "name", lambda o: "dining-table" if o is table else "")
-    monkeypatch.setattr(photo, "box", lambda o: ("lo", "hi"))
-    monkeypatch.setattr(photo.stage, "rug", MagicMock(side_effect=Restyled("a library rug")))
-    monkeypatch.setattr(photo.dress, "rug", MagicMock(side_effect=Restyled("a dining rug")))
-    laid: list[Any] = []
-    monkeypatch.setattr(photo.style, "table_glass", lambda pieces, lo, hi: laid.append(pieces))
-    pieces = [table]
-    assert photo.dress_tables(SimpleNamespace(), pieces) == 1
-    assert laid == [pieces]
+    monkeypatch.setattr(photo, "BEDS", [])
+    bed = _Piece(footprint=[0.96, 2.08])
+    monkeypatch.setattr(photo, "name", lambda o: "bed")
+    monkeypatch.setattr(photo, "box", lambda o: (_V((0, 0, 0)), _V((1, 2, 1))))
+    for helper in ("linen_material", "wool_material"):
+        monkeypatch.setattr(photo.dress, helper, MagicMock())
+    monkeypatch.setattr(photo, "upholstery_material", MagicMock())
+    monkeypatch.setattr(photo, "frame_of", lambda o, z: _Shift())
+    monkeypatch.setattr(photo, "Matrix", _Matrix)
+    made: list[Any] = []
+    monkeypatch.setattr(
+        photo, "make_up", lambda scene, o, frame, length, decor: made.append(o) or 0.88
+    )
+    monkeypatch.setattr(
+        photo, "bedset", MagicMock(side_effect=Restyled("a bedset in the kit's frame's place"))
+    )
+    assert photo.swap_beds(SimpleNamespace(), [bed]) == 1
+    assert made == [bed]
+    assert [w for _, w in photo.BEDS] == [0.88]
 
 
 class _Piece(dict[str, Any]):
-    matrix_world = SimpleNamespace(translation=SimpleNamespace(x=0.0, y=0.0, z=0.0))
+    def __init__(self, at: tuple[float, float, float] = (0.0, 0.0, 0.0), **tags: Any) -> None:
+        super().__init__(**tags)
+        self.matrix_world = SimpleNamespace(translation=_V(at))
 
 
-def test_a_dressed_scene_keeps_only_the_cameras_rules(
+def _table(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch, pieces: list[Any], names: dict[int, str]
+) -> list[str]:
+    done: list[str] = []
+    monkeypatch.setattr(photo.catalogue, "DRESSED", True)
+    monkeypatch.setattr(photo.objlib, "LIB", False)
+    monkeypatch.setattr(photo, "name", lambda o: names.get(id(o), ""))
+    monkeypatch.setattr(photo, "box", lambda o: (o["lo"], o["hi"]))
+    monkeypatch.setattr(photo, "turn", lambda o: 0.0)
+    rug = SimpleNamespace(rotation_euler=[0.0, 0.0, 0.0])
+    monkeypatch.setattr(photo.dress, "rug", lambda *a, **k: done.append("rug") or rug)
+    monkeypatch.setattr(photo, "lay_places", _record(done, "places"))
+    monkeypatch.setattr(photo.style, "table_glass", _record(done, "glass"))
+    monkeypatch.setattr(
+        photo.objlib, "choose", MagicMock(side_effect=Restyled("the photo's own table setting"))
+    )
+    assert photo.dress_tables(SimpleNamespace(), pieces) == 1
+    return done
+
+
+def test_a_dressed_scenes_dining_table_gets_a_rug_and_is_laid(
     photo: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    style = photo.style
+    table = _Piece(footprint=(1.6, 0.9), lo=_V((-0.8, -0.45, 0)), hi=_V((0.8, 0.45, 0.75)))
+    assert _table(photo, monkeypatch, [table], {id(table): "dining-table"}) == [
+        "rug",
+        "places",
+        "glass",
+    ]
+
+
+def test_a_dining_table_on_the_kits_rug_gets_no_other(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    table = _Piece(footprint=(1.6, 0.9), lo=_V((-0.8, -0.45, 0)), hi=_V((0.8, 0.45, 0.75)))
+    rug = _Piece(lo=_V((-1.5, -1.2, 0)), hi=_V((1.5, 1.2, 0.012)))
+    done = _table(photo, monkeypatch, [table, rug], {id(table): "dining-table", id(rug): "rug"})
+    assert done == ["places", "glass"]
+
+
+def _lay(
+    photo: ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    chairs: list[tuple[float, float]],
+    plates: bool = False,
+) -> int:
+    table = _Piece(footprint=(2.0, 1.0))
+    lo, hi = _V((-1.0, -0.5, 0)), _V((1.0, 0.5, 0.75))
+    pieces: list[Any] = [table, *(_Piece(at=(u, v, 0)) for u, v in chairs)]
+    names = {id(p): "dining-chair" for p in pieces[1:]}
+    if plates:
+        pieces.append(_Piece(at=(0.3, 0.2, 0.76)))
+        names[id(pieces[-1])] = "plate"
+    monkeypatch.setattr(photo, "name", lambda o: names.get(id(o), "dining-table"))
+    monkeypatch.setattr(photo, "frame_of", lambda o, z: _Shift())
+    monkeypatch.setattr(photo, "Matrix", _Matrix)
+    monkeypatch.setattr(photo, "Vector", _V)
+    monkeypatch.setattr(
+        photo, "heights_down", lambda scene, dg, f, pts, start: [(0.75, 1.0)] * len(pts)
+    )
+    monkeypatch.setattr(photo, "bath_piece", lambda what: what)
+    laid: list[Any] = []
+    monkeypatch.setattr(
+        photo, "in_frame", lambda scene, f, path, at: laid.append((path, f.translation))
+    )
+    n = photo.lay_places(SimpleNamespace(), table, pieces, lo, hi)
+    assert n == len(laid)
+    assert all(path == "place" for path, _ in laid)
+    return n
+
+
+def test_each_chair_at_the_table_gets_a_place(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    six = [(-0.45, -0.8), (0.45, -0.8), (-0.45, 0.8), (0.45, 0.8), (-1.35, 0.0), (1.35, 0.0)]
+    assert _lay(photo, monkeypatch, six) == 6
+
+
+def test_places_keep_their_distance_and_a_chair_pushed_away_gets_none(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _lay(photo, monkeypatch, [(0.0, -0.8), (0.15, -0.8), (0.4, 1.9)]) == 1
+
+
+def test_a_table_with_the_kits_plates_is_not_laid_again(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert _lay(photo, monkeypatch, [(0.0, -0.8)], plates=True) == 0
+
+
+def _style(photo: ModuleType, monkeypatch: pytest.MonkeyPatch, lib: bool) -> list[str]:
+    style, stage = photo.style, photo.stage
+    called: list[str] = []
     monkeypatch.setattr(style.catalogue, "DRESSED", True)
-    edges: list[bool] = []
-    monkeypatch.setattr(style, "edge_clutter", lambda scene, cam, plants: edges.append(plants) or 0)
-    monkeypatch.setattr(style.H, "storey_pieces", MagicMock(side_effect=Restyled("the rules ran")))
-    style.style(SimpleNamespace(), SimpleNamespace(), [], [], 0.0, [])
-    assert sorted(edges) == [False, True]
+    monkeypatch.setattr(style.objlib, "LIB", lib)
+    monkeypatch.setattr(photo, "storey_pieces", lambda scene, sy: [])
+    monkeypatch.setattr(photo, "camera_rays", lambda *a: [])
+    rooms = [
+        {"name": "Ch.1", "use": "bedroom"},
+        {"name": "Salon", "use": "living"},
+        {"name": "Hall", "use": "hall"},
+    ]
+    monkeypatch.setattr(
+        style, "seen_rooms", lambda rays, rs, sy: [(rooms[0], 90), (rooms[1], 40), (rooms[2], 7)]
+    )
+    monkeypatch.setattr(
+        style, "edge_clutter", lambda scene, cam, plants: called.append(f"edge {plants}") or 0
+    )
+    for name in ("bed_rug", "bed_art", "sills", "outdoor_set"):
+        monkeypatch.setattr(style, name, _record(called, name))
+    monkeypatch.setattr(
+        stage, "coffee", lambda *a, keep=False: called.append(f"coffee keep={keep}") or 0
+    )
+    monkeypatch.setattr(stage, "desk", _record(called, "desk"))
+    for name in KIT_PLAYS:
+        monkeypatch.setattr(style, name, MagicMock(side_effect=Restyled(name)))
+    for name in KIT_PLAYS_LIB:
+        monkeypatch.setattr(stage, name, MagicMock(side_effect=Restyled(f"stage.{name}")))
+    style.style(SimpleNamespace(), SimpleNamespace(), [], rooms, 0.0, [])
+    return called
+
+
+def test_a_dressed_scene_gets_the_small_staging_the_3d_lacks(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called = _style(photo, monkeypatch, lib=True)
+    assert called == [
+        "edge True",
+        *("bed_rug", "bed_art", "coffee keep=True", "desk"),  # the bedroom
+        *("coffee keep=True", "desk"),  # the living room; the hall is barely seen
+        *("sills", "outdoor_set", "edge False"),
+    ]
+
+
+def test_a_dressed_scene_without_the_library_clears_no_coffee_table(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    called = _style(photo, monkeypatch, lib=False)
+    assert "coffee keep=True" not in called
+    assert "desk" not in called
+    assert {"bed_rug", "bed_art", "sills", "outdoor_set"} <= set(called)
 
 
 def test_a_scene_from_an_older_kit_is_still_styled(
@@ -130,6 +390,98 @@ def test_a_scene_from_an_older_kit_is_still_styled(
     monkeypatch.setattr(style.H, "storey_pieces", MagicMock(side_effect=Restyled("the rules ran")))
     with pytest.raises(Restyled):
         style.style(SimpleNamespace(), SimpleNamespace(), [], [], 0.0, [])
+
+
+class _Empty:
+    type = "EMPTY"
+    hide_render = False
+
+
+class _Shown:
+    """A mesh shown in the scene, its bounding box from `lo` to `hi`, its matrix the identity."""
+
+    type = "MESH"
+    hide_render = False
+
+    def __init__(self, lo: tuple[float, float, float], hi: tuple[float, float, float]) -> None:
+        self.bound_box = [
+            (x, y, z) for x in (lo[0], hi[0]) for y in (lo[1], hi[1]) for z in (lo[2], hi[2])
+        ]
+        self.matrix_world = _Shift()
+
+
+def test_a_coffee_table_with_things_on_it_is_dressed_already(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    style = photo.style
+    table = _Empty()
+    monkeypatch.setattr(style, "Vector", _V)
+    monkeypatch.setattr(photo, "box", lambda o: (_V((-0.6, -0.3, 0.0)), _V((0.6, 0.3, 0.42))))
+    monkeypatch.setattr(photo, "family", lambda o: [o])
+    rug = _Shown((-1.2, -0.9, 0.0), (1.2, 0.9, 0.012))
+    vase = _Shown((0.2, -0.1, 0.42), (0.32, 0.02, 0.7))
+    assert not style.stands_on(SimpleNamespace(objects=[table, rug]), table)
+    assert style.stands_on(SimpleNamespace(objects=[table, rug, vase]), table)
+
+
+def test_a_beds_rug_goes_as_far_as_the_room_lets_it(photo: ModuleType) -> None:
+    def free(x: float, y: float) -> bool:
+        return True
+
+    def against_the_right_wall(x: float, y: float) -> bool:
+        return x <= 0.45 + 0.12 and y >= -2.5
+
+    assert photo.style.rug_fit(free, 0.9, 2.0, 1.3) == (0.6, 0.6, 0.7)
+    assert photo.style.rug_fit(against_the_right_wall, 0.9, 2.0, 1.3) == (0.6, 0.1, 0.5)
+    assert photo.style.rug_fit(lambda x, y: abs(x) < 0.5, 0.9, 2.0, 1.3) is None
+
+
+def _bed_rug(photo: ModuleType, monkeypatch: pytest.MonkeyPatch, kit_rugs: list[Any]) -> list[Any]:
+    style = photo.style
+    drawn: list[Any] = []
+    monkeypatch.setattr(style.catalogue, "DRESSED", True)
+    monkeypatch.setattr(style, "Vector", _V)
+    monkeypatch.setattr(photo, "BEDS", [(_Shift(), 0.9)])
+    monkeypatch.setattr(photo, "KIT_RUGS", kit_rugs)
+    monkeypatch.setattr(photo, "inside", lambda poly, x, z: True)
+    monkeypatch.setattr(photo, "hide", lambda o: setattr(o, "hide_render", True))
+    monkeypatch.setattr(style, "our_rugs", MagicMock(side_effect=Restyled("the photo's rugs")))
+    monkeypatch.setattr(style.stage, "rug", lambda *a: drawn.append(("library", None)))
+    monkeypatch.setattr(
+        photo.dress, "rug", lambda *a, rgb=None, **k: drawn.append(("rug", rgb)) or MagicMock()
+    )
+    style.bed_rug(SimpleNamespace(), {"polygon": []}, 0.0)
+    return drawn
+
+
+def _kit_rug(
+    at: tuple[float, float], size: tuple[float, float], rgb: tuple[float, float, float]
+) -> Any:
+    return (None, _Shift(*at), size, SimpleNamespace(hide_render=False), rgb)
+
+
+def test_a_bed_on_the_kits_rug_keeps_it(photo: ModuleType, monkeypatch: pytest.MonkeyPatch) -> None:
+    under = _kit_rug((0.0, -1.9), (2.0, 1.4), (0.16, 0.16, 0.14))
+    assert _bed_rug(photo, monkeypatch, [under]) == []
+    assert not under[3].hide_render
+
+
+def test_a_beds_rug_takes_the_place_and_colour_of_the_kits_runner(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _kit_rug((0.85, -1.2), (0.7, 1.6), (0.4, 0.3, 0.2))
+    elsewhere = _kit_rug((4.0, 3.0), (1.6, 2.3), (0.16, 0.16, 0.14))
+    monkeypatch.setattr(photo.objlib, "LIB", True)
+    assert _bed_rug(photo, monkeypatch, [runner, elsewhere]) == [("rug", (0.4, 0.3, 0.2))]
+    assert runner[3].hide_render
+    assert not elsewhere[3].hide_render
+
+
+def test_a_dressed_scenes_bare_bed_gets_the_librarys_rug(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(photo.objlib, "LIB", True)
+    assert _bed_rug(photo, monkeypatch, []) == [("library", None)]
 
 
 class _Socket:
@@ -309,20 +661,6 @@ class _Holder(dict[str, Any]):
         self.matrix_world = MagicMock()
         self.children: list[Any] = []
         self.children_recursive: list[Any] = []
-
-
-class _V:
-    def __init__(self, v: Any) -> None:
-        self.x, self.y, self.z = (float(c) for c in v)
-
-    def __add__(self, o: _V) -> _V:
-        return _V((self.x + o.x, self.y + o.y, self.z + o.z))
-
-    def __sub__(self, o: _V) -> _V:
-        return _V((self.x - o.x, self.y - o.y, self.z - o.z))
-
-    def __mul__(self, k: float) -> _V:
-        return _V((self.x * k, self.y * k, self.z * k))
 
 
 class _Camera(dict[str, Any]):

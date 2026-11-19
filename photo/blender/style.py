@@ -12,9 +12,11 @@ knows a room or a camera: it reads the export's pieces, the rooms the camera see
   through the glass a bistro set.
 - `edge_clutter`, last: small props cut by a side of the frame, and a plant or a kit lamp right in front of the lens, go.
 
-In a scene the kit dressed (catalogue.DRESSED, kit/dressing.js) the rooms are the kit's, the same in the 3D tour, and
-agencies publish the photos: none of these rules runs (#122), only edge_clutter, which depends on the camera alone (the
-dressing's pieces and the kit's standing lamps too).
+In a scene the kit dressed (catalogue.DRESSED, kit/dressing.js) the furniture and its dressing are the 3D tour's, and
+agencies publish the photos (#136): `kit_dressed` runs only the small staging the 3D does not have, where the kit left
+room for it (a rug under a bed, a pair of prints over a bare bed wall, a bare coffee table, desk stationery, sills, a
+balcony set), never a rule the kit's dressing already played (nightstands, sofas, sideboards, the table's centre line,
+floor corners, the bath's towels, stool and bar, wall art), and edge_clutter.
 
 photo.py calls `style(scene, cam, rays, rooms, sy, pieces)` after the camera is set, and passes itself as `H` (its
 helpers: trace, kinds, box, frame_of, in_frame, place, model...).
@@ -234,6 +236,20 @@ def floor_spots(scene, cam, room, sy, r, h, taken=(), step=0.1):
     return sorted(out, key=lambda t: -t[0])
 
 
+def stands_on(scene, o):
+    """Whether anything shown stands on piece `o`'s top: a piece, the kit's dressing, a prop."""
+    lo, hi = H.box(o)
+    mine = set(H.family(o))
+    for c in scene.objects:
+        if c.type != "MESH" or c.hide_render or c in mine:
+            continue
+        ps = [c.matrix_world @ Vector(v) for v in c.bound_box]
+        x, y = sum(p.x for p in ps) / 8, sum(p.y for p in ps) / 8
+        if lo.x <= x <= hi.x and lo.y <= y <= hi.y and hi.z - 0.05 <= min(p.z for p in ps) <= hi.z + 0.05:
+            return True
+    return False
+
+
 def top_spots(scene, dg, o, floor_z, r, us=None, vs=None):
     """Free flat places for a disc of radius r on piece o's top, in its frame: (u, v, height), the highest level
     first. Every ray down a disc must meet the same flat level."""
@@ -262,46 +278,154 @@ def our_rugs(scene):
             and o.data.materials[0].name.startswith("archviz-rug")]
 
 
+RUG_SIDES = (0.6, 0.5, 0.4, 0.3, 0.2, 0.1, 0.0)  # how far a bed's rug shows at a side (m), largest first
+RUG_FEET = (0.7, 0.6, 0.5, 0.4, 0.3, 0.2)  # and past its foot
+
+
+def rug_fit(inside, w, length, cover):
+    """The margins (left, right, foot) of the largest rug under a bed's lower part whose corners `inside` (bed frame
+    x, y) takes, its sides as even as the room allows (a side against a wall down to the bed's edge); None if none."""
+    best = None
+    for left in RUG_SIDES:
+        for right in RUG_SIDES:
+            if left + right < 0.3:
+                continue
+            for foot in RUG_FEET:
+                if all(inside(x, y) for x in (-w / 2 - left, w / 2 + right) for y in (-(length - cover), -length - foot)):
+                    key = left + right + foot - 0.5 * abs(left - right)
+                    if best is None or key > best[0]:
+                        best = (key, (left, right, foot))
+    return best and best[1]
+
+
+def on_rug(entry, p):
+    """Whether world point `p` lies on kit rug `entry` (photo.KIT_RUGS)."""
+    _, f, (w, d), _, _ = entry
+    q = f.inverted() @ p
+    return abs(q.x) <= w / 2 and abs(q.y) <= d / 2
+
+
 def bed_rug(scene, room, sy):
     """A rug under the lower two-thirds of the bed, 0.6 m proud at the sides and 0.7 m at the foot, shrunk to the
-    room; the room's other rugs go."""
+    room; the room's other rugs go. In a scene the kit dressed, a bed the kit laid a rug under keeps it, and the new
+    one takes the place and colour of the kit's rugs it covers, the others stay."""
     beds = [(f, w) for f, w in H.BEDS if H.inside(room["polygon"], *H.to_scene(f.translation)[::2])]
     if not beds:
         return 0
     f, w = beds[0]
-    length = 2.0  # our bed, its head at the frame's origin, its foot at -2.0 along y
+    length = 2.0  # the bed, its head at the frame's origin, its foot at -2.0 along y
     poly = room["polygon"]
     cover = 0.65 * length
-    for k in range(9):  # shrink the margins until the rug fits the room
-        side, foot = 0.6 - 0.05 * k, 0.7 - 0.05 * k
-        rw, rl = w + 2 * side, cover + foot
-        corners = [f @ Vector((sx * rw / 2, -(length - cover) - e, 0)) for sx in (-1, 1) for e in (0.0, rl)]
-        if all(H.inside(poly, *H.to_scene(p)[::2]) for p in corners):
-            break
-    else:
+    kit = [e for e in H.KIT_RUGS if not e[3].hide_render] if catalogue.DRESSED else []
+    if any(on_rug(e, f @ Vector((0, -y, 0))) for e in kit for y in (length - cover / 2, length - 0.1)):
+        log("the bed has the kit's rug under it")
+        return 0
+    fit = rug_fit(lambda x, y: H.inside(poly, *H.to_scene(f @ Vector((x, y, 0)))[::2]), w, length, cover)
+    if fit is None:
         log("no room for a rug under the bed")
         return 0
-    for o in our_rugs(scene):
-        if H.inside(poly, *H.to_scene(o.matrix_world.translation)[::2]):
-            H.hide(o)
-    centre = f @ Vector((0, -(length - cover) - rl / 2, 0))
+    left, right, foot = fit
+    rw, rl = w + left + right, cover + foot
+    centre = f @ Vector(((right - left) / 2, -(length - cover) - rl / 2, 0))
+    rgb, covered = None, 0.0
+    if catalogue.DRESSED:
+        fi = f.inverted()
+        for e in kit:
+            o, ef, (ew, ed), drawn, colour = e
+            grid = [ef @ Vector((ew * (i / 6 - 0.5), ed * (j / 6 - 0.5), 0)) for i in range(7) for j in range(7)]
+            over = [q for q in (fi @ g for g in grid) if abs(q.x - (right - left) / 2) <= rw / 2 and abs(q.y - (fi @ centre).y) <= rl / 2]
+            if over or on_rug(e, centre):
+                H.hide(drawn)
+                if colour is not None and ew * ed > covered:
+                    rgb, covered = tuple(float(v) for v in colour), ew * ed
+    else:
+        for o in our_rugs(scene):
+            if H.inside(poly, *H.to_scene(o.matrix_world.translation)[::2]):
+                H.hide(o)
     x, _, z = H.to_scene(centre)
-    if objlib.LIB:
+    if objlib.LIB and rgb is None:
         stage.rug(scene, room, (x, z), (rw, rl), sy, f.to_euler().z)
     else:
-        rug = H.dress.rug(scene, (x, z), (rw, rl), floor=sy)
+        rug = H.dress.rug(scene, (x, z), (rw, rl), floor=sy, rgb=rgb)
         rug.rotation_euler[2] = f.to_euler().z
-    log(f"rug {rw:.2f} x {rl:.2f} under the bed")
+    log(f"rug {rw:.2f} x {rl:.2f} under the bed, {left:.1f} / {right:.1f} m at its sides"
+        f"{', in the colour of the kit rug it covers' if rgb else ''}")
+    return 1
+
+
+def over_bed(scene, f, w):
+    """Whether anything shown hangs on the wall over the bed at frame `f` (`w` wide): a print, a lamp, a shelf."""
+    fi = f.inverted()
+    for o in scene.objects:
+        if o.hide_render or not (o.get("kind") in ("furniture", "dressing") or o.name.startswith("art.glb")):
+            continue
+        lo, hi = H.box(o)
+        c = fi @ ((lo + hi) / 2)
+        if abs(c.x) <= w / 2 + 0.3 and -0.4 < c.y < 0.6 and 0.95 < c.z < 2.4 and hi.z - lo.z < 1.5:
+            return True
+    return False
+
+
+def bare_bed_wall(scene, dg, room, f, w):
+    """A pair of prints on the bare wall over a bed (the kit hung none there): together about 0.7 of its width, their
+    bottoms 0.2 m over the headboard or the pillows, if the wall takes them."""
+    if over_bed(scene, f, w):
+        return 0
+    into = (f.to_3x3() @ Vector((0, -1, 0))).normalized()
+    hit = H.trace(scene, dg, f @ Vector((0, -0.6, 1.5)), -into, far=1.2)
+    if hit is None or not H.kinds(hit[2]) & {"wall", "partition"} or hit[1].dot(into) < 0.9:
+        return 0
+    tops = [h[0].z - f.translation.z for x in (-w / 4, 0.0, w / 4) for y in (-0.03, -0.12)
+            if (h := H.trace(scene, dg, f @ Vector((x, y, 2.2)), Vector((0, 0, -1)), far=2.2)) is not None]
+    bottom = max([1.1] + [t + 0.2 for t in tops if t < 1.5])
+    return hang_pair(scene, dg, room, f, w, hit[0] + into * 0.016, bottom, None, math.degrees(math.atan2(-into.x, into.y)))
+
+
+def hang_pair(scene, dg, room, f, w, mid, bottom, centre_z, turn):
+    """A pair of prints side by side about `mid` on the wall over the bed at frame `f`, centred at height `centre_z`
+    (or their bottoms at `bottom` over the floor), if the wall behind takes them (no window, door or piece in the
+    way). Whether they went up."""
+    into = (f.to_3x3() @ Vector((0, -1, 0))).normalized()  # off the wall, into the room
+    side = (f.to_3x3() @ Vector((1, 0, 0))).normalized()
+    pair = [H.artlib.pick(room, "pair", k) for k in (0, 1)]
+    for bw, bh in ((min(0.62, (0.72 * w - 0.06) / 2), 0.82), (0.5, 0.66), (0.43, 0.57)):
+        long = min(H.artlib.fit(p_, bw, bh) for p_ in pair)  # both at one long side, the pair fitting the box
+        pw, ph = (max(H.artlib.size(p_, long)[i] for p_ in pair) for i in (0, 1))
+        cz = centre_z if centre_z is not None else f.translation.z + bottom + ph / 2
+        at_z = Vector((mid.x, mid.y, cz))
+        ok = True
+        for e in (-1, 1):
+            for dx in (pw * 0.55, pw + 0.06):
+                for dz in (-ph / 2 + 0.05, ph / 2 - 0.05):
+                    q = at_z + side * (e * dx) + Vector((0, 0, dz)) + into * 0.4
+                    hit = H.trace(scene, dg, q, -into, far=0.6)
+                    # the wall's plane (or a finish laid on it), facing the room; nothing in front
+                    if hit is None or not 0.32 < (hit[0] - q).length < 0.5 or hit[1].dot(into) < 0.9 \
+                            or H.kinds(hit[2]) & {"window", "door", "interiorDoor", "furniture"}:
+                        ok = False
+        if ok:
+            break
+    else:
+        log("bed art: the wall doesn't take a pair")
+        return 0
+    for e, p_ in zip((-1, 1), pair):
+        at = at_z + side * (e * (pw / 2 + 0.03))
+        H.artlib.build(scene, p_, (at.x, cz - H.artlib.size(p_, long)[1] / 2, -at.y), long, turn)
+    log(f"bed art: a pair of {pw:.2f} x {ph:.2f} prints over the bed ({w} m)")
     return 1
 
 
 def bed_art(scene, room, sy):
     """The print over a bed becomes a pair, together about 0.7 of the bed's width, at the same height, if the wall
-    behind takes them (no window, door or piece in the way)."""
+    behind takes them (no window, door or piece in the way). In a scene the kit dressed its prints stay, and a bed
+    wall it left bare gets the pair."""
     dg = bpy.context.evaluated_depsgraph_get()
     n = 0
     for f, w in H.BEDS:
         if not H.inside(room["polygon"], *H.to_scene(f.translation)[::2]):
+            continue
+        if catalogue.DRESSED:
+            n += bare_bed_wall(scene, dg, room, f, w)
             continue
         fi = f.inverted()
         for o in [o for o in scene.objects if o.name.startswith("art.glb") and o.parent is None and not o.hide_render]:
@@ -310,37 +434,12 @@ def bed_art(scene, room, sy):
             loc = fi @ c
             if abs(loc.x) > w / 2 or not -0.4 < loc.y < 0.6 or not 0.6 < loc.z < 2.4:  # on the wall behind the head
                 continue
-            into = (f.to_3x3() @ Vector((0, -1, 0))).normalized()  # off the wall, into the room
-            side = (f.to_3x3() @ Vector((1, 0, 0))).normalized()
-            mid = f @ Vector((0, loc.y, loc.z))
             H.hide(o)
-            pair = [H.artlib.pick(room, "pair", k) for k in (0, 1)]
-            for bw, bh in ((min(0.62, (0.72 * w - 0.06) / 2), 0.82), (0.5, 0.66), (0.43, 0.57)):
-                long = min(H.artlib.fit(p_, bw, bh) for p_ in pair)  # both at one long side, the pair fitting the box
-                pw, ph = (max(H.artlib.size(p_, long)[i] for p_ in pair) for i in (0, 1))
-                ok = True
-                for e in (-1, 1):
-                    for dx in (pw * 0.55, pw + 0.06):
-                        for dz in (-ph / 2 + 0.05, ph / 2 - 0.05):
-                            q = mid + side * (e * dx) + Vector((0, 0, dz)) + into * 0.4
-                            hit = H.trace(scene, dg, q, -into, far=0.6)
-                            # the wall's plane (or a finish laid on it), facing the room; nothing in front
-                            if hit is None or not 0.32 < (hit[0] - q).length < 0.5 or hit[1].dot(into) < 0.9 \
-                                    or H.kinds(hit[2]) & {"window", "door", "interiorDoor", "furniture"}:
-                                ok = False
-                if ok:
-                    break
-            else:
+            if not hang_pair(scene, dg, room, f, w, f @ Vector((0, loc.y, loc.z)), None, c.z, math.degrees(o.rotation_euler.z)):
                 o.hide_render = False
                 for c_ in o.children_recursive:
                     c_.hide_render = False
-                log("bed art: the wall doesn't take a pair")
                 continue
-            turn = math.degrees(o.rotation_euler.z)
-            for e, p_ in zip((-1, 1), pair):
-                at = mid + side * (e * (pw / 2 + 0.03))
-                H.artlib.build(scene, p_, (at.x, c.z - H.artlib.size(p_, long)[1] / 2, -at.y), long, turn)
-            log(f"bed art: a pair of {pw:.2f} x {ph:.2f} prints over the bed ({w} m)")
             n += 1
             break
     return n
@@ -1100,11 +1199,38 @@ def edge_clutter(scene, cam, plants):
     return n
 
 
+def kit_dressed(scene, cam, rays, rooms, sy):
+    """The rules for a scene the kit dressed (#136): the 3D tour's furniture and dressing stay, and only the small
+    staging the 3D does not have comes in, where the kit left room for it."""
+    pieces = H.storey_pieces(scene, sy)
+    if edge_clutter(scene, cam, plants=True):
+        bpy.context.view_layer.update()
+        rays = H.camera_rays(scene, cam, rooms, sy)
+    seen = seen_rooms(rays, rooms, sy)
+    log("rooms seen:", [(r["name"], c) for r, c in seen])
+    done = []
+    for room, count in seen:
+        if count < 25:
+            continue
+        if room["use"] == "bedroom":
+            done.append(("rug", bed_rug(scene, room, sy)))
+            done.append(("bedart", bed_art(scene, room, sy)))
+        if objlib.LIB:
+            done.append(("coffee", stage.coffee(scene, cam, room, sy, pieces, keep=True)))
+            done.append(("desk", stage.desk(scene, cam, room, sy, pieces)))
+        bpy.context.view_layer.update()
+    done.append(("sill", sills(scene, cam, rays, sy)))
+    done.append(("outdoor", outdoor_set(scene, cam, rays, sy)))
+    bpy.context.view_layer.update()
+    done.append(("edge", edge_clutter(scene, cam, plants=False)))
+    log("done:", done)
+
+
 def style(scene, cam, rays, rooms, sy, pieces):
-    """The rules, room by room, for the rooms the camera sees enough floor of; in a scene the kit dressed, only the
-    camera's (edge_clutter)."""
-    if catalogue.DRESSED:  # the room as the 3D tour shows it (#122)
-        log("done:", [("edge", edge_clutter(scene, cam, plants=True) + edge_clutter(scene, cam, plants=False))])
+    """The rules, room by room, for the rooms the camera sees enough floor of; in a scene the kit dressed, its own
+    (kit_dressed)."""
+    if catalogue.DRESSED:
+        kit_dressed(scene, cam, rays, rooms, sy)
         return
     pieces = H.storey_pieces(scene, sy)  # what is still shown (the swaps hid the kit's pieces they replaced)
     lib = bool(objlib.LIB)

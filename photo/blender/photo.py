@@ -6,9 +6,10 @@ What it decides, from the export (house.blend from export.py's GLB) and rooms.js
   (finish_textures), plaster relief and a faint unevenness on paint, glazed tiles, linen curtains;
 - dressing, from the kit's own pieces (userData name + footprint) and the object library: rugs, plants, wall art,
   armchairs with a throw, beds with cloth-simulated bedding (made/bedset.py, cached per size), cushions on sofas,
-  tables, counters and bathrooms dressed; in a scene the kit dressed (catalogue.DRESSED) none of it: the room as the
-  3D tour shows it, its own pieces at full resolution, with only the camera's rules (doors swung out of the frame,
-  what is cut right in front of the lens taken out);
+  tables, counters and bathrooms dressed. In a scene the kit dressed (catalogue.DRESSED, #136) the furniture and its
+  dressing are the 3D tour's, at full resolution: its rugs get a pile and its bedding becomes cloth, in their colours
+  and places, and only the small staging the 3D does not have comes in (a rug under a bed and under the dining
+  table, the table laid, desk stationery, chair covers, a tub caddy, basin bottles, a counter, sills, a balcony set);
 - the sun: a real sun position for the site's latitude that puts sun patches in the room the camera sees (camera
   rays, then shadow rays toward each candidate, then thumbnails);
 - the grade: AgX High Contrast; exposure and white balance from a preview, to a target median of the room and the
@@ -603,6 +604,32 @@ def swap_rugs(scene, pieces):
     return n
 
 
+KIT_RUGS = []  # the kit's rugs drawn by kit_rugs: (piece, its frame, footprint, the rug drawn, its linear colour)
+
+
+def kit_rugs(scene, pieces):
+    """The kit's own rugs (a 12 mm block in one weave colour, a flat slab in Cycles) drawn as a rug with a pile
+    (dress.rug) in their colour, size and place; a catalogue rug stays (catalogue.own draws it)."""
+    n = 0
+    for o in pieces:
+        if name(o) != "rug" or o.get("catalogue") or len(o.get("footprint", ())) != 2:
+            continue
+        rgb = None
+        for c in family(o):
+            for slot in c.material_slots if c.type == "MESH" else ():
+                if rgb is None and slot.material is not None:
+                    rgb = kit_colour(slot.material)
+        lo, _ = box(o)
+        t = o.matrix_world.translation
+        fp = tuple(o["footprint"])
+        hide(o)
+        r = dress.rug(scene, (t.x, -t.y), fp, floor=lo.z, rgb=None if rgb is None else tuple(float(v) for v in rgb))
+        r.rotation_euler[2] = turn(o)
+        KIT_RUGS.append((o, frame_of(o, lo.z), fp, r, rgb))
+        n += 1
+    return n
+
+
 def swap_plants(scene, pieces, sy):
     if catalogue.OWN:
         return 0
@@ -783,6 +810,8 @@ def upholster_chairs(scene):
 
 
 BEDS = []  # (frame at the head of the bed, facing -y; width) of the beds made
+SOFT = ("pillow", "upright", "cushion")
+WHITE_MOST = 0.86  # a cloth's whitest albedo: washed linen's; the kit's 0.97 pillow white clips in Cycles
 
 
 def swap_beds(scene, pieces, decor=True):
@@ -795,9 +824,12 @@ def swap_beds(scene, pieces, decor=True):
             continue
         lo, _ = box(o)
         frame = frame_of(o, lo.z) @ Matrix.Translation((0, fp[1] / 2, 0))
-        if o.get("model"):  # a catalogue bed (#90): one of many, its frame stays
-            n += make_up(scene, o, frame, linen, wool, decor)
-            BEDS.append((frame, float(next(iter(o.get("nominal") or fp)))))
+        # a catalogue bed (#90) is one of many, and a scene the kit dressed shows the 3D tour's beds (#136): the frame
+        # stays, its bedding is made up
+        if o.get("model") or catalogue.DRESSED:
+            w = make_up(scene, o, frame, fp[1], decor)
+            n += w is not None
+            BEDS.append((frame, w or float(next(iter(o.get("nominal") or fp)))))
             continue
         w = max([s for s in BED_SIZES if s + 0.2 <= fp[0]] or [BED_SIZES[0]])
         length = 2.0
@@ -839,34 +871,175 @@ def swap_beds(scene, pieces, decor=True):
     return n
 
 
-def make_up(scene, o, frame, linen, wool, decor):
-    """A catalogue bed made up as the kit's beds are: the kit's bedding (rounded blocks, the piece's own meshes; the
-    model is under a child) gives way to a bedset's cloth duvet and throw on its mattress, cushions with `decor`.
-    The blocks read as a bare white box in Cycles, and the judges marked the bedroom down for it (#94)."""
-    blocks = [c for c in o.children if c.type == "MESH"]
-    if not blocks:
-        return 0
+def soft_role(dims, depth):
+    """What a kit bed's rounded block is, by its size (x across the bed, y deep, z high, m) and its centre's distance
+    from the head wall, as kit/furnish.js layers() and dressBed make them: a sleeping pillow lying at the head, an
+    upright pillow, a cushion; else None (layers()'s throw past the middle is a pillow's size, 0.48 m by 0.17)."""
+    x, y, z = dims
+    if depth > 1.0:
+        return None
+    if x >= 0.3 and abs(y - 0.48) <= 0.05 and abs(z - 0.17) <= 0.05:
+        return "pillow"
+    if y <= 0.2 and abs(x - 0.46) <= 0.04 and abs(z - 0.42) <= 0.04:
+        return "upright"
+    if y <= 0.2 and abs(x - 0.40) <= 0.04 and abs(z - 0.34) <= 0.04:
+        return "cushion"
+    return None
+
+
+def verts_in(c, m):
+    """Mesh `c`'s vertices through matrix `m` (from its object space): an (n, 3) array."""
+    co = np.empty(len(c.data.vertices) * 3)
+    c.data.vertices.foreach_get("co", co)
+    a = np.array(m)
+    return co.reshape(-1, 3) @ a[:3, :3].T + a[:3, 3]
+
+
+def bed_parts(o, frame, length):
+    """A kit bed's own meshes (its direct children: a catalogue model is under a child) by what they are, read by
+    shape: "keep" (on the floor: the frame, the headboard), "mattress", "drapes" (layers(): sheet, duvet, throw in
+    order of height), "pillow", "upright", "cushion", and "blocks" (a single-layer bedding's duvet, flaps and throw).
+    Also each mesh's (lo, hi) in the head frame `frame` and each drape's height along its middle."""
     inv = frame.inverted()
-    spans = {}
-    for c in blocks:
+    parts = {k: [] for k in ("keep", "mattress", "drapes", "blocks", *SOFT)}
+    spans, levels = {}, {}
+    for c in [c for c in o.children if c.type == "MESH"]:
         ps = [inv @ (c.matrix_world @ Vector(v)) for v in c.bound_box]
-        spans[c] = (Vector([min(p[i] for p in ps) for i in range(3)]), Vector([max(p[i] for p in ps) for i in range(3)]))
-    lo, hi = max(spans.values(), key=lambda s: (s[1].x - s[0].x) * (s[1].y - s[0].y))
-    # furnish.js dressBed: the duvet is the mattress's width + 8 cm by 68 % of its length + 4 cm, from 2 cm under its
-    # top and 5 cm past its foot
-    w, length = hi.x - lo.x - 0.08, (hi.y - lo.y - 0.04) / 0.68
-    top, head, cx = lo.z + 0.02, lo.y + 0.05 + length, (lo.x + hi.x) / 2
-    pillowed = all(s[1].y < head - 0.3 for s in spans.values())
-    for c in blocks:
+        lo = Vector([min(p[i] for p in ps) for i in range(3)])
+        hi = Vector([max(p[i] for p in ps) for i in range(3)])
+        spans[c] = (lo, hi)
+        size = hi - lo
+        dims = [(c.bound_box[6][i] - c.bound_box[0][i]) * s for i, s in enumerate(c.matrix_world.to_scale())]
+        role = soft_role(dims, -(lo.y + hi.y) / 2)
+        if role:
+            parts[role].append(c)
+        elif lo.z < 0.05:
+            parts["keep"].append(c)
+        elif size.y >= 0.8 * length and size.z >= 0.1:
+            parts["mattress"].append(c)
+        elif size.x >= 0.5 and size.y >= 0.3 and size.z >= 0.1 and len(c.data.vertices) >= 400:
+            v = verts_in(c, inv @ c.matrix_world)
+            mid = np.abs(v[:, 0] - (lo.x + hi.x) / 2) < 0.25 * size.x  # the sides fall: the middle is the layer
+            levels[c] = float(np.median(v[mid, 2]))
+            parts["drapes"].append(c)
+        else:
+            parts["blocks"].append(c)
+    parts["drapes"].sort(key=lambda c: levels[c])
+    return parts, spans, levels
+
+
+def mattress_of(parts, spans, levels):
+    """The mattress the bedding lies on, in the head frame: (width, its head's and its foot's distance from the head
+    wall, its top, its middle across); from the kit's mattress, else its layered duvet, else its single-layer one."""
+    if parts["mattress"]:
+        lo, hi = spans[max(parts["mattress"], key=lambda c: spans[c][1].z)]
+        return hi.x - lo.x, -hi.y, -lo.y, hi.z, (lo.x + hi.x) / 2
+    drapes = parts["drapes"]
+    if drapes:
+        duvet = drapes[1] if len(drapes) > 1 else drapes[0]
+        lo, hi = spans[duvet]
+        # layers(): the duvet 16 cm wider than the mattress, from 4 % of its length before its middle to 6 cm past its
+        # foot, 4 cm over its top
+        foot = -lo.y - 0.06
+        head = (-hi.y - 0.46 * foot) / 0.54
+        return hi.x - lo.x - 0.16, head, foot, levels[duvet] - 0.04, (lo.x + hi.x) / 2
+    if parts["blocks"]:
+        lo, hi = max((spans[c] for c in parts["blocks"]), key=lambda s: (s[1].x - s[0].x) * (s[1].y - s[0].y))
+        # dressBed: the duvet is the mattress's width + 8 cm by 68 % of its length + 4 cm, from 2 cm under its top and
+        # 5 cm past its foot
+        length = (hi.y - lo.y - 0.04) / 0.68
+        foot = -lo.y - 0.05
+        return hi.x - lo.x - 0.08, foot - length, foot, lo.z + 0.02, (lo.x + hi.x) / 2
+    return None
+
+
+def soft_piece(scene, c, role, material, yaw):
+    """Kit pillow or cushion `c` drawn as throw_pillows_01's pillow02 where the kit put it: a sleeping pillow lying at
+    its size and tilt, the others standing (the model's own lean) at its width."""
+    lo, hi = Vector(c.bound_box[0]), Vector(c.bound_box[6])
+    size, mid = hi - lo, (lo + hi) / 2
+    root = cushion(scene, "pillow02", (0.0, 0.0, 0.0), 0.0, 1.0, material)
+    bpy.context.view_layer.update()
+    ps = [m.matrix_world @ Vector(v) for m in root.children_recursive if m.type == "MESH" for v in m.bound_box]
+    pw, pd, ph = (max(p[i] for p in ps) - min(p[i] for p in ps) for i in range(3))
+    if role == "pillow":  # on its back, its height along the bed
+        root.matrix_world = (c.matrix_world @ Matrix.Translation(mid) @ Matrix.Diagonal((size.x / pw, size.y / ph, size.z / pd, 1))
+                             @ Matrix.Rotation(math.radians(-90), 4, "X") @ Matrix.Translation((0, 0, -ph / 2)))
+        return root
+    s = size.x * c.matrix_world.to_scale().x / pw
+    root.scale = (s, s, s)
+    root.rotation_euler[2] = yaw
+    root.location = c.matrix_world @ Vector((mid.x, mid.y, lo.z))
+    return root
+
+
+def bed_size(m, usual):
+    """A mattress side (m) for a bedset: the usual size within 10 cm (a cached bedset), else to the 10 cm."""
+    near = min(usual, key=lambda u: abs(u - m))
+    return near if abs(near - m) <= 0.1 else max(0.9, round(m * 10) / 10)
+
+
+def wool_like(rgb, scale=(0.5, 2.2)):
+    """The herringbone wool at a mean of linear colour `rgb` (the kit draws a throw flat in its colour)."""
+    img = dress.image(os.path.join(dress.TEX, "poly_wool_herringbone", "diff.jpg"))
+    return dress.wool_material(scale, tuple(c / max(1e-3, k) for c, k in zip(rgb, dress.mean_linear(img))))
+
+
+def make_up(scene, o, frame, length, decor):
+    """A kit bed's bedding made cloth as the 3D tour lays it (kit/furnish.js layers(), dressBed): its parts read by
+    shape (bed_parts); the bedset's duvet, its turned-back top and the throw (made/bedset.py) on the mattress, the throw
+    where the kit's lies; each pillow and cushion drawn as throw_pillows_01 where the kit put it. The frame, the
+    headboard, the mattress and a catalogue model stay. In a scene the kit dressed every cloth keeps the kit's colour;
+    in one it did not, the photo's (white linen, a grey wool, olive velvet cushions, a pair of each where the kit drew
+    none). The blocks read as a bare white box in Cycles, and the judges marked the bedroom down for it (#94). Returns
+    the mattress's width, None for a piece with no bedding of its own."""
+    parts, spans, levels = bed_parts(o, frame, length)
+    bed = mattress_of(parts, spans, levels)
+    if bed is None:
+        return None
+    w, head, foot, top, cx = bed
+    kit = catalogue.DRESSED
+
+    def colour(c, own):
+        m = c.material_slots[0].material if c is not None and c.material_slots else None
+        rgb = kit_colour(m) if kit and m is not None else None
+        if rgb is None:
+            return own
+        return tuple(float(v) * min(1.0, WHITE_MOST / max(float(max(rgb)), 1e-3)) for v in rgb)
+
+    def linen(rgb=(0.86, 0.85, 0.82)):
+        m = dress.linen_material(rgb)
+        if kit:  # a white sheen lights the grazing flanks of a coloured duvet's creases as white streaks
+            principled(m).inputs["Sheen Tint"].default_value = (*rgb, 1)
+        return m
+
+    drapes, blocks = parts["drapes"], parts["blocks"]
+    sheet = drapes[0] if len(drapes) > 1 else None
+    duvet = drapes[1] if len(drapes) > 1 else (drapes or [None])[0]
+    throw = drapes[2] if len(drapes) > 2 else None
+    if duvet is None and blocks:
+        duvet = max(blocks, key=lambda c: (spans[c][1].x - spans[c][0].x) * (spans[c][1].y - spans[c][0].y))
+        throw = next((c for c in blocks if (spans[c][1] - spans[c][0]).z < 0.07 and 0.3 <= (spans[c][1] - spans[c][0]).y <= 0.55), None)
+    own_linen = (0.86, 0.85, 0.82)
+    mats = {"duvet": linen(colour(duvet, own_linen)), "duvet-fold": linen(colour(sheet or duvet, own_linen))}
+    rgb = colour(throw, None)
+    mats["throw"] = wool_like(rgb) if rgb is not None else dress.wool_material((0.5, 2.2), (0.62, 0.61, 0.6))
+    for c in parts["mattress"]:
+        rgb = colour(c, None)
+        if rgb is not None:
+            c.data.materials.clear()
+            c.data.materials.append(linen(rgb))
+    for c in drapes + blocks + [c for r in SOFT for c in parts[r]]:
         hide(c)
-    size = (max(0.9, round(w * 10) / 10), round(length * 10) / 10)
+    size = (bed_size(w, BED_SIZES), bed_size(foot - head, (2.0,)))
     # the bedset's mattress starts 13 cm from its head wall, its top 52 cm up
-    at = frame @ Matrix.Translation((cx, head + 0.13, top - 0.52))
+    at = frame @ Matrix.Translation((cx, -head + 0.13, top - 0.52))
     root = bpy.data.objects.new("bedset", None)
     scene.collection.objects.link(root)
     root.matrix_world = at
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=bedset(*size))
+    made = []
     for c in [c for c in bpy.data.objects if c not in before]:
         if c.name.startswith("bed-"):
             bpy.data.objects.remove(c, do_unlink=True)
@@ -876,19 +1049,38 @@ def make_up(scene, o, frame, linen, wool, decor):
             c.matrix_parent_inverse.identity()
         if c.type == "MESH":
             c.data.materials.clear()
-            c.data.materials.append(wool if c.name.startswith("throw") else linen)
-    rot = turn(o)
-    if not pillowed:
-        pillows, _ = place(scene, model("throw_pillows_01"), to_scene(at @ Vector((0, -0.30, 0.52))), height=0.52,
-                           turn_deg=math.degrees(rot))
-        recolour(pillows, linen)
-        pillows.scale = (pillows.scale[0] * 1.45 * size[0] / 1.6, pillows.scale[1], pillows.scale[2])
-    if decor:
-        cushions, _ = place(scene, model("throw_pillows_01"), to_scene(at @ Vector((0, -0.68, 0.55))), height=0.38,
-                            turn_deg=math.degrees(rot))
-        recolour(cushions, velvet((0.16, 0.19, 0.13)))
-    log(f"bed: {o.get('model')} made up, mattress {w:.2f} x {length:.2f} top {top:.2f} -> bedset {size}")
-    return 1
+            c.data.materials.append(mats[next((k for k in ("duvet-fold", "throw") if c.name.startswith(k)), "duvet")])
+            made.append(c)
+    bpy.context.view_layer.update()
+    if throw is not None:  # the throw across the bed where the kit's lies
+        inv = frame.inverted()
+        ours = next((c for c in made if c.name.startswith("throw")), None)
+        if ours is not None:
+            ys = [(inv @ (ours.matrix_world @ Vector(v))).y for v in ours.bound_box]
+            shift = (sum(spans[throw][i].y for i in (0, 1)) - min(ys) - max(ys)) / 2
+            shift = max(-0.3, min(0.3, shift))
+            ours.matrix_world = frame @ Matrix.Translation((0, shift, 0)) @ inv @ ours.matrix_world
+    yaw = turn(o)
+    soft = {"pillow": linen, "upright": linen, "cushion": velvet}
+    own = {"pillow": own_linen, "upright": own_linen, "cushion": (0.16, 0.19, 0.13)}
+    for role in SOFT:
+        for c in parts[role]:
+            soft_piece(scene, c, role, soft[role](colour(c, own[role])), yaw)
+    if not kit:
+        pillowed = parts["pillow"] or parts["upright"] or all(s[1].y < -head - 0.3 for s in spans.values())
+        if not pillowed:
+            pillows, _ = place(scene, model("throw_pillows_01"), to_scene(at @ Vector((0, -0.30, 0.52))), height=0.52,
+                               turn_deg=math.degrees(yaw))
+            recolour(pillows, dress.linen_material())
+            pillows.scale = (pillows.scale[0] * 1.45 * size[0] / 1.6, pillows.scale[1], pillows.scale[2])
+        if decor and not parts["cushion"]:
+            cushions, _ = place(scene, model("throw_pillows_01"), to_scene(at @ Vector((0, -0.68, 0.55))), height=0.38,
+                                turn_deg=math.degrees(yaw))
+            recolour(cushions, velvet((0.16, 0.19, 0.13)))
+    log(f"bed: {name(o)} {o.get('model') or 'parametric'} made up ({len(drapes)} drapes, {len(blocks)} blocks, "
+        f"{', '.join(f'{len(parts[r])} {r}' for r in SOFT)}), mattress {w:.2f} from {head:.2f} to {foot:.2f}, top "
+        f"{top:.2f} -> bedset {size}")
+    return w
 
 
 CUSHION_OAT, CUSHION_RUST = (0.50, 0.45, 0.37), (0.28, 0.11, 0.05)  # linear albedo: an oatmeal boucle, a muted rust
@@ -1013,10 +1205,6 @@ def dress_tables(scene, pieces):
         fp = o["footprint"]
         lo, hi = box(o)
         t = o.matrix_world.translation
-        if catalogue.DRESSED:  # the kit laid the table (dress_made drew its runner): its glasses, the runner's linen
-            style.table_glass(pieces, lo, hi)
-            n += 1
-            continue
         along_d = fp[1] >= fp[0]
         rugs = [r for r in pieces if name(r) == "rug"]
         if not any(box(r)[0].x <= t.x <= box(r)[1].x and box(r)[0].y <= t.y <= box(r)[1].y for r in rugs):
@@ -1025,6 +1213,11 @@ def dress_tables(scene, pieces):
             else:
                 r = dress.rug(scene, (t.x, -t.y), (fp[0] + 1.1, fp[1] + 1.1), floor=lo.z)  # the chairs stay on it
                 r.rotation_euler[2] = turn(o)
+        if catalogue.DRESSED:  # the kit's centre line stays (dress_made drew its runner): the places, clear glasses
+            lay_places(scene, o, pieces, lo, hi)
+            style.table_glass(pieces, lo, hi)
+            n += 1
+            continue
         if objlib.LIB and objlib.choose(stage.room_of(o), "runner", [True, False]) is False:
             n += 1
             continue  # no runner in this room; stage.dining sets the table
@@ -1042,6 +1235,66 @@ def dress_tables(scene, pieces):
             place(scene, EUCALYPTUS, (t.x, hi.z + 0.004 + size.z * 0.85, -t.y), height=0.6, turn_deg=10)
         n += 1
     return n
+
+
+PLACE_FROM_EDGE = (0.19, 0.17)  # a place's plate centre from the table's edge (made/bathset.py place: a 0.27 m plate)
+PLACE_SLIDE = (0.0, 0.06, -0.06, 0.1, -0.1)  # along the edge, off the chair's middle, round the kit's centre line
+
+
+def place_points():
+    """Where a place (made/bathset.py place, the diner on -y) covers the table, in its own frame: the plate's disc,
+    the glass's foot at its top right, the napkin at its left."""
+    pts = [(0.0, 0.0)] + [(r * math.cos(a * math.pi / 4), r * math.sin(a * math.pi / 4)) for r in (0.07, 0.14) for a in range(8)]
+    pts += [(0.15 + dx, 0.11 + dy) for dx, dy in ((0, 0), (0.04, 0), (-0.04, 0), (0, 0.04), (0, -0.04))]
+    return pts + [(-0.215 + dx, dy) for dx in (-0.06, 0.0, 0.06) for dy in (-0.11, 0.0, 0.11)]
+
+
+def lay_places(scene, o, pieces, lo, hi):
+    """A plate, a glass and a napkin (made/bathset.py place) at each chair drawn up to dining table `o`, unless it has
+    plates of its own: at the edge the chair faces, where the top is flat and free (clear of the kit's centre line and
+    of each other). Returns how many."""
+    if any("plate" in name(p).lower() and within(p, lo, hi) for p in pieces):  # the scene's (kit/dressing.js's test)
+        return 0
+    w, d = o["footprint"]
+    f = frame_of(o, lo.z)
+    fi = f.inverted()
+    top = hi.z - lo.z
+    dg = bpy.context.evaluated_depsgraph_get()
+    pts, laid = place_points(), []
+    for c in pieces:
+        nm = name(c).lower()
+        if "chair" not in nm or "arm" in nm or "desk" in nm:
+            continue
+        u, v, _ = fi @ c.matrix_world.translation
+        du, dv = abs(u) - w / 2, abs(v) - d / 2
+        if max(du, dv) < -0.15 or du > 0.75 or dv > 0.75:
+            continue
+        if du > dv:  # at an end of the table
+            edge, inward, along = Vector((math.copysign(w / 2, u), max(-d / 2 + 0.2, min(d / 2 - 0.2, v)), 0)), Vector((-math.copysign(1, u), 0, 0)), Vector((0, 1, 0))
+        else:
+            edge, inward, along = Vector((max(-w / 2 + 0.2, min(w / 2 - 0.2, u)), math.copysign(d / 2, v), 0)), Vector((0, -math.copysign(1, v), 0)), Vector((1, 0, 0))
+        yaw = math.atan2(-inward.x, inward.y)
+        for inset in PLACE_FROM_EDGE:
+            spot = None
+            for slide in PLACE_SLIDE:
+                p = edge + inward * inset + along * slide
+                if any((p - q).length < 0.45 for q in laid):
+                    continue
+                at = f @ Matrix.Translation((p.x, p.y, 0)) @ Matrix.Rotation(yaw, 4, "Z")
+                hs = heights_down(scene, dg, at, pts, top + 0.35)
+                if all(h is not None and nz > 0.95 and abs(h - top) < 0.03 and abs(h - hs[0][0]) < 0.004 for h, nz in hs):
+                    spot = (p, at, hs[0][0])
+                    break
+            if spot:
+                break
+        if not spot:
+            log(f"table: no free place for {nm} at {u:+.2f} {v:+.2f}")
+            continue
+        p, at, h = spot
+        in_frame(scene, at, bath_piece("place"), (0, 0, h + 0.001))
+        laid.append(p)
+    log(f"table: {len(laid)} places laid")
+    return len(laid)
 
 
 def dress_counter(scene, pieces):
@@ -1347,7 +1600,7 @@ def dress_tubs(scene, dg, pieces):
             caddy = in_frame(scene, f, bath_piece("caddy"), (u_c, 0.0, max(top_cf, top_cb)),
                              (1.0, (d - 0.04) / 0.80, 1.0))
             caddy.name = "bath-caddy"
-        if rim_w and 0.03 <= rim_w <= 0.2:
+        if rim_w and 0.03 <= rim_w <= 0.2 and not catalogue.DRESSED:  # a dressed scene drapes its own (dress_made)
             in_frame(scene, f, bath_piece("drape", rim_w), (u_d, -d / 2 + rim_w / 2, top_d))
         log(f"tub: rims {[(round(u, 2), round(a, 2), round(b, 2), r and round(r, 3)) for u, a, b, r in rims]}")
         n += 1
@@ -1394,17 +1647,18 @@ def free_spot(scene, dg, o, half, floor_z):
 
 def dress_basins(scene, dg, pieces, floor_z):
     """Pump bottles on a free corner of each basin's deck (on a stone tray if there is room); the kit's own
-    accessories and towel stacks become ours."""
+    accessories and towel stacks become ours (in a scene the kit dressed, the towels in its colours)."""
     n = 0
     for o in pieces:
         nm = name(o)
         if nm in ("bathAccessories", "towelStack") and len(o.get("footprint", ())) == 2:
             lo, _ = box(o)
+            kit = stand_in_colours(o) if catalogue.DRESSED else None
             hide(o)
             fp = o["footprint"]
             if nm == "towelStack":
                 s = min(1.0, fp[0] / 0.30, fp[1] / 0.24) * 1.3
-                in_frame(scene, frame_of(o, lo.z), bath_piece("stack"), (0, 0, 0), (s, s, s))
+                in_frame(scene, frame_of(o, lo.z), bath_piece("stack"), (0, 0, 0), (s, s, s), kit)
             else:
                 in_frame(scene, frame_of(o, lo.z), bath_piece("pair"), (0, 0, 0))
             n += 1
@@ -1468,36 +1722,34 @@ def dress_made(scene, holders):
 
 
 def dress_storey(scene, sy, decor=True):
-    """The kit's pieces made photographic (materials, the scene's own decor and dressing at full resolution) and, in a
-    scene the kit did not dress, swapped and, with `decor`, dressed (rugs, beds, table settings, counters, towels and
-    bottles, a throw, cushions)."""
+    """The kit's pieces made photographic (materials, the scene's own decor and dressing at full resolution, beds made
+    up in cloth) and, with `decor`, dressed (table settings, counters, towels and bottles). In a scene the kit did not
+    dress, its rugs, plants, art, armchairs and beds are swapped for the photo's too, and sofas measured for cushions;
+    in one it did (#136), the 3D tour's pieces stay: its rugs drawn with a pile in their colours, its bedding as cloth."""
     pieces = storey_pieces(scene, sy)
     held = catalogue.holders(scene, sy)
     if catalogue.OWN:
         catalogue.own(scene, pieces + held)
     elif objlib.LIB:
         stage.swap_kit(scene, pieces)
-    # agencies publish the photos: a room the kit dressed is shown as the 3D tour shows it, its beds, rugs, tables,
-    # counters and baths as the kit made them (#122)
-    restyle = not catalogue.DRESSED
-    done = {}
-    if restyle:
+    if catalogue.DRESSED:
+        done = {"rugs": kit_rugs(scene, pieces)}
+    else:
         done = {
             "rugs": swap_rugs(scene, pieces),
             "plants": swap_plants(scene, pieces, sy),
             "art": swap_art(scene, pieces),
             "armchairs": swap_armchairs(scene, pieces, decor),
-            "beds": swap_beds(scene, pieces, decor),
         }
+    done["beds"] = swap_beds(scene, pieces, decor)
     bpy.context.view_layer.update()
     sanitaryware(scene, pieces)
     done["rails"] = rail_towels(pieces)
     if held:
         done["made"] = dress_made(scene, held)
-    if decor and not restyle:
-        done["tables"] = dress_tables(scene, pieces)
-    elif decor:
-        done["sofas"] = sofa_measure(scene, pieces)
+    if decor:
+        if not catalogue.DRESSED:  # what it measures is for stage.sofa, which the kit's dressing replaces
+            done["sofas"] = sofa_measure(scene, pieces)
         done["tables"] = dress_tables(scene, pieces)
         done["counters"] = dress_counter(scene, pieces)
         dg = bpy.context.evaluated_depsgraph_get()
@@ -2376,8 +2628,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     stripped = strip_to(scene, rooms, staging_level)
     decor = staging_level == "furnished"
     dress.linen(scene)
-    if not catalogue.DRESSED:  # the kit's chairs as the 3D tour draws them (#122)
-        upholster_chairs(scene)
+    upholster_chairs(scene)
     dress_storey(scene, sy, decor)
     scene.render.resolution_x, scene.render.resolution_y = width, height  # view_frame() reads the aspect from it
     still.camera(scene, cam_spec, width, height, legacy_shift)

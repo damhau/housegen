@@ -12,9 +12,11 @@ A scene drawn by an older kit carries no tags: the photo dresses it as before.
 A kit that dresses the rooms itself (kit/dressing.js, v39 on: the house group's `kitDressing`) adds one group of holders
 (kind "dressing", `dressing` what each holds) on the storeys: catalogue pieces, drawn here at full resolution like the
 decor (DRESSED widens FULL to their roles), and stand-ins for this pipeline's made props (`made`, `arg`, `side`), which
-photo.py replaces with its own (made_piece). The photo then swaps, adds and takes out none of the room's pieces: its
-beds, rugs, tables, counters and baths are the 3D tour's (#122); only the camera's rules stay (photo.open_doors,
-style.edge_clutter, a piece the picture editor takes out).
+photo.py replaces with its own (made_piece). The photo then keeps the 3D tour's furniture setup (#136): it swaps, adds
+and moves none of the room's pieces and doubles none of the dressing; it draws the kit's soft things photographically
+in their colours and places (rugs with a pile, layered bedding as cloth) and adds only the small staging the 3D does
+not have (photo.dress_storey, style.kit_dressed), besides the camera's rules (photo.open_doors, style.edge_clutter, a
+piece the picture editor takes out).
 """
 
 import json

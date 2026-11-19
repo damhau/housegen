@@ -441,8 +441,10 @@ def arrange(scene, room, what, p, turn_rad, slot, r=0.13):
     return False
 
 
-def coffee(scene, cam, room, sy, pieces):
-    """A coffee table the camera sees: what the kit left on it goes; an arrangement at each end of its long axis."""
+def coffee(scene, cam, room, sy, pieces, keep=False):
+    """A coffee table the camera sees: what the kit left on it goes; an arrangement at each end of its long axis.
+    `keep` (a scene the kit dressed): a table with anything on it keeps it, one the frame barely shows stays, and only
+    a bare one is dressed."""
     n = 0
     for o in pieces:
         nm = H.name(o).lower()
@@ -453,6 +455,11 @@ def coffee(scene, cam, room, sy, pieces):
         lo, hi = H.box(o)
         top = [Vector((lo.x + (hi.x - lo.x) * i / 6, lo.y + (hi.y - lo.y) * j / 6, hi.z)) for i in range(7) for j in range(7)]
         seen = sum(S.in_view(scene, cam, p, 0.0)[0] for p in top) / len(top)
+        if seen < S.COFFEE_SEEN and keep:
+            continue
+        if keep and S.stands_on(scene, o):
+            log(f"{nm}: dressed already, kept")
+            continue
         if seen < S.COFFEE_SEEN:
             for p in [o] + [p for p in pieces if p is not o and lo.x <= p.matrix_world.translation.x <= hi.x
                             and lo.y <= p.matrix_world.translation.y <= hi.y and lo.z <= p.matrix_world.translation.z <= hi.z + 0.3]:

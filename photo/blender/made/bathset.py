@@ -1,24 +1,26 @@
 """Room dressing (made here, for photo.py and style.py): a towel draped over a tub's rim by cloth simulation, a stack
 of folded towels, an oak bath caddy with a candle and a soap, a pair of pump bottles on a stone tray; and the styling
 props: a stack of cloth-bound books, a glass carafe and tumbler, pillar candles on a stone tray, a folded linen
-napkin (a slab pair, or the kit's fold), a round oak stool (bare, or with folded towels), a terry bath mat, a towel on a wall bar.
+napkin (a slab pair, or the kit's fold), a round oak stool (bare, or with folded towels), a terry bath mat, a towel on a wall bar,
+a place setting (a plate, a wine glass, the kit's napkin fold).
 
     uv run --no-project --python 3.11 --with bpy python made/bathset.py <what> <out.glb> [rim width | seed]
 
 what: drape (over a rim `rim width` m wide, 0.10 by default) | stack | caddy | bottles | pair (no tray) |
       books (seed: the colours and the twist; or the covers "i-j-k", the kit's COVERS, kit/dressing.js) | carafe | carafe1 (no tumbler) | candles | napkin | napkin-fold (the kit's) | stool | stooltowels | bathmat | rail
-      | sofathrow (arm width-arm height-seat height, in cm: "18-62-44")
+      | sofathrow (arm width-arm height-seat height, in cm: "18-62-44") | place
 
 Frames (Blender, z up), as photo.py places them:
 - drape: the rim's top centre at the origin, the rim along x, the room on -y. Hangs about 0.30 outside and 0.20 inside.
 - rail: the bar's centre at the origin, along x, the wall at y = +0.075, the room on -y.
 - sofathrow: a sofa's right arm, its inner face at x = 0 (the arm on +x, the seat on -x), the floor at z = 0, y = 0 the
   middle of the seat front to back (the front on -y).
+- place: the plate's base centred on the origin, the diner on -y: the glass at its top right, the napkin at its left.
 - stack, caddy, bottles: their base centred on the origin. The caddy is 0.80 long along y (photo.py stretches it
   across the tub), 0.20 wide along x.
 
 Material names (photo.py gives each its Cycles material): towel-white, towel-sand, oak, amber-glass, wax,
-pump-black, ceramic, stone, soap, cover-<colour>, pages, glass, water, napkin, mat-terry, throw-wool.
+pump-black, ceramic, stone, soap, cover-<colour>, pages, glass, water, napkin, mat-terry, throw-wool, plate.
 """
 
 import math
@@ -92,6 +94,7 @@ def lathe(name, profile, m, thick=0.0, steps=48):
     s = o.modifiers.new("screw", "SCREW")
     s.steps = s.render_steps = steps
     s.use_merge_vertices = True
+    s.merge_threshold = 0.0005  # closes the poles only: the default 1 cm folds a wine glass's stem onto the axis
     s.use_smooth_shade = True
     apply(o, s)
     # the revolved normals outward (away from the axis), so a shell grows inward and glass refracts the right way
@@ -103,6 +106,8 @@ def lathe(name, profile, m, thick=0.0, steps=48):
         sol = o.modifiers.new("shell", "SOLIDIFY")
         sol.thickness = thick
         sol.offset = -1.0
+        # no rim face: light run up the wall into it bounces between rim and walls past Cycles' 12 bounces, a black band
+        sol.use_rim = False
         apply(o, sol)
     active(o)
     bpy.ops.object.shade_smooth()
@@ -412,6 +417,25 @@ def napkin_fold():
     return [o]
 
 
+def place():
+    """A place setting, the diner on -y: a glazed stoneware dinner plate 0.27 m across (its well, rim and foot ring),
+    a wine glass at its top right, the kit's napkin fold at its left."""
+    plate = lathe("plate", [(0.0, 0.0035), (0.08, 0.0035), (0.083, 0.0), (0.09, 0.0), (0.093, 0.004), (0.12, 0.014),
+                            (0.134, 0.019), (0.136, 0.021), (0.133, 0.022), (0.118, 0.0165), (0.098, 0.009), (0.0, 0.008)],
+                  mat("plate", (0.80, 0.78, 0.74), 0.12), steps=64)
+    glass = mat("glass", (0.96, 0.97, 0.97), 0.0, transmission=1.0)
+    # the foot and stem solid: drawn as a thin shell like the bowl, a stem is a hollow straw the light passes unseen
+    stem = lathe("wineglass-stem", [(0.0, 0.0), (0.036, 0.0), (0.037, 0.002), (0.03, 0.005), (0.009, 0.009),
+                                    (0.0045, 0.018), (0.0045, 0.098), (0.009, 0.106), (0.013, 0.111), (0.0, 0.113)], glass)
+    bowl = lathe("wineglass", [(0.0, 0.109), (0.013, 0.111), (0.03, 0.125), (0.041, 0.15), (0.043, 0.175), (0.04, 0.2),
+                               (0.036, 0.215)], glass, thick=0.002)
+    for o in (stem, bowl):
+        o.location = (0.15, 0.11, 0.0)
+    napkin = napkin_fold()[0]
+    napkin.location = (-0.215, 0.0, 0.0)
+    return [plate, stem, bowl, napkin]
+
+
 def stool(towels=False):
     """A round oak stool 0.45 m high: a 0.34 m seat with a rounded edge on three splayed, tapered legs; with
     `towels`, the towel stack on its seat."""
@@ -492,7 +516,7 @@ def sofathrow():
 made = {"drape": drape, "stack": stack, "caddy": caddy, "bottles": bottles, "pair": lambda: bottles(False),
         "books": lambda: books(SEED, COVERS), "carafe": carafe, "carafe1": lambda: carafe(False), "candles": candles, "napkin": napkin,
         "napkin-fold": napkin_fold, "stool": stool,
-        "stooltowels": lambda: stool(True), "bathmat": bathmat, "rail": rail, "sofathrow": sofathrow}[WHAT]()
+        "stooltowels": lambda: stool(True), "bathmat": bathmat, "rail": rail, "sofathrow": sofathrow, "place": place}[WHAT]()
 bpy.ops.object.select_all(action="DESELECT")
 for o in made:
     for m in list(o.modifiers):

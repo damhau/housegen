@@ -193,13 +193,20 @@ photos:
   a walk-in shower's glass panel, or on a bar across its fittings when the panel is too narrow to take it.
   The pieces come from the house style's catalogue, plus stand-ins tagged `made` for the pipeline's own props (books, a
   carafe, a napkin, a runner, a throw, towels). `photo/blender/catalogue.py` draws those props in place of the stand-ins.
-- In such a scene, the photo shows the rooms as the 3D tour does, because agencies publish it (#122). The pipeline
-  swaps, adds and removes none of the room's pieces: no bed remade, no rug swapped or added, no table, desk or counter
-  set or cleared, no towel, chair cover or floor accent of its own. It keeps only the rules that depend on its camera:
-  a prop cut by the side of the frame (a vase however tall its branches), a plant right in front of the lens, or a
-  table, desk or floor lamp of the kit's cut by the side within 2 m of the lens comes out, the door leaves open, and
-  the picture editor may take out one piece. It also draws the table's glasses in clear glass. At the **Light** and
-  **Empty** levels the kit's dressing is left out.
+- In such a scene, the photo keeps the 3D tour's furniture setup, because agencies publish it (#136). The pipeline
+  swaps, adds and moves none of the room's pieces (no bed frame, armchair, plant or print of its own, no sideboard,
+  bench, side table or floor accent) and doubles none of the kit's dressing (nightstands, sofa cushions and throw,
+  sideboards, the table's centre line, the bath's towels, stool and bar, wall art; a coffee table with things on it
+  keeps them). It draws the soft things photographically, in the 3D's colours and places: a kit rug becomes a woven
+  rug of the same colour and size, and a bed's layered bedding becomes cloth (the sheet, duvet and throw read by their
+  heights, the pillows and cushions by their sizes), on the kit's frame and headboard. It adds only the small staging
+  the 3D does not have: a rug under a bed that has none (in the place and colour of a kit rug it covers) and under the
+  dining table, a plate, a glass and a napkin at each chair around the kit's centre line, stationery on a desk, things
+  on a bare coffee table, the tub's caddy and the basin's bottles, a counter's things, a pair of prints over a bare bed
+  wall, sills and a balcony set where the kit left them bare. The camera's rules stay: a prop cut by the side of the
+  frame (a vase however tall its branches), a plant right in front of the lens, or a table, desk or floor lamp of the
+  kit's cut by the side within 2 m of the lens comes out, the door leaves open, and the picture editor may take out one
+  piece. At the **Light** and **Empty** levels the kit's dressing is left out.
 
 The service uses the render service's token, so the app needs no new secret: it derives the URL from
 `RENDER_SERVICE_URL` (`housegen-render-web` → `housegen-photo-web`) unless `PHOTO_SERVICE_URL` is set.

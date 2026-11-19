@@ -205,8 +205,9 @@ def model(name):
     return os.path.join(MODELS, name, f"{name}.gltf")
 
 
-def rug(scene, center, size, thickness=0.012, floor=0.0):
-    """A rug with rounded corners in a cream boucle (CC0 scan), lying on the floor."""
+def rug(scene, center, size, thickness=0.012, floor=0.0, rgb=None):
+    """A rug with rounded corners in a cream boucle (CC0 scan) with a darker border band, lying on the floor; in a
+    plain linear colour `rgb` (the scan's pile at that mean, no band) for a kit rug drawn as the 3D tour has it."""
     w, l = size
     bpy.ops.mesh.primitive_plane_add(size=1.0)
     o = bpy.context.active_object
@@ -230,11 +231,14 @@ def rug(scene, center, size, thickness=0.012, floor=0.0):
     mp.inputs["Scale"].default_value = (1 / 0.26, 1 / 0.26, 1 / 0.26)
     nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
     vec = mp.outputs["Vector"]
-    col = tex_node(nt, image(os.path.join(d, "diff.jpg")), vec)
+    diff = image(os.path.join(d, "diff.jpg"))
+    col = tex_node(nt, diff, vec)
     light = nt.nodes.new("ShaderNodeMixRGB")
     light.blend_type = "MULTIPLY"
     light.inputs[0].default_value = 1.0
     light.inputs[2].default_value = (0.92, 0.88, 0.82, 1)  # an oatmeal wool, a shade under the scan
+    if rgb is not None:
+        light.inputs[2].default_value = (*[c / max(1e-3, k) for c, k in zip(rgb, mean_linear(diff))], 1)
     nt.links.new(col.outputs["Color"], light.inputs[1])
     # a border band 7 cm wide, 8 cm in from the edge (object space: the rug spans +-w/2, +-l/2)
     sep = nt.nodes.new("ShaderNodeSeparateXYZ")
@@ -269,7 +273,10 @@ def rug(scene, center, size, thickness=0.012, floor=0.0):
     border = nt.nodes.new("ShaderNodeMixRGB")
     border.blend_type = "MULTIPLY"
     border.inputs[2].default_value = (0.42, 0.38, 0.34, 1)
-    nt.links.new(inband.outputs[0], border.inputs[0])
+    if rgb is None:
+        nt.links.new(inband.outputs[0], border.inputs[0])
+    else:
+        border.inputs[0].default_value = 0.0
     nt.links.new(light.outputs[0], border.inputs[1])
     nt.links.new(border.outputs[0], p.inputs["Base Color"])
     bump = nt.nodes.new("ShaderNodeBump")
@@ -348,12 +355,13 @@ def runner(scene, at, size, turn_rad=0.0):
     return o
 
 
-def linen_material():
-    """Off-white washed linen: its weave (CC0 scan) and the soft creases of a slept-in duvet."""
+def linen_material(rgb=(0.86, 0.85, 0.82)):
+    """Washed linen, off-white unless `rgb` (linear) says otherwise: its weave (CC0 scan) and the soft creases of a
+    slept-in duvet."""
     m = bpy.data.materials.new("archviz-duvet")
     nt = m.node_tree
     p = principled(m)
-    p.inputs["Base Color"].default_value = (0.86, 0.85, 0.82, 1)
+    p.inputs["Base Color"].default_value = (*rgb, 1)
     p.inputs["Roughness"].default_value = 0.9
     p.inputs["Sheen Weight"].default_value = 0.4
     tc = nt.nodes.new("ShaderNodeTexCoord")
