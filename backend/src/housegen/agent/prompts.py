@@ -50,7 +50,8 @@ terrain({ size:[w,d], center:[x,z], points:[[x,z,y],...] | heightAt:(x,z)=>y, ed
     landscape component below sit on it. Hide the flat base ground when you use it: ctx.ground.visible = false.
     The viewer draws the real surroundings (surveyed ground, aerial photo, neighbouring houses) around the plot: end your
     ground with the plot, no lawn or backdrop beyond it, and give every ground mesh you build yourself
-    userData.kind = "terrain" (terrain() does).
+    userData.kind = "terrain" (terrain() does). Put the plot's boundary from the site plan on your ground mesh as
+    userData.plot = [[x,z],...] (scene metres): the viewer ends your ground there and the real land, its roads, take over.
 groundY(x, z) → ground height          rod(from:[x,y,z], to:[x,y,z], radius, material) → thin cylinder (branches, rails, posts)
 ribbon({ points:[[x,z],...], width, lift, material })     path / drive draped on the ground
 pebbleStrip({ from:[x,z], to:[x,z], width, density, seed })   river stones along a foundation

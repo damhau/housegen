@@ -6,20 +6,23 @@
 //   const ctx = await loadContext(url, { houseGroup, heightAt })   → { group, heightAt, disc, credits }
 //
 // The files are in a local frame around the searched point (x east, z south, y the altitude); the
-// alignment in context.json places the scene in it (see geo/context.py). The builder's site (the house,
-// the garden, its fences and hedges: ground.js) keeps the builder's ground; beyond it the real ground
-// takes over: the builder's ground is clipped there, tagged or not (a lawn drawn out to 90 m or a 350 m
-// backdrop would otherwise lie over the real land as a green square, #65, #123), the real ground is sunk
-// under the site and blended into its rim over a ring, and it fades into the meadow at the rim of the disc
+// alignment in context.json places the scene in it (see geo/context.py). The builder's site (its plot: the
+// house, the garden, its fences and hedges, an outline from above: ground.js) keeps the builder's ground; beyond
+// it the real ground takes over: the builder's ground is clipped there, tagged or not (a lawn drawn out to 90 m
+// or a 350 m backdrop would otherwise lie over the real land as a green square, #65, #123), the real ground is
+// sunk under the site and joined to its rim over a ring, where its grass takes on the plot's lawn colour (no
+// pasted edge, #123), and it fades into the meadow at the rim of the disc
 
 import * as THREE from "three";
 import { finishMaterial, finishesReady, loadTexture, metricUV } from "./finishes.js";
 import { leafBush, leafTree, treeStand } from "housekit"; // the page's own instance (its import map)
 import { horizonProfile, lv95ToWgs84 } from "./sun.js";
 import { Blockers, FLAT_BEYOND, FLAT_ROOF, RENDERS, houseHash, openingMeshes, planOpenings, roofLook, roofTint } from "./neighbours.js";
-import { clipToSite, ownGround } from "./ground.js";
+import { clipToSite, lawnColour, ownGround, siteDistance } from "./ground.js";
 
-const RING = 5; // metres over which the real ground joins the builder's (short: a longer ring tilts the roads beside the plot)
+// metres over which the real ground joins the builder's, in height and in its grass's colour (short: a longer ring
+// tilts the roads beside the plot)
+const RING = 5;
 const SINK = 3; // metres the real ground lies under the builder's inside its plot
 const RIM = 25; // metres over which the photo fades into the meadow at the edge of the disc
 // the trees of the lidar (trees.json, #50): made branch by branch near the site (leafTree, leafBush),
@@ -48,6 +51,17 @@ function transforms(a) {
 const distToBox = (x, z, b) => Math.hypot(Math.max(b.min.x - x, x - b.max.x, 0), Math.max(b.min.z - z, z - b.max.z, 0));
 
 /**
+ * Where a scene point stands against the builder's site: `d` the distance to its outline (negative inside,
+ * Infinity without a site), `x`, `z` the outline's nearest point. Beyond `reach` of the site's box only `d` (the
+ * distance to the box, no more than the outline's) is known: nothing is joined that far.
+ */
+function siteGap(own, x, z, reach = Infinity) {
+  if (!own.site) return { d: Infinity, x, z };
+  const far = distToBox(x, z, own.box);
+  return far > reach ? { d: far, x, z } : siteDistance(own.site, x, z);
+}
+
+/**
  * Load the surroundings at `url` (a folder with context.json). `heightAt(x, z)` is the scene's own
  * ground (house.groundY), used to join the real ground to it.
  */
@@ -69,11 +83,12 @@ export async function loadContext(url, { houseGroup, heightAt }) {
   const R = meta.radius, N = meta.terrain.size, step = meta.terrain.step;
   const alt = new Float32Array(terrainBuf);
   const { toScene, toLocal } = transforms(meta.alignment);
-  const own = ownGround(houseGroup);
+  const own = ownGround(houseGroup, { heightAt });
   const ownY = (x, z) => (own.flat ? 0 : (Number.isFinite(heightAt?.(x, z)) ? heightAt(x, z) : 0));
   // the builder's ground ends with its site (the page enables local clipping when `clipped`)
-  const clipped = own.boxes.length ? clipToSite(houseGroup, own.terrains, own.boxes[0]) : 0;
-  const siteCentre = own.boxes[0]?.getCenter(new THREE.Vector3()) ?? new THREE.Vector3();
+  const clipped = own.site ? clipToSite(houseGroup, own.terrains, own.site) : 0;
+  const siteCentre = own.box ? own.box.getCenter(new THREE.Vector3()).setY(0) : new THREE.Vector3();
+  const lawn = lawnColour(own.terrains);
   // the 3D near the house (trees, ground by type), the photo beyond: the owner's radius (#51)
   const nearRadius = Number.isFinite(meta.alignment?.near) ? meta.alignment.near : NEAR_3D;
 
@@ -86,32 +101,31 @@ export async function loadContext(url, { houseGroup, heightAt }) {
   };
 
   // the real ground's height at a scene point (y: the survey's there), sunk under the builder's site
-  // and joined to its rim
-  const joined = (x, z, y) => {
-    let d = Infinity, nearest = null;
-    for (const b of own.boxes) { const e = distToBox(x, z, b); if (e < d) { d = e; nearest = b; } }
-    if (!nearest) return y;
-    if (d <= 0) {
+  // and joined to its rim (`at`: siteGap there)
+  const joined = (x, z, y, at = siteGap(own, x, z, RING)) => {
+    if (at.d <= 0) {
       // under the builder's ground: sunk below it (deeper than a pool), never cut out, so no gap
-      // opens where that ground does not fill its box exactly (a slope, a retaining wall)
+      // opens where that ground does not fill its outline exactly (a slope, a retaining wall)
       // just under it along its edge (no step where the two meet), then down
-      const inside = Math.min(x - nearest.min.x, nearest.max.x - x, z - nearest.min.z, nearest.max.z - z);
-      return ownY(x, z) - 0.05 - SINK * THREE.MathUtils.smoothstep(inside, 1.5, 4);
+      return ownY(x, z) - 0.05 - SINK * THREE.MathUtils.smoothstep(-at.d, 1.5, 4);
     }
-    if (d < RING) {
+    if (at.d < RING) {
       // on the rim of the builder's ground: its height there, easing into the real ground
-      const cx = Math.min(nearest.max.x, Math.max(nearest.min.x, x)), cz = Math.min(nearest.max.z, Math.max(nearest.min.z, z));
-      return THREE.MathUtils.lerp(ownY(cx, cz) - 0.03, y, THREE.MathUtils.smoothstep(d, 0, RING));
+      return THREE.MathUtils.lerp(ownY(at.x, at.z) - 0.03, y, THREE.MathUtils.smoothstep(at.d, 0, RING));
     }
     return y;
   };
 
   // ---- the ground: the disc of the grid, cut out under the scene's own ground, joined to it
   const positions = new Float32Array(N * N * 3), uvs = new Float32Array(N * N * 2), fade = new Float32Array(N * N);
+  // metres from the site's outline (0 inside): the grass there takes on the plot's lawn colour over RING
+  const edge = new Float32Array(N * N);
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const k = j * N + i, lx = -R + i * step, lz = -R + j * step;
     const [x, y, z] = toScene(lx, alt[k], lz);
-    positions.set([x, joined(x, z, y), z], k * 3);
+    const at = siteGap(own, x, z, RING);
+    positions.set([x, joined(x, z, y, at), z], k * 3);
+    edge[k] = Math.min(Math.max(at.d, 0), 2 * RING);
     uvs.set([(lx + R) / (2 * R), 1 - (lz + R) / (2 * R)], k * 2);
     const r = Math.hypot(lx, lz);
     fade[k] = THREE.MathUtils.smoothstep(r, R - RIM, R);
@@ -127,6 +141,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
   geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geo.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
   geo.setAttribute("fade", new THREE.BufferAttribute(fade, 1));
+  geo.setAttribute("siteEdge", new THREE.BufferAttribute(edge, 1));
   geo.setIndex(index);
   geo.computeVertexNormals();
   const groundMat = new THREE.MeshStandardMaterial({ map: photo, roughness: 1 });
@@ -142,11 +157,13 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     shader.uniforms.uDissolve = dissolve;
     shader.uniforms.uDetail = { value: detail };
     if (coverUniforms) Object.assign(shader.uniforms, coverUniforms, { uHouse: near3D.house, uNear: near3D.radius, uCoverOn: near3D.on });
+    shader.uniforms.uSiteLawn = { value: lawn ?? new THREE.Color() };
+    shader.uniforms.uSiteLawnOn = { value: lawn ? 1 : 0 };
     shader.vertexShader = shader.vertexShader
-      .replace("#include <common>", "#include <common>\nattribute float fade;\nvarying float vFade;\nvarying vec3 vGroundWorld;")
-      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFade = fade;\nvGroundWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+      .replace("#include <common>", "#include <common>\nattribute float fade;\nattribute float siteEdge;\nvarying float vFade;\nvarying float vSiteEdge;\nvarying vec3 vGroundWorld;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFade = fade;\nvSiteEdge = siteEdge;\nvGroundWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vFade;\nvarying vec3 vGroundWorld;\nuniform vec3 uMeadow;\nuniform float uDissolve;\nuniform sampler2D uDetail;")
+      .replace("#include <common>", "#include <common>\nvarying float vFade;\nvarying float vSiteEdge;\nvarying vec3 vGroundWorld;\nuniform vec3 uMeadow;\nuniform float uDissolve;\nuniform sampler2D uDetail;\nuniform vec3 uSiteLawn;\nuniform float uSiteLawnOn;")
       .replace("#include <map_pars_fragment>", "#include <map_pars_fragment>\n" + (coverUniforms ? COVER_GLSL : ""))
       .replace("#include <map_fragment>", [
         "#include <map_fragment>",
@@ -180,7 +197,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     const pts = [];
     for (let k = 0; k < p.length; k += 3) pts.push(toScene(p[k], p[k + 1], p[k + 2]));
     const cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cz = pts.reduce((s, q) => s + q[2], 0) / pts.length;
-    if (own.boxes.some((bx) => distToBox(cx, cz, bx) <= 0)) { skipped++; continue; }
+    if (siteGap(own, cx, cz, 0).d <= 0) { skipped++; continue; }
     // each house its render (a Swiss palette, picked by its id so it stays)
     houses.push({ id: b.id, source: b.source, local: p, pts, wall: b.wall, roof: b.roof, eave: b.eave ?? [], render: RENDERS[houseHash(b.id) % RENDERS.length] });
   }
@@ -297,8 +314,14 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     skipped,
     clipped,
     // what the site is made of (ground.js): the large flat meshes taken for the builder's ground, the garden
-    // pieces left out of the framing that widened it, its box (min x, min z, max x, max z)
-    ground: { sheets: own.sheets, garden: own.garden, box: own.boxes[0] ? [own.boxes[0].min.x, own.boxes[0].min.z, own.boxes[0].max.x, own.boxes[0].max.z].map((v) => Math.round(v * 10) / 10) : null },
+    // pieces left out of the framing that widened it, where its outline came from, the outline, its box (min x,
+    // min z, max x, max z), whether the real grass takes on the plot's lawn
+    ground: {
+      sheets: own.sheets, garden: own.garden, plot: own.plot,
+      site: own.site?.map(([x, z]) => [Math.round(x * 10) / 10, Math.round(z * 10) / 10]) ?? null,
+      box: own.box ? [own.box.min.x, own.box.min.z, own.box.max.x, own.box.max.z].map((v) => Math.round(v * 10) / 10) : null,
+      lawn: lawn ? `#${lawn.getHexString()}` : null,
+    },
     built,
     trees: trees ? { near: trees.userData.near, far: trees.userData.far } : null,
     cover: Boolean(coverUniforms),
@@ -340,7 +363,8 @@ export async function loadContext(url, { houseGroup, heightAt }) {
 // fields, woods, water and pools (cover2.png) get finishes too and what the survey leaves out is a field:
 // nothing within the 3D radius is the photo. Older surroundings (cover.png alone): the photo's colour
 // there (a mipmap level down) and the photo where no mask is. It fades into the photo beyond uNear
-// (+ BLEND_3D) from the house
+// (+ BLEND_3D) from the house. A lawn or a field beside the builder's plot takes on the plot's lawn colour
+// toward its edge (uSiteLawn, over RING); a road, paving or gravel keeps its own
 const COVER_GLSL = `
   uniform sampler2D uCover, uCover2, uTint, uF0, uF1, uF2, uF3;
   uniform vec2 uCoverScale, uR0, uR1, uR2, uR3, uRField, uHouse;
@@ -363,14 +387,15 @@ const COVER_GLSL = `
     float k = min(total + rest, 1.0) * (1.0 - smoothstep(uNear, uNear + ${BLEND_3D.toFixed(1)}, length(world.xz - uHouse)));
     if (k < 0.002) return photo;
     vec3 low = uTintOn > 0.5 ? texture2D(uTint, cuv).rgb : texture2D(map, uv, 4.0).rgb;
+    vec3 lawnLow = mix(low, uSiteLawn, uSiteLawnOn * (1.0 - smoothstep(0.0, ${RING.toFixed(1)}, vSiteEdge)));
     coverFar = uTintOn > 0.5 ? smoothstep(${COVER_DETAIL[0].toFixed(1)}, ${COVER_DETAIL[1].toFixed(1)}, length(world - cameraPosition)) : 0.0;
     vec3 grass = texture2D(uF1, world.xz * uR1).rgb;
     vec3 f = coverFinish(texture2D(uF0, world.xz * uR0).rgb, uT0, uC0, 0.35, low) * c.r
-           + coverFinish(grass, uT1, uC1, 1.0, low) * c.g
+           + coverFinish(grass, uT1, uC1, 1.0, lawnLow) * c.g
            + coverFinish(texture2D(uF2, world.xz * uR2).rgb, uT2, uC2, 0.5, low) * c.b
            + coverFinish(texture2D(uF3, world.xz * uR3).rgb, uT3, uC3, 0.8, low) * c.a
            // a field: the lawn's grass, larger; a wood's floor: the grass in its shade; water, a pool: flat
-           + coverFinish(texture2D(uF1, world.xz * uRField).rgb, uT4, uC4, 1.0, low) * (c2.r + rest)
+           + coverFinish(texture2D(uF1, world.xz * uRField).rgb, uT4, uC4, 1.0, lawnLow) * (c2.r + rest)
            + coverFinish(grass, uT5, uC5, 0.6, low) * c2.g
            + coverFinish(vec3(1.0), uT6, uC6, 0.3, low) * c2.b
            + coverFinish(vec3(1.0), uT7, uC7, 0.15, low) * c2.a;
@@ -440,12 +465,12 @@ async function groundFinishes(cover, meta, R, base) {
  */
 function placeTrees(list, { toScene, realY, joined, own, radius3d = NEAR_3D }) {
   if (!list?.length) return null;
-  const site = own.boxes[0] ?? new THREE.Box3(new THREE.Vector3(-5, 0, -5), new THREE.Vector3(5, 0, 5));
+  const site = own.box ?? new THREE.Box3(new THREE.Vector3(-5, 0, -5), new THREE.Vector3(5, 0, 5));
   const centre = site.getCenter(new THREE.Vector3());
   const near = [], far = [];
   for (const [lx, , lz, height, radius, kind] of list) {
     const [x, , z] = toScene(lx, 0, lz);
-    const d = distToBox(x, z, site);
+    const d = own.site ? siteGap(own, x, z, NEAR_TREES).d : distToBox(x, z, site);
     if (d <= 0) continue;
     const r = Math.hypot(x - centre.x, z - centre.z);
     // the same trees thin out every time: a hash of the position, not a random draw

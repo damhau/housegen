@@ -2,7 +2,8 @@
 windows and roofs judged on a real project before a kit change is pushed.
 
 A project's scene page on dev is opened the way the viewer opens it (presentation look, surroundings on),
-the camera put at each `--view` (scene metres, `name=x,y,z@tx,ty,tz`), and each frame shot with what it
+the camera put at each `--view` (scene metres, `name=x,y,z@tx,ty,tz`, or a bare name: the page's own view,
+`aerial`), and each frame shot with what it
 costs (the median of renders each followed by a pixel read, as walk_sheet.py measures it). One sheet: a row
 per view, a column per renderer; a JSON with the load time, the MB and every frame's cost.
 
@@ -67,6 +68,7 @@ CONTEXT_JS = """() => {
     out.triangles += n * (g.index ? g.index.count : g.attributes.position.count) / 3;
   });
   out.built = s?.context?.built ?? null;
+  out.ground = s?.context?.ground ?? null;
   out.programs = s?.renderer?.info.programs.length ?? null;
   return out;
 }"""
@@ -88,12 +90,17 @@ SHOWN_JS = """async () => {
 }"""
 
 
-def parse_view(text: str) -> tuple[str, list[float], list[float]]:
-    name, _, spec = text.partition("=")
+def parse_view(text: str) -> tuple[str, list[float] | None, list[float] | None]:
+    name, eq, spec = text.partition("=")
+    if not eq and re.fullmatch(r"[\w-]+", name):
+        return name, None, None
     pos, _, target = spec.partition("@")
-    p, t = [float(v) for v in pos.split(",")], [float(v) for v in target.split(",")]
+    try:
+        p, t = [float(v) for v in pos.split(",")], [float(v) for v in target.split(",")]
+    except ValueError:
+        p = t = []
     if not name or len(p) != 3 or len(t) != 3:
-        raise argparse.ArgumentTypeError(f"--view {text!r}: name=x,y,z@tx,ty,tz")
+        raise argparse.ArgumentTypeError(f"--view {text!r}: name=x,y,z@tx,ty,tz or a view's name")
     return name, p, t
 
 
@@ -159,7 +166,10 @@ async def shoot_kit(
     frames = out / "frames" / re.sub(r"[^\w.-]+", "-", kit)
     frames.mkdir(parents=True, exist_ok=True)
     for name, pos, target in args.view:
-        await page.evaluate("([p, t]) => window.__house.setCamera(p, t)", [pos, target])
+        if pos is None:
+            await page.evaluate("(n) => window.__house.setView(n)", name)
+        else:
+            await page.evaluate("([p, t]) => window.__house.setCamera(p, t)", [pos, target])
         await page.evaluate(SHOWN_JS)
         await page.wait_for_timeout(args.wait)
         file = frames / f"{name}.jpg"
@@ -265,7 +275,11 @@ def main() -> None:
         help="'dev' or a snapshot name, a query for its page after '?' (dev?lod=0); repeat to compare",
     )
     ap.add_argument(
-        "--view", action="append", type=parse_view, required=True, help="name=x,y,z@tx,ty,tz"
+        "--view",
+        action="append",
+        type=parse_view,
+        required=True,
+        help="name=x,y,z@tx,ty,tz, or a view's name (aerial)",
     )
     ap.add_argument("--query", default="", help="extra query for the scene page")
     ap.add_argument(
