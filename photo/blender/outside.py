@@ -374,7 +374,7 @@ def hard_material(name, scan, size, albedo):
             tex.image = dress.image(os.path.join(d, f"{k}.jpg"), data)
             nt.links.new(scale.outputs["Vector"], tex.inputs["Vector"])
             maps[k] = tex
-        gain = albedo / max(float(dress.mean_linear(maps["diff"].image).mean()), 1e-3)
+        gain = albedo / max(float(dress.mean_encoded(maps["diff"].image).mean()), 1e-3)
         nt.links.new(maps["diff"].outputs["Color"], tint.inputs[1])
         grey = nt.nodes.new("ShaderNodeMath")
         grey.operation = "MULTIPLY"

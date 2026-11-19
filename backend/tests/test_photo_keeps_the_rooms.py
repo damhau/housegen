@@ -16,6 +16,7 @@ from unittest.mock import MagicMock
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+BLENDER_DIR = ROOT / "photo" / "blender"
 BLENDER = ("bpy", "bmesh", "addon_utils", "mathutils", "bpy_extras", "bpy_extras.object_utils")
 RESTYLING = (
     "swap_rugs",
@@ -38,16 +39,16 @@ class Restyled(Exception):
 def photo(monkeypatch: pytest.MonkeyPatch) -> Iterator[ModuleType]:
     for name in BLENDER:
         monkeypatch.setitem(sys.modules, name, MagicMock(name=name))
-    monkeypatch.syspath_prepend(str(ROOT / "photo" / "blender"))
+    monkeypatch.syspath_prepend(str(BLENDER_DIR))
     before = set(sys.modules)
     module = importlib.import_module("photo")
     module.style.H = module
     monkeypatch.setattr(module, "log", lambda *a: None)
     yield module
-    for name in (
-        set(sys.modules) - before
-    ):  # drawn with the stand-ins: the next import gets the real modules
-        del sys.modules[name]
+    # the pipeline's modules hold the stand-ins: the next test imports them afresh (numpy cannot be imported twice)
+    for name in set(sys.modules) - before:
+        if str(getattr(sys.modules[name], "__file__", "")).startswith(str(BLENDER_DIR)):
+            del sys.modules[name]
 
 
 def _calls(photo: ModuleType, monkeypatch: pytest.MonkeyPatch, dressed: bool) -> list[str]:
@@ -65,7 +66,7 @@ def _calls(photo: ModuleType, monkeypatch: pytest.MonkeyPatch, dressed: bool) ->
     monkeypatch.setattr(photo.catalogue, "holders", lambda scene, sy: ["holder"])
     monkeypatch.setattr(photo.catalogue, "own", record("own"))
     monkeypatch.setattr(photo, "storey_pieces", lambda scene, sy: ["piece"])
-    for name in (*RESTYLING, "sanitaryware", "dress_made", "dress_tables"):
+    for name in (*RESTYLING, "sanitaryware", "rail_towels", "dress_made", "dress_tables"):
         monkeypatch.setattr(photo, name, record(name))
     photo.dress_storey(SimpleNamespace(), 0.0, decor=True)
     return called
@@ -76,7 +77,7 @@ def test_a_dressed_scene_keeps_its_beds_rugs_tables_counters_and_baths(
 ) -> None:
     called = _calls(photo, monkeypatch, dressed=True)
     assert not set(called) & set(RESTYLING), called
-    assert {"own", "sanitaryware", "dress_made", "dress_tables"} <= set(called)
+    assert {"own", "sanitaryware", "rail_towels", "dress_made", "dress_tables"} <= set(called)
 
 
 def test_a_scene_from_an_older_kit_is_still_dressed_by_the_photo(

@@ -267,7 +267,7 @@ def finish_textures(scene):
             elif n.image.colorspace_settings.name == "sRGB":
                 new = dress.image(graded(files["diff"], grade))
                 if n.image.name not in gains:
-                    gains[n.image.name] = np.clip(dress.mean_linear(n.image) / np.maximum(dress.mean_linear(new), 1e-3), 0.3, 3.0)
+                    gains[n.image.name] = np.clip(dress.mean_encoded(n.image) / np.maximum(dress.mean_encoded(new), 1e-3), 0.3, 3.0)
                 gain = nt.nodes.new("ShaderNodeMixRGB")
                 gain.blend_type = "MULTIPLY"
                 gain.inputs[0].default_value = 1.0
@@ -548,6 +548,37 @@ def sanitaryware(scene, pieces):
     log(f"sanitaryware: {done}")
 
 
+def rail_towels(pieces):
+    """The kit hangs a towel rail's towels with their falls in the same planes (kit/furnish.js towelRail): coincident
+    faces shade each other black in Cycles (#122). The lower towel's falls go 3 mm out, over the upper one's, as the
+    3D tour draws them (three.js keeps the later of two equal depths)."""
+    n = 0
+    for o in pieces:
+        if name(o) != "towelRail":
+            continue
+        f = frame_of(o, 0.0)
+        inv = f.inverted()
+        falls = []
+        for c in family(o):
+            if c.type != "MESH":
+                continue
+            ps = [inv @ (c.matrix_world @ Vector(v)) for v in c.bound_box]
+            lo = Vector([min(p[i] for p in ps) for i in range(3)])
+            hi = Vector([max(p[i] for p in ps) for i in range(3)])
+            if hi.x - lo.x > 0.1 and hi.y - lo.y < 0.03 and hi.z - lo.z > 0.1:  # a fall, not a bar or the fold
+                falls.append((c, (lo.y + hi.y) / 2, lo.z, hi.z))
+        if len(falls) < 2:
+            continue
+        plane = sum(y for _, y, _, _ in falls) / len(falls)
+        for c, y, z0, z1 in falls:
+            over = sum(1 for _, y2, a, b in falls if abs(y2 - y) < 0.002 and b > z1 + 0.01 and a < z1)
+            if over:
+                d = f.to_3x3() @ Vector((0.0, math.copysign(0.003 * over, y - plane), 0.0))
+                c.matrix_world = Matrix.Translation(d) @ c.matrix_world
+                n += 1
+    return n
+
+
 def swap_rugs(scene, pieces):
     n = 0
     for o in pieces:
@@ -708,7 +739,7 @@ def upholstery_material(rgb=(0.20, 0.17, 0.14)):
     q = principled(m)
     d = os.path.join(dress.TEX, "curly_teddy_natural")
     diff = dress.image(os.path.join(d, "diff.jpg"))
-    gain = np.array(rgb) / np.maximum(dress.mean_linear(diff), 1e-3)
+    gain = np.array(rgb) / np.maximum(dress.mean_encoded(diff), 1e-3)
     tc = node(nt, "ShaderNodeTexCoord")
     mp = node(nt, "ShaderNodeMapping", Scale=(1 / 0.34,) * 3)
     nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
@@ -1110,7 +1141,7 @@ def oak_wood(rgb=(0.42, 0.29, 0.17)):
     mp.inputs["Scale"].default_value = (1 / 0.8,) * 3
     nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
     img = dress.image(os.path.join(d, "diff.jpg"))
-    mean = dress.mean_linear(img)
+    mean = dress.mean_encoded(img)
     tint = nt.nodes.new("ShaderNodeMixRGB")
     tint.blend_type = "MULTIPLY"
     tint.inputs[0].default_value = 1.0
@@ -1404,6 +1435,7 @@ def dress_storey(scene, sy, decor=True):
         }
     bpy.context.view_layer.update()
     sanitaryware(scene, pieces)
+    done["rails"] = rail_towels(pieces)
     if held:
         done["made"] = dress_made(scene, held)
     if decor and not restyle:

@@ -29,12 +29,25 @@ def image(path, data=False):
     return img
 
 
-def mean_linear(img, step_px=7):
-    """The mean colour of an image in linear RGB (sRGB images are linearised by Blender's pixels)."""
+def _pixels(img, step_px):
     w, h = img.size
     px = np.empty(w * h * 4, dtype=np.float32)
     img.pixels.foreach_get(px)
-    return px.reshape(-1, 4)[::step_px, :3].mean(axis=0)
+    return px.reshape(-1, 4)[::step_px, :3]
+
+
+def mean_encoded(img, step_px=7):
+    """The mean of an image's pixels as Blender reads them: an 8-bit sRGB image's are its encoded values, not linear
+    (a grey of 128 reads 0.502). The finish gains, the bouclé, the oak and the exterior ground were tuned with it."""
+    return _pixels(img, step_px).mean(axis=0)
+
+
+def mean_linear(img, step_px=7):
+    """The mean colour of an image in linear RGB, what a texture node puts out on average."""
+    rgb = _pixels(img, step_px)
+    if not img.is_float and img.colorspace_settings.name == "sRGB":
+        rgb = np.where(rgb <= 0.04045, rgb / 12.92, ((rgb + 0.055) / 1.055) ** 2.4)
+    return rgb.mean(axis=0)
 
 
 def principled(mat):
