@@ -10,7 +10,7 @@ and, later, pinned (after a measured run, see docs/quality-plan-2026-09-12.md).
 
 A scene page is served with `?kit=<name>`: the import map of its `index.html` is rewritten on
 the way out to that snapshot's files; the scene sources are untouched, so every saved version
-can be drawn with every renderer.
+can be drawn with every renderer. Every page also gets its project's seed (`seed_page`).
 """
 
 from __future__ import annotations
@@ -173,6 +173,20 @@ def rewrite_page(html: str, name: str, settings: Settings | None = None) -> str:
     )
 
 
+def seed_page(html: str, seed: str) -> str:
+    """The scene page with its catalogue seed set to `seed`, the project's id (#117).
+
+    The kit shuffles its furniture, decor and dressing decks by that seed, read from
+    scenes/<project>/ in the page's path when the page sets none: a share link's page or an
+    exported scene would draw other pieces than the viewer and the listing photos."""
+    value = json.dumps(seed).replace("<", "\\u003c")
+    script = f"<script>globalThis.__housekitSeed = {value};</script>\n"
+    # a classic script runs as it is parsed, before any module script: at the end of a page
+    # without a head too
+    at = html.find("</head>")
+    return html[:at] + script + html[at:] if at >= 0 else html + script
+
+
 # --------------------------------------------------------------------------
 # scene pages: /scenes/<project>/scene/index.html and /scenes/<project>/versions/<n>/index.html
 # with ?kit=<name>; everything else under /scenes stays with the static mount
@@ -182,11 +196,12 @@ pages_router = APIRouter(include_in_schema=False)
 _ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
-def serve_page(page: Path, kit: str | None) -> HTMLResponse:
-    """A scene page, drawn with the renderer `kit` names (its own import map without one)."""
+def serve_page(page: Path, kit: str | None, project_id: str) -> HTMLResponse:
+    """A scene page of the project `project_id`, seeded with it, drawn with the renderer `kit`
+    names (its own import map without one)."""
     if not page.is_file():
         raise HTTPException(404, "no such scene")
-    html = page.read_text(encoding="utf-8")
+    html = seed_page(page.read_text(encoding="utf-8"), project_id)
     if kit:
         try:
             kit_dir(kit)
@@ -200,7 +215,9 @@ def serve_page(page: Path, kit: str | None) -> HTMLResponse:
 def scene_page(project_id: str, kit: str | None = Query(None)) -> HTMLResponse:
     if not _ID.match(project_id):
         raise HTTPException(404, "no such scene")
-    return serve_page(get_settings().projects_dir / project_id / "scene" / "index.html", kit)
+    return serve_page(
+        get_settings().projects_dir / project_id / "scene" / "index.html", kit, project_id
+    )
 
 
 @pages_router.get("/scenes/{project_id}/versions/{number}/index.html")
@@ -208,5 +225,7 @@ def version_page(project_id: str, number: int, kit: str | None = Query(None)) ->
     if not _ID.match(project_id) or number < 0:
         raise HTTPException(404, "no such scene")
     return serve_page(
-        get_settings().projects_dir / project_id / "versions" / str(number) / "index.html", kit
+        get_settings().projects_dir / project_id / "versions" / str(number) / "index.html",
+        kit,
+        project_id,
     )

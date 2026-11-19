@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import io
+import shutil
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -12,7 +15,8 @@ from housegen.core.config import get_settings
 from housegen.core.db import session_factory
 from housegen.jobs.manager import job_manager
 from housegen.projects import crud
-from housegen.render.kits import viewer_kit
+from housegen.projects.storage import ProjectStorage
+from housegen.render.kits import seed_page, viewer_kit
 
 
 def _pdf() -> bytes:
@@ -113,3 +117,42 @@ async def test_share_create_is_idempotent_pins_and_revokes(client: AsyncClient) 
     assert (await client.get(f"/api/v1/projects/{pid}")).json()["share"] is None
     assert (await client.post(f"/api/v1/projects/{pid}/share")).json()["token"] != token
     assert (await client.get("/api/v1/shared/nope")).status_code == 404
+
+
+async def test_a_shared_page_draws_with_the_viewers_catalogue_seed(client: AsyncClient) -> None:
+    # the kit seeds its catalogue picks from scenes/<project>/ in the page's path, which a share
+    # link's page and an exported scene do not have (#117)
+    pid = await _project(client)
+    st = ProjectStorage(pid)
+    template = get_settings().KIT_DIR / "template" / "index.html"
+    for folder in (st.scene_dir, st.versions_dir / "1"):
+        folder.mkdir(parents=True, exist_ok=True)
+        shutil.copy(template, folder / "index.html")
+    share = await client.post(f"/api/v1/projects/{pid}/share", json={"version": 1})
+    token = share.json()["token"]
+    seed = f'<script>globalThis.__housekitSeed = "{pid}";</script>'
+    for path in (
+        f"/shared/{token}/scene/index.html",
+        f"/shared/{token}/scene/index.html?kit={viewer_kit()}",
+        f"/scenes/{pid}/versions/1/index.html",
+        f"/scenes/{pid}/versions/1/index.html?kit={viewer_kit()}",
+        f"/scenes/{pid}/scene/index.html",
+    ):
+        r = await client.get(path)
+        assert r.status_code == 200, path
+        assert r.text.count(seed) == 1, path
+        # a classic script in the head: set before the page's modules run
+        assert r.text.index(seed) < r.text.index("</head>") < r.text.index('type="module"'), path
+    r = await client.get(f"/api/v1/projects/{pid}/export?version=1")
+    assert r.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(r.content)) as z:
+        assert seed in z.read("index.html").decode()
+    assert "__housekitSeed" not in (st.versions_dir / "1" / "index.html").read_text()
+
+
+def test_the_seed_goes_in_the_head_else_at_the_end() -> None:
+    assert seed_page("<html><head></head><body></body></html>", "a1") == (
+        '<html><head><script>globalThis.__housekitSeed = "a1";</script>\n</head><body></body></html>'
+    )
+    assert seed_page("<!doctype html>", "a1").startswith("<!doctype html><script>")
+    assert "</script></script>" not in seed_page("<head></head>", "</script></script>")

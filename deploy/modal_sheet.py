@@ -6,7 +6,8 @@ is pushed, without loading the owner's PC.
 
 `--args` go to backend/scripts/look_sheet.py (`--script` picks another one); `{scene}` and `{out}` stand for the uploaded
 scene and the output directory, whose files are written to `--out`. Without `--scene` the script gets no scene (the
-kit's template for look_sheet).
+kit's template for look_sheet). The uploaded scene is not under projects/<id>/: add `--seed <project id>` to look_sheet's
+args, or a furnished room draws other catalogue pieces than the viewer (#117).
 
 The app image (ghcr.io/damhau/housegen:latest, as the render service) brings the browser, the Python environment and
 the kit's assets; this checkout's kit modules, renderer snapshots, styles and template, backend/src and backend/scripts

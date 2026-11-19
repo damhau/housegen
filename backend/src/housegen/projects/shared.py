@@ -90,7 +90,7 @@ async def shared_file(
         version, _ = shared_version(project)
         folder = st.versions_dir / str(version) if version else st.scene_dir
         if rest == "index.html":
-            return serve_page(folder / "index.html", kit)
+            return serve_page(folder / "index.html", kit, project.id)
         listing_photo = rest.startswith("listing/") and rest.lower().endswith(_PICTURES)
         if not (rest.startswith(_SCENE_FOLDERS) or listing_photo):
             raise _not_found()

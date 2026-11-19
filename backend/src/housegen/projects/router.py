@@ -53,7 +53,7 @@ from housegen.projects.schemas import (
 )
 from housegen.projects.storage import ProjectStorage
 from housegen.projects.style import STYLES, Style, read_style, style_state
-from housegen.render.kits import kit_dir, kit_with, requested_kit
+from housegen.render.kits import kit_dir, kit_with, requested_kit, seed_page
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/projects", tags=["projects"])
@@ -829,7 +829,7 @@ async def export_zip(
             .replace('"/kit/', '"./kit/')
             .replace('"./src/', '"./src/')
         )
-        z.writestr("index.html", html)
+        z.writestr("index.html", seed_page(html, project_id))
         for p in (base / "src").rglob("*.js"):
             z.write(p, f"src/{p.relative_to(base / 'src')}")
         # every kit module (the runtime imports its neighbours: finishes, plan2d; scenes import interior, furnish…)

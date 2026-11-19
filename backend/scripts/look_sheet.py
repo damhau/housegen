@@ -12,9 +12,12 @@ for any change to how the kit draws a house.
 
 With --scene it serves the kit and the scene directory itself (no backend needed, no database
 touched) and renders through the app's own headless Renderer in this process (same browser
-flags, same JPEG pipeline as the version pictures). With --scene-url it renders the page at that
-URL through the app's render client: the GPU service when RENDER_SERVICE_URL is set (a local
-directory cannot be used there, the service cannot reach this machine), else the local browser.
+flags, same JPEG pipeline as the version pictures). Its page gets the project's catalogue seed,
+as the app serves it (#117), so a furnished room draws the viewer's pieces: --seed, else <id> of
+a directory under projects/<id>/ (an uploaded copy, as on Modal, needs --seed). With --scene-url
+it renders the page at that URL through the app's render client: the GPU service when
+RENDER_SERVICE_URL is set (a local directory cannot be used there, the service cannot reach this
+machine), else the local browser.
 A deployed app's scene pages need a token (#105): the service sends its own; the local browser
 sends RENDER_SERVICE_TOKEN, else AUTH_READONLY_TOKEN (by default ~/.config/housegen/readonly-token),
 to the page's host only. Either way it writes one contact sheet: a row per view, a column per look,
@@ -41,7 +44,7 @@ sys.path.insert(0, str(BACKEND / "src"))
 os.environ.setdefault("RENDER_TIMEOUT_MS", "600000")
 
 from housegen.core.config import get_settings  # noqa: E402
-from housegen.render.kits import DEV, kit_dir  # noqa: E402
+from housegen.render.kits import DEV, kit_dir, seed_page  # noqa: E402
 from housegen.render.remote import RenderClient  # noqa: E402
 from housegen.render.renderer import Renderer, SceneRenderer  # noqa: E402
 
@@ -58,6 +61,12 @@ def serve(www: Path) -> tuple[ThreadingHTTPServer, int]:
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return server, server.server_address[1]
+
+
+def project_of(scene: Path) -> str | None:
+    """The project id of a scene directory under data/projects/<id>/, else None."""
+    parts = scene.parts
+    return parts[parts.index("projects") + 1] if "projects" in parts[:-1] else None
 
 
 def stats(img: Image.Image) -> tuple[float, list[int]]:
@@ -162,6 +171,12 @@ def main() -> None:
         help="renderer snapshot (kit/versions/<name>) or 'dev' (the working copy); default: as the "
         "page is served (--scene: the working copy)",
     )
+    ap.add_argument(
+        "--seed",
+        default=None,
+        help="--scene: the project id its catalogue picks are seeded with, as the app serves it; "
+        "default: <id> of a directory under projects/<id>/",
+    )
     ap.add_argument("--views", nargs="+", default=["southeast", "north", "aerial", "south-photo"])
     ap.add_argument("--out", type=Path, required=True, help="the contact sheet (PNG)")
     ap.add_argument("--cell-width", type=int, default=560)
@@ -216,7 +231,15 @@ def main() -> None:
         ).is_dir():  # furniture models (kit/scripts/fetch_models.mjs)
             (www / "kit" / "assets").symlink_to(settings.KIT_DIR / "assets")
         (www / "kit" / "vendor" / "three").symlink_to(settings.KIT_DIR / "node_modules" / "three")
-        (www / "scene").symlink_to(scene)
+        (www / "scene").mkdir()
+        for path in scene.iterdir():
+            if path.name != "index.html":
+                (www / "scene" / path.name).symlink_to(path)
+        page = (scene / "index.html").read_text(encoding="utf-8")
+        seed = args.seed or project_of(scene)
+        (www / "scene" / "index.html").write_text(
+            seed_page(page, seed) if seed else page, encoding="utf-8"
+        )
         server, port = serve(www)
         try:
             renders = Path(tmp) / "renders"
