@@ -8,22 +8,25 @@
 //   - a sideboard: something tall at one end, a jar or a vase, books with something small on them at the other; a
 //     living or dining room without low storage gets the style's catalogue sideboard on a free wall, dressed so;
 //   - the floor: a plant, a pouf, a basket or a floor vase in a free corner, more of them in a larger room;
-//   - a bath: a towel over the tub's front rim, a towel over a walk-in shower's glass panel (on a bar across its
-//     fittings when the panel is too narrow), now and then a stool with folded towels, a towel on a bar when the room
-//     has neither a towel rail nor a shower's bar.
+//   - a bath: a towel over the tub's front rim, a towel over a walk-in shower's glass panel (on a bar on its back wall,
+//     clear of its fittings, when the panel is too narrow), now and then a stool with folded towels, a towel on a bar
+//     on a free wall (never over a bath or a shower) when the room has neither a towel rail nor a shower's bar; a towel
+//     rail the scene hung over a bath or in a shower goes to the nearest free wall of the room (#135).
 // The pieces are the house style's catalogue (pickObject: cushions, candles, jars, bowls, vases, plants, poufs,
 // baskets) and the kit's own stand-ins for the photo service's made props (books, a carafe, a napkin, a runner, a
 // throw, towels, a stool, a towel bar), tagged `made` (and `arg`): the photo service draws its own in their place
 // (photo/blender/catalogue.py). A surface, a sofa or a corner the scene dressed itself is left as it is.
 // It is one group (kind "dressing"), the house group's last child: the export's node ids of the scene's own pieces stay
-// what they were (the listing photos' choices name them). Nothing of the scene is hidden; a nightstand's lamp moves.
+// what they were (the listing photos' choices name them). Nothing of the scene is hidden; a nightstand's lamp and a
+// towel rail over a bath move.
 
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { roomOf, roomsOf } from "./decor.js";
 import { track } from "./finishes.js";
-import { catalogueModel, finish, hash, measureSofa, model, pickObject, sceneKey, shuffled } from "./furnish.js";
+import { catalogueModel, finish, hash, measureSofa, model, overBar, pickObject, sceneKey, shuffled, towelCloth } from "./furnish.js";
 import { polygonArea, wallOpenings } from "./interior.js";
-import { pieceType } from "./layout.js";
+import { coverAlong, pieceType } from "./layout.js";
 import { readWalls } from "./quantities.js";
 
 const BROWSER = typeof window !== "undefined";
@@ -219,7 +222,7 @@ function readScene(root) {
     const y = plan.localToWorld(new THREE.Vector3(0, plan.userData.y ?? 0, 0)).y;
     const at = ([x, z]) => { const v = plan.localToWorld(new THREE.Vector3(x, plan.userData.y ?? 0, z)); return [v.x, v.z]; };
     const rooms = (plan.userData.rooms ?? []).map((r) => ({ room: r, poly: r.polygon.map(at), y, plan }));
-    const walls = (plan.userData.partitions ?? []).map((p) => ({ a: at(p.from), b: at(p.to), t: p.thickness ?? 0.1 }));
+    const walls = (plan.userData.partitions ?? []).map((p) => ({ a: at(p.from), b: at(p.to), t: p.thickness ?? 0.1, inner: true }));
     return { plan, y, height: plan.userData.height ?? 2.5, rooms, walls, doors: [], windows: [] };
   });
   const storeyAt = (y) => storeys.find((s) => y > s.y - 0.3 && y < s.y + s.height - 0.2);
@@ -390,10 +393,8 @@ const MADE = {
   // on +z), more of it outside
   drape(g, arg) {
     const rim = Number(arg) || 0.1;
-    const path = rounded([[-rim / 2 - 0.2, -0.2], [-rim / 2 - 0.006, -0.03], [-rim / 2 + 0.01, 0.008], [rim / 2 - 0.01, 0.008],
-      [rim / 2 + 0.008, -0.03], [rim / 2 + 0.014, -0.3]]);
-    const m = band(g, path, 0.30, finish.towel("#ece8e0"));
-    m.rotation.y = -Math.PI / 2; // the band runs across the rim (z), 0.30 along it (x)
+    const path = overBar(0.0075, 0.3, 0.2, { flat: rim, spread: [0.04, 0.008] });
+    mesh(g, towelCloth(path, 0.3, { thickness: 0.01, seed: 3 }), finish.towel("#ece8e0"));
     return { h: 0.01, r: 0.3 };
   },
   // a round oak stool 0.45 m high, three folded towels on it
@@ -410,7 +411,7 @@ const MADE = {
     }
     let y = 0.45;
     for (const [w, d, h, c] of [[0.285, 0.228, 0.05, TOWEL], [0.285, 0.228, 0.05, TOWEL], [0.257, 0.2, 0.042, SAND]]) {
-      mesh(g, new THREE.BoxGeometry(w, h, d).translate(0, h / 2, 0), finish.towel(`#${linear(...c).getHexString()}`), [0, y, 0]);
+      mesh(g, new RoundedBoxGeometry(w, h, d, 3, 0.016).translate(0, h / 2, 0), finish.towel(`#${linear(...c).getHexString()}`), [0, y, 0]);
       y += h - 0.004;
     }
     return { h: y, r: 0.2 };
@@ -421,9 +422,8 @@ const MADE = {
     const black = plain("bar-black", [0.02, 0.02, 0.02], 0.45);
     mesh(g, new THREE.CylinderGeometry(0.011, 0.011, 0.6, 16).rotateZ(Math.PI / 2), black);
     for (const x of [-0.27, 0.27]) mesh(g, new THREE.CylinderGeometry(0.008, 0.008, 0.075, 12).rotateX(Math.PI / 2), black, [x, 0, -0.0375]);
-    const path = rounded([[-0.022, -0.36], [-0.016, 0.0], [0, 0.016], [0.016, 0.0], [0.024, -0.44]], 0.4);
-    const m = band(g, path, 0.45, finish.towel(`#${linear(...SAND).getHexString()}`));
-    m.rotation.y = Math.PI / 2; // across the bar (z), 0.45 along it (x)
+    const path = overBar(0.011 + 0.0015 + 0.0055 * 1.55, 0.42, 0.36);
+    mesh(g, towelCloth(path, 0.45, { thickness: 0.011, seed: 5 }), finish.towel(`#${linear(...SAND).getHexString()}`));
     return { h: 0.02, r: 0.3 };
   },
 };
@@ -928,6 +928,154 @@ function floors(ctx) {
   return n;
 }
 
+// ---------------------------------------------------------------- a towel rail over a bath (#135)
+
+const WET = new Set(["bathtub", "shower"]);
+const REACH = 0.2; // the front of a wall fixture, as layout.js reads it (RULES.reach): where one stands to reach it
+
+// a piece's footprint in plan, `pad` round it
+const footprint = (p, pad = 0) => [[p.lb.min.x - pad, p.lb.min.z - pad], [p.lb.max.x + pad, p.lb.min.z - pad],
+  [p.lb.max.x + pad, p.lb.max.z + pad], [p.lb.min.x - pad, p.lb.max.z + pad]].map(([u, v]) => p.f.world(u, v));
+
+// the piece of `wet` whose footprint the front of a fixture (box `lb` in frame `f`) covers over `least` of its width
+// (layout.js: a quarter of it)
+function overWet(f, lb, wet, least = Math.max(0.05, (lb.max.x - lb.min.x) / 4)) {
+  const zone = [[lb.min.x + 0.02, lb.min.z], [lb.max.x - 0.02, lb.min.z], [lb.max.x - 0.02, lb.max.z + REACH],
+    [lb.min.x + 0.02, lb.max.z + REACH]].map(([u, v]) => f.world(u, v));
+  const along = [f.c, -f.s], c = f.world((lb.min.x + lb.max.x) / 2, 0);
+  return wet.find((q) => coverAlong(footprint(q, 0.02), zone, along, c) > least) ?? null;
+}
+
+// what a wall fixture can hang on: walls, partitions, their tiles, the shell (not glass, furniture, floors, the dressing)
+function backings(root) {
+  const out = [];
+  root.traverse((m) => {
+    if (!m.isMesh || m.isInstancedMesh || !m.geometry?.attributes?.position) return;
+    if (["furniture", "dressing", "terrain", "roomFloor", "ceiling", "floorPlan", "roof", "slab", "leaves"].includes(kindOf(m))) return;
+    if ((Array.isArray(m.material) ? m.material : [m.material]).some((x) => x?.transparent && x.opacity < 0.5)) return;
+    out.push({ m, box: new THREE.Box3().setFromObject(m) });
+  });
+  return out;
+}
+
+const _back = new THREE.Raycaster();
+// a solid wall right behind the whole face of a fixture (box `lb` in frame `f`, from y0 to y1) and 3 cm over it: rays
+// back to the wall from just in front of it. A window the scene left untagged (a round one) shows as no wall.
+function backed(meshes, f, lb, y0, y1) {
+  const pts = [lb.min.x, lb.max.x].flatMap((u) => [lb.min.z - 0.4, lb.max.z + 0.4].map((v) => f.world(u, v)));
+  const xs = pts.map((q) => q[0]), zs = pts.map((q) => q[1]);
+  const near = meshes.filter(({ box }) => box.max.y > y0 && box.min.y < y1 + 0.05 && box.max.x > Math.min(...xs) && box.min.x < Math.max(...xs)
+    && box.max.z > Math.min(...zs) && box.min.z < Math.max(...zs)).map(({ m }) => m);
+  const back = new THREE.Vector3(-f.s, 0, -f.c);
+  _back.far = lb.max.z - lb.min.z + 0.1;
+  for (let i = 0; i < 5; i++) {
+    const [x, z] = f.world(lb.min.x + 0.03 + ((lb.max.x - lb.min.x - 0.06) * i) / 4, lb.max.z + 0.01);
+    for (const y of [y0 + 0.05, (y0 + y1) / 2, y1 - 0.02, y1 + 0.03]) {
+      _back.set(new THREE.Vector3(x, y, z), back);
+      if (!_back.intersectObjects(near, false).length) return false;
+    }
+  }
+  return true;
+}
+
+// the nearest stretch of free wall of the room (`poly`, storey `s`) for fixture p: along its outline, clear of the doors
+// (a door's width along its own wall: its leaf opens there), of the partitions, of what stands there and of the wet
+// places, a solid wall behind it (the shell's walls are not all tagged ones); lowered under a window (to 8 cm over the
+// floor at the least). Null when none.
+function freeWall(ctx, s, poly, p, wet, meshes) {
+  const { lb } = p, w = lb.max.x - lb.min.x, H = p.box.max.y - p.box.min.y, bottom = p.box.min.y - s.y;
+  const cx = (lb.min.x + lb.max.x) / 2, cz = (lb.min.z + lb.max.z) / 2, from = p.f.world(cx, cz);
+  const others = ctx.scene.obstacles.filter((o) => o.box !== p.box).map((o) => ({ rect: [o.box.min.x, o.box.min.z, o.box.max.x, o.box.max.z],
+    y0: o.box.min.y - s.y, y1: o.box.max.y - s.y })).filter((b) => b.y1 > 0.02 && b.y0 < s.height);
+  const spots = [];
+  poly.forEach((a, i) => {
+    const b = poly[(i + 1) % poly.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (len < w + 0.06) return;
+    const t = [(b[0] - a[0]) / len, (b[1] - a[1]) / len], m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const nrm = inside([m[0] - t[1] * 0.1, m[1] + t[0] * 0.1], poly) ? [-t[1], t[0]] : [t[1], -t[0]];
+    const yaw = Math.atan2(nrm[0], nrm[1]);
+    for (let k = w / 2 + 0.03; k <= len - w / 2 - 0.03 + 1e-6; k += 0.05) {
+      const q = [a[0] + t[0] * k, a[1] + t[1] * k];
+      const o = frameAt(q[0], 0, q[1], yaw).world(-cx, 0.012 - lb.min.z);
+      const f = frameAt(o[0], 0, o[1], yaw), c = f.world(cx, cz);
+      spots.push({ f, o, yaw, a, t, d: Math.hypot(c[0] - from[0], c[1] - from[1]) });
+    }
+  });
+  spots.sort((x, y) => x.d - y.d);
+  for (const sp of spots) {
+    const { f } = sp;
+    if (overWet(f, lb, wet, 0.02)) continue;
+    const probes = [lb.min.x + 0.03, cx, lb.max.x - 0.03].flatMap((u) => [lb.min.z + 0.02, cz, lb.max.z + 0.02, lb.max.z + 0.2, lb.max.z + 0.4]
+      .map((v) => ({ q: f.world(u, v), ahead: v > lb.max.z, out: v > lb.max.z + 0.3 })));
+    // a partition across its stretch: in front of it (the one it hangs on is behind)
+    if (!probes.every(({ q, ahead }) => inside(q, poly) && !(ahead && s.walls.some((wl) => wl.inner && segDist(q, wl.a, wl.b).d < wl.t / 2 + 0.01)))) continue;
+    // the doors: a door's width away along its own wall, 15 cm from any other
+    const e0 = f.world(lb.min.x, lb.min.z), e1 = f.world(lb.max.x, lb.min.z);
+    const off = (q) => Math.abs((q[0] - sp.a[0]) * -sp.t[1] + (q[1] - sp.a[1]) * sp.t[0]);
+    const gap = (dr) => Math.min(...[0, 0.25, 0.5, 0.75, 1].flatMap((k) => {
+      const r = [e0[0] + (e1[0] - e0[0]) * k, e0[1] + (e1[1] - e0[1]) * k], d = [dr.a[0] + (dr.b[0] - dr.a[0]) * k, dr.a[1] + (dr.b[1] - dr.a[1]) * k];
+      return [segDist(r, dr.a, dr.b).d, segDist(d, e0, e1).d];
+    }));
+    if (s.doors.some((dr) => gap(dr) < (off(dr.a) < 0.35 && off(dr.b) < 0.35 ? Math.hypot(dr.b[0] - dr.a[0], dr.b[1] - dr.a[1]) + 0.05 : 0.15))) continue;
+    // a window on this wall over its stretch: its top 3 cm under the sill
+    const along = (q) => (q[0] - sp.a[0]) * sp.t[0] + (q[1] - sp.a[1]) * sp.t[1];
+    const [r0, r1] = [along(e0), along(e1)].sort((x, y) => x - y);
+    let top = bottom + H;
+    for (const wn of s.windows) {
+      const [w0, w1] = [along(wn.a), along(wn.b)].sort((x, y) => x - y);
+      if (off(wn.a) < 0.4 && off(wn.b) < 0.4 && w1 > r0 - 0.05 && w0 < r1 + 0.05) top = Math.min(top, wn.y0 - 0.03);
+    }
+    for (let b = Math.min(bottom, top - H); b >= 0.08 - 1e-6; b -= 0.05) {
+      const clear = probes.every(({ q, out }) => !others.some((o) => (out ? o.y0 < 1.6 && o.y1 > 0.2 : o.y0 < b + H && o.y1 > b) && hits(q, 0.03, o.rect)));
+      if (!clear) continue;
+      if (backed(meshes, f, lb, s.y + b, s.y + b + H)) return { ...sp, bottom: b };
+    }
+  }
+  return null;
+}
+
+// a piece moved to plan point `at` (its origin), `y` high, turned by `dyaw` about the vertical: in its parent's frame
+function moveTo(o, [x, z], y, dyaw) {
+  o.updateMatrixWorld(true);
+  const pos = new THREE.Vector3(), q = new THREE.Quaternion(), sc = new THREE.Vector3();
+  o.matrixWorld.decompose(pos, q, sc);
+  q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dyaw));
+  const m = new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), q, sc).premultiply(o.parent.matrixWorld.clone().invert());
+  m.decompose(o.position, o.quaternion, o.scale);
+  o.updateMatrixWorld(true);
+}
+
+/**
+ * The towel rails the scene hung over a bath or in a shower, each moved to the nearest stretch of free wall of its room
+ * (freeWall), the same at every load: the listing photos draw it where the 3D tour shows it, and the layout audit tells
+ * the builder where it went (userData.rehung). One with no free wall stays where it is: the audit names it.
+ */
+function rehang(ctx) {
+  let n = 0, meshes = null;
+  for (const s of ctx.scene.storeys) {
+    for (const { room, poly } of s.rooms) {
+      const here = ctx.scene.pieces.filter((p) => p.room === room), wet = here.filter((p) => WET.has(p.type));
+      if (!wet.length) continue;
+      for (const p of here) {
+        if (p.type !== "towels" || p.box.min.y - s.y > 2.0) continue;
+        const over = overWet(p.f, p.lb, wet);
+        if (!over) continue;
+        meshes ??= backings(ctx.root);
+        const spot = freeWall(ctx, s, poly, p, wet, meshes);
+        if (!spot) continue;
+        const bottom = p.box.min.y - s.y, from = p.f.world((p.lb.min.x + p.lb.max.x) / 2, (p.lb.min.z + p.lb.max.z) / 2);
+        moveTo(p.o, spot.o, p.f.y + spot.bottom - bottom, spot.yaw - p.f.yaw);
+        p.o.userData.rehung = { from: from.map((v) => Math.round(v * 100) / 100), over: over.name, bottom: Math.round(bottom * 100) / 100 };
+        p.box.copy(new THREE.Box3().setFromObject(p.o));
+        p.f = frameOf(p.o);
+        p.lb = localBox(p.o, p.f);
+        n++;
+      }
+    }
+  }
+  return n;
+}
+
 const RAIL_H = 1.2; // a towel bar's height over the floor (style.py RAIL_H)
 
 function baths(ctx) {
@@ -955,7 +1103,7 @@ function baths(ctx) {
           n++;
         }
       }
-      if (!barred && !here.some((p) => p.type === "towels") && towelBar(ctx, s, room, poly, boxes)) n++;
+      if (!barred && !here.some((p) => p.type === "towels") && towelBar(ctx, s, room, poly, boxes, here.filter((p) => WET.has(p.type)))) n++;
     }
   }
   return n;
@@ -998,33 +1146,42 @@ function screenTowel(ctx, p, room) {
 
 const BAR = 0.6; // the towel bar's length (MADE.rail)
 
-// a towel on a bar on a walk-in shower's back wall when its glass panel is too narrow to take one: across its mixer
-// and hand shower, where a camera framing the shower looks (#103: the owner's reference photo, Montelly 04 v20, hangs
-// it there; beside them, the only clear stretch, it fell out of that frame)
+// a towel on a bar on a walk-in shower's back wall when its glass panel is too narrow to take one: on a stretch of it
+// 5 cm clear of the mixer, the hand shower, its rail and its hose (#135: across them, the owner's v25 showed it hiding
+// them), the longest one; none when no stretch takes the bar (then a free wall of the room may: towelBar)
 function showerBar(ctx, s, p, room) {
-  const { lb } = p, back = lb.min.z, lo = lb.min.x + 0.03, hi = lb.max.x - 0.03;
-  if (hi - lo < BAR) return false;
-  if (!s.walls.some((w) => segDist(p.f.world((lb.min.x + lb.max.x) / 2, back), w.a, w.b).d <= w.t / 2 + 0.06)) return false;
-  let a = Infinity, b = -Infinity;
+  const { lb } = p, back = lb.min.z;
+  const taken = [];
   for (const m of meshesOf(p.o)) {
     if (m.material?.transparent && m.material.opacity < 0.5) continue;
     const box = localBox(m, p.f);
     if (box.min.z > back + 0.15 || box.max.y < RAIL_H - 0.5 || box.min.y > RAIL_H + 0.1) continue;
-    a = Math.min(a, box.min.x);
-    b = Math.max(b, box.max.x);
+    taken.push([box.min.x - 0.05, box.max.x + 0.05]);
   }
-  const u = Math.min(Math.max(a < b ? (a + b) / 2 : (lo + hi) / 2, lo + BAR / 2), hi - BAR / 2);
+  taken.sort((x, y) => x[0] - y[0]);
+  let best = null, lo = lb.min.x + 0.03;
+  for (const [a, b] of [...taken, [lb.max.x - 0.03, Infinity]]) {
+    if (a - lo >= BAR && (!best || a - lo > best[1] - best[0])) best = [lo, a];
+    lo = Math.max(lo, b);
+  }
+  if (!best) return false;
+  const u = (best[0] + best[1]) / 2;
+  if (!s.walls.some((w) => segDist(p.f.world(u, back), w.a, w.b).d <= w.t / 2 + 0.06)) return false;
   const [x, z] = p.f.world(u, back + 0.075);
   made(ctx, "rail", room, new THREE.Vector3(x, p.f.y + RAIL_H, z), p.f.yaw);
   return true;
 }
 
 // a towel on a bar on a free wall of the bath: no door or window behind it, nothing standing in front of it above
-// 0.65 m (a tub is fine), as far from the door as the room allows
-function towelBar(ctx, s, room, poly, boxes) {
+// 0.65 m, not over a bath or a shower's tray (#135), as far from the door as the room allows
+function towelBar(ctx, s, room, poly, boxes, wet) {
   let best = null;
   const tall = boxes.filter((b) => b.y1 > RAIL_H - 0.55 && b.y0 < RAIL_H + 0.15);
   const openings = [...s.doors, ...s.windows].filter((o) => o.y0 < RAIL_H + 0.1 && o.y1 > RAIL_H - 0.5);
+  const isWet = (q) => wet.some((p) => {
+    const [u, v] = p.f.local(q[0], q[1]);
+    return u > p.lb.min.x - 0.02 && u < p.lb.max.x + 0.02 && v > p.lb.min.z - 0.02 && v < p.lb.max.z + 0.02;
+  });
   poly.forEach((a, i) => {
     const b = poly[(i + 1) % poly.length], len = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (len < 0.7) return;
@@ -1038,6 +1195,7 @@ function towelBar(ctx, s, room, poly, boxes) {
       if (openings.some((o) => segDist(c, o.a, o.b).d < 0.45)) continue;
       const probe = [-0.3, 0, 0.3].flatMap((e) => [0.08, 0.25].map((q) => [c[0] + t[0] * e + nrm[0] * q, c[1] + t[1] * e + nrm[1] * q]));
       if (probe.some((q) => tall.some((bx) => hits(q, 0.04, bx.rect)))) continue;
+      if ([-0.28, 0, 0.28].some((e) => [0.08, 0.25, 0.4].some((q) => isWet([c[0] + t[0] * e + nrm[0] * q, c[1] + t[1] * e + nrm[1] * q])))) continue;
       const score = Math.min(6, ...s.doors.map((dr) => segDist(c, dr.a, dr.b).d));
       if (!best || score > best.score) best = { score, c, nrm };
     }
@@ -1054,7 +1212,7 @@ function towelBar(ctx, s, room, poly, boxes) {
 /**
  * Dress the rooms of the scene under `root` (see the top of this file): one group added as `root`'s last child, its
  * catalogue pieces loading before the first picture (track; in Node, the kit's tests, the holders stay empty).
- * Returns { pieces, nightstands, tables, sofas, sideboards, addedSideboards, floors, baths }.
+ * Returns { pieces, rehung, nightstands, tables, sofas, sideboards, addedSideboards, floors, baths }.
  */
 export function dressRooms(root) {
   const scene = readScene(root);
@@ -1063,9 +1221,9 @@ export function dressRooms(root) {
   group.userData = { kind: "dressing", name: "the kit's dressing" };
   root.updateMatrixWorld(true);
   const inv = root.matrixWorld.clone().invert();
-  const ctx = { scene, group, count: 0, taken: [], boxes: new Map(), yaw0: frameOf(root).yaw, toGroup: (v) => v.clone().applyMatrix4(inv) };
+  const ctx = { root, scene, group, count: 0, taken: [], boxes: new Map(), yaw0: frameOf(root).yaw, toGroup: (v) => v.clone().applyMatrix4(inv) };
   const done = {
-    nightstands: nightstands(ctx), tables: diningTables(ctx), sofas: sofas(ctx), sideboards: sideboards(ctx),
+    rehung: rehang(ctx), nightstands: nightstands(ctx), tables: diningTables(ctx), sofas: sofas(ctx), sideboards: sideboards(ctx),
     addedSideboards: addSideboards(ctx), baths: baths(ctx), floors: floors(ctx),
   };
   root.add(group);

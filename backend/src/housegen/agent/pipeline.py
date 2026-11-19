@@ -1273,7 +1273,7 @@ def _plan_gate_text(gaps: list[str], audit: list[str]) -> str:
         for line in audit
         if not line.startswith(_PLAN_GAP)
         and (
-            line.split(":")[0] in ("support", "window", "passage", "size")
+            line.split(":")[0] in ("support", "fixture", "window", "passage", "size")
             or line.startswith("no area from the plan")
         )
     ]

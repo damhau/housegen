@@ -204,7 +204,8 @@ Parametric (size to the room): sofa({ width=2.2, depth=0.92, color }) · bed({ w
   (bowl on a wall-hung oak vanity, mirror above) · bathtub({ length=1.7, width=0.75, tiles }) (tiled front) ·
   shower({ width=1.2, depth=0.9, panel=0.8, side:"left"|"right"|null, floor }) (walk-in: flush tray, glass panel on
   the front, `side` = a glass side where there is no wall, rain head and mixer on its back wall) ·
-  towelRail({ width=0.5, height=0.9, towels:[colours] }) (wall ladder with towels over it: place it at y = floor + 0.25) ·
+  towelRail({ width=0.5, height=0.9, towels:[colours] }) (wall ladder with towels over it: place it at y = floor + 0.25,
+  on a free wall, never over a bath or in a shower: the kit moves one it finds there) ·
   coatHooks({ width=0.8, hooks=5, coats:[colours] }) (oak rail at 1.7 m with a shelf, on the wall) ·
   bench({ width=1.0, depth=0.34 }) (oak, a shoe shelf under it) · washer({ dryer=false }) (front loader, 60 x 60, a
   dryer stacked on it with dryer:true) · bathAccessories({ width=0.3 }) (tray, soap dispenser, toothbrush cup: on the WC's
@@ -319,6 +320,8 @@ Every render_views and check_scene result ends with the scene audit, measured on
   it stands on, two pieces overlapping, a wall-hung piece (shelf, mirror, frames, rail, hooks) more than 5 cm off the
   wall, a piece through a wall or in no room. Each line names the piece, what it stands on and the distance: fix the
   height or the position from the numbers.
+- "fixture": a towel rail or a mirror over a bath or in a shower, a shelf or a mirror on a shower's or a bath's mixer
+  or hand shower; a towel rail the kit moved off a bath when the scene loaded, with where it put it (hang it there).
 - "window": a piece taller than a window's sill in front of it; outside, a plant within 1 m of a window or a door.
 - "passage": less than 80 cm between a room's doors, 60 cm beside a bed and in front of a sofa, 90 cm in front of a
   wardrobe, a kitchen run or an appliance; a door swinging into a piece.

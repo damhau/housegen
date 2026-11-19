@@ -36,7 +36,7 @@ function sideboard() {
 
 // four rooms in a 10 x 8 m shell: a bedroom with a bed between two nightstands (a lamp on each), a bath with a tub (and
 // a walk-in shower), a hall, a living room with a dining set, a sofa and a sideboard (or none)
-function flat({ dressedNightstand = false, board: withBoard = true, shower = false } = {}) {
+function flat({ dressedNightstand = false, board: withBoard = true, shower = false, rail = null } = {}) {
   const root = new THREE.Group();
   root.add(perimeterWalls({ polygon: [[-0.3, -0.3], [10.3, -0.3], [10.3, 8.3], [-0.3, 8.3]], height: 2.6, thickness: 0.3 }));
   root.add(interior.floorPlan({
@@ -65,13 +65,14 @@ function flat({ dressedNightstand = false, board: withBoard = true, shower = fal
   }
   const tub = on(fx.bathtub({ length: 1.7, width: 0.75 }), room("Bain"), 0, 1.25);
   const stall = shower ? on(fx.shower({ width: 1.2, depth: 0.9, panel: 0.7, ...(shower === true ? {} : shower) }), room("Bain"), 1, 2.6) : null;
+  const ladder = rail ? on(fx.towelRail({ width: 0.5, height: 0.9 }), room("Bain"), rail.edge, rail.at, rail.y) : null;
   const table = fx.diningSet({ length: 1.8, width: 0.9 });
   table.position.set(3, 0, 5.8);
   root.add(table);
   const sofa = on(fx.sofa({ width: 2.2 }), room("Séjour"), 2, 3, 0.015);
   const board = withBoard ? on(sideboard(), room("Séjour"), 3, 2.2) : null;
   root.updateMatrixWorld(true);
-  return { root, bed, stands, lamps, tub, stall, table, sofa, board };
+  return { root, bed, stands, lamps, tub, stall, ladder, table, sofa, board };
 }
 
 const held = (root, pred = () => true) => {
@@ -405,14 +406,65 @@ test("floorSpots: corners first, never in a door's way, in furniture or before a
   }
 });
 
-test("a bath: a towel on a bar on a free wall when it has no rail", () => {
+// the points a towel bar's front reaches (8, 25, 40 cm out, across its 0.6 m) inside `box` (padded)
+const reaches = (bar, box, pad = 0.02) => {
+  const q = bar.getWorldQuaternion(new THREE.Quaternion());
+  const out = new THREE.Vector3(0, 0, 1).applyQuaternion(q), across = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
+  return [-0.28, 0, 0.28].some((e) => [0.08, 0.25, 0.4].some((k) => inBox(at(bar).addScaledVector(across, e).addScaledVector(out, k - 0.075), box, pad)));
+};
+
+test("a bath: a towel on a bar on a free wall when it has no rail, not over the tub (#135)", () => {
   globalThis.__housekitSeed = "dress";
-  const { root } = flat();
+  const { root, tub } = flat();
   dressRooms(root);
   const [bar] = held(root, (u) => u.made === "rail");
   assert.ok(bar, "a towel bar");
   const p = at(bar);
   assert.ok(Math.abs(p.y - 1.2) < 1e-6 && p.x > 4 && p.x < 6.5 && p.z > 0 && p.z < 3.5, `in the bath at 1.2 m: ${p.toArray()}`);
+  assert.ok(!reaches(bar, new THREE.Box3().setFromObject(tub)), `not over the tub: ${p.toArray().map((v) => v.toFixed(2))}`);
+});
+
+test("a towel rail hung over the tub: moved to the nearest free wall at load, the audit says where (#135)", () => {
+  globalThis.__housekitSeed = "dress";
+  const { root, tub, ladder } = flat({ rail: { edge: 0, at: 1.0, y: 0.6 } });
+  const tubBox = new THREE.Box3().setFromObject(tub);
+  const before = at(ladder);
+  const done = dressRooms(root);
+  assert.equal(done.rehung, 1, "one rail moved");
+  const moved = ladder.userData.rehung;
+  assert.equal(moved.over, "bathtub");
+  assert.ok(Math.abs(moved.from[0] - before.x) < 0.05 && Math.abs(moved.bottom - 0.6) < 0.01, `where it was: ${JSON.stringify(moved)}`);
+  const box = new THREE.Box3().setFromObject(ladder);
+  const front = new THREE.Vector3(0, 0, 1).applyQuaternion(ladder.getWorldQuaternion(new THREE.Quaternion()));
+  const ahead = box.clone().expandByVector(new THREE.Vector3(Math.abs(front.x) * 0.2, 0, Math.abs(front.z) * 0.2));
+  assert.ok(!ahead.intersectsBox(tubBox), `nothing of the tub in front of it: ${box.min.toArray().map((v) => v.toFixed(2))}`);
+  assert.ok(box.min.x > 3.99 && box.max.x < 6.51 && box.min.z > -0.01 && box.max.z < 3.51, "in the bath");
+  const edge = Math.min(box.min.x - 4, 6.5 - box.max.x, box.min.z, 3.5 - box.max.z);
+  assert.ok(edge < 0.02, `its back on a wall: ${edge.toFixed(3)}`);
+  assert.ok(Math.abs(box.min.y - 0.6) < 0.01, `as high as it was (no window there): ${box.min.y}`);
+  assert.ok(box.min.z > 0.85 || box.max.z < 3.5 - 0.9, "a door's width from the door on the south wall");
+  const lines = layout(root).findings.filter((f) => f.kind === "fixture");
+  assert.equal(lines.length, 1, lines.map((f) => f.text).join("\n"));
+  assert.match(lines[0].text, /"towelRail" in "Bain" hung over "bathtub" at \[.*\]: the kit moved it to \[/);
+});
+
+test("a towel rail hung over the tub with no free wall stays: the audit tells the builder to move it (#135)", () => {
+  globalThis.__housekitSeed = "dress";
+  const { root, ladder } = flat({ rail: { edge: 0, at: 1.0, y: 0.6 } });
+  // the bath's other walls taken by a long cabinet each, 1.2 m high
+  const B = room("Bain");
+  for (const [edge, w] of [[1, 3.5], [2, 2.5], [3, 3.5]]) {
+    const g = new THREE.Group();
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(w - 0.1, 1.2, 0.4).translate(0, 0.6, 0), fx.finish.oak()));
+    g.userData = { kind: "furniture", name: "cabinet", footprint: [w - 0.1, 0.4] };
+    root.add(fx.onWall(B, edge, w / 2, g));
+  }
+  root.updateMatrixWorld(true);
+  const before = at(ladder);
+  assert.equal(dressRooms(root).rehung, 0);
+  assert.ok(at(ladder).distanceTo(before) < 1e-9, "where it was");
+  const lines = layout(root).findings.filter((f) => f.kind === "fixture");
+  assert.ok(lines.some((f) => /"towelRail" in "Bain" hangs over "bathtub": its front covers/.test(f.text)), lines.map((f) => f.text).join("\n"));
 });
 
 test("a walk-in shower: a towel over its glass panel's top, the room side longer", () => {
@@ -430,7 +482,7 @@ test("a walk-in shower: a towel over its glass panel's top, the room side longer
   assert.ok(room.x < -0.99, "its longer side toward the room");
 });
 
-test("a walk-in shower with a narrow panel: a towel on a bar on its back wall, across the mixer and the hand shower", () => {
+test("a walk-in shower with a narrow panel: a towel on a bar on its back wall, clear of the mixer and the hand shower (#135)", () => {
   globalThis.__housekitSeed = "dress";
   const { root, stall } = flat({ shower: { panel: 0.3 } });
   dressRooms(root);
@@ -450,9 +502,20 @@ test("a walk-in shower with a narrow panel: a towel on a bar on its back wall, a
     const b = new THREE.Box3().setFromObject(m);
     if (b.max.x < box.max.x - 0.15 || b.max.y < 0.7 || b.min.y > 1.3) return;
     fittings++;
-    assert.ok(b.min.z >= p.z - 0.3 && b.max.z <= p.z + 0.3, `under the bar: ${b.min.z.toFixed(2)}..${b.max.z.toFixed(2)}`);
+    assert.ok(b.min.z >= p.z + 0.3 + 0.05 || b.max.z <= p.z - 0.3 - 0.05, `5 cm clear of the bar: ${b.min.z.toFixed(2)}..${b.max.z.toFixed(2)}`);
   });
   assert.ok(fittings >= 3, `the mixer, the rail and the hose: ${fittings}`);
+});
+
+test("a walk-in shower too narrow for a bar beside its fittings: no bar in it, one on a free wall of the room (#135)", () => {
+  globalThis.__housekitSeed = "dress";
+  const { root, stall, tub } = flat({ shower: { panel: 0.3, width: 1.0 } });
+  dressRooms(root);
+  const box = new THREE.Box3().setFromObject(stall);
+  const bars = held(root, (u) => u.made === "rail");
+  assert.equal(bars.length, 1, "one towel bar in the bath");
+  assert.ok(!inBox(at(bars[0]), box, 0.05), `not in the shower: ${at(bars[0]).toArray().map((v) => v.toFixed(2))}`);
+  assert.ok(!reaches(bars[0], box) && !reaches(bars[0], new THREE.Box3().setFromObject(tub)), "nor over the shower or the tub");
 });
 
 test("the same scene draws the same dressing", () => {

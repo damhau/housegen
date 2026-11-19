@@ -698,34 +698,135 @@ export function shower({ width = 1.2, depth = 0.9, panel = 0.8, side = null, flo
   return piece(g, "shower", width, depth);
 }
 
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+
+// a polyline ([z, y] points) as points `step` apart along it, each with its distance from the start
+function resample(path, step) {
+  const len = [0];
+  for (let i = 1; i < path.length; i++) len.push(len[i - 1] + Math.hypot(path[i][0] - path[i - 1][0], path[i][1] - path[i - 1][1]));
+  const L = len.at(-1), n = Math.max(2, Math.ceil(L / step)), out = [];
+  for (let k = 0, j = 0; k <= n; k++) {
+    const s = (L * k) / n;
+    while (j < path.length - 2 && len[j + 1] < s) j++;
+    const t = (s - len[j]) / (len[j + 1] - len[j] || 1);
+    out.push([path[j][0] + (path[j + 1][0] - path[j][0]) * t, path[j][1] + (path[j + 1][1] - path[j][1]) * t, s]);
+  }
+  return out;
+}
+
 /**
- * Heated towel rail (a ladder of bars on the wall) with `towels` hung over it (their colours),
- * `width` x `height`, its bottom at its origin: place it with y = floor + 0.2.
+ * A towel's cloth, one closed soft solid: `width` wide along x, its middle following `path` ([z, y] points across it),
+ * `thickness` thick. Its sides are round, its ends hemmed (thicker, a woven band above each hem) and rounded off; it
+ * ripples in soft vertical folds that grow as it hangs lower, always on the side away from what it lies on (the outer
+ * side of the turns of `path`), and is gathered a little narrower where it turns over the top. UVs in metres along the cloth.
+ */
+export function towelCloth(path, width, { thickness = 0.009, ripple = 0.005, seed = 1 } = {}) {
+  const pts = resample(path, 0.01);
+  const L = pts.at(-1)[2], top = Math.max(...pts.map((p) => p[1]));
+  const h0 = thickness / 2, a = width / 2 - h0, nx = Math.max(8, Math.ceil(width / 0.014)), nc = 5;
+  const k1 = (2 * Math.PI) / 0.12, k2 = (2 * Math.PI) / 0.065, p1 = seed * 2.39, p2 = seed * 4.11;
+  const half = (x, s) => {
+    const e = Math.min(s, L - s), ex = a - Math.abs(x);
+    return h0 * (1 + 0.35 * (1 - smooth(0.016, 0.024, e)) + 0.15 * smooth(0.05, 0.056, e) * (1 - smooth(0.074, 0.08, e))
+      + 0.2 * (1 - smooth(0.006, 0.012, ex)));
+  };
+  const fold = (x, s, y) => ripple * smooth(0.02, 0.2, top - y) * (0.6 * (0.5 - 0.5 * Math.cos(k1 * x + p1 + 3 * s))
+    + 0.4 * (0.5 - 0.5 * Math.cos(k2 * x + p2 - 5 * s)) + 0.5 * (Math.abs(x) / a) ** 4);
+  const at = (j) => {
+    const p = pts[j], q = pts[Math.max(0, j - 1)], r = pts[Math.min(pts.length - 1, j + 1)];
+    const l = Math.hypot(r[0] - q[0], r[1] - q[1]) || 1, t = [(r[0] - q[0]) / l, (r[1] - q[1]) / l];
+    return { c: [p[0], p[1]], t, n: [-t[1], t[0]], s: p[2] };
+  };
+  // the stations along the cloth, its two ends rounded off by quarter turns of their own thickness
+  const CAP = 4, stations = [];
+  for (let k = CAP; k >= 1; k--) stations.push({ ...at(0), cap: (k / CAP) * (Math.PI / 2), end: -1 });
+  for (let j = 0; j < pts.length; j++) stations.push({ ...at(j), cap: 0, end: 0 });
+  for (let k = 1; k <= CAP; k++) stations.push({ ...at(pts.length - 1), cap: (k / CAP) * (Math.PI / 2), end: 1 });
+  // a ring round the cloth: its outer face from -x to +x, a round edge, its inner face back, the other round edge
+  const ring = [];
+  for (let i = 0; i <= nx; i++) ring.push({ x: -a + (2 * a * i) / nx, edge: 0, face: 1 });
+  for (let k = 1; k <= nc; k++) ring.push({ x: a, edge: 1, phi: Math.PI / 2 - (Math.PI * k) / (nc + 1) });
+  for (let i = nx; i >= 0; i--) ring.push({ x: -a + (2 * a * i) / nx, edge: 0, face: -1 });
+  for (let k = 1; k <= nc; k++) ring.push({ x: -a, edge: -1, phi: -Math.PI / 2 + (Math.PI * k) / (nc + 1) });
+  const R = ring.length, pos = [], uv = [], idx = [];
+  for (const st of stations) {
+    for (const v of ring) {
+      const hb = half(v.x, st.s), h = hb * Math.cos(st.cap), along = st.end * hb * Math.sin(st.cap);
+      const d = fold(v.x, st.s, st.c[1]);
+      const off = v.edge ? d + h * Math.sin(v.phi) : d + v.face * h;
+      const x = (v.edge ? v.x + v.edge * h * Math.cos(v.phi) : v.x) * (1 - 0.04 * (1 - smooth(0, 0.12, top - st.c[1])));
+      pos.push(x, st.c[1] + st.n[1] * off + st.t[1] * along, st.c[0] + st.n[0] * off + st.t[0] * along);
+      uv.push(x, st.s + along);
+    }
+  }
+  for (let j = 0; j + 1 < stations.length; j++) {
+    for (let k = 0; k < R; k++) {
+      const A = j * R + k, B = j * R + ((k + 1) % R), C = A + R, D = B + R;
+      idx.push(A, C, B, B, C, D);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  geo.setIndex(idx);
+  geo.computeVertexNormals();
+  geo.userData.metricUV = true;
+  return geo;
+}
+
+/**
+ * The path of a towel folded over a round bar along x at the origin, for towelCloth: from its back hem (on -z) up over
+ * the bar to its front hem, its middle `r` off the bar's axis, the falls `front` and `back` long, their hems `spread`
+ * ([back, front] or one for both) further out. `flat`: over a flat top that wide instead (a rim, its edges round by r).
+ */
+export function overBar(r, front, back, { spread = 0.004, flat = 0 } = {}) {
+  const [sb, sf] = Array.isArray(spread) ? spread : [spread, spread];
+  const out = [];
+  for (let k = 0; k < 8; k++) { const u = 1 - k / 8; out.push([-flat / 2 - r - sb * u * u, -back * u]); }
+  for (let k = 0; k <= 8; k++) { const t = Math.PI * (1 - k / 16); out.push([-flat / 2 + r * Math.cos(t), r * Math.sin(t)]); }
+  for (let k = 8; k <= 16; k++) { const t = Math.PI * (1 - k / 16); out.push([flat / 2 + r * Math.cos(t), r * Math.sin(t)]); }
+  for (let k = 1; k <= 8; k++) { const u = k / 8; out.push([flat / 2 + r + sf * u * u, -front * u]); }
+  return out;
+}
+
+/**
+ * Heated towel rail (a ladder of bars on wall brackets) with `towels` hung over it (their colours: a bath towel over the
+ * top rung, a hand towel over a lower one), `width` x `height`, its bottom at its origin: place it with y = floor + 0.25.
  */
 export function towelRail({ width = 0.5, height = 0.9, towels = ["#ece8e0", "#c9c3b6"], color } = {}) {
   const g = new THREE.Group();
   const bar = color ? finish.metal(color) : finish.lacquer("#f2f2f0");
-  const z = -0.04;
-  for (const s of [-1, 1]) leg(g, s * (width / 2 - 0.015), z, height, bar, 0.013); // uprights, bottom at 0
-  const rungs = Math.max(3, Math.round(height / 0.12));
+  const z = -0.012, R = 0.009; // the rungs' axis, 3.8 cm in front of the footprint's back
+  for (const s of [-1, 1]) {
+    const x = s * (width / 2 - 0.015);
+    leg(g, x, z, height, bar, 0.013); // uprights, bottom at 0
+    for (const y of [0.08, height - 0.08]) {
+      const b = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.05 + z, 10), bar));
+      b.rotation.x = Math.PI / 2;
+      b.position.set(x, y, (z - 0.05) / 2);
+      g.add(b);
+    }
+  }
+  const rungs = Math.max(3, Math.round(height / 0.12)), rungY = (i) => 0.06 + (i * (height - 0.12)) / (rungs - 1);
   for (let i = 0; i < rungs; i++) {
-    const r = shade(new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, width - 0.03, 10), bar));
+    const r = shade(new THREE.Mesh(new THREE.CylinderGeometry(R, R, width - 0.03, 10), bar));
     r.rotation.z = Math.PI / 2;
-    r.position.set(0, 0.06 + (i * (height - 0.12)) / (rungs - 1), z);
+    r.position.set(0, rungY(i), z);
     g.add(r);
   }
-  // each towel folded over a rung near the top: a front and a back fall, a round fold on the bar. The lower towel hangs
-  // 3 mm out, over the upper one's falls: in the same planes their faces fought (Cycles drew them black, #131)
-  towels.slice(0, 2).forEach((col, k) => {
-    const t = finish.towel(col);
-    const barY = height - 0.08 - k * 0.2, tw = width - 0.1, fall = 0.42 - k * 0.1, out = 0.018 + k * 0.003;
-    block(g, [tw, fall, 0.012], [0, barY - fall, z + out], t, 0.006);
-    block(g, [tw, fall * 0.8, 0.012], [0, barY - fall * 0.8, z - out], t, 0.006);
-    const fold = shade(new THREE.Mesh(new THREE.CylinderGeometry(out + 0.006, out + 0.006, tw, 16, 1, false, 0, Math.PI), t));
-    fold.rotation.z = Math.PI / 2;
-    fold.position.set(0, barY, z);
-    g.add(fold);
-  });
+  // a towel's middle off its rung's axis: clear of the rung by 1.5 mm at its thickest (a hem)
+  const T = 0.009, r = R + 0.0015 + (T / 2) * 1.55, tw = width - 0.1;
+  const hang = (col, y, front, w, seed) => {
+    const m = shade(new THREE.Mesh(towelCloth(overBar(r, front, front * 0.8), w, { thickness: T, seed }), finish.towel(col)));
+    m.position.set(0, y, z);
+    g.add(m);
+  };
+  const top = rungY(rungs - 1), front = Math.min(0.42, 0.5 * top);
+  if (towels[0]) hang(towels[0], top, front, tw, 1);
+  // the hand towel over the highest rung whose fold stays 3 cm under the bath towel's hem: the rungs between show
+  let low = -1;
+  for (let i = rungs - 2; i >= 0 && low < 0; i--) if (rungY(i) + r + T <= top - front - 0.03) low = i;
+  if (towels[1] && low >= 0) hang(towels[1], rungY(low), Math.min(0.3, rungY(low) - 0.02), tw * 0.9, 2);
   return piece(g, "towelRail", width, 0.1, { height });
 }
 

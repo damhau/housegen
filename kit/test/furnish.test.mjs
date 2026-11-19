@@ -48,23 +48,38 @@ test("onWall puts the back against the wall and the front into the room, on ever
   }
 });
 
-test("a towel rail's two towels share no face: where their falls overlap, they hang in different planes (#131)", () => {
-  for (const opts of [{}, { width: 0.6, height: 1.2 }, { towels: ["#ece8e0", "#ece8e0"] }]) {
+test("a towel rail's towels are cloth: one soft solid each, folded over a rung, rippling, clear of the rungs, of each other and of the wall (#131, #135)", () => {
+  for (const opts of [{}, { width: 0.6, height: 1.2 }, { height: 0.6, width: 0.3 }, { towels: ["#ece8e0", "#ece8e0"] }]) {
     const rail = fx.towelRail(opts);
     rail.updateMatrixWorld(true);
-    // a towel's falls are its 12 mm slabs, front then back, added towel by towel
-    const falls = rail.children.filter((c) => c.isMesh && box(c).getSize(new THREE.Vector3()).z < 0.02 && box(c).getSize(new THREE.Vector3()).y > 0.1);
-    assert.equal(falls.length, 4, "two towels, two falls each");
-    for (let i = 0; i < falls.length; i++) {
-      for (let j = i + 1; j < falls.length; j++) {
-        if (i >> 1 === j >> 1) continue;
-        const a = box(falls[i]), b = box(falls[j]);
-        const across = Math.min(a.max.x, b.max.x) - Math.max(a.min.x, b.min.x), up = Math.min(a.max.y, b.max.y) - Math.max(a.min.y, b.min.y);
-        if (across <= 0 || up <= 0) continue;
-        for (const fa of [a.min.z, a.max.z]) for (const fb of [b.min.z, b.max.z]) {
-          assert.ok(Math.abs(fa - fb) > 0.001, `${JSON.stringify(opts)}: falls ${i} and ${j} share the plane z ${fa.toFixed(4)} over ${across.toFixed(2)} × ${up.toFixed(2)} m`);
+    const width = opts.width ?? 0.5, height = opts.height ?? 0.9;
+    const towels = rail.children.filter((c) => c.isMesh && c.geometry.type === "BufferGeometry");
+    const rungs = rail.children.filter((c) => c.isMesh && c.geometry.type === "CylinderGeometry" && Math.abs(c.rotation.z) > 1);
+    assert.equal(towels.length, 2, `${JSON.stringify(opts)}: a bath towel and a hand towel, one mesh each`);
+    const boxes = towels.map((t) => box(t));
+    assert.ok(boxes[1].max.y < boxes[0].min.y, `${JSON.stringify(opts)}: the hand towel under the bath towel's hem, no face shared`);
+    for (const [k, t] of towels.entries()) {
+      const b = boxes[k], pos = t.geometry.attributes.position, uv = t.geometry.attributes.uv;
+      assert.ok(b.min.z >= -0.05 && b.max.z <= 0.05 && b.min.y >= 0 && b.max.y <= height, `${JSON.stringify(opts)}: towel ${k} in the rail's footprint`);
+      assert.ok(b.max.x - b.min.x < width - 0.06, "inside the uprights");
+      // over a rung: its top just above one, both falls hanging on either side of the rungs
+      const over = rungs.find((r) => Math.abs(b.max.y - r.position.y - 0.026) < 0.006);
+      assert.ok(over, `${JSON.stringify(opts)}: towel ${k} folded over a rung (top ${b.max.y.toFixed(3)})`);
+      const v = new THREE.Vector3();
+      let near = Infinity;
+      const hem = [];
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).add(t.position);
+        if (Math.abs(v.x) < (b.max.x - b.min.x) / 2 - 0.03) {
+          for (const r of rungs) near = Math.min(near, Math.hypot(v.y - r.position.y, v.z - r.position.z));
         }
+        if (v.z > t.position.z && Math.abs(v.y - (b.min.y + 0.05)) < 0.006) hem.push(v.z);
       }
+      assert.ok(near > 0.009, `${JSON.stringify(opts)}: towel ${k} clear of the rungs (${(near * 1000).toFixed(1)} mm from an axis)`);
+      assert.ok(Math.max(...hem) - Math.min(...hem) > 0.003, `towel ${k} ripples near its hem: ${((Math.max(...hem) - Math.min(...hem)) * 1000).toFixed(1)} mm`);
+      let v0 = Infinity, v1 = -Infinity;
+      for (let i = 0; i < uv.count; i++) { v0 = Math.min(v0, uv.getY(i)); v1 = Math.max(v1, uv.getY(i)); }
+      assert.ok(t.geometry.userData.metricUV && v1 - v0 > (b.max.y - b.min.y) * 1.5, "UVs in metres along the cloth");
     }
   }
 });

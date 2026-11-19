@@ -15,6 +15,8 @@
 //            sofa, 90 cm in front of a wardrobe, a kitchen run or an appliance; a door swinging into a piece
 //   support  floating or sunk by more than 1 cm, overhanging its support, two pieces overlapping by more
 //            than 1 cm, a wall-hung piece more than 2 cm off the wall
+//   fixture  a towel rail or a mirror over a bath or in a shower (in front of it, over a quarter of its width), a
+//            shelf or a mirror on a shower's or a bath's fittings; a towel rail the kit's dressing moved off one (#135)
 
 import * as THREE from "three";
 import { planGaps, readFloorPlans, readUnits, readWalls, inside, polyArea } from "./quantities.js";
@@ -26,6 +28,8 @@ export const RULES = {
   // a wall-hung piece: the kit leaves 2 cm behind it (onWall's gap) and a model's box adds a few: "fixed"
   // within 5 cm (a board in the air, a frame across the room, are what this catches)
   float: 0.01, sink: 0.01, overlap: 0.01, fixed: 0.05, supported: 2 / 3,
+  // a wall fixture over a bath or in a shower (#135): its front this far out, below this height over the floor
+  reach: 0.2, wetHigh: 2.0, fittings: 0.03,
 };
 
 const f2 = (v) => (Math.round(v * 100) / 100).toFixed(2);
@@ -56,7 +60,7 @@ const TYPES = [
   ["basin", /basin|vanity|lavabo|\bsink\b/],
   ["bathtub", /bathtub|\btub\b|baignoire/],
   ["shower", /shower|douche/],
-  ["towels", /towel.?rail|towelrail/],
+  ["towels", /towel.?(rail|bar|rack|ring|hook|holder|warmer|radiator|ladder)|towelrail|porte.?serviette|s[eè]che.?serviette/],
   ["hooks", /hooks?\b|coat/],
   ["mirror", /mirror|miroir/],
   ["decor", /photo.?frame|picture.?frame|book|vase|cup|plate|bowl|bottle|toaster|teapot|clock|candle|glass|basket|stack/],
@@ -419,11 +423,14 @@ export function layout(root, { rules = RULES } = {}) {
   // ---- supports: what each piece rests on, measured with rays against the meshes
   supports(root, pieces, add, rules);
 
+  // ---- fixtures: what hangs over a bath or in a shower
+  fixtures(byRoom, add, rules);
+
   return { rooms, pieces, findings };
 }
 
-/** How much of a window's width (along `along`, centred on `c`) a polygon covers inside `strip`. */
-function coverAlong(poly, strip, along, c) {
+/** How much of a window's width (along `along`, centred on `c`) a convex polygon covers inside the convex `strip`. */
+export function coverAlong(poly, strip, along, c) {
   if (overlapDepth(poly, strip) <= 0.001) return 0;
   // clip the piece's polygon to the strip and measure its extent along the wall
   let q = poly;
@@ -690,9 +697,61 @@ function supports(root, pieces, add, rules) {
   }
 }
 
+// the small parts of a bath or a shower above its tray (a mixer, a hand shower and its rail, a hose, a spout), world boxes
+function fittingsOf(q, floorY) {
+  const out = [];
+  q.obj.traverse((m) => {
+    if (!m.isMesh || !m.geometry?.attributes?.position) return;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    if (mats.some((x) => x?.transparent && x.opacity < 0.5)) return; // glass
+    const b = new THREE.Box3().setFromObject(m);
+    const dx = b.max.x - b.min.x, dz = b.max.z - b.min.z;
+    if (b.min.y > floorY + 0.3 && Math.max(dx, dz) <= 0.4 && b.max.y - b.min.y <= 1.0) out.push(b);
+  });
+  return out;
+}
+
+// how much of its own width the front of wall fixture `p` covers of piece `q` (2 cm round it), up to `reach` out
+function frontCover(p, q, reach) {
+  const P = (o, a, b) => [o.at[0] + o.ux[0] * a + o.uz[0] * b, o.at[1] + o.ux[1] * a + o.uz[1] * b];
+  const zone = [P(p, -p.w / 2 + 0.02, -p.d / 2), P(p, p.w / 2 - 0.02, -p.d / 2), P(p, p.w / 2 - 0.02, p.d / 2 + reach), P(p, -p.w / 2 + 0.02, p.d / 2 + reach)];
+  const a = q.w / 2 + 0.02, b = q.d / 2 + 0.02;
+  return coverAlong([P(q, -a, -b), P(q, a, -b), P(q, a, b), P(q, -a, b)], zone, p.ux, p.at);
+}
+
+/**
+ * Wall fixtures and the wet places of their room: a towel rail (a bar, a hook) or a mirror whose front covers a bath's
+ * or a shower's footprint over a quarter of its width, below 2 m; a shelf or a mirror on their fittings. A towel rail
+ * the kit's dressing moved off a bath or a shower when the scene loaded (userData.rehung) is named with where it went.
+ */
+function fixtures(byRoom, add, rules) {
+  for (const [room, ps] of byRoom) {
+    const wet = ps.filter((p) => p.type === "bathtub" || p.type === "shower");
+    for (const p of ps) {
+      if (p.type !== "towels" && p.type !== "mirror" && p.type !== "shelf") continue;
+      const moved = p.obj.userData?.rehung;
+      if (moved) {
+        add("fixture", `"${p.name}" in "${room.name}" hung over "${moved.over}" at ${pt(moved.from)}: the kit moved it to ${pt(p.at)} (a free wall, its bottom ${f2(p.bottom ?? 0)} m over the floor) when the scene loads. Hang it there in the scene, or on another free wall: never over a bath or in a shower`, { room: room.name, piece: p.name });
+        continue;
+      }
+      if (!wet.length) continue;
+      const over = p.type === "shelf" || p.y0 >= room.y + rules.wetHigh ? null
+        : wet.map((q) => ({ q, c: frontCover(p, q, rules.reach) })).filter((x) => x.c > Math.max(0.05, p.w / 4)).sort((x, y) => y.c - x.c)[0];
+      if (over) {
+        add("fixture", `"${p.name}" in "${room.name}" hangs over "${over.q.name}": its front covers ${cm(over.c)} of it, its bottom ${f2(p.bottom ?? 0)} m over the floor. ${p.type === "mirror" ? "Hang it over a basin or on a free wall" : "Hang it on a free wall one reaches from the floor"}: never over a bath, in a shower or across its mixer`, { room: room.name, piece: p.name });
+        continue;
+      }
+      if (p.type === "towels") continue;
+      const box = new THREE.Box3().setFromObject(p.obj).expandByScalar(rules.fittings);
+      const on = wet.find((q) => fittingsOf(q, room.y).some((b) => b.intersectsBox(box)));
+      if (on) add("fixture", `"${p.name}" in "${room.name}" is on the fittings of "${on.name}" (its mixer, hand shower or hose, within ${cm(rules.fittings)}): move it clear of them`, { room: room.name, piece: p.name });
+    }
+  }
+}
+
 /** The findings as audit lines: plan and support issues first, at most `max`, then how many more. */
 export function auditLines(L, { max = 14 } = {}) {
-  const order = ["plan", "support", "window", "passage", "size"];
+  const order = ["plan", "support", "fixture", "window", "passage", "size"];
   const seen = new Set();
   const lines = [];
   // within the supports: what floats, sinks or overlaps first (the numbers say what to change), then

@@ -40,6 +40,8 @@ test("what a piece is, from its name", () => {
   assert.equal(pieceType("nightstand"), "nightstand");
   assert.equal(pieceType("towelRail"), "towels");
   assert.equal(pieceType("towelStack"), "decor");
+  assert.equal(pieceType("towel bar"), "towels");
+  assert.equal(pieceType("porte-serviettes"), "towels");
   assert.equal(pieceType("photo-frame"), "decor");
   assert.equal(pieceType("wall-art-gallery"), "art");
   assert.equal(pieceType("oak wall shelf"), "shelf");
@@ -131,6 +133,30 @@ test("sizes: a nightstand too narrow, a bed too long for its room", () => {
   const L = layout(root);
   assert.match(find(L, /"nightstand"/)[0].text, /0\.20 m wide: a nightstand is usually/);
   assert.equal(find(L, /does not fit/).length, 0);
+});
+
+test("fixtures: a towel rail and a mirror over a bath or in a shower, a shelf on a shower's mixer (#135)", () => {
+  const root = scene();
+  // the bath on the east wall (x = 3) 7 cm off it, facing west; a walk-in shower in the south-east corner
+  const tub = put(root, fx.bathtub({ length: 1.7, width: 0.75 }), 2.55, -1.1, -Math.PI / 2);
+  const shower = put(root, fx.shower({ width: 1.0, depth: 0.9, panel: 0.4 }), 2.55, 1.5, -Math.PI / 2);
+  put(root, fx.towelRail(), 2.95, -1.0, -Math.PI / 2, 0.265); // between the tub and the wall: over the tub
+  put(root, fx.towelRail(), 1.0, -1.95, 0, 0.265); // on the north wall, the tub 1.2 m away: fine
+  put(root, box("mirror", [0.5, 0.7, 0.02]), 2.985, 1.25, -Math.PI / 2, 1.3); // in the shower
+  put(root, box("wall shelf", [0.4, 0.03, 0.15]), 2.92, 1.68, -Math.PI / 2, 1.13); // on its mixer (z 1.68, 1.1 m)
+  put(root, box("oak shelf", [0.6, 0.03, 0.2]), 2.9, -0.8, -Math.PI / 2, 1.6); // over the tub, out of the way: fine
+  root.updateMatrixWorld(true);
+  const L = layout(root);
+  const fx_ = L.findings.filter((f) => f.kind === "fixture");
+  assert.equal(fx_.length, 3, fx_.map((f) => f.text).join("\n"));
+  assert.match(fx_.find((f) => f.piece === "towelRail").text, /^"towelRail" in "SDB — App\. 1" hangs over "bathtub": its front covers \d+ cm of it, its bottom 0\.25 m over the floor\. Hang it on a free wall/);
+  assert.match(fx_.find((f) => f.piece === "mirror").text, /hangs over "shower".*Hang it over a basin/);
+  assert.match(fx_.find((f) => f.piece === "wall shelf").text, /is on the fittings of "shower"/);
+  assert.ok(tub && shower);
+  // in the audit after the supports, before the windows
+  const lines = auditLines(L, { max: 40 });
+  const first = lines.findIndex((l) => l.startsWith("fixture: ")), support = lines.findLastIndex((l) => l.startsWith("support: "));
+  assert.ok(first > support && lines.slice(first, first + 3).every((l) => l.startsWith("fixture: ")), lines.join("\n"));
 });
 
 test("audit lines: plan first, a cap, and the measure table", () => {
