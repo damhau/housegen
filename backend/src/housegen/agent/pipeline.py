@@ -1800,6 +1800,9 @@ async def start_all_waiting(manager: JobManager) -> int:
 # --------------------------------------------------------------------------
 
 
+_WRITE_TOOLS = ("write_file", "edit_file", "apply_patch", "delete_file")
+
+
 @dataclass
 class _Progress:
     """How far a job got, read back from its persisted events."""
@@ -1811,13 +1814,18 @@ class _Progress:
     done: bool = False
     builder_summary: str = ""  # from the last builder_done
     attempts: int = 0  # resumes so far
+    # a builder step of this job changed the working copy (a failed edit counts: a patch can
+    # be partly applied)
+    wrote: bool = False
 
     @classmethod
     def from_events(cls, events: list[Any]) -> _Progress:
         p = cls()
         for ev in events:
             payload = json.loads(ev.payload_json) if isinstance(ev.payload_json, str) else {}
-            if ev.type == "phase":
+            if ev.type == "builder_step" and payload.get("tool") in _WRITE_TOOLS:
+                p.wrote = True
+            elif ev.type == "phase":
                 p.last_phase = str(payload.get("name") or "")
                 p.last_phase_message = str(payload.get("message") or "")
             elif ev.type == "version":
@@ -1888,7 +1896,8 @@ async def resume_interrupted_jobs(manager: JobManager) -> int:
 async def resume(ctx: JobContext) -> None:
     """Continue an interrupted job from the stage its events show was in progress: the files
     the builder wrote are on disk, only its conversation is lost, so the stage's LLM step
-    is repeated with a fresh conversation that starts from the current renders."""
+    is repeated with a fresh conversation that starts from the current renders. A job
+    interrupted before its first write and its first version starts over as a first run."""
     async with session_factory()() as session:
         job = await crud.get_job(session, ctx.job_id)
         events = await crud.list_job_events(session, ctx.job_id)
@@ -1923,20 +1932,17 @@ async def _resume_chat(ctx: JobContext, progress: _Progress) -> None:
         return
     async with session_factory()() as session:
         project = await crud.get_project(session, ctx.project_id)
-        events = await crud.list_job_events(session, ctx.job_id)
-    edited = any(
-        e.type == "builder_step" and json.loads(e.payload_json).get("tool") in _WRITE_TOOLS
-        for e in events
-    )
-    if edited and project.current_version > 0:
+    if progress.wrote and project.current_version > 0:
         ProjectStorage(ctx.project_id).restore(project.current_version)
     await chat(ctx)
 
 
-_WRITE_TOOLS = ("write_file", "edit_file", "apply_patch", "delete_file")
-
-
 async def _resume_generate(ctx: JobContext, progress: _Progress) -> None:
+    if not progress.wrote and not progress.versions:
+        # nothing of this build is on disk: the working copy is the template, which a resumed
+        # builder would be shown as its own work to continue from (#27)
+        await generate(ctx)
+        return
     run = await _Run.create(ctx)
     async with session_factory()() as session, session.begin():
         await crud.set_status(session, ctx.project_id, "generating")
@@ -1978,6 +1984,10 @@ async def _resume_generate(ctx: JobContext, progress: _Progress) -> None:
 
 
 async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None:
+    if not progress.wrote and not progress.versions:
+        # the working copy is still the scene the request was made on (#27)
+        await modify(ctx)
+        return
     run = await _modify_run(ctx)
     request = job.request_text
     async with session_factory()() as session:
@@ -1986,11 +1996,11 @@ async def _resume_modify(ctx: JobContext, job: Job, progress: _Progress) -> None
     if run.interior:
         await run.prepare_interior(inp)
 
-    # the "before" renders were copied aside before the builder started; when they are not
-    # there the builder had not started either, so the working copy still is the "before"
+    # the "before" renders were copied aside before the builder started; without them the
+    # working copy is the only "before" there is
     keep = run.storage.scene_dir / "renders_before"
     kept = {p.stem: p for p in sorted(keep.glob("*.jpg"))} if keep.exists() else {}
-    if progress.last_phase in (None, "render") or not kept:
+    if not kept:
         await ctx.emit("phase", name="render", message="Rendering the current state")
         before = await run.render_standard()
         before |= await run.render_views(room_views(touched_rooms(request, run.rooms)))

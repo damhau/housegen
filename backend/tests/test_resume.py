@@ -12,6 +12,7 @@ from PIL import Image
 
 from housegen.agent import pipeline
 from housegen.agent.pipeline import _Progress, resume_interrupted_jobs
+from housegen.agent.prompts import FIRST_RUN_ADDENDUM, MODIFY_ADDENDUM, RESUME_ADDENDUM
 from housegen.core import db
 from housegen.core.config import get_settings
 from housegen.core.db import session_factory
@@ -92,14 +93,39 @@ async def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     get_settings.cache_clear()
 
 
-async def _project_with_job(kind: str = "generate") -> tuple[str, str]:
+async def _project_with_job(
+    kind: str = "generate", request: str = "", version: bool = False
+) -> tuple[str, str]:
     async with session_factory()() as s, s.begin():
         project = await crud.create_project(s, "t")
         st = ProjectStorage(project.id)
         st.ensure()
         st.init_scene_from_template()
-        job = await crud.create_job(s, project.id, kind)
+        if version:
+            st.snapshot(1)
+            await crud.add_version(s, project.id, 1, "generation", "Initial build", "A house.")
+        job = await crud.create_job(s, project.id, kind, request)
         return project.id, job.id
+
+
+async def _interrupt(job_id: str, pid: str, body: Any, provider: FakeProvider, turns: int) -> None:
+    """Run `body` until the provider has been called `turns` times, then stop the server."""
+    manager = JobManager()
+    manager.submit(job_id, pid, body)
+    await _wait_for_job(job_id, "running")
+    for _ in range(200):
+        if len(provider.calls) == turns:
+            break
+        await asyncio.sleep(0.02)
+    assert len(provider.calls) == turns
+    await manager.shutdown()
+    async with session_factory()() as s:
+        assert (await crud.get_job(s, job_id)).status == "interrupted"
+
+
+async def _resume_to_done(job_id: str) -> None:
+    assert await resume_interrupted_jobs(JobManager()) == 1
+    await _wait_for_job(job_id, "done")
 
 
 async def _wait_for_job(job_id: str, status: str, limit_s: float = 10.0) -> None:
@@ -252,6 +278,12 @@ async def test_progress_reads_the_stage_from_events() -> None:
 
     events = [
         Ev("phase", {"name": "builder", "message": "Reading the plans"}),
+        Ev("builder_step", {"tool": "list_files", "result": "src/scene.js"}),
+        Ev("builder_step", {"tool": "read_file", "args": "src/scene.js"}),
+    ]
+    assert not _Progress.from_events(events).wrote
+    events += [
+        Ev("builder_step", {"tool": "edit_file", "result": "not found", "is_error": True}),
         Ev("builder_done", {"summary": "built"}),
         Ev("version", {"number": 1}),
         Ev("phase", {"name": "critic", "message": "Independent review (round 1)"}),
@@ -266,8 +298,129 @@ async def test_progress_reads_the_stage_from_events() -> None:
     assert p.versions == [1]
     assert p.builder_summary == "built"
     assert p.attempts == 1
+    assert p.wrote
     assert not p.done
     verdict = p.last_verdict()
     assert verdict is not None
     assert verdict.overall_score == 60
     assert not verdict.done
+
+
+LEFT_AS_IS = "Rendering the scene as the restart left it"
+
+
+async def test_a_build_interrupted_before_its_first_write_starts_over(
+    env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """#27: the template is not the builder's work to continue from."""
+    pid, job_id = await _project_with_job()
+    monkeypatch.setattr(pipeline, "renderer", FakeRenderer())
+    first = FakeProvider([[ToolCallPart(id="1", name="list_files", input={})], "hang"])
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: first)
+    await _interrupt(job_id, pid, pipeline.generate, first, turns=2)
+    st = ProjectStorage(pid)
+    # a module that is not the build's own (the template reset had not run, say): it must go
+    (st.scene_dir / "src" / "stray.js").write_text("export const stray = 1;\n")
+
+    second = FakeProvider(
+        [
+            [ToolCallPart(id="a", name="check_scene", input={})],
+            [ToolCallPart(id="b", name="finish", input={"summary": "built from the start"})],
+        ]
+    )
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: second)
+    await _resume_to_done(job_id)
+
+    text = second.calls[0][0].text
+    assert FIRST_RUN_ADDENDUM in text
+    assert "placeholder scene from a template" in text
+    assert RESUME_ADDENDUM not in text
+    assert "interrupted session" not in text
+    assert not (st.scene_dir / "src" / "stray.js").exists()
+    events = await _events(job_id)
+    types = [t for _, t, _ in events]
+    assert types.count("resumed") == 1  # the timeline still shows the pause
+    after = events[types.index("resumed") + 1 :]
+    assert all(p.get("message") != LEFT_AS_IS for _, t, p in after if t == "phase")
+    assert after[0][1] == "phase"
+    assert after[0][2]["name"] == "builder"
+    async with session_factory()() as s:
+        project = await crud.get_project(s, pid)
+        assert project.status == "ready"
+        assert [v.number for v in project.versions] == [1]
+
+
+async def test_a_modification_interrupted_before_its_first_write_starts_over(
+    env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid, job_id = await _project_with_job("modify", "make the roof red", version=True)
+    monkeypatch.setattr(pipeline, "renderer", FakeRenderer())
+    first = FakeProvider([[ToolCallPart(id="1", name="list_files", input={})], "hang"])
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: first)
+    await _interrupt(job_id, pid, pipeline.modify, first, turns=2)
+
+    second = FakeProvider(
+        [
+            [ToolCallPart(id="a", name="check_scene", input={})],
+            [ToolCallPart(id="b", name="finish", input={"summary": "the roof is red"})],
+        ]
+    )
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: second)
+    await _resume_to_done(job_id)
+
+    text = second.calls[0][0].text
+    assert MODIFY_ADDENDUM in text
+    assert "## Request\nmake the roof red" in text
+    assert RESUME_ADDENDUM not in text
+    events = await _events(job_id)
+    assert [t for _, t, _ in events].count("resumed") == 1
+    assert all(p.get("message") != LEFT_AS_IS for _, t, p in events if t == "phase")
+    async with session_factory()() as s:
+        project = await crud.get_project(s, pid)
+        assert [v.number for v in project.versions] == [1, 2]
+
+
+async def test_a_modification_interrupted_after_a_write_continues_from_it(
+    env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid, job_id = await _project_with_job("modify", "make the roof red", version=True)
+    monkeypatch.setattr(pipeline, "renderer", FakeRenderer())
+    written = {"path": "src/roof.js", "content": "export const red = 1;\n"}
+    first = FakeProvider([[ToolCallPart(id="1", name="write_file", input=written)], "hang"])
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: first)
+    await _interrupt(job_id, pid, pipeline.modify, first, turns=2)
+
+    second = FakeProvider(
+        [
+            [ToolCallPart(id="a", name="check_scene", input={})],
+            [ToolCallPart(id="b", name="finish", input={"summary": "the roof is red"})],
+        ]
+    )
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: second)
+    await _resume_to_done(job_id)
+
+    assert RESUME_ADDENDUM in second.calls[0][0].text
+    assert (ProjectStorage(pid).scene_dir / "src" / "roof.js").exists()
+    events = await _events(job_id)
+    assert any(p.get("message") == LEFT_AS_IS for _, t, p in events if t == "phase")
+
+
+async def test_a_chat_turn_interrupted_after_a_write_starts_again_from_the_version(
+    env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid, job_id = await _project_with_job("chat", "what is the roof made of?", version=True)
+    monkeypatch.setattr(pipeline, "renderer", FakeRenderer())
+    written = {"path": "src/half.js", "content": "export const half = 1;\n"}
+    first = FakeProvider([[ToolCallPart(id="1", name="write_file", input=written)], "hang"])
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: first)
+    await _interrupt(job_id, pid, pipeline.chat, first, turns=2)
+    assert (ProjectStorage(pid).scene_dir / "src" / "half.js").exists()
+
+    second = FakeProvider(["Tiles."])
+    monkeypatch.setattr(pipeline, "get_provider", lambda *_: second)
+    await _resume_to_done(job_id)
+
+    assert not (ProjectStorage(pid).scene_dir / "src" / "half.js").exists()
+    events = await _events(job_id)
+    assert events[-1][1] == "done"
+    assert events[-1][2]["summary"] == "Tiles."

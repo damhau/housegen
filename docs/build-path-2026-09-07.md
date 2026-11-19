@@ -40,8 +40,9 @@ by a person.
 
 ## Still in the build path, on purpose
 
-- `RESUME_ADDENDUM` and the "scene as the restart left it" renders: only after a server restart (#7). Known gap: a
-  resume with nothing written before the restart should be a fresh generate, not a continuation from the template.
+- `RESUME_ADDENDUM` and the "scene as the restart left it" renders: only after a server restart (#7), and only
+  when the job had written a file or saved a version before it. A generate or a modification interrupted earlier
+  starts over with its first-run message (#27).
 - The attachments block of a modification request and the verifier's "ATTACHED photograph" images: only when the
   owner attaches photos (#8).
 - Sheet captions "(document n, page p)" and the "Plan documents" paragraph: only when a project has more than one
