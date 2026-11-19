@@ -15,7 +15,8 @@
         viewpoints around the house, a sun at a real date and hour (--site: the plot's latitude and longitude).
     python main.py shoot <spec.json>
         spec: {"blend", "rooms", "camera", "out" (.jpg), "width", "height", "samples"[, "sun", "room_lamps",
-        "remove", "staging" (furnished | light | empty, staging.py; exteriors are shot as they are)]}; writes the
+        "remove", "staging" (furnished | light | empty, staging.py; exteriors are shot as they are), "legacy_shift"
+        (a set shot before #133 keeps its framing, still.camera)]}; writes the
         photo and <out>.json (the room, the final camera, the sun, the lamps, the pieces in the frame, the device,
         the seconds per phase). With "kind": "exterior", "blend" is one of the exterior builds.
 """
@@ -321,12 +322,14 @@ def shoot(spec_json):
         import outside
 
         outside.run(spec["blend"], spec["camera"], spec["out"], int(spec.get("width", 1920)),
-                    int(spec.get("height", 1080)), int(spec.get("samples", 256)), sun=spec.get("sun"))
+                    int(spec.get("height", 1080)), int(spec.get("samples", 256)), sun=spec.get("sun"),
+                    legacy_shift=bool(spec.get("legacy_shift")))
         return
     photo.run(spec["blend"], load_rooms(spec["rooms"]), spec["camera"], spec["out"],
               int(spec.get("width", 1920)), int(spec.get("height", 1080)), int(spec.get("samples", 256)),
               sun=spec.get("sun"), room_lamps=spec.get("room_lamps"), remove=spec.get("remove") or (),
-              staging_level=spec.get("staging") or "furnished", house_style=load_style(spec["rooms"]))
+              staging_level=spec.get("staging") or "furnished", house_style=load_style(spec["rooms"]),
+              legacy_shift=bool(spec.get("legacy_shift")))
 
 
 def main(argv):

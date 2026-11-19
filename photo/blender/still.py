@@ -16,7 +16,13 @@ def blender(p):
     return Vector((x, -z, y))
 
 
-def camera(scene, spec, width, height):
+def camera(scene, spec, width, height, legacy_shift=False):
+    """The camera of a spec "x,y,z>tx,ty,tz@fov" (scene metres, vertical fov in degrees): level, so verticals stay
+    vertical, and the frame shifted as a shift lens does until the target sits at its centre, as the 3D tour frames
+    its photo-<n> views (kit/runtime.js photoFrame). `legacy_shift`: the framing of sets shot before #133, whose
+    shift was scaled by height / width (Blender reads shift_y in frame heights under a vertical sensor fit, not in
+    widths): the frame's centre at 9/16 of the target's rise at 16:9. The camera keeps the scale it was given in
+    `shift_scale`, for camera_spec and the framing rules."""
     pos, rest = spec.split(">")
     target, fov = rest.split("@")
     p = blender([float(v) for v in pos.split(",")])
@@ -25,13 +31,14 @@ def camera(scene, spec, width, height):
     cam.sensor_fit = "VERTICAL"
     cam.angle_y = math.radians(float(fov))
     cam.clip_start = 0.05
+    cam["shift_scale"] = height / max(width, height) if legacy_shift else 1.0
     obj = bpy.data.objects.new("still", cam)
     scene.collection.objects.link(obj)
     d = t - p
     obj.location = p
     obj.rotation_euler = (math.pi / 2, 0.0, math.atan2(d.y, d.x) - math.pi / 2)
     pitch = math.atan2(d.z, math.hypot(d.x, d.y))
-    cam.shift_y = math.tan(pitch) / (2 * math.tan(cam.angle_y / 2)) * (height / max(width, height))
+    cam.shift_y = math.tan(pitch) / (2 * math.tan(cam.angle_y / 2)) * cam["shift_scale"]
     scene.camera = obj
 
 

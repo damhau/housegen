@@ -1207,10 +1207,54 @@ def clear_glass(ior=1.5, name="archviz-glass"):
 
 
 BATH_MATS = {}
+# the made pieces' cloths the photo draws in its own colours in a scene the kit did not dress; in one it did, in the
+# colours the kit's stand-ins have (kit/dressing.js MADE), as the 3D tour draws them (#133)
+KIT_CLOTH = {"towel-white": "terry", "towel-sand": "terry", "throw-wool": "wool"}
 
 
-def bath_materials(root):
-    """The Cycles materials of a made piece (made/bathset.py), by its material names."""
+def kit_colour(m):
+    """The colour (linear) the kit gave a material: its Base Color, or the colour its texture is multiplied by; None
+    for anything else."""
+    nodes = m.node_tree.nodes if m.node_tree is not None else ()
+    q = next((n for n in nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"), None)
+    if q is None:
+        return None
+    sock = q.inputs["Base Color"]
+    if not sock.is_linked:
+        return np.array(sock.default_value[:3], float)
+    n = sock.links[0].from_node
+    if getattr(n, "blend_type", None) != "MULTIPLY":
+        return None
+    values = [i for i in n.inputs if i.type == "RGBA" and not i.is_linked]
+    return np.array(values[0].default_value[:3], float) if values else None
+
+
+def stand_in_colours(holder):
+    """The colours of the kit's stand-in under a made prop's holder."""
+    out = []
+    for c in holder.children_recursive:
+        if c.type == "MESH":
+            for slot in c.material_slots:
+                rgb = None if slot.material is None else kit_colour(slot.material)
+                if rgb is not None:
+                    out.append(rgb)
+    return out
+
+
+def kit_cloth(key, own, kit):
+    """A made cloth in the kit's colour: the stand-in's colour nearest its own (the stand-ins copy made/bathset.py's
+    colours, the drape's is warmer), its own when the stand-in has none. The kit's towels are that colour flat
+    (finishes.js cotton-weave keeps the caller's colour), its throws a wool scan times it: so is the photo's."""
+    rgb = tuple(float(v) for v in min(kit, key=lambda k: float(np.sum((np.asarray(k) - own) ** 2)))) if kit else own
+    name = f"{key}:" + ",".join(f"{v:.3f}" for v in rgb)
+    if name not in BATH_MATS:
+        BATH_MATS[name] = terry(rgb) if KIT_CLOTH[key] == "terry" else dress.wool_material(tint=rgb)
+    return BATH_MATS[name]
+
+
+def bath_materials(root, kit=None):
+    """The Cycles materials of a made piece (made/bathset.py), by its material names. `kit`: the colours of the kit's
+    stand-in it replaces (stand_in_colours), in a scene the kit dressed."""
     if not BATH_MATS:
         BATH_MATS.update({"towel-white": terry((0.80, 0.79, 0.76)), "towel-sand": terry((0.52, 0.45, 0.36)),
                           "oak": oak_wood(), "glass": clear_glass(), "water": clear_glass(1.33, "archviz-water"),
@@ -1224,6 +1268,10 @@ def bath_materials(root):
             if m is None:
                 continue
             key = m.name.split(".")[0]
+            if kit is not None and key in KIT_CLOTH:
+                own = tuple(float(v) for v in principled(m).inputs["Base Color"].default_value[:3])
+                slot.material = kit_cloth(key, own, kit)
+                continue
             if key.startswith("cover-") and key not in BATH_MATS:
                 rgb = tuple(principled(m).inputs["Base Color"].default_value[:3])
                 BATH_MATS[key] = cloth_weave(rgb, 0.035, 0.8, 0.25, f"archviz-{key}")
@@ -1242,8 +1290,9 @@ def bath_materials(root):
                 q.inputs["Subsurface Scale"].default_value = 0.01
 
 
-def in_frame(scene, f, path, at, scale=(1.0, 1.0, 1.0)):
-    """Import a bathset piece made in a piece's frame and fix it at local point `at` of frame `f`."""
+def in_frame(scene, f, path, at, scale=(1.0, 1.0, 1.0), kit=None):
+    """Import a bathset piece made in a piece's frame and fix it at local point `at` of frame `f`; `kit` as for
+    bath_materials."""
     root = bpy.data.objects.new(os.path.basename(path), None)
     scene.collection.objects.link(root)
     root.matrix_world = f @ Matrix.Translation(at)
@@ -1254,7 +1303,7 @@ def in_frame(scene, f, path, at, scale=(1.0, 1.0, 1.0)):
         if c.parent is None:
             c.parent = root
             c.matrix_parent_inverse.identity()
-    bath_materials(root)
+    bath_materials(root, kit)
     return root
 
 
@@ -1394,6 +1443,7 @@ def dress_made(scene, holders):
         mw = h.matrix_world
         f = Matrix.LocRotScale(mw.to_translation(), mw.to_quaternion(), None)
         if todo is not None:
+            kit = stand_in_colours(h) if catalogue.DRESSED else None
             for c in h.children_recursive:
                 c.hide_render = True
             kind, spec = todo
@@ -1402,7 +1452,7 @@ def dress_made(scene, holders):
                 o = dress.runner(scene, (t.x, t.z + 0.001, -t.y), spec, f.to_euler().z)
             else:
                 what, arg, sx = spec
-                o = in_frame(scene, f, style.prop(what, arg), (0, 0, 0), (sx, 1.0, 1.0))
+                o = in_frame(scene, f, style.prop(what, arg), (0, 0, 0), (sx, 1.0, 1.0), kit)
             o["made_for"] = str(h.get("made"))
             adopt(o, h)
             n += 1
@@ -1557,7 +1607,7 @@ def clear_edges(scene, cam, widest=0.03):
         strips.append(f)
     if sum(f > 0 for f in strips) >= 3 and max(strips) <= widest:
         h = max(strips) + 0.004
-        cam.data.shift_y -= h * (y1 - y0) / max(x1 - x0, y1 - y0)
+        cam.data.shift_y -= h * cam.data.get("shift_scale", 1.0)  # shift_y is in frame heights (still.camera)
         log(f"frame: a {h * 100:.1f} % ceiling strip at the top edge, frame lowered")
     if len(turns) != 1:
         return
@@ -2193,11 +2243,11 @@ def use_gpu():
 
 
 def camera_spec(scene, cam, reach):
-    """The camera as "x,y,z>tx,ty,tz@fov" in scene metres, aimed at a point `reach` metres ahead horizontally."""
-    rs = scene.render
+    """The camera as "x,y,z>tx,ty,tz@fov" in scene metres, aimed at a point `reach` metres ahead horizontally: the
+    spec still.camera makes it again from, with the same `shift_scale`."""
     fov = cam.data.angle_y
     yaw = cam.rotation_euler[2] + math.pi / 2
-    rise = cam.data.shift_y * 2 * math.tan(fov / 2) * max(rs.resolution_x, rs.resolution_y) / rs.resolution_y
+    rise = cam.data.shift_y / cam.data.get("shift_scale", 1.0) * 2 * math.tan(fov / 2)
     p = cam.matrix_world.translation
     t = p + Vector((math.cos(yaw), math.sin(yaw), rise)) * reach
 
@@ -2287,12 +2337,13 @@ def pieces_in_frame(scene, cam, nx=64, ny=36, least=0.005):
 
 
 def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=None, room_lamps=None, remove=(),
-        staging_level="furnished", house_style=None):
+        staging_level="furnished", house_style=None, legacy_shift=False):
     """Photograph the room the camera `cam_spec` stands in to the JPEG `out`; what was decided goes to `<out>.json`
     and is returned. `rooms`: rooms.json's list. A final from a preview replays its choices: `sun` (azimuth,
     elevation) and `room_lamps` skip the sun search; `remove` takes pieces (ids from the preview's `pieces`) out.
     `staging_level`: how much of the furnishing shows (staging.LEVELS). `house_style`: rooms.json's "style", the
-    objects and prints that may come in (None: the default style)."""
+    objects and prints that may come in (None: the default style). `legacy_shift`: a set shot before #133 keeps its
+    framing (still.camera)."""
     t0 = time.time()
     seconds = {}
     artlib.init(rooms, house_style)
@@ -2329,7 +2380,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
         upholster_chairs(scene)
     dress_storey(scene, sy, decor)
     scene.render.resolution_x, scene.render.resolution_y = width, height  # view_frame() reads the aspect from it
-    still.camera(scene, cam_spec, width, height)
+    still.camera(scene, cam_spec, width, height, legacy_shift)
     doors = open_doors(scene, scene.camera)
     clear_edges(scene, scene.camera)
     planes = clear_planes(scene, scene.camera, room)

@@ -390,6 +390,34 @@ async def test_a_staging_is_kept_when_the_set_is_shot_again(
     assert r.status_code == 422
 
 
+async def test_a_set_shot_before_133_keeps_its_framing_when_shot_again(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_rooms(MONTELLY))
+    _fake_service(monkeypatch, svc)
+    pid = await _furnished_project()
+
+    async def shoot(body: dict[str, Any]) -> set[Any]:
+        before = len(svc.calls)
+        r = await app_client.post(f"/api/v1/projects/{pid}/listing", json=body)
+        assert await _wait_job(r.json()["id"]) == "done"
+        calls = list(svc.calls.values())[before:]
+        return {c.get("legacy_shift") for c in calls if c["path"] == "/shoot"}
+
+    assert await shoot({}) == {None}
+    assert _set_doc(pid)["settings"]["framing"] == "centred"
+    assert await shoot({"reuse": True}) == {None}
+    path = ProjectStorage(pid).versions_dir / "1" / "listing" / "set.json"
+    doc = _set_doc(pid)
+    del doc["settings"]["framing"]  # as a set saved before #133
+    path.write_text(json.dumps(doc))
+    assert await shoot({"reuse": True}) == {True}
+    assert _set_doc(pid)["settings"]["framing"] == "legacy"
+    assert await shoot({"reuse": True}) == {True}
+    assert await shoot({}) == {None}  # its cameras chosen again: the 3D's framing
+    assert _set_doc(pid)["settings"]["framing"] == "centred"
+
+
 async def test_listing_needs_an_interior_and_a_service(
     app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:

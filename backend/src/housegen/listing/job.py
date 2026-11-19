@@ -32,6 +32,9 @@ logger = logging.getLogger(__name__)
 
 # bump when the export or the Blender import changes what a prepared version holds on the service
 PREPARE_REV = "p4"
+# how a camera spec frames (#133): its target at the frame's centre, as the 3D tour's photographer frame; a set
+# without one was shot with the earlier lens shift ("legacy") and keeps it when shot again, as its previews show
+FRAMING = "centred"
 # $ per container second (Modal list prices 2026-11-07): the GPU + 4 cores + 16 GiB; "CPU" is the prepare's
 # Blender machine (#95), 8 cores + 32 GiB without a GPU
 _CORE_S, _GIB_S = 0.0000131, 0.00000222
@@ -156,6 +159,10 @@ async def listing(ctx: JobContext) -> None:
         ((previous or {}).get("settings", {}).get("exteriors") or default) if reuse else None
     )
     exterior = str(req.get("exteriors") or kept_exterior or default)
+    framing = (
+        str((previous or {}).get("settings", {}).get("framing") or "legacy") if reuse else FRAMING
+    )
+    legacy_shift = framing == "legacy"
     if not s.LISTING_EXTERIORS:
         exterior = "none"
     elif exterior == "surroundings" and not context_url:
@@ -213,6 +220,7 @@ async def listing(ctx: JobContext) -> None:
                 "samples": s.LISTING_SAMPLES,
                 "staging": staging,
                 "exteriors": exterior,
+                "framing": framing,
                 "preview": [
                     s.LISTING_PREVIEW_WIDTH,
                     s.LISTING_PREVIEW_HEIGHT,
@@ -300,6 +308,7 @@ async def listing(ctx: JobContext) -> None:
                         s.LISTING_PREVIEW_SAMPLES,
                         s.LISTING_SHOT_TIMEOUT_S,
                         staging=staging,
+                        legacy_shift=legacy_shift,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -398,6 +407,7 @@ async def listing(ctx: JobContext) -> None:
                         kind="exterior" if shot.use == "exterior" else None,
                         staging=None if shot.use == "exterior" else staging,
                         exterior=exterior,
+                        legacy_shift=legacy_shift,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -461,6 +471,7 @@ async def listing(ctx: JobContext) -> None:
                         sun=view.get("sun"),
                         kind="exterior",
                         exterior=exterior,
+                        legacy_shift=legacy_shift,
                     )
                 except Exception as exc:
                     logger.warning(

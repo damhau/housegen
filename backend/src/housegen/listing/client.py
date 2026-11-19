@@ -139,11 +139,12 @@ class PhotoClient:
         kind: str | None = None,
         staging: str | None = None,
         exterior: str | None = None,
+        legacy_shift: bool = False,
     ) -> tuple[bytes, dict[str, Any]]:
         """The photo's JPEG and what the service reports with it (meta, gpu, seconds). `sun` and `room_lamps`
         repeat a preview's light; `remove` hides those dressing pieces; `kind` "exterior" shoots the house from
         outside (#93), in the exterior build `exterior` (surroundings | house, #97); `staging` is how much of the
-        furnishing a room shows (#94)."""
+        furnishing a room shows (#94); `legacy_shift` frames a set shot before #133 as it was."""
         body: dict[str, Any] = {
             "key": key,
             "camera": camera,
@@ -163,6 +164,8 @@ class PhotoClient:
             body["exterior"] = exterior
         if staging and staging != "furnished":
             body["staging"] = staging
+        if legacy_shift:
+            body["legacy_shift"] = True
         call = await self.start("/shoot", body)
         res = await self.wait(call, timeout_s)
         return base64.b64decode(res.pop("jpeg")), res

@@ -1363,8 +1363,9 @@ def sky(scene, az, el):
     nt.links.new(mix.outputs[0], nt.nodes["Background"].inputs[0])
 
 
-def run(blend, cam_spec, out, width=WIDTH, height=HEIGHT, samples=256, sun=None):
-    """Photograph the house from `cam_spec` to the JPEG `out`; returns (and writes to `<out>.json`) what it did."""
+def run(blend, cam_spec, out, width=WIDTH, height=HEIGHT, samples=256, sun=None, legacy_shift=False):
+    """Photograph the house from `cam_spec` to the JPEG `out`; returns (and writes to `<out>.json`) what it did.
+    `legacy_shift`: a set shot before #133 keeps its framing (still.camera)."""
     import photo
     from post import post
 
@@ -1378,7 +1379,7 @@ def run(blend, cam_spec, out, width=WIDTH, height=HEIGHT, samples=256, sun=None)
     still.glass(scene)
     photo.finish_textures(scene)
     scene.render.resolution_x, scene.render.resolution_y = width, height
-    still.camera(scene, cam_spec, width, height)
+    still.camera(scene, cam_spec, width, height, legacy_shift)
     cam = scene.camera
     cam.data.clip_end = 120000.0
     az, el = (float(v) for v in (sun or (still.SUN["azimuth"], still.SUN["elevation"])))

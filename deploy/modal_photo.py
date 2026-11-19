@@ -292,11 +292,13 @@ def shoot(
     kind: str | None = None,
     staging: str | None = None,
     exterior: str | None = None,
+    legacy_shift: bool = False,
 ) -> dict:
     """One photo from the prepared version: the JPEG bytes and what the pipeline decided. `sun` ([azimuth, elevation])
     and `room_lamps` repeat a preview's light instead of searching it again; `remove` hides those dressing pieces;
     `kind` "exterior" shoots the house from outside, in the build `exterior` names (surroundings | house, #97);
-    `staging` (furnished | light | empty) is how much of the furnishing a room shows (#94)."""
+    `staging` (furnished | light | empty) is how much of the furnishing a room shows (#94); `legacy_shift` frames a
+    set shot before #133 as it was (photo/blender/still.py camera)."""
     import json
 
     t0 = time.time()
@@ -308,7 +310,7 @@ def shoot(
     out = Path("/tmp", f"{key}-{int(t0 * 1000)}.jpg")
     spec = {"blend": str(blend), "rooms": str(d / "rooms.json"), "camera": camera, "out": str(out),
             "width": width, "height": height, "samples": samples, "sun": sun, "room_lamps": room_lamps,
-            "remove": remove or [], "kind": kind, "staging": staging}
+            "remove": remove or [], "kind": kind, "staging": staging, "legacy_shift": legacy_shift}
     spec_path = out.with_suffix(".spec.json")
     spec_path.write_text(json.dumps(spec))
     _run(["main.py", "shoot", str(spec_path)])
@@ -355,6 +357,7 @@ def web():
         kind: str | None = None
         staging: str | None = None
         exterior: str | None = None
+        legacy_shift: bool = False
 
     @api.get("/health")
     def health() -> dict:
@@ -369,7 +372,7 @@ def web():
     def start_shoot(body: ShootIn) -> dict:
         call = shoot.spawn(
             body.key, body.camera, body.width, body.height, body.samples, body.sun, body.room_lamps, body.remove,
-            body.kind, body.staging, body.exterior,
+            body.kind, body.staging, body.exterior, body.legacy_shift,
         )
         return {"call_id": call.object_id}
 
