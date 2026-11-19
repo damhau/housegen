@@ -344,6 +344,33 @@ class _Run:
         await self.ctx.emit("phase", name="render", message="Rendering the current state")
         return await self.render_standard()
 
+    async def saved_plans(self, version: int) -> dict[str, Path]:
+        """The plan of each storey as the saved `version` drew it, when the working copy is that
+        version: where an interior job starts from, without a render (#98). Shown in the timeline
+        and copied to the working copy's renders (inspect_image reads them there); none when the
+        working copy changed since or the version has no interior."""
+        if not self.unchanged_since(version):
+            return {}
+        vdir = self.storage.versions_dir / str(version) / "renders"
+        saved = sorted(
+            (int(m.group(1)), p)
+            for p in vdir.glob("plan-section-*.jpg")
+            if (m := PLAN_SECTION_VIEW.match(p.stem))
+        )
+        if not saved:
+            return {}
+        self.renders_dir.mkdir(parents=True, exist_ok=True)
+        images = {
+            p.stem: write_replacing(self.renders_dir / p.name, p.read_bytes()) for _, p in saved
+        }
+        await self.ctx.emit(
+            "phase",
+            name="render",
+            message=f"The interior as it stands: version {version}'s floor plans",
+        )
+        await self._on_render(images, [])
+        return images
+
     async def build_and_render(
         self, messages: list[Message], system: str | None = None
     ) -> tuple[str, dict[str, Path]]:
@@ -998,6 +1025,7 @@ async def _modify_verify(
 
 
 ROOM_VIEW = re.compile(r"^room-(\d+)$")
+PLAN_SECTION_VIEW = re.compile(r"^plan-section-(\d+)$")
 VERIFY_ROOMS = 4  # room views the verifier compares at most
 
 
@@ -1289,16 +1317,35 @@ def house_style_text(style: str) -> str:
     )
 
 
+def current_interior_text(version: int) -> str:
+    """The interior's request part that introduces the saved plans of a house already furnished."""
+    return (
+        f"## The interior as it stands (version {version})\n"
+        "The house has rooms and furniture already. Each storey as a floor plan, the way "
+        'render_views(["plan-section-N"]) draws it: exterior walls dark blue, partitions red, '
+        "door leaves green, furniture as orange footprints."
+    )
+
+
 async def interior(ctx: JobContext) -> None:
+    """Furnish the current scene from the floor plans; a house already furnished starts from the
+    saved plan of each storey. No exterior pictures: an interior's builder does not work from
+    them (#98)."""
     async with session_factory()() as session:
         job = await crud.get_job(session, ctx.job_id)
         request = job.request_text
         options = job.options
+        base = (await crud.get_project(session, ctx.project_id)).current_version
     run = await _Run.create(ctx, kit=options.get("kit") or kit_with("interior.js"))
+    # before this job writes its style and its imports into the working copy
+    plans = await run.saved_plans(base)
     style = interior_style(
         kit_dir(run.kit, run.settings), run.storage.scene_dir, options.get("style")
     )
-    logger.info("interior.started", extra={"job_id": ctx.job_id, "kit": run.kit, "style": style})
+    logger.info(
+        "interior.started",
+        extra={"job_id": ctx.job_id, "kit": run.kit, "style": style, "plans": len(plans)},
+    )
     inp = await run.inputs()
     _interior_tools(run, inp)
     ensure_interior_imports(run.storage.scene_dir / "index.html")
@@ -1306,8 +1353,6 @@ async def interior(ctx: JobContext) -> None:
         sh for sh in (inp.intake.sheets if inp.intake else []) if sh.kind == "floor_plan"
     ]
 
-    await ctx.emit("phase", name="render", message="Rendering the current state")
-    before = await run.render_standard()
     parts: list[ImagePart | str] = []
     parts.append(
         "## Request\n"
@@ -1330,9 +1375,10 @@ async def interior(ctx: JobContext) -> None:
                     inp.pages[page - 1], label=f"plan-{page}" + (f" — {label}" if label else "")
                 )
             )
-    for view in ("aerial", "south"):
-        if view in before:
-            parts.append(ImagePart.from_file(before[view], label=f"The exterior model — {view}"))
+    if plans:
+        parts.append(current_interior_text(base))
+        for view, p in plans.items():
+            parts.append(ImagePart.from_file(p, label=f"{view} — version {base}"))
     messages = [Message.user(*parts)]
 
     await ctx.emit("phase", name="builder", message="Building the interior")

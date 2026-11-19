@@ -16,7 +16,7 @@ backend/   FastAPI + SQLite + Playwright (uv, Python 3.12). Domain-first: src/ho
   render/    renderer.py (headless Chromium, shadow map reused across views), service.py (the same renderer as an
              HTTP service for a GPU box, deploy/modal_render.py), remote.py (its client + the local/remote dispatcher)
   jobs/      in-process job runner + SSE fan-out (persisted events vs transient progress events)
-  projects/  models, crud, router, storage (data/projects/<id>/{plans/<k>,photos,scene,versions}), migrations (one-off, at startup),
+  projects/  models, crud, router, storage (data/projects/<id>/{plans/<k>,photos,scene,versions,jobs}), migrations (one-off, at startup),
              access (who sees a project: its organisation, the tokens, #105), files (the /scenes mount behind it),
              shared (a share link's own /shared/<token>/… paths, readable signed out)
   listing/   listing photo sets (#91): shots.py (units from room names, listing order, captions), client.py (the
