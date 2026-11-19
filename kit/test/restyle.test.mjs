@@ -1,7 +1,6 @@
 // housekit: a Restyle redraws a house's catalogue beds and the dressing's floor accents from another style's pieces
 // (#120). Every bed must take the same place in every style, and every accent keep to its spot, or the new piece closes
-// the passages the scene left round the old one. Node cannot fetch the catalogue's models: a box of each piece's
-// catalogue size stands in for it, so the kit fits a model to the size asked exactly as in a page.
+// the passages the scene left round the old one. The catalogue's models are boxes of their pieces' sizes (stub-models).
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
@@ -9,56 +8,13 @@ import { dressRooms } from "../dressing.js";
 import * as house from "../house.js";
 import { floorPlan } from "../interior.js";
 import fx, { pickObject, resetObjects } from "../furnish.js";
-import { OBJECTS } from "../objects.js";
 import { STYLES, setHouseStyle } from "../styles.js";
 import { layout } from "../layout.js";
+import { OBJECTS } from "../objects.js";
+import { stubCatalogue } from "./stub-models.mjs";
 
-// a glTF binary of one box `w` x `h` x `d`, its bottom on y = 0
-function boxGlb(w, h, d) {
-  const positions = [];
-  for (const x of [-w / 2, w / 2]) for (const y of [0, h]) for (const z of [-d / 2, d / 2]) positions.push(x, y, z);
-  const pos = new Float32Array(positions);
-  const ind = new Uint16Array([0, 1, 3, 0, 3, 2, 4, 6, 7, 4, 7, 5, 0, 4, 5, 0, 5, 1, 2, 3, 7, 2, 7, 6, 0, 2, 6, 0, 6, 4, 1, 5, 7, 1, 7, 3]);
-  const bin = new Uint8Array(pos.byteLength + ind.byteLength);
-  bin.set(new Uint8Array(pos.buffer), 0);
-  bin.set(new Uint8Array(ind.buffer), pos.byteLength);
-  const gltf = {
-    asset: { version: "2.0" }, scene: 0, scenes: [{ nodes: [0] }], nodes: [{ mesh: 0 }],
-    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1 }] }],
-    buffers: [{ byteLength: bin.byteLength }],
-    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: pos.byteLength }, { buffer: 0, byteOffset: pos.byteLength, byteLength: ind.byteLength }],
-    accessors: [
-      { bufferView: 0, componentType: 5126, count: 8, type: "VEC3", min: [-w / 2, 0, -d / 2], max: [w / 2, h, d / 2] },
-      { bufferView: 1, componentType: 5123, count: ind.length, type: "SCALAR" },
-    ],
-  };
-  let json = new TextEncoder().encode(JSON.stringify(gltf));
-  json = Uint8Array.from([...json, ...Array((4 - (json.length % 4)) % 4).fill(0x20)]);
-  const out = new Uint8Array(12 + 8 + json.length + 8 + bin.length);
-  const v = new DataView(out.buffer);
-  v.setUint32(0, 0x46546c67, true);
-  v.setUint32(4, 2, true);
-  v.setUint32(8, out.length, true);
-  v.setUint32(12, json.length, true);
-  v.setUint32(16, 0x4e4f534a, true);
-  out.set(json, 20);
-  v.setUint32(20 + json.length, bin.length, true);
-  v.setUint32(24 + json.length, 0x004e4942, true);
-  out.set(bin, 28 + json.length);
-  return out;
-}
-
+stubCatalogue();
 const BY_ID = new Map(OBJECTS.map((o) => [o.id, o]));
-const realFetch = globalThis.fetch;
-globalThis.fetch = async (input, init) => {
-  const url = typeof input === "string" ? input : input.url;
-  const o = BY_ID.get(url.match(/\/(?:objects|made)\/([^/]+)\.glb$/)?.[1]);
-  if (!o) return realFetch(input, init);
-  const [w, d, h] = o.size;
-  const bytes = boxGlb(w, h, d);
-  // no body stream: three's loader would report progress with ProgressEvent, which Node lacks
-  return { status: 200, ok: true, url, body: undefined, arrayBuffer: async () => bytes.buffer };
-};
 
 const SEEDS = ["fa8bd00053e6", "a7c4e1", "b2d9f0", "c5e8a3", "d1f6b7", "e9a2c4"];
 // the beds of a house, in the order its scene draws them: TestVillaGille's, then the other usual sizes

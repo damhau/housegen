@@ -1247,6 +1247,8 @@ async function pottedPlant(role, { height, room, spread } = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const { piece: o } = pickObject(role, { height: total * 0.4, room });
     const { piece: f } = pickObject(total >= 1.2 ? "tall-foliage" : "foliage", { room, height: total - total * 0.4 });
+    // how often the scene has drawn this plant, read before the models load: other plants take it meanwhile (#127)
+    const drawn = _taken.get(f.id);
     const [pot, leaves] = await Promise.all([loadPiece(o), loadPiece(f)]);
     if (!pot || !leaves) continue;
     const g = new THREE.Group();
@@ -1267,7 +1269,7 @@ async function pottedPlant(role, { height, room, spread } = {}) {
     };
     const letter = (m) => (tag(m).match(/_([a-z])$/) ?? [])[1];
     const variants = [...new Set(parts.map(letter).filter(Boolean))].sort();
-    const chosen = variants.length ? variants[hash(`${sceneKey()}|${room ?? ""}|${f.id}|${_taken.get(f.id)}`) % variants.length] : null;
+    const chosen = variants.length ? variants[hash(`${sceneKey()}|${room ?? ""}|${f.id}|${drawn}`) % variants.length] : null;
     for (const m of parts) if (NOT_LEAVES.test(tag(m)) || (chosen && letter(m) && letter(m) !== chosen)) m.parent.remove(m);
     plant.traverse((m) => { if (m.isMesh) shade(m); });
     const [l, ls] = grounded(plant);
@@ -1518,13 +1520,17 @@ function dressBed(wrap, o, s, room) {
   return g;
 }
 
-async function roleModel(role, { width, length, height, room, stems, spread } = {}) {
+// `chosen`: the piece already taken from the role's deck (a vase's stems)
+async function roleModel(role, { width, length, height, room, stems, spread, chosen } = {}) {
   if (POTTED[role]) return pottedPlant(role, { height, room, spread });
   if (role === "bed") [width, length] = [width ?? BED_SIZE[0], length ?? BED_SIZE[1]];
   for (let attempt = 0; attempt < 3; attempt++) {
-    const { piece: o } = pickObject(role, { width, length, height, room });
+    const o = attempt === 0 && chosen ? chosen : pickObject(role, { width, length, height, room }).piece;
     // no model near the size (the catalogue has no single bed): the kit's own piece, drawn at it
     if (FURNITURE.has(role) && PARAMETRIC[role] && misfit(o, width, length) === 2) return PARAMETRIC[role]({ width, length });
+    // every pick before the first await: the models of the vases dressed at once arrive in any order, and the vase
+    // that arrived first took the next stems, so two loads of a page could swap them (#127)
+    const branches = role === "vase" && stems ? pickObject("stems", { height: stemsHeight(o, { width, length, height }), room }).piece : null;
     const gltf = await loadPiece(o);
     if (!gltf) continue;
     const inner = gltf.scene.clone(true);
@@ -1544,9 +1550,9 @@ async function roleModel(role, { width, length, height, room, stems, spread } = 
     }
     wrap.scale.set(...s);
     let tall = size.y * s[1];
-    if (role === "vase" && stems) {
+    if (branches) {
       // branches from the vase's mouth, half as tall again as the vase: the spike's vase_with (stage.py)
-      const b = await roleModel("stems", { height: Math.max(tall * 1.5, 0.3), room, spread });
+      const b = await roleModel("stems", { height: Math.max(tall * 1.5, 0.3), room, spread, chosen: branches });
       b.position.y = tall * 0.8;
       b.rotation.y = (hash(o.id) % 360) * Math.PI / 180;
       const g = new THREE.Group();
@@ -1563,6 +1569,12 @@ async function roleModel(role, { width, length, height, room, stems, spread } = 
     return piece(wrap, role, size.x * s[0], size.z * s[2], { height: tall, model: o.id, catalogue: o.id, ...(FLAT.has(role) ? { flat: true } : {}) });
   }
   return piece(new THREE.Group(), role, 0, 0);
+}
+
+// the stems a vase of the catalogue (`o`) holds are picked for: half as tall again as the vase drawn at the size asked
+function stemsHeight(o, { width, length, height }) {
+  const [w, l, h] = o.size;
+  return Math.max((height ?? (width ? (h * width) / w : length ? (h * length) / l : h)) * 1.5, 0.3);
 }
 const _loaded = new Map();
 const tinted = (material, tint) => m(`tint:${material.uuid}:${tint}`, () => {
