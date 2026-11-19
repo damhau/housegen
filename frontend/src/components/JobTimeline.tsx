@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react"
-import { AlertTriangle, Camera, CheckCircle2, ChevronDown, ChevronRight, Eye, FileCode2, Hammer, Loader2, MessageSquare, RefreshCw, ScanSearch, Sparkles, Square } from "lucide-react"
+import { AlertTriangle, Camera, CheckCircle2, ChevronDown, ChevronRight, Eye, FileCode2, Hammer, ImageOff, Loader2, MessageSquare, RefreshCw, ScanSearch, Sparkles, Square } from "lucide-react"
 import type { RunSummary } from "@/api/model"
 import type { JobEvent, LlmProgress } from "@/hooks/useJobStream"
 import { LiveStatus } from "@/components/LiveStatus"
@@ -217,15 +217,15 @@ function Row({ ev }: { ev: JobEvent }) {
     }
     case "render": {
       const renders = (p.renders as Record<string, string> | undefined) ?? {}
+      const unavailable = strList(p.unavailable)
       const errors = (p.errors as string[] | undefined) ?? []
       return (
         <li className="ml-6">
           <div className="flex flex-wrap gap-1">
             {Object.entries(renders).map(([view, url]) => (
-              <a key={view} href={url} target="_blank" rel="noreferrer" title={view}>
-                <img src={url} alt={view} className="h-14 rounded border object-cover" />
-              </a>
+              <RenderThumb key={view} view={view} url={url} />
             ))}
+            {unavailable.length > 0 && <PicturesGone views={unavailable} />}
           </div>
           {errors.length > 0 && <div className="mt-1 text-xs text-destructive">{errors.join(" · ")}</div>}
         </li>
@@ -319,6 +319,30 @@ function Row({ ev }: { ev: JobEvent }) {
     default:
       return null
   }
+}
+
+/** A render's thumbnail; one whose file is gone draws the placeholder, not a broken image. */
+function RenderThumb({ view, url }: { view: string; url: string }) {
+  const [broken, setBroken] = useState(false)
+  if (broken) return <PicturesGone views={[view]} />
+  return (
+    <a href={url} target="_blank" rel="noreferrer" title={view}>
+      <img src={url} alt={view} onError={() => setBroken(true)} className="h-14 rounded border object-cover" />
+    </a>
+  )
+}
+
+/** Pictures of a job from before they were kept with it (#121): a later render or a restore replaced them. */
+function PicturesGone({ views }: { views: string[] }) {
+  return (
+    <span
+      title={`${views.join(", ")}: replaced by a later render or a restore`}
+      className="flex h-14 items-center gap-1.5 rounded border border-dashed px-2 text-xs text-muted-foreground"
+    >
+      <ImageOff className="size-3.5 shrink-0" />
+      {views.length === 1 ? `${views[0]}: no longer available` : `${views.length} pictures no longer available`}
+    </span>
+  )
 }
 
 function PhaseIcon({ name }: { name: string }) {

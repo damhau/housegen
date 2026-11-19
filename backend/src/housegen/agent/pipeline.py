@@ -54,6 +54,7 @@ from housegen.agent.workspace import Workspace
 from housegen.core.config import Settings, get_settings
 from housegen.core.db import session_factory
 from housegen.core.exceptions import TooManyRequestsError
+from housegen.jobs import pictures as job_pictures
 from housegen.jobs.manager import JobContext, JobManager
 from housegen.limits import service as limits
 from housegen.listing.job import listing
@@ -65,6 +66,7 @@ from housegen.projects.storage import PlanSheet, ProjectStorage
 from housegen.projects.style import DEFAULT_STYLE, read_style, write_style
 from housegen.render import renderer
 from housegen.render.kits import kit_dir, kit_with, pinned_kit
+from housegen.render.renderer import write_replacing
 
 logger = logging.getLogger(__name__)
 
@@ -172,11 +174,9 @@ class _Run:
         )
 
     async def _on_render(self, images: dict[str, Path], errors: list[str]) -> None:
-        urls = {
-            v: f"/scenes/{self.ctx.project_id}/scene/renders/{p.name}?t={int(p.stat().st_mtime)}"
-            for v, p in images.items()
-        }
-        await self.ctx.emit("render", renders=urls, errors=errors[:5])
+        urls, lost = job_pictures.keep(self.storage, self.ctx.job_id, self.ctx.next_seq, images)
+        extra = {"unavailable": lost} if lost else {}
+        await self.ctx.emit("render", renders=urls, errors=errors[:5], **extra)
 
     async def on_step(self, ev: dict[str, Any]) -> None:
         kind = ev.get("kind")
@@ -331,7 +331,10 @@ class _Run:
             and self.unchanged_since(version)
         ):
             self.renders_dir.mkdir(parents=True, exist_ok=True)
-            images = {v: Path(shutil.copy2(p, self.renders_dir / p.name)) for v, p in saved.items()}
+            images = {
+                v: write_replacing(self.renders_dir / p.name, p.read_bytes())
+                for v, p in saved.items()
+            }
             await self.ctx.emit(
                 "phase", name="render", message=f"The current state: version {version}'s pictures"
             )

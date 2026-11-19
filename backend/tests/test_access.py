@@ -69,7 +69,8 @@ async def _member(world: World, sub: str, organisation: str) -> tuple[AsyncClien
 
 
 async def _project(organisation_id: str) -> str:
-    """A project with a saved version, its pictures, a listing photo, a photo and surroundings."""
+    """A project with a saved version, its pictures, a listing photo, a photo, surroundings and
+    a job's picture."""
     async with session_factory()() as s, s.begin():
         project = await crud.create_project(s, "Villa", organisation_id=organisation_id)
         await crud.add_version(s, project.id, 1, "generation", "v1", "built")
@@ -98,6 +99,8 @@ async def _project(organisation_id: str) -> str:
     (st.root / "context").mkdir(exist_ok=True)
     (st.root / "context" / "context.json").write_text('{"alignment": {"set": true}}')
     (st.root / "brief.txt").write_text("private")
+    st.job_renders_dir("j1").mkdir(parents=True)
+    (st.job_renders_dir("j1") / "3-south.jpg").write_text("jpg")
     return pid
 
 
@@ -161,12 +164,14 @@ async def test_signed_out_only_the_public_routes_answer(world: World) -> None:
         f"/scenes/{pid}/versions/1/index.html",
         f"/scenes/{pid}/versions/1/src/scene.js",
         f"/scenes/{pid}/photos/south.jpg",
+        f"/scenes/{pid}/jobs/j1/renders/3-south.jpg",
     ):
         r = await anonymous.get(path)
         assert r.status_code == 401, path
         assert r.json()["error"]["code"] == "unauthorized"
     # the member sees them
     assert (await owner.get(f"/scenes/{pid}/versions/1/src/scene.js")).status_code == 200
+    assert (await owner.get(f"/scenes/{pid}/jobs/j1/renders/3-south.jpg")).status_code == 200
     assert (await owner.get(f"/scenes/{pid}/scene/index.html")).status_code == 200
     # the public ones
     assert (await anonymous.get("/api/v1/health")).status_code == 200
@@ -191,6 +196,7 @@ async def test_another_organisations_project_does_not_exist(world: World) -> Non
         f"/scenes/{pid}/scene/index.html",
         f"/scenes/{pid}/versions/1/index.html",
         f"/scenes/{pid}/versions/1/src/scene.js",
+        f"/scenes/{pid}/jobs/j1/renders/3-south.jpg",
     ):
         assert (await b.get(path)).status_code == 404, path
         assert (await a.get(path)).status_code in (200, 404), path
@@ -248,6 +254,8 @@ async def test_a_share_link_reads_its_own_paths_signed_out(world: World) -> None
         f"{base}/scene/src/..%2f..%2f..%2fbrief.txt",
         f"{base}/context/%2e%2e/brief.txt",
         f"{base}/plans/1/plan.pdf",
+        f"{base}/jobs/j1/renders/3-south.jpg",
+        f"{base}/scene/jobs/j1/renders/3-south.jpg",
         f"{base}/brief.txt",
         "/shared/nope/scene/index.html",
     )
@@ -302,6 +310,7 @@ async def test_the_readonly_token_reads_every_organisation_and_writes_nothing(
         assert (await claude.get(f"/api/v1/projects/{pid}/files")).status_code == 200
         assert (await claude.head(f"/scenes/{pid}/versions/1/src/scene.js")).status_code == 200
         assert (await claude.get(f"/scenes/{pid}/versions/1/index.html")).status_code == 200
+        assert (await claude.get(f"/scenes/{pid}/jobs/j1/renders/3-south.jpg")).status_code == 200
     assert (await claude.get("/api/v1/kits")).status_code == 200
     for method, path in (
         ("POST", f"/api/v1/projects/{pa}/share"),

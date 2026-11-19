@@ -7,6 +7,7 @@ import secrets
 import shutil
 import zipfile
 from collections.abc import AsyncIterator
+from functools import partial
 from pathlib import Path
 from typing import Annotated
 
@@ -26,6 +27,7 @@ from housegen.agent.schemas import Critique
 from housegen.core.config import get_settings
 from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
+from housegen.jobs import pictures as job_pictures
 from housegen.jobs.manager import job_manager
 from housegen.limits import service as limits
 from housegen.projects import crud
@@ -669,11 +671,19 @@ async def job_events(
     job = await crud.get_job(session, job_id)
     if job.project_id != project_id:
         raise NotFoundError("job not found")
+    events = [
+        {
+            "seq": e.seq,
+            "type": e.type,
+            "payload": json.loads(e.payload_json),
+            "created_at": e.created_at,
+        }
+        for e in await crud.list_job_events(session, job_id)
+    ]
     return [
-        JobEventOut(
-            seq=e.seq, type=e.type, payload=json.loads(e.payload_json), created_at=e.created_at
-        )
-        for e in await crud.list_job_events(session, job_id, after)
+        JobEventOut.model_validate(e)
+        for e in job_pictures.readable(ProjectStorage(project_id), events)
+        if e["seq"] > after
     ]
 
 
@@ -691,8 +701,12 @@ async def job_stream(
     if job.project_id != project_id:
         raise NotFoundError("job not found")
 
+    st = ProjectStorage(project_id)
+
     async def gen() -> AsyncIterator[dict[str, str]]:
-        async for ev in job_manager.stream(job_id, after):
+        async for ev in job_manager.stream(
+            job_id, after, replayed=partial(job_pictures.readable, st)
+        ):
             if await request.is_disconnected():
                 break
             msg = {"event": ev["type"], "data": json.dumps(ev, default=str)}

@@ -17,7 +17,7 @@ import httpx
 
 from housegen.core.config import get_settings
 from housegen.core.exceptions import RenderError
-from housegen.render.renderer import Renderer, RenderResult
+from housegen.render.renderer import Renderer, RenderResult, write_replacing
 
 logger = logging.getLogger(__name__)
 
@@ -108,9 +108,9 @@ class RemoteRenderer:
             report=data.get("report") if isinstance(data.get("report"), dict) else None,
         )
         for view, b64 in data.get("images", {}).items():
-            path = out_dir / f"{view}.jpg"
-            path.write_bytes(base64.b64decode(b64))
-            result.images[str(view)] = path
+            result.images[str(view)] = write_replacing(
+                out_dir / f"{view}.jpg", base64.b64decode(b64)
+            )
         result.duration_ms = int((time.perf_counter() - started) * 1000)
         logger.info(
             "render.remote.done",

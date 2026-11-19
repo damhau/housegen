@@ -5,6 +5,8 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
+import secrets
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -347,9 +349,22 @@ class Renderer:
         return result
 
 
+def write_replacing(path: Path, data: bytes) -> Path:
+    """Write `path` as a new file renamed over the old one, never into it: a job keeps its
+    pictures as hard links to the working copy's (#121), which an in-place write would change."""
+    tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
+    try:
+        tmp.write_bytes(data)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return path
+
+
 def _to_jpeg(png: bytes, path: Path, width: int, quality: int) -> Path:
     img = Image.open(io.BytesIO(png)).convert("RGB")
     if img.width > width:
         img = img.resize((width, int(img.height * width / img.width)), Image.Resampling.LANCZOS)
-    img.save(path, "JPEG", quality=quality, optimize=True)
-    return path
+    out = io.BytesIO()
+    img.save(out, "JPEG", quality=quality, optimize=True)
+    return write_replacing(path, out.getvalue())

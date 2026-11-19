@@ -34,8 +34,9 @@ class RevalidatedStaticFiles(StaticFiles):
 
 
 class SceneFiles(RevalidatedStaticFiles):
-    """/scenes/<project>/…: the scene working copy, versions, renders, photos, plan sheets and
-    surroundings of a project, checked by `check_scene_access` before any file is looked up."""
+    """/scenes/<project>/…: the scene working copy, versions, renders, jobs' pictures, photos, plan
+    sheets and surroundings of a project, checked by `check_scene_access` before any file is looked
+    up."""
 
     async def get_response(self, path: str, scope: Scope) -> Response:
         project_id = path.replace(os.sep, "/").split("/", 1)[0]

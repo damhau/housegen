@@ -31,6 +31,11 @@ class JobContext:
         self.project_id = project_id
         self._seq = 0
 
+    @property
+    def next_seq(self) -> int:
+        """The seq of the next persisted event, until something awaits before emitting it."""
+        return self._seq + 1
+
     async def emit(self, type_: str, **payload: Any) -> None:
         """Persisted event: replayed on reload, shown in the timeline."""
         self._seq += 1
@@ -139,23 +144,37 @@ class JobManager:
     def is_running(self, job_id: str) -> bool:
         return job_id in self._tasks
 
-    async def stream(self, job_id: str, after_seq: int = 0) -> AsyncIterator[Event]:
-        """Replay persisted events, then follow live ones until the job ends."""
+    async def stream(
+        self,
+        job_id: str,
+        after_seq: int = 0,
+        replayed: Callable[[list[Event]], list[Event]] | None = None,
+    ) -> AsyncIterator[Event]:
+        """Replay persisted events, then follow live ones until the job ends. `replayed` sees the
+        whole job's persisted events before those after `after_seq` are sent."""
         q: asyncio.Queue[Event | None] = asyncio.Queue()
         running = self.is_running(job_id)
         if running:
             self._subscribers.setdefault(job_id, []).append(q)
         async with session_factory()() as session:
-            past = await crud.list_job_events(session, job_id, after_seq)
-        last = after_seq
-        for row in past:
-            last = row.seq
-            yield {
+            rows = await crud.list_job_events(session, job_id, 0 if replayed else after_seq)
+        past: list[Event] = [
+            {
                 "seq": row.seq,
                 "type": row.type,
                 "payload": json.loads(row.payload_json),
                 "created_at": row.created_at.isoformat(),
             }
+            for row in rows
+        ]
+        if replayed is not None:
+            past = replayed(past)
+        last = after_seq
+        for stored in past:
+            if stored["seq"] <= after_seq:
+                continue
+            last = stored["seq"]
+            yield stored
         if not running:
             return
         while True:

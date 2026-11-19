@@ -29,8 +29,10 @@ turns a one-shot lottery into a converging process.
   are stored on the version as a review to apply on request, nothing is fixed unasked.
 * Both providers stream: the UI shows the model's phase, its reasoning summary, a token counter and, for the builder, the code as it is written.
 
-Every pass is snapshotted as a version (code + renders); restore is one click. The LLM layer is
-provider-agnostic: **Anthropic** (Messages API) or **OpenAI-compatible** (Chat Completions).
+Every pass is snapshotted as a version (code + renders); restore is one click. A job keeps the pictures of each
+of its renders in the project's `jobs/<job>/renders/` (hard links to the working copy's files, which every render
+replaces), so its conversation shows what each step drew after a restore or a later job; they go with the project.
+The LLM layer is provider-agnostic: **Anthropic** (Messages API) or **OpenAI-compatible** (Chat Completions).
 
 ## Layout
 
@@ -243,7 +245,7 @@ Everything is behind the session (#105). Every `/api/v1/**` route, the job event
 signed out and 403 (`no_organisation`) before the first organisation. The public routes are `/api/v1/health`,
 `/api/v1/me`, an invitation link's preview (`GET /api/v1/invitations/<token>`), a share link's view
 (`GET /api/v1/shared/<token>`) and `/auth/*`. A project's routes and its files (`/scenes/<id>/…`: the scene, the
-versions, the renders, the photos, the plan sheets, the surroundings) are those of the organisation the session works
+versions, the renders, the jobs' pictures, the photos, the plan sheets, the surroundings) are those of the organisation the session works
 in; another organisation's project answers 404, as one that does not exist. The check runs before a route does, so
 before any job is enqueued. `/kit/**` and the SPA's pages stay public: the SPA sends a signed-out visitor to sign in.
 

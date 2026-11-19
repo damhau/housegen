@@ -6,6 +6,7 @@ data/projects/<id>/
     photos/<side>.jpg
     scene/                 working copy (index.html + src/*.js)
     versions/<n>/          snapshot of scene/ + renders/<view>.jpg
+    jobs/<job>/renders/    each `render` event's pictures, <seq>-<view>.jpg (#121)
 
 Projects created before #10 had plan.pdf + plan/page-N.png; `migrate_plan_layout` moves them
 to plans/1/ once at startup so there is a single layout.
@@ -17,6 +18,7 @@ import logging
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 import pymupdf
 
@@ -47,6 +49,7 @@ class ProjectStorage:
         self.photos_dir = self.root / "photos"
         self.scene_dir = self.root / "scene"
         self.versions_dir = self.root / "versions"
+        self.jobs_dir = self.root / "jobs"
 
     def ensure(self) -> None:
         for d in (self.root, self.plans_dir, self.photos_dir, self.scene_dir, self.versions_dir):
@@ -74,6 +77,12 @@ class ProjectStorage:
             return {}
         folder = base or self.version_url(version)
         return {p.stem: f"{folder}/renders/{p.name}" for p in sorted(d.glob("*.jpg"))}
+
+    def job_renders_dir(self, job_id: str) -> Path:
+        return self.jobs_dir / job_id / "renders"
+
+    def job_render_url(self, job_id: str, name: str) -> str:
+        return f"/scenes/{self.project_id}/jobs/{job_id}/renders/{quote(name)}"
 
     def photo_url(self, filename: str) -> str:
         return f"/scenes/{self.project_id}/photos/{filename}"
