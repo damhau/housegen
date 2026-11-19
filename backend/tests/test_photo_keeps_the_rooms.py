@@ -373,6 +373,25 @@ def test_a_dressed_scene_gets_the_small_staging_the_3d_lacks(
     ]
 
 
+def test_a_desks_stationery_is_put_back_in_its_cup(
+    photo: ModuleType, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Poly Haven's stationery_supplies is a product shot, its pens in a row in the air beside their cup (#136)."""
+    relaid: list[Any] = []
+    monkeypatch.setitem(photo.stage.RELAID, "stationery_supplies", relaid.append)
+    monkeypatch.setattr(photo.stage, "log", lambda *a: None)
+    monkeypatch.setattr(photo.objlib, "path", lambda e: e["id"])
+    monkeypatch.setattr(
+        photo, "place", lambda scene, path, *a, **k: ({"file": path}, _V((0.3, 0.08, 0.16)))
+    )
+    for name in ("stationery_supplies", "office_notepads"):
+        photo.stage.put(
+            SimpleNamespace(), {"name": "Ch.3"}, {"id": name, "role": "desk"}, (0, 0, 0)
+        )
+    assert [r["file"] for r in relaid] == ["stationery_supplies"]
+    assert relaid[0]["obj_id"] == "stationery_supplies"
+
+
 def test_a_dressed_scene_without_the_library_clears_no_coffee_table(
     photo: ModuleType, monkeypatch: pytest.MonkeyPatch
 ) -> None:

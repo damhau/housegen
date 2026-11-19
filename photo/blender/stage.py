@@ -14,7 +14,7 @@ there.
 import math
 
 import bpy
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 import objlib
 import style as S
@@ -38,8 +38,49 @@ def within(w=9.0, d=9.0, h=9.0, low=0.0):
     return fit
 
 
+def pens_in_cup(root):
+    """Poly Haven's stationery_supplies is a product shot: its pens and pencils lie in a row in the air beside their
+    cup, a fan against the wall on a desk (#136). Each stands in the cup, leaning out a little, the eraser on the desk
+    beside it."""
+    bpy.context.view_layer.update()
+    inv = root.matrix_world.inverted()
+    meshes = [c for c in root.children_recursive if c.type == "MESH"]
+
+    def span(c):
+        ps = [inv @ (c.matrix_world @ Vector(v)) for v in c.bound_box]
+        return Vector([min(p[i] for p in ps) for i in range(3)]), Vector([max(p[i] for p in ps) for i in range(3)])
+
+    cup = next((c for c in meshes if "pencilcup" in c.name), None)
+    if cup is None:
+        return
+    lo, hi = span(cup)
+    centre, r = (lo + hi) / 2, min(hi.x - lo.x, hi.y - lo.y) / 2
+    pens = sorted((c for c in meshes if c is not cup and "eraser" not in c.name), key=lambda c: c.name)
+    for k, c in enumerate(pens):
+        a, b = span(c)
+        phi = 2 * math.pi * k / len(pens) + 0.4
+        out = Vector((math.cos(phi), math.sin(phi), 0.0))
+        tilt = math.radians(5 + 4 * (k % 2))
+        # lying along x: the cap or ferrule end (x max) goes down, the tip up; its axis at the rim stays inside it
+        up = Vector((-1.0, 0.0, 0.0)).rotation_difference(Vector((0.0, 0.0, 1.0)) * math.cos(tilt) + out * math.sin(tilt))
+        base = Vector((centre.x, centre.y, lo.z + 0.005)) + out * 0.35 * r
+        end = Vector((b.x, (a.y + b.y) / 2, (a.z + b.z) / 2))
+        local = Matrix.Translation(base) @ up.to_matrix().to_4x4() @ Matrix.Translation(-end) @ inv @ c.matrix_world
+        c.matrix_world = root.matrix_world @ local
+    for c in meshes:
+        if "eraser" in c.name:
+            a, b = span(c)
+            to = Vector((lo.x - 0.035, centre.y - 0.01, lo.z)) - Vector(((a.x + b.x) / 2, (a.y + b.y) / 2, a.z))
+            c.matrix_world = root.matrix_world @ Matrix.Translation(to) @ inv @ c.matrix_world
+
+
+RELAID = {"stationery_supplies": pens_in_cup}  # catalogue models laid out for a product shot, put as on a desk
+
+
 def put(scene, room, e, at, turn_deg=0.0, height=None):
     root, size = H.place(scene, objlib.path(e), at, height=height, turn_deg=turn_deg, name=e["id"], tallest=e["role"] == "plant")
+    if e["id"] in RELAID:
+        RELAID[e["id"]](root)
     root["obj_id"] = e["id"]
     root["obj_role"] = e["role"]
     log(f"{e['role']} {e['id']} ({size.x:.2f} x {size.y:.2f} x {size.z:.2f}) in {room['name'] if isinstance(room, dict) else room}")

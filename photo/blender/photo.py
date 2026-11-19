@@ -953,18 +953,32 @@ def mattress_of(parts, spans, levels):
     return None
 
 
-def soft_piece(scene, c, role, material, yaw):
-    """Kit pillow or cushion `c` drawn as throw_pillows_01's pillow02 where the kit put it: a sleeping pillow lying at
-    its size and tilt, the others standing (the model's own lean) at its width."""
+def soft_piece(scene, c, role, material, yaw, widest=9.0):
+    """Kit pillow or cushion `c` drawn as throw_pillows_01's pillow02 where the kit put it: a sleeping pillow on its back
+    at its size and tilt, at most `widest` m across (its corners are points the kit's block has not), the others
+    standing (the model's own lean) at its width."""
     lo, hi = Vector(c.bound_box[0]), Vector(c.bound_box[6])
     size, mid = hi - lo, (lo + hi) / 2
     root = cushion(scene, "pillow02", (0.0, 0.0, 0.0), 0.0, 1.0, material)
     bpy.context.view_layer.update()
-    ps = [m.matrix_world @ Vector(v) for m in root.children_recursive if m.type == "MESH" for v in m.bound_box]
-    pw, pd, ph = (max(p[i] for p in ps) - min(p[i] for p in ps) for i in range(3))
-    if role == "pillow":  # on its back, its height along the bed
-        root.matrix_world = (c.matrix_world @ Matrix.Translation(mid) @ Matrix.Diagonal((size.x / pw, size.y / ph, size.z / pd, 1))
-                             @ Matrix.Rotation(math.radians(-90), 4, "X") @ Matrix.Translation((0, 0, -ph / 2)))
+    meshes = [m for m in root.children_recursive if m.type == "MESH"]
+    ps = [m.matrix_world @ Vector(v) for m in meshes for v in m.bound_box]
+    pw = max(p.x for p in ps) - min(p.x for p in ps)
+    if role == "pillow":
+        # on its back by its own axes (widest across, thinnest up): turned a quarter, the model's lean and slight turn
+        # became a tilt, squashed to the kit's height into a slab standing out past the mattress, its corners as
+        # wings (#136). The turn goes on the meshes, the squash on the root: an object's own matrix holds no shear.
+        v = np.concatenate([verts_in(m, m.matrix_world) for m in meshes])  # the root is at the origin, unturned
+        axes = np.linalg.eigh(np.cov(v.T))[1][:, ::-1].T
+        if np.linalg.det(axes) < 0:
+            axes[2] *= -1
+        f = v @ axes.T
+        a, b = f.min(axis=0), f.max(axis=0)
+        flat = Matrix.Translation(Vector(-(a + b) / 2)) @ Matrix(axes.tolist()).to_4x4()
+        for m in meshes:
+            m.matrix_world = flat @ m.matrix_world
+        size.x = min(size.x, widest / c.matrix_world.to_scale().x)
+        root.matrix_world = c.matrix_world @ Matrix.Translation(mid) @ Matrix.Diagonal((*(size[i] / (b[i] - a[i]) for i in range(3)), 1))
         return root
     s = size.x * c.matrix_world.to_scale().x / pw
     root.scale = (s, s, s)
@@ -1065,7 +1079,7 @@ def make_up(scene, o, frame, length, decor):
     own = {"pillow": own_linen, "upright": own_linen, "cushion": (0.16, 0.19, 0.13)}
     for role in SOFT:
         for c in parts[role]:
-            soft_piece(scene, c, role, soft[role](colour(c, own[role])), yaw)
+            soft_piece(scene, c, role, soft[role](colour(c, own[role])), yaw, widest=w - 0.2)
     if not kit:
         pillowed = parts["pillow"] or parts["upright"] or all(s[1].y < -head - 0.3 for s in spans.values())
         if not pillowed:

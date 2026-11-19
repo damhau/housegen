@@ -155,7 +155,7 @@ for p in pillows:
     collider(p, 0.006)
 
 # the duvet: soft linen that shrinks a little as it settles (creases), pinned under the pillows
-along = L - 0.02
+along = L - 0.05  # its weight over the foot keeps the shrinking cloth smooth: at L - 0.12 it settled in lumps
 duvet = sheet("duvet", along, W + 0.45, 96, 100)
 tex = bpy.data.textures.new("ripple", "CLOUDS")
 tex.noise_scale = 0.3
@@ -166,8 +166,13 @@ d.strength = 0.12
 bpy.context.view_layer.objects.active = duvet
 bpy.ops.object.modifier_apply(modifier="ripple")
 xs = [v.co.x for v in duvet.data.vertices]
+# pinned over the mattress only and flat on it: a head edge pinned across the overhang held its corners out in the
+# air, a stiff sail standing up beside the pillows (#136)
+head = [v for v in duvet.data.vertices if v.co.x < min(xs) + 0.03 and abs(v.co.y) < W / 2 - 0.05]
+for v in head:
+    v.co.z = 0.0
 pin = duvet.vertex_groups.new(name="pin")
-pin.add([v.index for v in duvet.data.vertices if v.co.x < min(xs) + 0.03], 1.0, "REPLACE")
+pin.add([v.index for v in head], 1.0, "REPLACE")
 duvet.location = (0.70 + along / 2, 0.0, TOP + 0.03)
 cloth_settings(duvet, 0.5, 0.05, tension=12.0, shrink=0.08, pin="pin")
 settle([duvet], FRAMES)
