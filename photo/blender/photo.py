@@ -9,8 +9,8 @@ What it decides, from the export (house.blend from export.py's GLB) and rooms.js
   tables, counters and bathrooms dressed;
 - the sun: a real sun position for the site's latitude that puts sun patches in the room the camera sees (camera
   rays, then shadow rays toward each candidate, then thumbnails);
-- the grade: AgX High Contrast; exposure and white balance from a preview, to a target median of the room and
-  a target warmth of its walls.
+- the grade: AgX High Contrast; exposure and white balance from a preview, to a target median of the room and the
+  walls and wall tiles in the frame in their own colours, a little warmer (balance.py).
 """
 
 import json
@@ -21,6 +21,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections import Counter
 
 import addon_utils
 import bmesh
@@ -32,6 +33,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import artlib  # noqa: E402
+import balance  # noqa: E402
 import catalogue  # noqa: E402
 import dress  # noqa: E402
 import objlib  # noqa: E402
@@ -56,7 +58,7 @@ FLASH_W = float(os.environ.get("PHOTO_FLASH_W", "150"))
 LAMPS = 0.4  # the lamps of a room without sun, x their full strength
 THUMBS = 10  # candidate suns rendered as thumbnails
 LOOK = "AgX - High Contrast"
-TARGET_MEDIAN, TARGET_WALL_B, TARGET_WALL_A = 155.0, 4.0, 0.5  # sRGB luminance 0-255 of the room; CIELAB b*, a* of its walls
+TARGET_MEDIAN = 155.0  # sRGB luminance 0-255 of the room
 CLIP_MAX = 0.03  # at most this share of the frame at white...
 CLIP_PULL = 0.5  # ...by lowering the median's exposure at most this many stops (darker than that reads as a grey veil)
 CACHE = paths.CACHE
@@ -1820,7 +1822,7 @@ def next_rooms_lit(scene, rays, rooms, room, sy):
     """A hall or a staircase seen through a doorway reads as a black hole in a daylight photo: photographers
     switch its lights on. A soft panel under its ceiling, out of the camera's sight (its own sconces read as hot
     spots at the frame's edge, r2a), its power by the floor area; rooms with windows of their own (the living
-    room seen from the kitchen) stay as they are."""
+    room seen from the kitchen) stay as they are. Returns the names of the rooms it lit."""
     plans = [r for r in rooms if abs(r["y"] - sy) < 0.1 and r is not room and r["use"] in PASSAGES]
     seen = {}
     for r in rays:
@@ -1853,9 +1855,9 @@ def next_rooms_lit(scene, rays, rooms, room, sy):
         o.visible_camera = False
         o.visible_glossy = False
         scene.collection.objects.link(o)
-        done.append(f"{p['name']} ({share * 100:.0f} %, {area:.1f} m2, {d.energy:.0f} W)")
-    if done:
-        log(f"next rooms lit: {', '.join(done)}")
+        done.append(p["name"])
+        log(f"next room lit: {p['name']} ({share * 100:.0f} %, {area:.1f} m2, {d.energy:.0f} W)")
+    return done
 
 
 HDRI_WOOD = -50.0  # the HDRI's direction (degrees from +x, its own frame) where it shows only the wood
@@ -1978,34 +1980,72 @@ def set_sun(scene, az, el):
     return lamp
 
 
-def lab_ab(rgb):
-    c = np.asarray(rgb, float) / 255.0
-    lin = np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
-    m = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]])
-    xyz = lin @ m.T / np.array([0.95047, 1.0, 1.08883])
-    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
-    return 500 * (f[0] - f[1]), 200 * (f[1] - f[2])
+def image_mean(img):
+    """An image's mean colour in linear RGB (Image.pixels holds an 8-bit image's sRGB values as they are)."""
+    px = np.empty(len(img.pixels), np.float32)
+    img.pixels.foreach_get(px)
+    px = px.reshape(-1, img.channels)[::7, :3]
+    return px.mean(axis=0) if img.is_float else balance.to_linear(px).mean(axis=0)
 
 
-def wall_samples(rays):
+def base_colour(sock, depth=0):
+    """The mean colour (linear RGB) a Base Color input gets: its value, its image's mean or the product of those; None
+    for anything else."""
+    if not sock.is_linked:
+        return np.array(sock.default_value[:3], float)
+    n = sock.links[0].from_node
+    if n.bl_idname == "ShaderNodeTexImage":
+        return image_mean(n.image) if n.image is not None and n.image.size[0] else None
+    if depth > 3 or getattr(n, "blend_type", None) != "MULTIPLY":
+        return None
+    if n.bl_idname == "ShaderNodeMix" and n.data_type == "RGBA":
+        fac, ins = n.inputs["Factor"], [i for i in n.inputs if i.type == "RGBA"]
+    elif n.bl_idname == "ShaderNodeMixRGB":
+        fac, ins = n.inputs[0], [n.inputs[1], n.inputs[2]]
+    else:
+        return None
+    if fac.is_linked or fac.default_value < 0.999:
+        return None
+    a, b = (base_colour(i, depth + 1) for i in ins)
+    return None if a is None or b is None else a * b
+
+
+def export_colours(scene):
+    """The colour of every wall, partition and wall-tile material as the export gives it (the project's finish, before
+    the shoot puts its scans and glazes on): what the white balance holds those surfaces to (#113)."""
+    out = {}
+    for o in scene.objects:
+        if o.type != "MESH" or not kinds(o) & balance.SURFACES:
+            continue
+        for s in o.material_slots:
+            m = s.material
+            if m is None or m.name in out or not m.use_nodes:
+                continue
+            q = next((n for n in m.node_tree.nodes if n.bl_idname == "ShaderNodeBsdfPrincipled"), None)
+            out[m.name] = None if q is None else base_colour(q.inputs["Base Color"])
+    return out
+
+
+def wall_samples(rays, rooms, sy, colours, lit=()):
+    """The camera rays the white balance reads (balance.reference): the walls and wall tiles of the storey's rooms
+    but those `lit` by the photo's own lamps, each with its room and its export colour."""
+    plans = [r for r in rooms if abs(r["y"] - sy) < 0.1]
     out = []
     for r in rays:
         if not r["interior"]:
             continue
         loc, n, obj, face = r["hit"]
-        if abs(n.z) > 0.2 or not kinds(obj) & {"wall", "partition"} or kinds(obj) & {"window", "door", "interiorDoor"}:
+        if abs(n.z) > 0.2 or not balance.surface(kinds(obj)):
             continue
         m, _ = material_at(obj, face)
-        if m is None:
-            continue
-        q = principled(m)
-        c = q.inputs["Base Color"].default_value
-        if q.inputs["Base Color"].is_linked or min(c[:3]) > 0.5:
-            out.append(r)
-    return out
+        x, _, z = to_scene(loc + n * 0.05)
+        where = next((p["name"] for p in plans if inside(p["polygon"], x, z)), None)
+        out.append({"ray": r, "room": where, "colour": colours.get(m.name) if m is not None else None})
+    return balance.reference(out, lit)
 
 
 def measure(scene, rays, walls, path):
+    """The room's median luminance (sRGB 0-255) and how far the photo moves `walls` off their own colours."""
     bpy.data.images["Render Result"].save_render(path, scene=scene)
     a = np.asarray(Image.open(path).convert("RGB")).astype(float)
     h, w, _ = a.shape
@@ -2016,11 +2056,15 @@ def measure(scene, rays, walls, path):
 
     room = [px(r) for r in rays if r["interior"]]
     lum = np.median([p @ np.array([0.2126, 0.7152, 0.0722]) for p in room]) if room else 128.0
-    ab = lab_ab(np.mean([px(r) for r in walls], axis=0)) if walls else None
-    return lum, ab
+    if not walls:
+        return lum, None
+    seen = np.mean([px(s["ray"]) for s in walls], axis=0)
+    return lum, balance.shift(seen, np.mean([s["colour"] for s in walls], axis=0))
 
 
-def grade(scene, rays, tmp):
+def grade(scene, rays, walls, tmp):
+    """Exposure to a target median of the room; white balance so that `walls` (wall_samples) show their own colours
+    with the grade's warmth (balance.WARMTH)."""
     vs = scene.view_settings
     vs.view_transform = "AgX"
     vs.look = LOOK
@@ -2028,7 +2072,6 @@ def grade(scene, rays, tmp):
     vs.white_balance_temperature = 6500.0
     vs.white_balance_tint = 0.0
     vs.exposure = 0.0
-    walls = wall_samples(rays)
 
     def clipped():
         return float((np.asarray(Image.open(tmp).convert("RGB")).max(axis=2) >= 250).mean())
@@ -2075,15 +2118,16 @@ def grade(scene, rays, tmp):
         setattr(vs, attr, (lo + hi) / 2)
 
     solve_exposure()
-    solve("white_balance_temperature", 4000.0, 12000.0, 1, TARGET_WALL_B)
-    solve("white_balance_tint", -30.0, 30.0, 0, TARGET_WALL_A, 6)
-    solve("white_balance_temperature", 4000.0, 12000.0, 1, TARGET_WALL_B)
+    warm_a, warm_b = balance.WARMTH
+    solve("white_balance_temperature", 4000.0, 12000.0, 1, warm_b)
+    solve("white_balance_tint", -30.0, 30.0, 0, warm_a, 6)
+    solve("white_balance_temperature", 4000.0, 12000.0, 1, warm_b)
     solve_exposure()
     lum, ab = measure(scene, rays, walls, tmp)
     clip = clipped()
     log(f"grade: exposure {vs.exposure:+.2f}, white {vs.white_balance_temperature:.0f} K, tint "
-        f"{vs.white_balance_tint:+.1f} -> room median {lum:.0f}, wall a* b* "
-        f"{ab if ab is None else (round(ab[0], 1), round(ab[1], 1))} ({len(walls)} wall samples), "
+        f"{vs.white_balance_tint:+.1f} -> room median {lum:.0f}, walls a* b* "
+        f"{ab if ab is None else (round(ab[0], 1), round(ab[1], 1))} off their own colour ({len(walls)} samples), "
         f"{clip * 100:.1f} % of the frame at white")
 
 
@@ -2212,6 +2256,7 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
     device = f"{kind}: {', '.join(devices)}"
     scene = bpy.context.scene
     catalogue.init(scene)
+    colours = export_colours(scene)
     still.base(scene)
     scene.render.use_persistent_data = True
     still.lamps_off(scene)
@@ -2278,14 +2323,16 @@ def run(blend, rooms, cam_spec, out, width=1920, height=1080, samples=256, sun=N
         lit = room_lamps if room_lamps is not None else frac < 0.05 and not (THUMBS and len(cands) > 1 and frac >= 0.03)
         if lit:
             lamps_on(scene, room)
-        next_rooms_lit(scene, rays, rooms, room, sy)
+        walls = wall_samples(rays, rooms, sy, colours, next_rooms_lit(scene, rays, rooms, room, sy))
+        where = ", ".join(f"{k} {v}" for k, v in Counter(s["room"] for s in walls).most_common())
+        log(f"white balance: on the walls and wall tiles in the frame, samples by room: {where or 'none'}")
         bounce_flash(scene, scene.camera)
         seconds["sun"] = round(time.time() - t, 1)
         t = time.time()
         scene.render.resolution_x, scene.render.resolution_y = PREVIEW_W, round(PREVIEW_W * height / width)
         scene.cycles.samples = PREVIEW_SAMPLES
         bpy.ops.render.render()
-        grade(scene, rays, os.path.join(tmp, "preview.png"))
+        grade(scene, rays, walls, os.path.join(tmp, "preview.png"))
         seconds["preview"] = round(time.time() - t, 1)
         t = time.time()
         scene.render.resolution_x, scene.render.resolution_y = width, height
