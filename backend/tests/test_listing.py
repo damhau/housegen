@@ -1070,3 +1070,16 @@ async def test_any_room_of_the_house_is_shot_on_demand(
 
     r = await app_client.post(url, json={"room": "Grenier"})
     assert r.status_code == 422
+
+    wc = next(p for p in ls["photos"] if p["room"] == "WC")
+    before = _photo_bytes(pid)
+    r = await app_client.post(f"{url}/1/remove", json={"room": "WC"})
+    assert r.status_code == 200, r.text
+    assert [p["room"] for p in r.json()["photos"]] == [
+        p["room"] for p in ls["photos"] if p["room"] != "WC"
+    ]
+    assert next(x for x in r.json()["rooms"] if x["room"] == "WC")["in_set"] is False
+    assert _photo_bytes(pid) == {k: v for k, v in before.items() if k != f"{wc['key']}.jpg"}
+    assert not list((version / "listing" / "previews").glob(f"{wc['key']}-*.jpg"))
+    assert (await app_client.post(f"{url}/1/remove", json={"room": "WC"})).status_code == 404
+    assert (await app_client.post(f"{url}/1/remove", json={"room": "exterior"})).status_code == 404

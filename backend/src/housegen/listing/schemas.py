@@ -111,5 +111,5 @@ class ListingRequest(BaseModel):
 
 class ListingUnitRequest(BaseModel):
     room: str = Field(
-        description="the unit whose previous photos come back: a room's name, or `exterior`"
+        description="the unit: a room's name, or `exterior` for the views from outside"
     )

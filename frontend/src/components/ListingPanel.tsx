@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { Camera, ChevronLeft, ChevronRight, Download, ImageOff, Loader2, Plus, RefreshCw, Square, Undo2, X } from "lucide-react"
-import { getGetListingQueryKey, useBringBackListingPhoto, useGetListing, useStartListing } from "@/api/endpoints/listing/listing"
+import { getGetListingQueryKey, useBringBackListingPhoto, useGetListing, useRemoveListingRoom, useStartListing } from "@/api/endpoints/listing/listing"
 import { getListJobsQueryKey, useCancelJob } from "@/api/endpoints/projects/projects"
 import { ListingOutExteriors, ListingOutStaging, type JobOut, type ListingOut, type ListingPhotoOut, type ListingRoomOut } from "@/api/model"
 import { fmtUsd } from "@/components/RunSummaryCard"
@@ -105,6 +105,7 @@ export function ListingPanel({
   })
   const start = useStartListing()
   const back = useBringBackListingPhoto()
+  const drop = useRemoveListingRoom()
   const cancel = useCancelJob()
   const [open, setOpen] = useState<number | null>(null)
   const [picked, setPicked] = useState<ListingOutStaging | null>(null)
@@ -137,6 +138,11 @@ export function ListingPanel({
   async function bringBack(room: string) {
     if (!set) return
     await back.mutateAsync({ projectId, version: set.version, data: { room } })
+    void qc.invalidateQueries({ queryKey: getGetListingQueryKey(projectId) })
+  }
+  async function removeRoom(room: string) {
+    if (!set || !window.confirm(`Take ${unitLabel(set, room)} out of the set? Its photo is deleted; the room can be shot again from the list.`)) return
+    await drop.mutateAsync({ projectId, version: set.version, data: { room } })
     void qc.invalidateQueries({ queryKey: getGetListingQueryKey(projectId) })
   }
   async function stop() {
@@ -237,6 +243,7 @@ export function ListingPanel({
       </div>
       {start.error && <p className="text-xs text-destructive">{errorMessage(start.error)}</p>}
       {back.error && <p className="text-xs text-destructive">{errorMessage(back.error)}</p>}
+      {drop.error && <p className="text-xs text-destructive">{errorMessage(drop.error)}</p>}
       {!job && lastJob?.status === "failed" && <p className="text-xs text-destructive">The last shoot failed: {lastJob.error}</p>}
       {(data?.sets.length ?? 0) > 1 && (
         <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
@@ -258,10 +265,11 @@ export function ListingPanel({
           currentVersion={currentVersion}
           live={shootingThis && reshooting === null}
           reshooting={reshooting}
-          busy={job !== null || !data?.available || start.isPending || back.isPending}
+          busy={job !== null || !data?.available || start.isPending || back.isPending || drop.isPending}
           onOpen={setOpen}
           onShoot={(room) => void shootRoom(room)}
           onBack={(room) => void bringBack(room)}
+          onRemove={(room) => void removeRoom(room)}
         />
       ) : (
         !job && <p className="text-xs text-muted-foreground">No set yet.</p>
@@ -295,6 +303,7 @@ function SetView({
   onOpen,
   onShoot,
   onBack,
+  onRemove,
 }: {
   set: ListingOut
   currentVersion: number
@@ -307,6 +316,7 @@ function SetView({
   onOpen: (i: number) => void
   onShoot: (room: string) => void
   onBack: (room: string) => void
+  onRemove: (room: string) => void
 }) {
   const ready = set.photos.filter((p) => p.url)
   const rooms = set.rooms ?? []
@@ -406,6 +416,12 @@ function SetView({
                               onClick={() => onBack(p.room)}
                             />
                           )}
+                          <UnitAction
+                            icon={<X />}
+                            title={`Take ${p.title} out of the set: its photo is deleted, the room can be shot again from the list`}
+                            disabled={busy}
+                            onClick={() => onRemove(p.room)}
+                          />
                         </>
                       )}
                     </div>

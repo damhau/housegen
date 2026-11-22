@@ -307,6 +307,82 @@ export const useBringBackListingPhoto = <TError = HTTPValidationError,
       return useMutation(mutationOptions, queryClient);
     }
     /**
+ * Take a room out of the set (#142): its photo and the one it replaced are deleted, and the
+room can be shot again from the list of the house's rooms.
+ * @summary Remove Listing Room
+ */
+export const getRemoveListingRoomUrl = (projectId: string,
+    version: number,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/listing/${version}/remove`
+}
+
+export const removeListingRoom = async (projectId: string,
+    version: number,
+    listingUnitRequest: ListingUnitRequest, options?: RequestInit): Promise<ListingOut> => {
+  
+  return httpClient<ListingOut>(getRemoveListingRoomUrl(projectId,version),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      listingUnitRequest,)
+  }
+);}
+
+
+
+
+export const getRemoveListingRoomMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeListingRoom>>, TError,{projectId: string;version: number;data: ListingUnitRequest}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeListingRoom>>, TError,{projectId: string;version: number;data: ListingUnitRequest}, TContext> => {
+
+const mutationKey = ['removeListingRoom'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeListingRoom>>, {projectId: string;version: number;data: ListingUnitRequest}> = (props) => {
+          const {projectId,version,data} = props ?? {};
+
+          return  removeListingRoom(projectId,version,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveListingRoomMutationResult = NonNullable<Awaited<ReturnType<typeof removeListingRoom>>>
+    export type RemoveListingRoomMutationBody = ListingUnitRequest
+    export type RemoveListingRoomMutationError = HTTPValidationError
+
+    /**
+ * @summary Remove Listing Room
+ */
+export const useRemoveListingRoom = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeListingRoom>>, TError,{projectId: string;version: number;data: ListingUnitRequest}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof removeListingRoom>>,
+        TError,
+        {projectId: string;version: number;data: ListingUnitRequest},
+        TContext
+      > => {
+
+      const mutationOptions = getRemoveListingRoomMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
  * The version's listing photos in one ZIP, named in listing order with their captions.
  * @summary Listing Zip
  */

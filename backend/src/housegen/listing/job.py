@@ -334,6 +334,28 @@ def bring_back(st: ProjectStorage, version: int, unit: str) -> bool:
     return True
 
 
+def remove(st: ProjectStorage, version: int, room: str) -> bool:
+    """Take a room out of its set (#142): its photo, its previews and the photo a one-room shoot replaced go with it,
+    and the panel's list offers it again. False when the set has no photo of the room."""
+    doc = read_set(st, version)
+    old = [x for x in (doc or {}).get("shots", []) if x["room"] == room and x["use"] != "exterior"]
+    if not doc or not old:
+        return False
+    out = listing_dir(st, version)
+    for x in old:
+        for field in ("photos", "choices", "errors", "previews"):
+            doc.get(field, {}).pop(x["key"], None)
+        (out / f"{x['key']}.jpg").unlink(missing_ok=True)
+        for p in (out / "previews").glob(f"{x['key']}-*.jpg"):
+            p.unlink()
+    for photo in doc.get("previous", {}).pop(room, {}).get("photos", {}).values():
+        (out / PREVIOUS / photo["file"]).unlink(missing_ok=True)
+    doc["shots"] = [x for x in doc["shots"] if x not in old]
+    doc["status"] = _status(doc)
+    _write_set(st, version, doc)
+    return True
+
+
 def _summary(record: dict[str, Any], version: int) -> str:
     if record["room"] == EXTERIOR:
         return f"The building from outside shot again: {record['photos']} photos in version {version}'s set"

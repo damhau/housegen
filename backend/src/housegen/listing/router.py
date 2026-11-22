@@ -25,6 +25,7 @@ from housegen.listing.job import (
     default_exteriors,
     listing_dir,
     read_set,
+    remove,
     version_rooms,
 )
 from housegen.listing.schemas import (
@@ -275,6 +276,27 @@ async def bring_back_listing_photo(
         raise NotFoundError("the set keeps no previous photo of this room")
     logger.info(
         "listing.brought_back",
+        extra={"project_id": project_id, "version": version, "room": body.room},
+    )
+    out = listing_out(st, version, project.current_version)
+    assert out is not None
+    return out
+
+
+@router.post("/{project_id}/listing/{version}/remove")
+async def remove_listing_room(
+    session: DbSession, project_id: str, version: int, body: ListingUnitRequest
+) -> ListingOut:
+    """Take a room out of the set (#142): its photo and the one it replaced are deleted, and the
+    room can be shot again from the list of the house's rooms."""
+    project = await crud.get_project(session, project_id)
+    if await crud.active_job(session, project_id, ("listing",)):
+        raise ConflictError("a listing set is being shot: wait for it to end")
+    st = ProjectStorage(project_id)
+    if not remove(st, version, body.room):
+        raise NotFoundError("the set has no photo of this room")
+    logger.info(
+        "listing.removed",
         extra={"project_id": project_id, "version": version, "room": body.room},
     )
     out = listing_out(st, version, project.current_version)

@@ -6,6 +6,6 @@
  */
 
 export interface ListingUnitRequest {
-  /** the unit whose previous photos come back: a room's name, or `exterior` */
+  /** the unit: a room's name, or `exterior` for the views from outside */
   room: string;
 }
