@@ -40,6 +40,7 @@ class ListingRoomOut(BaseModel):
     caption: str
     storey: int = 0  # the floor, counted from the lowest
     in_set: bool = False  # the set has a photo of it
+    dress_as: str | None = None  # the use its photos are dressed for, when not its own
 
 
 class ListingReshootOut(BaseModel):
@@ -70,6 +71,7 @@ class ListingOut(BaseModel):
     photos: list[ListingPhotoOut]  # in listing order, grouped by unit
     rooms: list[ListingRoomOut] = Field(default_factory=list)  # every room, floor by floor
     reshoots: list[ListingReshootOut] = Field(default_factory=list)  # oldest first
+    dress_uses: list[str] = Field(default_factory=list)  # what a room's photos can be dressed as
 
 
 class ListingStatusOut(BaseModel):
@@ -106,6 +108,12 @@ class ListingRequest(BaseModel):
         "`exterior` for the views from outside. Its previews, the editor's pick and its "
         "photos, nothing else; they replace the unit's in the set, which keeps the replaced ones to bring back. "
         "The set's staging, exteriors and renderer are kept",
+    )
+    dress_as: str | None = Field(
+        None,
+        description="with `room`: the use the room's photos are dressed for (one of the set's `dress_uses`, or the "
+        "room's own use to dress it as itself again), for the listing only: the house keeps the room's use. "
+        "Default: what the set dresses it as",
     )
 
 

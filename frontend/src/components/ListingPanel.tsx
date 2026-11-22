@@ -129,9 +129,9 @@ export function ListingPanel({
     void qc.invalidateQueries({ queryKey: getGetListingQueryKey(projectId) })
   }
   /** One room of the shown set, or its views from outside, shot alone with the set's own settings (#142). */
-  async function shootRoom(room: string) {
+  async function shootRoom(room: string, dressAs?: string) {
     if (!set) return
-    await start.mutateAsync({ projectId, data: { version: set.version, room } })
+    await start.mutateAsync({ projectId, data: { version: set.version, room, ...(dressAs ? { dress_as: dressAs } : {}) } })
     setShown(set.version)
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
   }
@@ -267,7 +267,7 @@ export function ListingPanel({
           reshooting={reshooting}
           busy={job !== null || !data?.available || start.isPending || back.isPending || drop.isPending}
           onOpen={setOpen}
-          onShoot={(room) => void shootRoom(room)}
+          onShoot={(room, dressAs) => void shootRoom(room, dressAs)}
           onBack={(room) => void bringBack(room)}
           onRemove={(room) => void removeRoom(room)}
         />
@@ -314,7 +314,7 @@ function SetView({
   /** a listing job runs or the service is missing: no action can start */
   busy: boolean
   onOpen: (i: number) => void
-  onShoot: (room: string) => void
+  onShoot: (room: string, dressAs?: string) => void
   onBack: (room: string) => void
   onRemove: (room: string) => void
 }) {
@@ -346,7 +346,9 @@ function SetView({
           Shot on v{set.version}; the project is at v{currentVersion} now. Shoot again to show the current state.
         </p>
       )}
-      {rooms.length > 0 && <RoomPicker rooms={rooms} reshooting={reshooting} busy={busy} onShoot={onShoot} />}
+      {rooms.length > 0 && (
+        <RoomPicker rooms={rooms} uses={set.dress_uses ?? []} reshooting={reshooting} busy={busy} onShoot={onShoot} />
+      )}
       {byUnit(set.photos).map(([unit, photos]) => {
         const outside = photos[0]?.use === "exterior"
         return (
@@ -436,29 +438,60 @@ function SetView({
   )
 }
 
-/** Every room of the house, floor by floor from the lowest: any one shot alone (#142). */
+/** Room uses as the panel names them. */
+const USE_LABELS: Record<string, string> = {
+  living: "Living room",
+  "kitchen-living": "Kitchen and living room",
+  dining: "Dining room",
+  kitchen: "Kitchen",
+  bedroom: "Bedroom",
+  office: "Office",
+  bath: "Bathroom",
+  wc: "WC",
+  hall: "Hall",
+  laundry: "Laundry",
+  storage: "Storage",
+  cellar: "Cellar",
+  stair: "Stairs",
+  technical: "Plant room",
+  garage: "Garage",
+}
+const useLabel = (use: string) => USE_LABELS[use] ?? use
+
+/** Every room of the house, floor by floor from the lowest: any one shot alone (#142), dressed as its own use or
+ * another for the listing only. */
 function RoomPicker({
   rooms,
+  uses,
   reshooting,
   busy,
   onShoot,
 }: {
   rooms: ListingRoomOut[]
+  /** what a room's photos can be dressed as */
+  uses: string[]
   reshooting: string | null
   busy: boolean
-  onShoot: (room: string) => void
+  onShoot: (room: string, dressAs?: string) => void
 }) {
   const [room, setRoom] = useState("")
+  const [dress, setDress] = useState("")
   const floors = [...new Set(rooms.map((r) => r.storey ?? 0))]
   const chosen = rooms.find((r) => r.room === room)
   const name = (r: ListingRoomOut) => (r.unit ? `${r.unit} · ${r.caption}` : r.caption)
+  function choose(next: string) {
+    const r = rooms.find((x) => x.room === next)
+    setRoom(next)
+    setDress(r ? (r.dress_as ?? r.use) : "")
+  }
+  const dressed = chosen && dress && dress !== (chosen.dress_as ?? chosen.use) ? dress : undefined
   return (
     <section className="space-y-1.5">
       <h3 className="text-xs font-semibold">Shoot one room</h3>
       <div className="flex flex-wrap items-center gap-1.5">
         <select
           value={room}
-          onChange={(e) => setRoom(e.target.value)}
+          onChange={(e) => choose(e.target.value)}
           disabled={busy}
           aria-label="Room to shoot alone"
           className="h-7 min-w-0 max-w-[280px] flex-1 rounded-md border bg-background px-1 text-xs"
@@ -471,18 +504,38 @@ function RoomPicker({
                 .map((r) => (
                   <option key={r.room} value={r.room}>
                     {name(r)}
+                    {r.dress_as ? ` · dressed as ${useLabel(r.dress_as).toLowerCase()}` : ""}
                     {r.in_set ? " · in the set" : ""}
                   </option>
                 ))}
             </optgroup>
           ))}
         </select>
+        {chosen && (
+          <select
+            value={dress}
+            onChange={(e) => setDress(e.target.value)}
+            disabled={busy}
+            aria-label="Dress the room as"
+            title="How the photo dresses the room (rugs, art, cushions, lamps), for the listing only: the house keeps the room's own use"
+            className="h-7 min-w-0 max-w-[200px] rounded-md border bg-background px-1 text-xs"
+          >
+            <option value={chosen.use}>Dressed as itself: {useLabel(chosen.use).toLowerCase()}</option>
+            {uses
+              .filter((u) => u !== chosen.use)
+              .map((u) => (
+                <option key={u} value={u}>
+                  Dressed as {useLabel(u).toLowerCase()}
+                </option>
+              ))}
+          </select>
+        )}
         <Button
           size="sm"
           variant="outline"
           className="h-7 px-2"
           disabled={busy || !chosen}
-          onClick={() => chosen && onShoot(chosen.room)}
+          onClick={() => chosen && onShoot(chosen.room, dressed)}
           title={
             chosen?.in_set
               ? `Shoot ${chosen.title} again alone: its viewpoints, the editor's pick and the photo. The photo it replaces is kept`
@@ -495,7 +548,10 @@ function RoomPicker({
           {chosen?.in_set ? "Shoot again" : "Shoot and add"}
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">About 10 minutes and $1 a room; the rest of the set stays as it is.</p>
+      <p className="text-xs text-muted-foreground">
+        About 10 minutes and $1 a room; the rest of the set stays as it is. The dressing is for the listing only: the
+        house and its SIA 416 figures keep the room's own use.
+      </p>
     </section>
   )
 }

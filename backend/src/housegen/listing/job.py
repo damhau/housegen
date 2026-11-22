@@ -178,6 +178,26 @@ def _rule(doc: dict[str, Any], room: str, rooms: list[dict[str, Any]]) -> dict[s
     return score_rule(found) if found else dict(MIN_AREA)
 
 
+def _dressed(
+    st: ProjectStorage,
+    version: int,
+    doc: dict[str, Any] | None,
+    room: str | None,
+    asked: str | None,
+) -> dict[str, str]:
+    """What the set dresses rooms as (#142), with a one-room shoot's choice: the room's own use dresses it as
+    itself again."""
+    uses = dict((doc or {}).get("dress_as", {}))
+    if doc is None or not room or room == EXTERIOR or not asked:
+        return uses
+    own = next((r["use"] for r in version_rooms(st, version, doc) if r["name"] == room), None)
+    if asked == own:
+        uses.pop(room, None)
+    else:
+        uses[room] = asked
+    return uses
+
+
 def _unit_shots(doc: dict[str, Any], rooms: list[dict[str, Any]], unit: str) -> list[Shot]:
     """What a one-room shoot starts from: nothing for the exteriors (the building's views are chosen again), the
     set's shot of the room with the viewpoints the prepare finds in it now, or a room the set left out."""
@@ -270,6 +290,7 @@ def _merge(st: ProjectStorage, version: int, work_doc: dict[str, Any], unit: str
         doc["exteriors"] = work_doc["exteriors"]
     if work_doc.get("rooms"):
         doc["rooms"] = work_doc["rooms"]
+    doc["dress_as"] = work_doc.get("dress_as", {})
     for bucket, usd in work_doc["cost"].items():
         doc["cost"][bucket] = round(float(doc["cost"].get(bucket) or 0) + float(usd or 0), 4)
     first = work_doc["shots"][0] if work_doc["shots"] and unit != EXTERIOR else None
@@ -399,6 +420,7 @@ async def listing(ctx: JobContext) -> None:
             shutil.rmtree(work, ignore_errors=True)
     else:
         work, own = out, previous
+    uses = _dressed(st, version, previous, only, req.get("dress_as"))
     (work / "previews").mkdir(parents=True, exist_ok=True)
     # a room shot alone draws with its set's renderer
     asked_kit = (previous or {}).get("kit") if only else req.get("kit")
@@ -525,6 +547,7 @@ async def listing(ctx: JobContext) -> None:
             "exteriors": exteriors,
             # the rooms a set may photograph, for the ones it leaves out (#142)
             "rooms": listable(prepared.get("rooms", [])),
+            "dress_as": uses,
             "previews": dict(kept.get("previews", {})),
             "choices": dict(kept.get("choices", {})),
             "photos": dict(kept.get("photos", {})) if resumed else {},
@@ -610,6 +633,7 @@ async def listing(ctx: JobContext) -> None:
                         s.LISTING_SHOT_TIMEOUT_S,
                         staging=staging,
                         legacy_shift=legacy_shift,
+                        uses=uses,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -709,6 +733,7 @@ async def listing(ctx: JobContext) -> None:
                         staging=None if shot.use == "exterior" else staging,
                         exterior=exterior,
                         legacy_shift=legacy_shift,
+                        uses=None if shot.use == "exterior" else uses,
                     )
                 except Exception as exc:
                     logger.warning(

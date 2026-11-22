@@ -38,6 +38,7 @@ from housegen.listing.schemas import (
     ListingUnitRequest,
 )
 from housegen.listing.shots import (
+    DRESSABLE,
     EXTERIOR,
     caption,
     house_rooms,
@@ -78,12 +79,14 @@ def _room_out(r: dict[str, Any]) -> ListingRoomOut:
         caption=caption(title, float(r["area"])),
         storey=r["storey"],
         in_set=r["in_set"],
+        dress_as=r.get("dress_as"),
     )
 
 
 def _rooms(st: ProjectStorage, version: int, doc: dict[str, Any]) -> list[ListingRoomOut]:
     rooms = house_rooms(version_rooms(st, version, doc), doc.get("shots", []))
-    return [_room_out(r) for r in rooms]
+    dressed = doc.get("dress_as", {})
+    return [_room_out({**r, "dress_as": dressed.get(r["name"])}) for r in rooms]
 
 
 def listing_out(
@@ -151,6 +154,7 @@ def listing_out(
             )
             for r in doc.get("reshoots", [])
         ],
+        dress_uses=list(DRESSABLE),
     )
 
 
@@ -170,13 +174,16 @@ def _check_unit(st: ProjectStorage, version: int, body: ListingRequest) -> None:
     ):
         raise InvalidInputError("a room shot alone keeps its set's staging, exteriors and renderer")
     if body.room == EXTERIOR:
+        if body.dress_as is not None:
+            raise InvalidInputError("the views from outside are not dressed")
         if exteriors == "none" or not get_settings().LISTING_EXTERIORS:
             raise InvalidInputError("this set has no views from outside")
         return
-    if any(x["room"] == body.room for x in doc.get("shots", [])):
-        return
-    if not any(r.room == body.room for r in _rooms(st, version, doc)):
+    found = next((r for r in _rooms(st, version, doc) if r.room == body.room), None)
+    if found is None and not any(x["room"] == body.room for x in doc.get("shots", [])):
         raise InvalidInputError(f"no room named {body.room!r} in this version")
+    if body.dress_as not in (None, *DRESSABLE, found.use if found else None):
+        raise InvalidInputError(f"a room cannot be dressed as {body.dress_as!r}")
 
 
 @router.get("/{project_id}/listing")
@@ -219,6 +226,8 @@ async def start_listing(
         raise InvalidInputError("this version has no set to shoot again")
     if body.room is not None:
         _check_unit(st, version, body)
+    elif body.dress_as is not None:
+        raise InvalidInputError("`dress_as` goes with the `room` it dresses")
     if body.kit:
         requested_kit(body.kit)
     if await crud.active_job(session, project_id, ("listing",)):
@@ -232,6 +241,8 @@ async def start_listing(
     }
     if body.room is not None:
         request["room"] = body.room
+    if body.dress_as is not None:
+        request["dress_as"] = body.dress_as
     stored = RunSettings.model_validate(project.settings) if project.settings else RunSettings()
     estimate = get_settings().LISTING_ROOM_ESTIMATE_USD if body.room is not None else None
     async with limits.admission(

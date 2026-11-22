@@ -1083,3 +1083,45 @@ async def test_any_room_of_the_house_is_shot_on_demand(
     assert not list((version / "listing" / "previews").glob(f"{wc['key']}-*.jpg"))
     assert (await app_client.post(f"{url}/1/remove", json={"room": "WC"})).status_code == 404
     assert (await app_client.post(f"{url}/1/remove", json={"room": "exterior"})).status_code == 404
+
+
+async def test_a_room_is_dressed_as_another_use_for_the_listing_only(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_rooms([*MONTELLY, ("storage", "Réserve", 15.7)]))
+    _fake_service(monkeypatch, svc)
+    pid = await _furnished_project()
+    url = f"/api/v1/projects/{pid}/listing"
+    assert (await app_client.post(url, json={"dress_as": "office"})).status_code == 422
+    r = await app_client.post(url, json={"exteriors": "none"})
+    assert await _wait_job(r.json()["id"]) == "done"
+    for body in (
+        {"room": "Réserve", "dress_as": "garage"},
+        {"room": "Salon", "dress_as": "storage"},  # neither dressable nor the Salon's own
+    ):
+        assert (await app_client.post(url, json=body)).status_code == 422, body
+
+    async def shoot(body: dict[str, Any]) -> list[dict[str, Any]]:
+        calls = len(svc.calls)
+        r = await app_client.post(url, json=body)
+        assert r.status_code == 202, r.text
+        assert await _wait_job(r.json()["id"]) == "done"
+        return [c for c in list(svc.calls.values())[calls:] if c["path"] == "/shoot"]
+
+    shots = await shoot({"room": "Réserve", "dress_as": "office"})
+    assert shots
+    assert all(c["uses"] == {"Réserve": "office"} for c in shots)
+    ls = (await app_client.get(url)).json()["listing"]
+    reserve = next(x for x in ls["rooms"] if x["room"] == "Réserve")
+    assert (reserve["use"], reserve["dress_as"], reserve["in_set"]) == ("storage", "office", True)
+    assert "office" in ls["dress_uses"]
+    # shot again without a choice, or with the whole set, it keeps its dress
+    shots = await shoot({"room": "Réserve"})
+    assert all(c["uses"] == {"Réserve": "office"} for c in shots)
+    shots = await shoot({"reuse": True})
+    assert all(c.get("uses") == {"Réserve": "office"} for c in shots)
+    # its own use dresses it as itself again
+    shots = await shoot({"room": "Réserve", "dress_as": "storage"})
+    assert all("uses" not in c for c in shots)
+    ls = (await app_client.get(url)).json()["listing"]
+    assert next(x for x in ls["rooms"] if x["room"] == "Réserve")["dress_as"] is None

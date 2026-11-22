@@ -9,6 +9,7 @@ import type { ListingRequestStaging } from './listingRequestStaging';
 import type { ListingRequestExteriors } from './listingRequestExteriors';
 import type { ListingRequestKit } from './listingRequestKit';
 import type { ListingRequestRoom } from './listingRequestRoom';
+import type { ListingRequestDressAs } from './listingRequestDressAs';
 
 export interface ListingRequest {
   /** the saved version to photograph (default: the current one) */
@@ -23,4 +24,6 @@ export interface ListingRequest {
   kit?: ListingRequestKit;
   /** shoot one unit of the version's set alone: a room's name (any of the set's `rooms`) or `exterior` for the views from outside. Its previews, the editor's pick and its photos, nothing else; they replace the unit's in the set, which keeps the replaced ones to bring back. The set's staging, exteriors and renderer are kept */
   room?: ListingRequestRoom;
+  /** with `room`: the use the room's photos are dressed for (one of the set's `dress_uses`, or the room's own use to dress it as itself again), for the listing only: the house keeps the room's use. Default: what the set dresses it as */
+  dress_as?: ListingRequestDressAs;
 }

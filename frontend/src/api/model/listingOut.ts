@@ -25,4 +25,5 @@ export interface ListingOut {
   photos: ListingPhotoOut[];
   rooms?: ListingRoomOut[];
   reshoots?: ListingReshootOut[];
+  dress_uses?: string[];
 }

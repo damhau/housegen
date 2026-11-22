@@ -325,7 +325,10 @@ def shoot(spec_json):
                     int(spec.get("height", 1080)), int(spec.get("samples", 256)), sun=spec.get("sun"),
                     legacy_shift=bool(spec.get("legacy_shift")))
         return
-    photo.run(spec["blend"], load_rooms(spec["rooms"]), spec["camera"], spec["out"],
+    # the listing's "dress as" (#142): the photo dresses the room for that use, rooms.json keeps the house's own
+    uses = spec.get("uses") or {}
+    rooms = [{**r, "use": uses.get(r["name"], r["use"])} for r in load_rooms(spec["rooms"])]
+    photo.run(spec["blend"], rooms, spec["camera"], spec["out"],
               int(spec.get("width", 1920)), int(spec.get("height", 1080)), int(spec.get("samples", 256)),
               sun=spec.get("sun"), room_lamps=spec.get("room_lamps"), remove=spec.get("remove") or (),
               staging_level=spec.get("staging") or "furnished", house_style=load_style(spec["rooms"]),

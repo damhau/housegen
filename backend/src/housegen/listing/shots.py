@@ -14,6 +14,8 @@ FLAT_FIRST = re.compile(rf"^{_FLAT_WORDS}\s*(?:[0-9][0-9A-Za-z]*|[A-Za-z])\b", r
 _DASH = re.compile(r"\s+[\u2014\u2013]\s+")  # em or en dash
 
 LIVING = ("living", "kitchen-living")
+# the uses the photo service dresses a room for (photo/blender objlib.ORDER): a set's "dress as" choices (#142)
+DRESSABLE = ("living", "dining", "bedroom", "office", "kitchen", "bath", "hall", "wc", "laundry")
 # below these, a room is too tight for a wide shot that reads (m²)
 MIN_AREA = {
     "living": 9.0,

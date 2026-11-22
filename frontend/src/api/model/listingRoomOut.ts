@@ -5,6 +5,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { ListingRoomOutUnit } from './listingRoomOutUnit';
+import type { ListingRoomOutDressAs } from './listingRoomOutDressAs';
 
 /**
  * A room of the house, to shoot alone (#142): one of the set's, or one it left out (too small, another room
@@ -19,4 +20,5 @@ export interface ListingRoomOut {
   caption: string;
   storey?: number;
   in_set?: boolean;
+  dress_as?: ListingRoomOutDressAs;
 }
