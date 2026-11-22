@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import zipfile
+from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Query
@@ -19,8 +20,17 @@ from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
 from housegen.jobs.manager import job_manager
 from housegen.limits import service as limits
-from housegen.listing.job import default_exteriors, listing_dir, read_set
-from housegen.listing.schemas import ListingOut, ListingPhotoOut, ListingRequest, ListingStatusOut
+from housegen.listing.job import bring_back, default_exteriors, listing_dir, read_set
+from housegen.listing.schemas import (
+    ListingOut,
+    ListingPhotoOut,
+    ListingRequest,
+    ListingReshootOut,
+    ListingRoomOut,
+    ListingStatusOut,
+    ListingUnitRequest,
+)
+from housegen.listing.shots import EXTERIOR, caption, left_out, room_name_parts, unit_id, unit_of
 from housegen.projects import crud
 from housegen.projects.schemas import JobOut
 from housegen.projects.storage import ProjectStorage
@@ -43,6 +53,22 @@ def set_versions(st: ProjectStorage) -> list[int]:
     return sorted(found, reverse=True)
 
 
+def _room_out(r: dict[str, Any]) -> ListingRoomOut:
+    title = room_name_parts(r["name"])[0].strip()
+    return ListingRoomOut(
+        room=r["name"],
+        unit=unit_of(r["name"]),
+        title=title,
+        use=r["use"],
+        area=r["area"],
+        caption=caption(title, float(r["area"])),
+    )
+
+
+def _left_out(doc: dict[str, Any]) -> list[ListingRoomOut]:
+    return [_room_out(r) for r in left_out(doc.get("rooms", []), doc.get("shots", []))]
+
+
 def listing_out(
     st: ProjectStorage, version: int, current: int, base: str | None = None
 ) -> ListingOut | None:
@@ -52,6 +78,7 @@ def listing_out(
     if doc is None:
         return None
     folder = base or st.version_url(version)
+    previous = doc.get("previous", {})
     photos = []
     for shot in doc.get("shots", []):
         photo = doc.get("photos", {}).get(shot["key"])
@@ -62,6 +89,7 @@ def listing_out(
         photos.append(
             ListingPhotoOut(
                 key=shot["key"],
+                room=shot["room"],
                 unit=shot.get("unit"),
                 title=shot["title"],
                 caption=shot["caption"],
@@ -70,6 +98,7 @@ def listing_out(
                 url=url,
                 error=None if url else doc.get("errors", {}).get(shot["key"]),
                 why=doc.get("choices", {}).get(shot["key"], {}).get("why"),
+                previous=bool(previous.get(unit_id(shot))),
             )
         )
     cost = doc.get("cost", {})
@@ -91,7 +120,48 @@ def listing_out(
         if doc.get("settings", {}).get("editor")
         else 0,
         photos=photos,
+        left_out=_left_out(doc),
+        reshoots=[
+            ListingReshootOut(
+                room=r["room"],
+                unit=r.get("unit"),
+                caption=r.get("caption"),
+                joined=bool(r.get("joined")),
+                at=str(r.get("at", "")),
+                photos=int(r.get("photos") or 0),
+                usd=round(float(r.get("usd") or 0), 2),
+                job_id=str(r.get("job_id", "")),
+            )
+            for r in doc.get("reshoots", [])
+        ],
     )
+
+
+def _check_unit(st: ProjectStorage, version: int, body: ListingRequest) -> None:
+    """A one-room shoot (#142) names a unit of an existing set and keeps the set's settings."""
+    doc = read_set(st, version)
+    if doc is None:
+        raise InvalidInputError("this version has no listing set: shoot the set first")
+    settings = doc.get("settings", {})
+    exteriors = settings.get("exteriors") or default_exteriors(st)
+    if body.reuse:
+        raise InvalidInputError("`reuse` shoots the whole set again: leave it out with `room`")
+    if (
+        body.staging not in (None, settings.get("staging") or "furnished")
+        or body.exteriors not in (None, exteriors)
+        or body.kit not in (None, doc.get("kit"))
+    ):
+        raise InvalidInputError("a room shot alone keeps its set's staging, exteriors and renderer")
+    if body.room == EXTERIOR:
+        if exteriors == "none" or not get_settings().LISTING_EXTERIORS:
+            raise InvalidInputError("this set has no views from outside")
+        return
+    if any(x["room"] == body.room for x in doc.get("shots", [])):
+        return
+    if not any(r.room == body.room for r in _left_out(doc)):
+        raise InvalidInputError(
+            f"no room named {body.room!r} in this version's set or among the rooms it left out"
+        )
 
 
 @router.get("/{project_id}/listing")
@@ -118,7 +188,8 @@ async def start_listing(
     session: DbSession, project_id: str, body: ListingRequest | None = None
 ) -> JobOut:
     """Shoot a saved version's interior photo set on the photo service (a few minutes, run beside
-    the scene's own jobs). `reuse` keeps the cameras of the version's last set."""
+    the scene's own jobs). `reuse` keeps the cameras of the version's last set; `room` shoots one
+    room of the set, or its views from outside, alone."""
     body = body or ListingRequest()
     project = await crud.get_project(session, project_id)
     if not get_settings().photo_service_url:
@@ -131,26 +202,31 @@ async def start_listing(
         raise InvalidInputError("this version has no interior: furnish it first")
     if body.reuse and read_set(st, version) is None:
         raise InvalidInputError("this version has no set to shoot again")
+    if body.room is not None:
+        _check_unit(st, version, body)
     if body.kit:
         requested_kit(body.kit)
     if await crud.active_job(session, project_id, ("listing",)):
         raise ConflictError("a listing set is already being shot")
-    request = json.dumps(
-        {
-            "version": version,
-            "reuse": body.reuse,
-            "staging": body.staging,
-            "exteriors": body.exteriors,
-            "kit": body.kit,
-        }
-    )
+    request: dict[str, Any] = {
+        "version": version,
+        "reuse": body.reuse,
+        "staging": body.staging,
+        "exteriors": body.exteriors,
+        "kit": body.kit,
+    }
+    if body.room is not None:
+        request["room"] = body.room
     stored = RunSettings.model_validate(project.settings) if project.settings else RunSettings()
-    async with limits.admission(session, project.organisation_id, "listing") as admitted:
+    estimate = get_settings().LISTING_ROOM_ESTIMATE_USD if body.room is not None else None
+    async with limits.admission(
+        session, project.organisation_id, "listing", estimate=estimate
+    ) as admitted:
         job = await crud.create_job(
             session,
             project_id,
             "listing",
-            request,
+            json.dumps(request),
             settings=resolve(get_settings(), stored).model_dump(),
         )
         admitted.record(job)
@@ -165,9 +241,31 @@ async def start_listing(
             "staging": body.staging,
             "exteriors": body.exteriors,
             "kit": body.kit,
+            "room": body.room,
         },
     )
     return JobOut.model_validate(job)
+
+
+@router.post("/{project_id}/listing/{version}/previous")
+async def bring_back_listing_photo(
+    session: DbSession, project_id: str, version: int, body: ListingUnitRequest
+) -> ListingOut:
+    """Bring back the photo a one-room shoot replaced (#142), or the views from outside it replaced;
+    the replaced ones are kept in turn, so a second call swaps them back."""
+    project = await crud.get_project(session, project_id)
+    if await crud.active_job(session, project_id, ("listing",)):
+        raise ConflictError("a listing set is being shot: wait for it to end")
+    st = ProjectStorage(project_id)
+    if not bring_back(st, version, body.room):
+        raise NotFoundError("the set keeps no previous photo of this room")
+    logger.info(
+        "listing.brought_back",
+        extra={"project_id": project_id, "version": version, "room": body.room},
+    )
+    out = listing_out(st, version, project.current_version)
+    assert out is not None
+    return out
 
 
 @router.get("/{project_id}/listing/{version}/zip")
@@ -179,12 +277,16 @@ async def listing_zip(session: DbSession, project_id: str, version: int) -> Resp
     if out is None or not any(p.url for p in out.photos):
         raise NotFoundError("no listing photo for this version")
     buf = io.BytesIO()
+    rooms = 0
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
         for p in out.photos:
+            # numbered by place: a room that joined the set later keeps its key wherever it stands (#142)
+            rooms += p.use != "exterior"
             if not p.url:
                 continue
+            number = p.key if p.use == "exterior" else f"{rooms:02d}"
             name = _UNSAFE.sub(
-                "-", f"{p.key} {p.unit + ' - ' if p.unit else ''}{p.caption}"
+                "-", f"{number} {p.unit + ' - ' if p.unit else ''}{p.caption}"
             ).strip()
             z.write(listing_dir(st, version) / f"{p.key}.jpg", f"{name}.jpg")
     filename = f"{project.name} v{version} listing.zip"

@@ -14,6 +14,8 @@ Exteriors = Literal["surroundings", "house", "none"]
 
 class ListingPhotoOut(BaseModel):
     key: str
+    # the room's name in the scene, "exterior" for a view from outside: what a one-room shoot names (#142)
+    room: str
     unit: str | None
     title: str
     caption: str
@@ -22,6 +24,32 @@ class ListingPhotoOut(BaseModel):
     url: str | None  # None until rendered, or when it failed
     error: str | None = None
     why: str | None = None  # why the picture editor chose this viewpoint (#92)
+    # a one-room shoot replaced a photo of this room that the set can bring back (#142)
+    previous: bool = False
+
+
+class ListingRoomOut(BaseModel):
+    """A room the set left out (too small, or another room of its kind holds its place), shot on demand."""
+
+    room: str
+    unit: str | None
+    title: str
+    use: str
+    area: float
+    caption: str
+
+
+class ListingReshootOut(BaseModel):
+    """A room of the set, or its views from outside, shot alone (#142)."""
+
+    room: str  # the room's name, or "exterior"
+    unit: str | None
+    caption: str | None  # None for the views from outside
+    joined: bool  # a room the set had left out
+    at: str
+    photos: int
+    usd: float
+    job_id: str
 
 
 class ListingOut(BaseModel):
@@ -37,6 +65,8 @@ class ListingOut(BaseModel):
     previews_done: int = 0  # viewpoints previewed so far for the picture editor (#92)
     previews_total: int = 0  # 0: the set was shot without previews
     photos: list[ListingPhotoOut]  # in listing order, grouped by unit
+    left_out: list[ListingRoomOut] = Field(default_factory=list)  # in listing order
+    reshoots: list[ListingReshootOut] = Field(default_factory=list)  # oldest first
 
 
 class ListingStatusOut(BaseModel):
@@ -66,4 +96,17 @@ class ListingRequest(BaseModel):
         None,
         description="a listed renderer snapshot to export the scene with instead of the viewer's default "
         "(test runs of a renderer the viewer does not show by default yet)",
+    )
+    room: str | None = Field(
+        None,
+        description="shoot one unit of the version's set alone: a room's name (a photo's `room`, or one of the "
+        "set's `left_out`) or `exterior` for the views from outside. Its previews, the editor's pick and its "
+        "photos, nothing else; they replace the unit's in the set, which keeps the replaced ones to bring back. "
+        "The set's staging, exteriors and renderer are kept",
+    )
+
+
+class ListingUnitRequest(BaseModel):
+    room: str = Field(
+        description="the unit whose previous photos come back: a room's name, or `exterior`"
     )

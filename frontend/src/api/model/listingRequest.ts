@@ -8,6 +8,7 @@ import type { ListingRequestVersion } from './listingRequestVersion';
 import type { ListingRequestStaging } from './listingRequestStaging';
 import type { ListingRequestExteriors } from './listingRequestExteriors';
 import type { ListingRequestKit } from './listingRequestKit';
+import type { ListingRequestRoom } from './listingRequestRoom';
 
 export interface ListingRequest {
   /** the saved version to photograph (default: the current one) */
@@ -20,4 +21,6 @@ export interface ListingRequest {
   exteriors?: ListingRequestExteriors;
   /** a listed renderer snapshot to export the scene with instead of the viewer's default (test runs of a renderer the viewer does not show by default yet) */
   kit?: ListingRequestKit;
+  /** shoot one unit of the version's set alone: a room's name (a photo's `room`, or one of the set's `left_out`) or `exterior` for the views from outside. Its previews, the editor's pick and its photos, nothing else; they replace the unit's in the set, which keeps the replaced ones to bring back. The set's staging, exteriors and renderer are kept */
+  room?: ListingRequestRoom;
 }

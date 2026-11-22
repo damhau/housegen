@@ -27,7 +27,9 @@ import type {
   GetListingParams,
   HTTPValidationError,
   JobOut,
+  ListingOut,
   ListingStatusOut,
+  ListingUnitRequest,
   StartListingBody
 } from '../../model';
 
@@ -155,7 +157,8 @@ export function useGetListing<TData = Awaited<ReturnType<typeof getListing>>, TE
 
 /**
  * Shoot a saved version's interior photo set on the photo service (a few minutes, run beside
-the scene's own jobs). `reuse` keeps the cameras of the version's last set.
+the scene's own jobs). `reuse` keeps the cameras of the version's last set; `room` shoots one
+room of the set, or its views from outside, alone.
  * @summary Start Listing
  */
 export const getStartListingUrl = (projectId: string,) => {
@@ -224,6 +227,82 @@ export const useStartListing = <TError = HTTPValidationError,
       > => {
 
       const mutationOptions = getStartListingMutationOptions(options);
+
+      return useMutation(mutationOptions, queryClient);
+    }
+    /**
+ * Bring back the photo a one-room shoot replaced (#142), or the views from outside it replaced;
+the replaced ones are kept in turn, so a second call swaps them back.
+ * @summary Bring Back Listing Photo
+ */
+export const getBringBackListingPhotoUrl = (projectId: string,
+    version: number,) => {
+
+
+  
+
+  return `/api/v1/projects/${projectId}/listing/${version}/previous`
+}
+
+export const bringBackListingPhoto = async (projectId: string,
+    version: number,
+    listingUnitRequest: ListingUnitRequest, options?: RequestInit): Promise<ListingOut> => {
+  
+  return httpClient<ListingOut>(getBringBackListingPhotoUrl(projectId,version),
+  {      
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      listingUnitRequest,)
+  }
+);}
+
+
+
+
+export const getBringBackListingPhotoMutationOptions = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bringBackListingPhoto>>, TError,{projectId: string;version: number;data: ListingUnitRequest}, TContext>, request?: SecondParameter<typeof httpClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof bringBackListingPhoto>>, TError,{projectId: string;version: number;data: ListingUnitRequest}, TContext> => {
+
+const mutationKey = ['bringBackListingPhoto'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+      
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof bringBackListingPhoto>>, {projectId: string;version: number;data: ListingUnitRequest}> = (props) => {
+          const {projectId,version,data} = props ?? {};
+
+          return  bringBackListingPhoto(projectId,version,data,requestOptions)
+        }
+
+        
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type BringBackListingPhotoMutationResult = NonNullable<Awaited<ReturnType<typeof bringBackListingPhoto>>>
+    export type BringBackListingPhotoMutationBody = ListingUnitRequest
+    export type BringBackListingPhotoMutationError = HTTPValidationError
+
+    /**
+ * @summary Bring Back Listing Photo
+ */
+export const useBringBackListingPhoto = <TError = HTTPValidationError,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof bringBackListingPhoto>>, TError,{projectId: string;version: number;data: ListingUnitRequest}, TContext>, request?: SecondParameter<typeof httpClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof bringBackListingPhoto>>,
+        TError,
+        {projectId: string;version: number;data: ListingUnitRequest},
+        TContext
+      > => {
+
+      const mutationOptions = getBringBackListingPhotoMutationOptions(options);
 
       return useMutation(mutationOptions, queryClient);
     }

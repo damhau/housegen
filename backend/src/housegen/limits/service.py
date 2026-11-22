@@ -206,7 +206,7 @@ def _refused(
         assert resets_at is not None
         message = (
             f"Limit reached: listing photos per month. This organisation spent ${used:.2f} of "
-            f"its ${limit:.2f} this month, and a set needs about ${estimate:.2f}. The budget "
+            f"its ${limit:.2f} this month, and this shoot needs about ${estimate:.2f}. The budget "
             f"starts again on {resets_at.day} {resets_at:%B} (UTC)."
         )
     return TooManyRequestsError(
@@ -225,9 +225,11 @@ async def check(
     kind: str,
     replacing: str | None = None,
     waiting: bool = False,
+    estimate: float | None = None,
 ) -> None:
     """Refuse (429) a job of `kind` the organisation's limits leave no room for. A change that
-    waits for the project's running job (#35) is not one more job at once."""
+    waits for the project's running job (#35) is not one more job at once. `estimate`: what a
+    listing shoot holds of the month (LISTING_ESTIMATE_USD, a whole set, by default)."""
     organisation = await session.get(Organisation, organisation_id)
     if organisation is None:
         return
@@ -238,7 +240,7 @@ async def check(
     at_once = effective(organisation, "concurrent_jobs", settings)
     per_day = effective(organisation, "jobs_per_day", settings)
     per_month = effective(organisation, "listing_usd_per_month", settings)
-    estimate = settings.LISTING_ESTIMATE_USD
+    estimate = settings.LISTING_ESTIMATE_USD if estimate is None else estimate
     if not waiting and at_once is not None and used.concurrent_jobs >= at_once:
         refused = _refused("concurrent_jobs", used.concurrent_jobs, at_once, now)
     elif per_day is not None and used.jobs_per_day >= per_day:
@@ -268,10 +270,17 @@ async def check(
 class Admission:
     """A job the limits let in: record it once created, before the commit."""
 
-    def __init__(self, session: AsyncSession, organisation_id: str | None, kind: str) -> None:
+    def __init__(
+        self,
+        session: AsyncSession,
+        organisation_id: str | None,
+        kind: str,
+        estimate: float | None = None,
+    ) -> None:
         self._session = session
         self._organisation_id = organisation_id
         self._kind = kind
+        self._estimate = get_settings().LISTING_ESTIMATE_USD if estimate is None else estimate
 
     def record(self, job: Job) -> None:
         if self._organisation_id is None:
@@ -282,9 +291,7 @@ class Admission:
                 organisation_id=self._organisation_id,
                 kind=self._kind,
                 created_at=_now(),
-                listing_usd=get_settings().LISTING_ESTIMATE_USD
-                if self._kind == "listing"
-                else None,
+                listing_usd=self._estimate if self._kind == "listing" else None,
             )
         )
 
@@ -296,13 +303,14 @@ async def admission(
     kind: str,
     replacing: str | None = None,
     waiting: bool = False,
+    estimate: float | None = None,
 ) -> AsyncIterator[Admission]:
     """Every job-creating path goes through here: the limits check (429 when one is reached),
     held until the caller has created the job, recorded it and committed."""
     async with _ADMISSION:
         if organisation_id is not None:
-            await check(session, organisation_id, kind, replacing, waiting)
-        yield Admission(session, organisation_id, kind)
+            await check(session, organisation_id, kind, replacing, waiting, estimate)
+        yield Admission(session, organisation_id, kind, estimate)
 
 
 async def record_listing_spend(session: AsyncSession, job_id: str, usd: float) -> None:

@@ -7,6 +7,8 @@
 import type { ListingOutStaging } from './listingOutStaging';
 import type { ListingOutExteriors } from './listingOutExteriors';
 import type { ListingPhotoOut } from './listingPhotoOut';
+import type { ListingRoomOut } from './listingRoomOut';
+import type { ListingReshootOut } from './listingReshootOut';
 
 export interface ListingOut {
   version: number;
@@ -21,4 +23,6 @@ export interface ListingOut {
   previews_done?: number;
   previews_total?: number;
   photos: ListingPhotoOut[];
+  left_out?: ListingRoomOut[];
+  reshoots?: ListingReshootOut[];
 }

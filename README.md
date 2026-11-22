@@ -153,6 +153,19 @@ viewpoints, the editor's choice and reason, camera, sun, cost) and shows in the 
 (`GET /api/v1/projects/<id>/listing/<n>/zip`) and on the share page. A later version marks the set out of date;
 **Shoot again** reuses its choices (viewpoint, light, removed piece).
 
+To shoot one room of a set again, use the shoot button next to its photo (#142). The views from outside have one
+button for all of them, next to "Building". The job (`POST …/listing` with `room`: the room's name, or `exterior`)
+previews only that room, asks the editor about it and shoots it, with the set's staging, exteriors and renderer. Only
+that room is billed: the job holds `LISTING_ROOM_ESTIMATE_USD` of the month until its cost is known. The room's photo
+is replaced in place: same key, caption and place in the listing order. The set's other photos stay as they are, and
+the set's cost adds the room's. The replaced photo moves to `listing/previous/`. The bring-back button next to the
+photo (`POST …/listing/<n>/previous`) swaps it with the new one, so a second press swaps them again.
+
+The rooms a set left out (under their `MIN_AREA`, or a second room of a kind, such as a kitchen next to a dining
+room) are listed under the set. Shooting one adds it to the set in listing order; a room under `MIN_AREA` gets its
+viewpoints from a second prepare (a few CPU minutes the first time). **Shoot again** keeps the rooms added this way and
+drops the replaced photos.
+
 A set has a staging (#94), picked next to the shoot buttons and stored with the set, so **Shoot again** keeps it
 unless you pick another:
 
@@ -328,8 +341,8 @@ Each organisation has three spending limits (#107), checked before a job is crea
 - **Jobs per day**: jobs started since midnight UTC, every kind (builds, changes, chat turns, the interior, listing
   photos, intake).
 - **Listing photos per month**: the Modal spend of the listing sets started this calendar month (UTC), in USD. A new
-  set needs room for `LISTING_ESTIMATE_USD` ($8, a little over the dearest set measured on dev); a running set counts at
-  that estimate and at its own cost once it ends.
+  set needs room for `LISTING_ESTIMATE_USD` ($8, a little over the dearest set measured on dev), a room shot alone for
+  `LISTING_ROOM_ESTIMATE_USD` ($2); a running shoot counts at that estimate and at its own cost once it ends.
 
 A job over a limit answers 429 with `details: {"reason": "limit", "limit": "concurrent_jobs" | "jobs_per_day" |
 "listing_usd_per_month", "used", "allowed", "resets_at"}` and a message that names the limit, the use and when it
@@ -413,6 +426,7 @@ returns the defaults a project without settings runs with.
 | `EMAIL_RESEND_AFTER_S` | `60` | seconds between two emails of the same invitation (**Send again**) |
 | `LIMIT_CONCURRENT_JOBS`, `LIMIT_JOBS_PER_DAY`, `LIMIT_LISTING_USD_PER_MONTH` | `3`, `30`, `40` | an organisation's limits unless the administrator set its own (see "Sign-in and organisations") |
 | `LISTING_ESTIMATE_USD` | `8` | what a listing set is counted at against the month's budget until its own cost is known |
+| `LISTING_ROOM_ESTIMATE_USD` | `2` | the same for one room, or the views from outside, shot alone (#142) |
 | `MODEL_PRICES` | list prices for `claude-fable-5-2`, `claude-opus-5-5`, `claude-opus-5`, `claude-sonnet-5-5`, `gpt-6-astra` | JSON `{model: {input, cached, output[, cache_write]}}` in USD per million tokens, for the cost in each run's summary |
 
 ## Quality gates

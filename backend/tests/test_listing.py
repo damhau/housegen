@@ -28,8 +28,12 @@ from housegen.listing.shots import (
     MIN_AREA,
     exterior_caption,
     language,
+    next_key,
     pick,
+    place,
     room_name_parts,
+    room_shot,
+    score_rule,
     unit_of,
 )
 from housegen.llm import Completion, ImagePart, Message, Usage
@@ -171,6 +175,18 @@ class FakeService:
         self.prepared: list[str] = []
         self.auth: set[str] = set()
         self.cancelled: list[str] = []
+        self.tag = ""  # in every JPEG: tells a photo shot again from the one it replaced
+
+    def scored(self, score: dict[str, float] | None) -> list[dict[str, Any]]:
+        """The rooms as photo/blender/main.py score_rooms lists them: a room the rule leaves out unscored."""
+        if score is None:
+            return self.rooms
+        return [
+            r
+            if r["use"] in score and r["area"] >= score[r["use"]]
+            else {**r, "camera": None, "views": [], "scored": False}
+            for r in self.rooms
+        ]
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         self.auth.add(request.headers.get("authorization", ""))
@@ -192,8 +208,8 @@ class FakeService:
         call = self.calls[cid]
         if call["path"] == "/prepare":
             result = {
-                "rooms": self.rooms,
-                "exteriors": self.exteriors,
+                "rooms": self.scored(call.get("score")),
+                "exteriors": self.exteriors if call.get("exteriors") != "none" else [],
                 "export": {"gpu": "L4"},
                 "seconds": {"export": 60, "blender": 120},
                 "cached": False,
@@ -201,7 +217,7 @@ class FakeService:
             return httpx.Response(200, json={"status": "done", "result": result})
         if call["camera"] in self.fail:
             return httpx.Response(200, json={"status": "failed", "error": "CUDA out of memory"})
-        jpeg = base64.b64encode(f"jpeg {call['camera']}".encode()).decode()
+        jpeg = base64.b64encode(f"jpeg {call['camera']}{self.tag}".encode()).decode()
         meta = {
             "camera": call["camera"] + "!",
             "sun": {"azimuth": 200},
@@ -740,3 +756,258 @@ def test_exterior_captions_follow_the_rooms_language() -> None:
     assert exterior_caption("south-west", "fr") == "Vue extérieure, côté sud-ouest"
     assert exterior_caption("north", "de") == "Aussenansicht von Norden"
     assert exterior_caption("east", "en") == "View from the east"
+
+
+def test_a_left_out_room_joins_the_set_in_listing_order() -> None:
+    gille = pick(_rooms(GILLE))
+    sdb = room_shot(
+        {"use": "bath", "name": "SDB — Appartement 1", "area": 4.5, "camera": CAM}, "15"
+    )
+    at = place(gille, sdb)
+    assert [x.title for x in gille[at - 1 : at + 1]] == ["SDB étage", "Chambre 2"]
+    assert gille[at - 1].unit == sdb.unit == "Appartement 1"
+    montelly = pick(_rooms(MONTELLY))
+    cuisine = room_shot({"use": "kitchen", "name": "Cuisine", "area": 8.7, "camera": CAM}, "06")
+    veranda = room_shot(
+        {"use": "living", "name": "Véranda existante", "area": 11.2, "camera": CAM}, "06"
+    )
+    small = room_shot({"use": "bedroom", "name": "Ch.4", "area": 6.0, "camera": CAM}, "06")
+    assert montelly[place(montelly, cuisine) - 1].title == "Salle à Manger"
+    assert montelly[place(montelly, veranda)].title == "Salle à Manger"
+    assert place(montelly, small) == len(montelly)  # the other bedrooms by name: after Ch.3
+    assert next_key(montelly) == "06"
+    # a unit without a bedroom in the set: the room takes the main bedroom's place
+    alone = [x for x in montelly if x.use != "bedroom"]
+    assert alone[place(alone, small) - 1].title == "Salle à Manger"
+    assert score_rule({"use": "bath", "area": 3.4}) == {**MIN_AREA, "bath": pytest.approx(3.3)}
+    assert score_rule({"use": "kitchen", "area": 8.7}) == MIN_AREA
+
+
+def _photo_bytes(pid: str) -> dict[str, bytes]:
+    out = ProjectStorage(pid).versions_dir / "1" / "listing"
+    return {p.name: p.read_bytes() for p in sorted(out.glob("*.jpg"))}
+
+
+async def _events(job_id: str) -> list[tuple[str, dict[str, Any]]]:
+    async with session_factory()() as s:
+        rows = await crud.list_job_events(s, job_id)
+    return [(r.type, json.loads(r.payload_json)) for r in rows]
+
+
+async def test_one_room_is_shot_alone_and_its_previous_photo_comes_back(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_salon_with_views())
+    _fake_service(monkeypatch, svc)
+    editor = FakeEditor(
+        json.dumps({"best": 2, "remove": None, "problem": "p", "why": "the long view"})
+    )
+    monkeypatch.setattr(listing_job, "get_provider", lambda name=None: editor)
+    pid = await _furnished_project()
+    url = f"/api/v1/projects/{pid}/listing"
+    r = await app_client.post(url, json={"staging": "light"})
+    assert await _wait_job(r.json()["id"]) == "done"
+    first = (await app_client.get(url)).json()["listing"]
+    before, calls = _photo_bytes(pid), len(svc.calls)
+    assert [p["room"] for p in first["photos"]][:2] == ["Salon", "Salle à Manger"]
+    assert not any(p["previous"] for p in first["photos"])
+
+    svc.tag = " again"
+    editor.answer = json.dumps({"best": 3, "remove": None, "problem": "p", "why": "the window"})
+    r = await app_client.post(url, json={"room": "Salon"})
+    assert r.status_code == 202, r.text
+    job_id = r.json()["id"]
+    assert await _wait_job(job_id) == "done"
+
+    now = list(svc.calls.values())[calls:]
+    # the cameras the set was prepared with, and no exterior build for a room
+    assert (now[0]["path"], now[0]["score"], now[0]["exteriors"]) == ("/prepare", MIN_AREA, "none")
+    shoots = [c for c in now if c["path"] == "/shoot"]
+    assert sorted(c["camera"] for c in shoots if c["width"] == 1280) == sorted(VIEWS)
+    assert [c["camera"] for c in shoots if c["width"] == 3840] == [VIEWS[2]]
+    assert {c.get("staging") for c in shoots} == {"light"}  # the set's staging
+    assert len(editor.calls) == 2
+
+    ls = (await app_client.get(url)).json()["listing"]
+    salon = ls["photos"][0]
+    assert (salon["key"], salon["caption"], salon["why"]) == ("01", "Salon, 21 m²", "the window")
+    assert salon["previous"] is True
+    assert [p["caption"] for p in ls["photos"]] == [p["caption"] for p in first["photos"]]
+    after = _photo_bytes(pid)
+    assert after["01.jpg"] == f"jpeg {VIEWS[2]} again".encode()
+    assert {k: v for k, v in after.items() if k != "01.jpg"} == {
+        k: v for k, v in before.items() if k != "01.jpg"
+    }
+    # billed: the room alone, its cost added to the set's
+    [reshoot] = ls["reshoots"]
+    assert (reshoot["room"], reshoot["caption"], reshoot["joined"]) == (
+        "Salon",
+        "Salon, 21 m²",
+        False,
+    )
+    assert (reshoot["job_id"], reshoot["photos"]) == (job_id, 1)
+    async with session_factory()() as s:
+        record = await s.get(UsageRecord, job_id)
+    assert record is not None
+    assert record.kind == "listing"
+    assert record.listing_usd == pytest.approx(reshoot["usd"], abs=0.01)
+    assert 0 < reshoot["usd"] < first["cost_usd"]
+    assert ls["cost_usd"] == pytest.approx(first["cost_usd"] + reshoot["usd"], abs=0.02)
+    events = await _events(job_id)
+    plan = next(p for t, p in events if t == "listing_plan")
+    assert (plan["room"], [x["key"] for x in plan["shots"]]) == ("Salon", ["01"])
+    done = next(p for t, p in events if t == "done")
+    assert done["summary"] == "Salon, 21 m² shot again in version 1's listing set"
+    assert not (ProjectStorage(pid).versions_dir / "1" / "listing" / "reshoot").exists()
+
+    back = await app_client.post(f"{url}/1/previous", json={"room": "Salon"})
+    assert back.status_code == 200, back.text
+    assert back.json()["photos"][0]["why"] == "the long view"
+    assert _photo_bytes(pid) == before
+    # the replaced photo is kept in turn: a second call swaps them back
+    await app_client.post(f"{url}/1/previous", json={"room": "Salon"})
+    assert _photo_bytes(pid)["01.jpg"] == f"jpeg {VIEWS[2]} again".encode()
+    gone = await app_client.post(f"{url}/1/previous", json={"room": "Ch.1"})
+    assert gone.status_code == 404
+
+    # the whole set shot again: its one-room shoots and their previous photos go with the set they changed
+    r = await app_client.post(url, json={"reuse": True})
+    assert await _wait_job(r.json()["id"]) == "done"
+    ls = (await app_client.get(url)).json()["listing"]
+    assert ls["reshoots"] == []
+    assert not any(p["previous"] for p in ls["photos"])
+    assert not (ProjectStorage(pid).versions_dir / "1" / "listing" / "previous").exists()
+
+
+async def test_a_room_the_set_left_out_is_shot_on_demand_and_joins_it(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_rooms(MONTELLY))
+    _fake_service(monkeypatch, svc)
+    pid = await _furnished_project()
+    url = f"/api/v1/projects/{pid}/listing"
+    r = await app_client.post(url)
+    assert await _wait_job(r.json()["id"]) == "done"
+    ls = (await app_client.get(url)).json()["listing"]
+    assert [(x["room"], x["caption"]) for x in ls["left_out"]] == [
+        ("Véranda existante", "Véranda existante, 11 m²"),
+        ("Cuisine", "Cuisine, 9 m²"),
+        ("Douche", "Douche, 3 m²"),
+    ]
+    before, calls = _photo_bytes(pid), len(svc.calls)
+
+    r = await app_client.post(url, json={"room": "Douche"})
+    assert r.status_code == 202, r.text
+    assert await _wait_job(r.json()["id"]) == "done"
+    now = list(svc.calls.values())[calls:]
+    assert now[0]["score"] == {**MIN_AREA, "bath": pytest.approx(3.3)}  # scored, under MIN_AREA
+    assert len([c for c in now if c["path"] == "/shoot"]) == 1
+    ls = (await app_client.get(url)).json()["listing"]
+    assert [p["title"] for p in ls["photos"]] == [
+        "Salon",
+        "Salle à Manger",
+        "Ch.1",
+        "Bain",
+        "Douche",
+        "Ch.3",
+    ]
+    douche = ls["photos"][4]
+    assert (douche["key"], douche["caption"], douche["previous"]) == ("06", "Douche, 3 m²", False)
+    assert douche["url"]
+    assert [x["room"] for x in ls["left_out"]] == ["Véranda existante", "Cuisine"]
+    assert ls["reshoots"][0]["joined"] is True
+    assert ls["status"] == "done"
+    assert _photo_bytes(pid) == {**before, "06.jpg": f"jpeg {CAM}".encode()}
+    z = await app_client.get(f"{url}/1/zip")
+    names = zipfile.ZipFile(io.BytesIO(z.content)).namelist()
+    assert names[4:] == ["05 Douche, 3 m².jpg", "06 Ch.3, 8 m².jpg"]
+
+    # shot again with the set, it keeps its place
+    r = await app_client.post(url, json={"reuse": True})
+    assert await _wait_job(r.json()["id"]) == "done"
+    ls = (await app_client.get(url)).json()["listing"]
+    assert ls["photos"][4]["title"] == "Douche"
+
+
+async def test_the_views_from_outside_are_shot_again_as_one_unit(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_rooms(MONTELLY), exteriors=EXTERIORS)
+    _fake_service(monkeypatch, svc)
+    editor = FakeEditor(json.dumps({"keep": [3, 1], "why": "the garden side first"}))
+    monkeypatch.setattr(listing_job, "get_provider", lambda name=None: editor)
+    pid = await _furnished_project()
+    st = ProjectStorage(pid)
+    geo_context.context_dir(st.root).mkdir(parents=True)
+    geo_context.save(st.root, {"version": 1, "place": {"e": 2537559, "n": 1157053}})
+    url = f"/api/v1/projects/{pid}/listing"
+    r = await app_client.post(url)
+    assert await _wait_job(r.json()["id"]) == "done"
+    first = (await app_client.get(url)).json()["listing"]
+    rooms_before = {k: v for k, v in _photo_bytes(pid).items() if not k.startswith("E")}
+    calls = len(svc.calls)
+
+    editor.answer = json.dumps({"keep": [2, 1, 3], "why": "the street side"})
+    r = await app_client.post(url, json={"room": "exterior"})
+    assert await _wait_job(r.json()["id"]) == "done"
+    now = list(svc.calls.values())[calls:]
+    assert now[0]["exteriors"] == "surroundings"
+    assert now[0]["context_url"]
+    shoots = [c for c in now if c["path"] == "/shoot"]
+    assert {c.get("kind") for c in shoots} == {"exterior"}  # no room is shot
+    assert len([c for c in shoots if c["width"] == 1280]) == 3
+    assert len(editor.calls) == 2
+    ls = (await app_client.get(url)).json()["listing"]
+    assert [p["caption"] for p in ls["photos"]][:4] == [
+        "Vue extérieure, côté sud",
+        "Vue extérieure, côté sud-ouest",
+        "Vue extérieure, côté sud-est",
+        "Salon, 21 m²",
+    ]
+    assert all(p["previous"] for p in ls["photos"][:3])
+    assert not any(p["previous"] for p in ls["photos"][3:])
+    assert ls["reshoots"][0]["room"] == "exterior"
+    assert {k: v for k, v in _photo_bytes(pid).items() if not k.startswith("E")} == rooms_before
+
+    back = await app_client.post(f"{url}/1/previous", json={"room": "exterior"})
+    assert back.status_code == 200, back.text
+    photos = back.json()["photos"]
+    assert [p["caption"] for p in photos] == [p["caption"] for p in first["photos"]]
+    assert sorted(_photo_bytes(pid)) == sorted(f"{p['key']}.jpg" for p in first["photos"])
+
+
+async def test_a_room_shot_alone_names_a_unit_of_the_set_and_keeps_its_settings(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    svc = FakeService(_rooms(MONTELLY), fail={"bad"})
+    _fake_service(monkeypatch, svc)
+    pid = await _furnished_project()
+    url = f"/api/v1/projects/{pid}/listing"
+    assert (await app_client.post(url, json={"room": "Salon"})).status_code == 422  # no set yet
+    r = await app_client.post(url, json={"exteriors": "none"})
+    assert await _wait_job(r.json()["id"]) == "done"
+    for body in (
+        {"room": "Garage (transformation) / Atelier"},  # not a room a listing shows
+        {"room": "Salon", "staging": "empty"},
+        {"room": "Salon", "reuse": True},
+        {"room": "exterior"},  # the set has none
+    ):
+        r = await app_client.post(url, json=body)
+        assert r.status_code == 422, (body, r.text)
+    r = await app_client.post(url, json={"room": "Salon", "staging": "furnished"})
+    assert r.status_code == 202, r.text
+    assert await _wait_job(r.json()["id"]) == "done"
+
+    # a shot that fails leaves the set as it was
+    before, doc = _photo_bytes(pid), _set_doc(pid)
+    svc.rooms = [{**x, "camera": "bad"} if x["name"] == "Ch.1" else x for x in svc.rooms]
+    r = await app_client.post(url, json={"room": "Ch.1"})
+    assert await _wait_job(r.json()["id"]) == "failed"
+    assert _photo_bytes(pid) == before
+    assert _set_doc(pid)["photos"] == doc["photos"]
+    assert not (ProjectStorage(pid).versions_dir / "1" / "listing" / "reshoot").exists()
+    async with session_factory()() as s:
+        record = await s.get(UsageRecord, r.json()["id"])
+    assert record is not None
+    assert record.listing_usd is not None
+    assert record.listing_usd < get_settings().LISTING_ROOM_ESTIMATE_USD

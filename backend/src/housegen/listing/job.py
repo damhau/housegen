@@ -1,12 +1,14 @@
 """The `listing` job (#91): a saved version's photo set, shot on the photo service: its rooms and, first, the
-building from outside (#93)."""
+building from outside (#93); or one room of the set, or its exteriors, shot alone (#142)."""
 
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import shutil
 import time
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -21,7 +23,20 @@ from housegen.jobs.manager import JobContext
 from housegen.limits import service as limits
 from housegen.listing.client import PhotoClient
 from housegen.listing.pick import pick_exteriors, pick_view
-from housegen.listing.shots import MIN_AREA, Shot, exterior_shots, language, pick
+from housegen.listing.shots import (
+    EXTERIOR,
+    MIN_AREA,
+    Shot,
+    exterior_shots,
+    language,
+    listable,
+    next_key,
+    pick,
+    place,
+    room_shot,
+    score_rule,
+    unit_id,
+)
 from housegen.llm import Completion
 from housegen.llm.factory import get_provider
 from housegen.projects import crud
@@ -35,6 +50,9 @@ PREPARE_REV = "p4"
 # how a camera spec frames (#133): its target at the frame's centre, as the 3D tour's photographer frame; a set
 # without one was shot with the earlier lens shift ("legacy") and keeps it when shot again, as its previews show
 FRAMING = "centred"
+# a room shot alone works in its own folder, so the set changes only once its photo is there (#142); the photos
+# it replaced wait in PREVIOUS for the panel to bring them back
+RESHOOT, PREVIOUS = "reshoot", "previous"
 # $ per container second (Modal list prices 2026-11-07): the GPU + 4 cores + 16 GiB; "CPU" is the prepare's
 # Blender machine (#95), 8 cores + 32 GiB without a GPU
 _CORE_S, _GIB_S = 0.0000131, 0.00000222
@@ -53,19 +71,25 @@ def listing_dir(storage: ProjectStorage, version: int) -> Path:
     return storage.versions_dir / str(version) / "listing"
 
 
-def read_set(storage: ProjectStorage, version: int) -> dict[str, Any] | None:
-    p = listing_dir(storage, version) / "set.json"
+def _read_json(p: Path) -> dict[str, Any] | None:
     if not p.exists():
         return None
     data: dict[str, Any] = json.loads(p.read_text(encoding="utf-8"))
     return data
 
 
-def _write_set(storage: ProjectStorage, version: int, doc: dict[str, Any]) -> None:
-    p = listing_dir(storage, version) / "set.json"
+def _write_json(p: Path, doc: dict[str, Any]) -> None:
     tmp = p.with_suffix(".tmp")
     tmp.write_text(json.dumps(doc, ensure_ascii=False, indent=1), encoding="utf-8")
     tmp.replace(p)
+
+
+def read_set(storage: ProjectStorage, version: int) -> dict[str, Any] | None:
+    return _read_json(listing_dir(storage, version) / "set.json")
+
+
+def _write_set(storage: ProjectStorage, version: int, doc: dict[str, Any]) -> None:
+    _write_json(listing_dir(storage, version) / "set.json", doc)
 
 
 def _cost(gpu: str, seconds: float) -> float:
@@ -130,11 +154,190 @@ def _by_score(shot: Shot, previews: dict[str, Any]) -> dict[str, Any]:
     return {"view": 1, "camera": shot.camera, "sun": None, "room_lamps": None, "by": "score"}
 
 
+def _status(doc: dict[str, Any]) -> str:
+    return "done" if all(x["key"] in doc["photos"] for x in doc["shots"]) else "partial"
+
+
+def _rule(doc: dict[str, Any], room: str) -> dict[str, float]:
+    """The scoring rule a one-room shoot prepares with: the set's, widened to a room too small for it."""
+    if any(x["room"] == room for x in doc["shots"]):
+        return dict(MIN_AREA)
+    found = next((r for r in doc.get("rooms", []) if r["name"] == room), None)
+    return score_rule(found) if found else dict(MIN_AREA)
+
+
+def _unit_shots(doc: dict[str, Any], rooms: list[dict[str, Any]], unit: str) -> list[Shot]:
+    """What a one-room shoot starts from: nothing for the exteriors (the building's views are chosen again), the
+    set's shot of the room with the viewpoints the prepare finds in it now, or a room the set left out."""
+    if unit == EXTERIOR:
+        return []
+    found = next((r for r in rooms if r.get("name") == unit and r.get("camera")), None)
+    held = next((Shot(**d) for d in doc["shots"] if d["room"] == unit), None)
+    if held and found:
+        return [
+            replace(
+                held, camera=found["camera"], views=list(found.get("views") or [found["camera"]])
+            )
+        ]
+    if held:
+        return [held]
+    if found is None:
+        raise RuntimeError(f"{unit}: the photo service finds no viewpoint in this room")
+    return [room_shot(found, next_key([Shot(**d) for d in doc["shots"]]))]
+
+
+def _replace_unit(
+    shots: list[dict[str, Any]], unit: str, new: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The set's shots with the unit's own replaced by `new`, in the unit's place; a room that joins the set
+    goes where listing order puts it."""
+    at = next((i for i, x in enumerate(shots) if unit_id(x) == unit), None)
+    rest = [x for x in shots if unit_id(x) != unit]
+    if at is None:
+        at = 0 if unit == EXTERIOR or not new else place([Shot(**x) for x in rest], Shot(**new[0]))
+    return rest[:at] + new + rest[at:]
+
+
+def _shown(out: Path, doc: dict[str, Any], unit: str) -> dict[str, dict[str, Any]]:
+    """The unit's photos that are on disk, by key."""
+    return {
+        x["key"]: doc["photos"][x["key"]]
+        for x in doc["shots"]
+        if unit_id(x) == unit
+        and x["key"] in doc["photos"]
+        and (out / doc["photos"][x["key"]]["file"]).exists()
+    }
+
+
+def _merge(st: ProjectStorage, version: int, work_doc: dict[str, Any], unit: str) -> dict[str, Any]:
+    """A one-room shoot's photos into its set: they take the unit's place, keys and captions, and what the unit
+    showed until now waits in PREVIOUS for the panel to bring it back. Returns the shoot's record."""
+    out = listing_dir(st, version)
+    work = out / RESHOOT
+    doc = read_set(st, version)
+    if doc is None:
+        raise RuntimeError(f"version {version}'s listing set is gone")
+    old = [x for x in doc["shots"] if unit_id(x) == unit]
+    shown = _shown(out, doc, unit)
+    if shown:
+        (out / PREVIOUS).mkdir(exist_ok=True)
+        for photo in doc.get("previous", {}).get(unit, {}).get("photos", {}).values():
+            (out / PREVIOUS / photo["file"]).unlink(missing_ok=True)
+        for photo in shown.values():
+            (out / photo["file"]).replace(out / PREVIOUS / photo["file"])
+        doc.setdefault("previous", {})[unit] = {
+            "shots": [x for x in old if x["key"] in shown],
+            "photos": shown,
+            "choices": {k: doc["choices"][k] for k in shown if k in doc["choices"]},
+            "at": datetime.now(UTC).isoformat(),
+        }
+    for x in old:
+        for field in ("photos", "choices", "errors"):
+            doc[field].pop(x["key"], None)
+        (out / f"{x['key']}.jpg").unlink(missing_ok=True)
+    groups = {"E"} if unit == EXTERIOR else {x["key"] for x in old}
+    for g in groups | set(work_doc["previews"]):
+        doc["previews"].pop(g, None)
+        for p in (out / "previews").glob(f"{g}-*.jpg"):
+            p.unlink()
+    (out / "previews").mkdir(exist_ok=True)
+    for g, views in work_doc["previews"].items():
+        doc["previews"][g] = views
+        for p in (work / "previews").glob(f"{g}-*.jpg"):
+            p.replace(out / "previews" / p.name)
+    for x in work_doc["shots"]:
+        k = x["key"]
+        if k in work_doc["photos"] and (work / f"{k}.jpg").exists():
+            (work / f"{k}.jpg").replace(out / f"{k}.jpg")
+            doc["photos"][k] = work_doc["photos"][k]
+        for field in ("choices", "errors"):
+            if k in work_doc[field]:
+                doc[field][k] = work_doc[field][k]
+    doc["shots"] = _replace_unit(doc["shots"], unit, work_doc["shots"])
+    if unit == EXTERIOR:
+        doc["exteriors"] = work_doc["exteriors"]
+    if work_doc.get("rooms"):
+        doc["rooms"] = work_doc["rooms"]
+    for bucket, usd in work_doc["cost"].items():
+        doc["cost"][bucket] = round(float(doc["cost"].get(bucket) or 0) + float(usd or 0), 4)
+    first = work_doc["shots"][0] if work_doc["shots"] and unit != EXTERIOR else None
+    record = {
+        "job_id": work_doc["job_id"],
+        "room": unit,
+        "unit": first["unit"] if first else None,
+        "caption": first["caption"] if first else None,
+        "joined": not old,
+        "at": datetime.now(UTC).isoformat(),
+        "photos": len(work_doc["photos"]),
+        "seconds": work_doc.get("seconds"),
+        "usd": round(sum(float(v or 0) for v in work_doc["cost"].values()), 4),
+    }
+    doc.setdefault("reshoots", []).append(record)
+    doc["status"] = _status(doc)
+    _write_set(st, version, doc)
+    shutil.rmtree(work, ignore_errors=True)
+    return record
+
+
+def bring_back(st: ProjectStorage, version: int, unit: str) -> bool:
+    """Swap a unit's photos with the ones its last one-room shoot replaced (#142): a second call swaps them back.
+    False when the set holds no previous photo of the unit."""
+    doc = read_set(st, version)
+    prev = (doc or {}).get("previous", {}).get(unit)
+    out = listing_dir(st, version)
+    if not doc or not prev:
+        return False
+    if not all((out / PREVIOUS / p["file"]).exists() for p in prev["photos"].values()):
+        return False
+    shown = _shown(out, doc, unit)
+    current = {
+        "shots": [x for x in doc["shots"] if x["key"] in shown],
+        "photos": shown,
+        "choices": {k: doc["choices"][k] for k in shown if k in doc["choices"]},
+        "at": datetime.now(UTC).isoformat(),
+    }
+    swap = out / "swap"
+    shutil.rmtree(swap, ignore_errors=True)
+    swap.mkdir()
+    for photo in shown.values():
+        (out / photo["file"]).replace(swap / photo["file"])
+    for photo in prev["photos"].values():
+        (out / PREVIOUS / photo["file"]).replace(out / photo["file"])
+    for f in swap.iterdir():
+        f.replace(out / PREVIOUS / f.name)
+    swap.rmdir()
+    for x in doc["shots"]:
+        if unit_id(x) == unit:
+            for field in ("photos", "choices", "errors"):
+                doc[field].pop(x["key"], None)
+    doc["shots"] = _replace_unit(doc["shots"], unit, prev["shots"])
+    doc["photos"].update(prev["photos"])
+    doc["choices"].update(prev["choices"])
+    if shown:
+        doc["previous"][unit] = current
+    else:
+        del doc["previous"][unit]
+    doc["status"] = _status(doc)
+    _write_set(st, version, doc)
+    return True
+
+
+def _summary(record: dict[str, Any], version: int) -> str:
+    if record["room"] == EXTERIOR:
+        return f"The building from outside shot again: {record['photos']} photos in version {version}'s set"
+    name = f"{record['unit']} · {record['caption']}" if record.get("unit") else record["caption"]
+    if record["joined"]:
+        return f"{name} added to version {version}'s listing set"
+    return f"{name} shot again in version {version}'s listing set"
+
+
 async def listing(ctx: JobContext) -> None:
     async with session_factory()() as session:
         job = await crud.get_job(session, ctx.job_id)
     req = json.loads(job.request_text or "{}")
     version = int(req["version"])
+    # one unit of the version's set shot alone (#142): a room's name, or EXTERIOR for the building's views
+    only = str(req.get("room") or "") or None
     s = get_settings()
     rs = (
         ResolvedRunSettings.model_validate_json(job.settings_json)
@@ -143,22 +346,44 @@ async def listing(ctx: JobContext) -> None:
     )
     st = ProjectStorage(ctx.project_id)
     out = listing_dir(st, version)
-    (out / "previews").mkdir(parents=True, exist_ok=True)
-    kit = str(req.get("kit") or viewer_kit(s))
-    key = f"{ctx.project_id}-v{version}-{kit}-{PREPARE_REV}"
     previous = read_set(st, version)
-    resumed = previous is not None and previous.get("job_id") == ctx.job_id
-    reuse = previous is not None and (resumed or bool(req.get("reuse")))
+    if only:
+        if previous is None:
+            await _record_spend(ctx.job_id, 0.0)
+            raise RuntimeError(f"version {version} has no listing set to shoot a room of")
+        record = next(
+            (r for r in previous.get("reshoots", []) if r.get("job_id") == ctx.job_id), None
+        )
+        if record:  # resumed after its photos joined the set: nothing is left to do
+            await _record_spend(ctx.job_id, float(record.get("usd") or 0))
+            await ctx.emit("done", version=version, summary=_summary(record, version), room=only)
+            return
+        work = out / RESHOOT
+        own = _read_json(work / "set.json")
+        if own is not None and own.get("job_id") != ctx.job_id:
+            own = None
+            shutil.rmtree(work, ignore_errors=True)
+    else:
+        work, own = out, previous
+    (work / "previews").mkdir(parents=True, exist_ok=True)
+    # a room shot alone draws with its set's renderer
+    asked_kit = (previous or {}).get("kit") if only else req.get("kit")
+    kit = str(asked_kit or viewer_kit(s))
+    key = f"{ctx.project_id}-v{version}-{kit}-{PREPARE_REV}"
+    resumed = own is not None and own.get("job_id") == ctx.job_id
+    reuse = previous is not None and (resumed or bool(req.get("reuse")) or only is not None)
+    # a room shot alone keeps its set's staging and exteriors whatever the request says
+    asked: dict[str, Any] = {} if only else req
     # a set shot again keeps its staging unless another is asked (#94)
     kept_staging = (previous or {}).get("settings", {}).get("staging") if reuse else None
-    staging = str(req.get("staging") or kept_staging or "furnished")
+    staging = str(asked.get("staging") or kept_staging or "furnished")
     # and its exteriors (#97); a set from before the choice was shot with the default
     context_url, site = surroundings(st)
     default = "surroundings" if context_url else "house"
     kept_exterior = (
         ((previous or {}).get("settings", {}).get("exteriors") or default) if reuse else None
     )
-    exterior = str(req.get("exteriors") or kept_exterior or default)
+    exterior = str(asked.get("exteriors") or kept_exterior or default)
     framing = (
         str((previous or {}).get("settings", {}).get("framing") or "legacy") if reuse else FRAMING
     )
@@ -167,18 +392,33 @@ async def listing(ctx: JobContext) -> None:
         exterior = "none"
     elif exterior == "surroundings" and not context_url:
         exterior = "house"
+    if only == EXTERIOR and exterior == "none":
+        await _record_spend(ctx.job_id, 0.0)
+        raise RuntimeError("this set has no views from outside to shoot again")
+    # a room shot alone needs no exterior build, and its prepare scores it even when it is small
+    outside = exterior != "none" and only in (None, EXTERIOR)
+    rule = _rule(previous, only) if previous and only and only != EXTERIOR else MIN_AREA
     client = PhotoClient(s)
     t0 = time.time()
     doc: dict[str, Any] = {}
+
+    def write() -> None:
+        _write_json(work / "set.json", doc)
+
     try:
-        await ctx.emit("phase", name="prepare", message=f"Exporting version {version} to Blender")
+        await ctx.emit(
+            "phase",
+            name="prepare",
+            message=f"Exporting version {version} to Blender",
+            **({"room": only} if only else {}),
+        )
         prepared = await client.prepare(
             scene_page(st, version, kit),
             key,
-            context_url if exterior != "none" else None,
-            site if exterior != "none" else None,
-            exteriors=exterior,
-            score=MIN_AREA,
+            context_url if outside else None,
+            site if outside else None,
+            exteriors=exterior if only in (None, EXTERIOR) else "none",
+            score=rule,
         )
         logger.info(
             "listing.prepared",
@@ -189,25 +429,38 @@ async def listing(ctx: JobContext) -> None:
                 "phases": prepared.get("phases"),
                 "gpu": (prepared.get("export") or {}).get("gpu"),
                 "exteriors": exterior,
+                "room": only,
             },
         )
-        exteriors = list(prepared.get("exteriors") or []) if exterior != "none" else []
-        kept = dict(previous) if previous and reuse else {}
-        if previous and reuse:
-            shots = [Shot(**d) for d in previous["shots"]]
-            if kept_exterior != exterior:  # other exteriors: the building's shots are chosen again
-                gone = {x.key for x in shots if x.use == "exterior"}
-                shots = [x for x in shots if x.key not in gone]
-                kept["choices"] = {
-                    k: v for k, v in kept.get("choices", {}).items() if k not in gone
-                }
-                kept["previews"] = {k: v for k, v in kept.get("previews", {}).items() if k != "E"}
-        else:
-            shots = pick(prepared.get("rooms", []))
-        if not shots:
-            raise RuntimeError(
-                "no room to photograph: the version has no living room, bedroom or bathroom with a camera"
+        exteriors = list(prepared.get("exteriors") or []) if outside else []
+        if only:
+            assert previous is not None
+            kept = dict(own) if own else {}
+            shots = (
+                [Shot(**d) for d in own["shots"]]
+                if own
+                else _unit_shots(previous, prepared.get("rooms", []), only)
             )
+        else:
+            kept = dict(previous) if previous and reuse else {}
+            if previous and reuse:
+                shots = [Shot(**d) for d in previous["shots"]]
+                # other exteriors: the building's shots are chosen again
+                if kept_exterior != exterior:
+                    gone = {x.key for x in shots if x.use == "exterior"}
+                    shots = [x for x in shots if x.key not in gone]
+                    kept["choices"] = {
+                        k: v for k, v in kept.get("choices", {}).items() if k not in gone
+                    }
+                    kept["previews"] = {
+                        k: v for k, v in kept.get("previews", {}).items() if k != "E"
+                    }
+            else:
+                shots = pick(prepared.get("rooms", []))
+            if not shots:
+                raise RuntimeError(
+                    "no room to photograph: the version has no living room, bedroom or bathroom with a camera"
+                )
         doc = {
             "version": version,
             "kit": kit,
@@ -232,15 +485,19 @@ async def listing(ctx: JobContext) -> None:
             },
             "shots": [x.as_dict() for x in shots],
             "exteriors": exteriors,
+            # the rooms a set may photograph, for the ones it leaves out (#142)
+            "rooms": listable(prepared.get("rooms", [])),
             "previews": dict(kept.get("previews", {})),
             "choices": dict(kept.get("choices", {})),
             "photos": dict(kept.get("photos", {})) if resumed else {},
             "errors": {},
         }
+        if only:
+            doc["room"] = only
         doc["cost"] = {
             # a resumed job's prepare is cached on the service: the first one's cost stays
             "prepare_usd": _prepare_cost(prepared)
-            + (float((previous or {}).get("cost", {}).get("prepare_usd") or 0) if resumed else 0.0),
+            + (float((own or {}).get("cost", {}).get("prepare_usd") or 0) if resumed else 0.0),
             # a set shot again keeps the earlier job's previews and choices; their cost was that job's
             "previews_usd": _spent(p for v in doc["previews"].values() for p in v.values())
             if resumed
@@ -248,7 +505,12 @@ async def listing(ctx: JobContext) -> None:
             "editor_usd": _spent(doc["choices"].values()) if resumed else 0.0,
             "photos_usd": _spent(doc["photos"].values()),
         }
-        _write_set(st, version, doc)
+        if not only and not resumed:
+            # the photos one-room shoots replaced belong to the set this one replaces
+            for folder in (PREVIOUS, RESHOOT):
+                shutil.rmtree(out / folder, ignore_errors=True)
+        write()
+        plan = {"room": only} if only else {}
         await ctx.emit(
             "listing_plan",
             version=version,
@@ -256,6 +518,7 @@ async def listing(ctx: JobContext) -> None:
                 {"key": x.key, "unit": x.unit, "caption": x.caption, "views": len(x.views)}
                 for x in shots
             ],
+            **plan,
         )
         sem = asyncio.Semaphore(s.LISTING_PARALLEL)
         lock = asyncio.Lock()
@@ -269,7 +532,7 @@ async def listing(ctx: JobContext) -> None:
                     doc[field][key_] = value
                 if cost:
                     doc["cost"][cost] = round(doc["cost"][cost] + usd, 4)
-                _write_set(st, version, doc)
+                write()
 
         def label(shot: Shot) -> str:
             return f"{shot.unit} · {shot.title}" if shot.unit else shot.title
@@ -290,7 +553,7 @@ async def listing(ctx: JobContext) -> None:
         async def preview(shot: Shot, i: int, camera: str) -> None:
             if (
                 str(i) in doc["previews"].get(shot.key, {})
-                and (out / "previews" / f"{shot.key}-{i}.jpg").exists()
+                and (work / "previews" / f"{shot.key}-{i}.jpg").exists()
             ):
                 return
             async with sem:
@@ -321,7 +584,7 @@ async def listing(ctx: JobContext) -> None:
                         },
                     )
                     return
-            await asyncio.to_thread((out / "previews" / f"{shot.key}-{i}.jpg").write_bytes, jpeg)
+            await asyncio.to_thread((work / "previews" / f"{shot.key}-{i}.jpg").write_bytes, jpeg)
             meta = res.get("meta") or {}
             seconds = float(res.get("seconds") or 0)
             usd = _cost(str(res.get("gpu") or ""), seconds)
@@ -358,7 +621,7 @@ async def listing(ctx: JobContext) -> None:
                     rs.critic_model,
                     shot.room,
                     shot.use,
-                    [(out / "previews" / f"{shot.key}-{i}.jpg", p["pieces"]) for i, p in shown],
+                    [(work / "previews" / f"{shot.key}-{i}.jpg", p["pieces"]) for i, p in shown],
                     rs.max_tokens,
                     rs.critic_effort,
                 )
@@ -386,7 +649,7 @@ async def listing(ctx: JobContext) -> None:
             if choice is None:
                 choice = await choose(shot)
                 await save("choices", shot.key, choice, float(choice.get("usd") or 0), "editor_usd")
-            path = out / f"{shot.key}.jpg"
+            path = work / f"{shot.key}.jpg"
             if shot.key in doc["photos"] and path.exists():
                 return
             async with sem:
@@ -416,7 +679,7 @@ async def listing(ctx: JobContext) -> None:
                     )
                     async with lock:
                         doc["errors"][shot.key] = str(exc)[:500]
-                        _write_set(st, version, doc)
+                        write()
                     await ctx.emit(
                         "listing_shot", key=shot.key, caption=shot.caption, error=str(exc)[:300]
                     )
@@ -445,13 +708,14 @@ async def listing(ctx: JobContext) -> None:
                 usd,
                 "photos_usd",
             )
+            # where the photo is once the job is over: a room shot alone joins its set at the end
             url = f"/scenes/{ctx.project_id}/versions/{version}/listing/{path.name}?t={int(time.time())}"
             await ctx.emit(
                 "listing_shot", key=shot.key, caption=shot.caption, url=url, seconds=round(seconds)
             )
 
         async def preview_outside(i: int, view: dict[str, Any]) -> None:
-            path = out / "previews" / f"E-{i}.jpg"
+            path = work / "previews" / f"E-{i}.jpg"
             if str(i) in doc["previews"].get("E", {}) and path.exists():
                 return
             async with sem:
@@ -515,7 +779,7 @@ async def listing(ctx: JobContext) -> None:
                         rs.critic_model,
                         [
                             (
-                                out / "previews" / f"E-{i}.jpg",
+                                work / "previews" / f"E-{i}.jpg",
                                 str(exteriors[i - 1].get("side") or ""),
                             )
                             for i in shown
@@ -548,7 +812,7 @@ async def listing(ctx: JobContext) -> None:
                         "usd": usd if n == 0 else 0.0,
                     }
                 doc["cost"]["editor_usd"] = round(doc["cost"]["editor_usd"] + usd, 4)
-                _write_set(st, version, doc)
+                write()
             await ctx.emit(
                 "listing_plan",
                 version=version,
@@ -556,6 +820,7 @@ async def listing(ctx: JobContext) -> None:
                     {"key": x.key, "unit": x.unit, "caption": x.caption, "views": len(x.views)}
                     for x in shots
                 ],
+                **plan,
             )
             await asyncio.gather(*(room(x) for x in new))
 
@@ -563,16 +828,20 @@ async def listing(ctx: JobContext) -> None:
         done = len(doc["photos"])
         doc["status"] = "done" if done == len(shots) else "partial"
         doc["seconds"] = round(time.time() - t0)
-        _write_set(st, version, doc)
+        write()
         if done == 0:
             raise RuntimeError(
                 f"no photo rendered: {next(iter(doc['errors'].values()), 'unknown error')}"
             )
         usd = sum(doc["cost"].values())
+        summary = f"{done} of {len(shots)} listing photos of version {version}"
+        if only:
+            summary = _summary(_merge(st, version, doc, only), version)
         logger.info(
             "listing.done",
             extra={
                 "job_id": ctx.job_id,
+                "room": only,
                 "photos": done,
                 "of": len(shots),
                 "previews": sum(len(v) for v in doc["previews"].values()),
@@ -580,11 +849,12 @@ async def listing(ctx: JobContext) -> None:
                 "usd": round(usd, 2),
             },
         )
-        await ctx.emit(
-            "done",
-            version=version,
-            summary=f"{done} of {len(shots)} listing photos of version {version}",
-        )
+        await ctx.emit("done", version=version, summary=summary, **plan)
+    except Exception:
+        # a failed job does not resume: the set keeps its photo and nothing waits in RESHOOT
+        if only:
+            shutil.rmtree(work, ignore_errors=True)
+        raise
     finally:
         await client.close()
         await _record_spend(ctx.job_id, sum(float(v or 0) for v in doc.get("cost", {}).values()))

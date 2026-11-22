@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { useQueryClient } from "@tanstack/react-query"
-import { Camera, ChevronLeft, ChevronRight, Download, ImageOff, Loader2, RefreshCw, Square, X } from "lucide-react"
-import { getGetListingQueryKey, useGetListing, useStartListing } from "@/api/endpoints/listing/listing"
+import { Camera, ChevronLeft, ChevronRight, Download, ImageOff, Loader2, Plus, RefreshCw, Square, Undo2, X } from "lucide-react"
+import { getGetListingQueryKey, useBringBackListingPhoto, useGetListing, useStartListing } from "@/api/endpoints/listing/listing"
 import { getListJobsQueryKey, useCancelJob } from "@/api/endpoints/projects/projects"
 import { ListingOutExteriors, ListingOutStaging, type JobOut, type ListingOut, type ListingPhotoOut } from "@/api/model"
 import { fmtUsd } from "@/components/RunSummaryCard"
@@ -10,14 +10,25 @@ import { errorMessage, relTime } from "@/lib/utils"
 
 const running = (j: JobOut) => j.status === "running" || j.status === "queued" || j.status === "interrupted"
 
-/** The version a listing job shoots (its request is `{"version": n, "reuse": bool}`). */
-function jobVersion(j: JobOut): number | null {
+/** What a listing job asked: `{"version": n, "reuse": bool, …, "room"?: name}` (a room shot alone, #142). */
+function jobRequest(j: JobOut): { version: number | null; room: string | null } {
   try {
-    const v = (JSON.parse(j.request_text) as { version?: number }).version
-    return typeof v === "number" ? v : null
+    const r = JSON.parse(j.request_text) as { version?: number; room?: string }
+    return { version: typeof r.version === "number" ? r.version : null, room: typeof r.room === "string" ? r.room : null }
   } catch {
-    return null
+    return { version: null, room: null }
   }
+}
+
+/** The views from outside, shot alone as one unit (#142). */
+const EXTERIOR = "exterior"
+
+/** A unit of the set as the panel names it: a room's caption (with its flat), or the views from outside. */
+function unitLabel(set: ListingOut | null, room: string): string {
+  if (room === EXTERIOR) return "the views from outside"
+  const p = set?.photos.find((x) => x.room === room) ?? set?.left_out?.find((x) => x.room === room)
+  if (!p) return room
+  return p.unit ? `${p.unit} · ${p.caption}` : p.caption
 }
 
 /** How much of the furnishing the rooms show (#94); the exteriors are shot as they are. */
@@ -93,6 +104,7 @@ export function ListingPanel({
     query: { refetchInterval: job ? 4000 : false },
   })
   const start = useStartListing()
+  const back = useBringBackListingPhoto()
   const cancel = useCancelJob()
   const [open, setOpen] = useState<number | null>(null)
   const [picked, setPicked] = useState<ListingOutStaging | null>(null)
@@ -115,6 +127,18 @@ export function ListingPanel({
     void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
     void qc.invalidateQueries({ queryKey: getGetListingQueryKey(projectId) })
   }
+  /** One room of the shown set, or its views from outside, shot alone with the set's own settings (#142). */
+  async function shootRoom(room: string) {
+    if (!set) return
+    await start.mutateAsync({ projectId, data: { version: set.version, room } })
+    setShown(set.version)
+    void qc.invalidateQueries({ queryKey: getListJobsQueryKey(projectId) })
+  }
+  async function bringBack(room: string) {
+    if (!set) return
+    await back.mutateAsync({ projectId, version: set.version, data: { room } })
+    void qc.invalidateQueries({ queryKey: getGetListingQueryKey(projectId) })
+  }
   async function stop() {
     if (!job) return
     await cancel.mutateAsync({ projectId, jobId: job.id })
@@ -125,11 +149,13 @@ export function ListingPanel({
   const set = data?.listing ?? null
   const photos = set?.photos ?? []
   const ready = photos.filter((p) => p.url)
-  const jobOn = job ? jobVersion(job) : null
+  const { version: jobOn, room: jobRoom } = job ? jobRequest(job) : { version: null, room: null }
   const shootingThis = job !== null && set !== null && jobOn === set.version
+  // a room shot alone leaves the set as it is until its photo joins it
+  const reshooting = shootingThis && jobRoom !== null ? jobRoom : null
   const previewsDone = set?.previews_done ?? 0
   const previewsTotal = set?.previews_total ?? 0
-  const previewing = shootingThis && previewsTotal > 0 && previewsDone < previewsTotal && ready.length === 0
+  const previewing = shootingThis && reshooting === null && previewsTotal > 0 && previewsDone < previewsTotal && ready.length === 0
   const viewedHasSet = data?.sets.includes(version) ?? false
   // a set shot again keeps its staging unless another is picked
   const staging = picked ?? set?.staging ?? ListingOutStaging.furnished
@@ -148,7 +174,9 @@ export function ListingPanel({
         bathroom, rendered in Blender Cycles with the project's finishes. The app previews several viewpoints of the building
         and of each room; a picture editor (the project's critic model) keeps the best, and those are shot at full size. The
         staging sets how much of the furnishing the rooms show: furnished, light (no decor) or empty (the architecture and its
-        finishes). The exteriors show the house in its surroundings, alone on its plot, or not at all.
+        finishes). The exteriors show the house in its surroundings, alone on its plot, or not at all. A room can be shot
+        again alone (its viewpoints, the editor's pick and its photo, with the set's settings), a room the set left out
+        can be added, and the photo a room's new shot replaced can be brought back.
       </p>
       {!data?.available && <p className="text-xs text-amber-700 dark:text-amber-300">No photo service is configured on this server.</p>}
       <div className="flex flex-wrap items-center gap-2">
@@ -186,11 +214,13 @@ export function ListingPanel({
           <>
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Loader2 className="size-3 animate-spin" />
-              {previewing
-                ? `Previewing v${jobOn}: ${previewsDone} of ${previewsTotal} viewpoints`
-                : shootingThis
-                  ? `Shooting v${jobOn}: ${ready.length} of ${photos.length} photos`
-                  : `Preparing v${jobOn ?? "?"} in Blender…`}
+              {jobRoom !== null
+                ? `Shooting ${unitLabel(shootingThis ? set : null, jobRoom)} alone on v${jobOn ?? "?"}…`
+                : previewing
+                  ? `Previewing v${jobOn}: ${previewsDone} of ${previewsTotal} viewpoints`
+                  : shootingThis
+                    ? `Shooting v${jobOn}: ${ready.length} of ${photos.length} photos`
+                    : `Preparing v${jobOn ?? "?"} in Blender…`}
             </span>
             <Button size="sm" variant="outline" onClick={() => void stop()} disabled={cancel.isPending || job.status === "interrupted"}>
               <Square /> Stop
@@ -206,6 +236,7 @@ export function ListingPanel({
         )}
       </div>
       {start.error && <p className="text-xs text-destructive">{errorMessage(start.error)}</p>}
+      {back.error && <p className="text-xs text-destructive">{errorMessage(back.error)}</p>}
       {!job && lastJob?.status === "failed" && <p className="text-xs text-destructive">The last shoot failed: {lastJob.error}</p>}
       {(data?.sets.length ?? 0) > 1 && (
         <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
@@ -221,14 +252,65 @@ export function ListingPanel({
           ))}
         </div>
       )}
-      {set ? <SetView set={set} currentVersion={currentVersion} live={shootingThis} onOpen={setOpen} /> : !job && <p className="text-xs text-muted-foreground">No set yet.</p>}
+      {set ? (
+        <SetView
+          set={set}
+          currentVersion={currentVersion}
+          live={shootingThis && reshooting === null}
+          reshooting={reshooting}
+          busy={job !== null || !data?.available || start.isPending || back.isPending}
+          onOpen={setOpen}
+          onShoot={(room) => void shootRoom(room)}
+          onBack={(room) => void bringBack(room)}
+        />
+      ) : (
+        !job && <p className="text-xs text-muted-foreground">No set yet.</p>
+      )}
       {set && open !== null && <PhotoViewer photos={ready} index={open} onIndex={setOpen} onClose={() => setOpen(null)} />}
     </div>
   )
 }
 
-function SetView({ set, currentVersion, live, onOpen }: { set: ListingOut; currentVersion: number; live: boolean; onOpen: (i: number) => void }) {
+/** A small icon action next to a photo or a group (#142). */
+function UnitAction({ icon, title, disabled, onClick }: { icon: ReactNode; title: string; disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-3.5"
+    >
+      {icon}
+    </button>
+  )
+}
+
+function SetView({
+  set,
+  currentVersion,
+  live,
+  reshooting,
+  busy,
+  onOpen,
+  onShoot,
+  onBack,
+}: {
+  set: ListingOut
+  currentVersion: number
+  /** the whole set is being shot: its missing photos are on their way */
+  live: boolean
+  /** the room (or "exterior") a running job shoots alone */
+  reshooting: string | null
+  /** a listing job runs or the service is missing: no action can start */
+  busy: boolean
+  onOpen: (i: number) => void
+  onShoot: (room: string) => void
+  onBack: (room: string) => void
+}) {
   const ready = set.photos.filter((p) => p.url)
+  const leftOut = set.left_out ?? []
+  const reshoots = [...(set.reshoots ?? [])].reverse().slice(0, 3)
   return (
     <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
@@ -237,34 +319,126 @@ function SetView({ set, currentVersion, live, onOpen }: { set: ListingOut; curre
         {ready.length === 1 ? "" : "s"} · {set.width}×{set.height}
         {set.created_at && ` · ${relTime(set.created_at)}`} · ≈ {fmtUsd(set.cost_usd)}
       </p>
+      {reshoots.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Shot alone:{" "}
+          {reshoots.map((r, i) => (
+            <span key={r.job_id}>
+              {i > 0 && " · "}
+              {r.room === EXTERIOR ? "views from outside" : r.unit ? `${r.unit} · ${r.caption}` : r.caption}
+              {r.joined ? " (added)" : ""} ≈ {fmtUsd(r.usd)}, {relTime(r.at)}
+            </span>
+          ))}
+        </p>
+      )}
       {set.out_of_date && (
         <p className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
           Shot on v{set.version}; the project is at v{currentVersion} now. Shoot again to show the current state.
         </p>
       )}
-      {byUnit(set.photos).map(([unit, photos]) => (
-        <section key={unit ?? "house"} className="space-y-1.5">
-          {unit && <h3 className="text-xs font-semibold">{unit}</h3>}
-          <div className="grid grid-cols-2 gap-2">
-            {photos.map((p) => (
-              <figure key={p.key} className="space-y-0.5">
-                {p.url ? (
-                  <button onClick={() => onOpen(ready.indexOf(p))} className="block w-full overflow-hidden rounded border">
-                    <img src={p.url} alt={p.caption} loading="lazy" className="aspect-video w-full object-cover" />
-                  </button>
-                ) : (
-                  <div className="grid aspect-video w-full place-items-center rounded border bg-muted text-muted-foreground" title={p.error ?? undefined}>
-                    {p.error ? <ImageOff className="size-4" /> : live ? <Loader2 className="size-4 animate-spin" /> : <ImageOff className="size-4" />}
-                  </div>
+      {byUnit(set.photos).map(([unit, photos]) => {
+        const outside = photos[0]?.use === "exterior"
+        return (
+          <section key={unit ?? "house"} className="space-y-1.5">
+            {(unit || outside) && (
+              <div className="flex items-center gap-1">
+                <h3 className="flex-1 text-xs font-semibold">{unit}</h3>
+                {outside && (
+                  <>
+                    {reshooting === EXTERIOR && <Loader2 className="size-3.5 animate-spin text-muted-foreground" />}
+                    <UnitAction
+                      icon={<RefreshCw />}
+                      title="Shoot the views from outside again: their viewpoints, the editor's choice and the photos. The ones they replace are kept"
+                      disabled={busy}
+                      onClick={() => onShoot(EXTERIOR)}
+                    />
+                    {photos.some((p) => p.previous) && (
+                      <UnitAction
+                        icon={<Undo2 />}
+                        title="Bring back the views from outside these replaced (these are kept: bring them back the same way)"
+                        disabled={busy}
+                        onClick={() => onBack(EXTERIOR)}
+                      />
+                    )}
+                  </>
                 )}
-                <figcaption className="truncate text-xs" title={p.error ? `${p.caption}: ${p.error}` : p.why ? `${p.caption}. ${p.why}` : p.caption}>
-                  {p.caption}
-                </figcaption>
-              </figure>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-2">
+              {photos.map((p) => {
+                const again = reshooting !== null && reshooting === p.room
+                return (
+                  <figure key={p.key} className="space-y-0.5">
+                    <div className="relative">
+                      {p.url ? (
+                        <button onClick={() => onOpen(ready.indexOf(p))} className="block w-full overflow-hidden rounded border">
+                          <img src={p.url} alt={p.caption} loading="lazy" className="aspect-video w-full object-cover" />
+                        </button>
+                      ) : (
+                        <div className="grid aspect-video w-full place-items-center rounded border bg-muted text-muted-foreground" title={p.error ?? undefined}>
+                          {p.error ? <ImageOff className="size-4" /> : live ? <Loader2 className="size-4 animate-spin" /> : <ImageOff className="size-4" />}
+                        </div>
+                      )}
+                      {(again || (outside && reshooting === EXTERIOR)) && (
+                        <div className="pointer-events-none absolute inset-0 grid place-items-center rounded bg-black/40 text-white">
+                          <Loader2 className="size-4 animate-spin" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-0.5">
+                      <figcaption className="min-w-0 flex-1 truncate text-xs" title={p.error ? `${p.caption}: ${p.error}` : p.why ? `${p.caption}. ${p.why}` : p.caption}>
+                        {p.caption}
+                      </figcaption>
+                      {!outside && (
+                        <>
+                          <UnitAction
+                            icon={<RefreshCw />}
+                            title={`Shoot ${p.title} again alone: its viewpoints, the editor's pick and the photo. The photo it replaces is kept`}
+                            disabled={busy}
+                            onClick={() => onShoot(p.room)}
+                          />
+                          {p.previous && (
+                            <UnitAction
+                              icon={<Undo2 />}
+                              title="Bring back the photo this one replaced (this one is kept: bring it back the same way)"
+                              disabled={busy}
+                              onClick={() => onBack(p.room)}
+                            />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </figure>
+                )
+              })}
+            </div>
+          </section>
+        )
+      })}
+      {leftOut.length > 0 && (
+        <section className="space-y-1.5">
+          <h3 className="text-xs font-semibold">Left out of the set</h3>
+          <p className="text-xs text-muted-foreground">
+            Too small for a wide shot, or another room of the kind holds the place. Shoot one to add it in listing order.
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {leftOut.map((r) => (
+              <Button
+                key={r.room}
+                size="sm"
+                variant="outline"
+                className="h-7 px-2"
+                disabled={busy}
+                onClick={() => onShoot(r.room)}
+                title={`Shoot ${r.title} and add it to the set`}
+              >
+                {reshooting === r.room ? <Loader2 className="animate-spin" /> : <Plus />}
+                {r.unit ? `${r.unit} · ${r.caption}` : r.caption}
+              </Button>
             ))}
           </div>
         </section>
-      ))}
+      )}
     </div>
   )
 }

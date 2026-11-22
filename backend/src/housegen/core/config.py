@@ -211,6 +211,10 @@ class Settings(BaseSettings):
     # what a listing shoot holds of the month's budget until its cost is known: no estimate exists
     # for a set, and the dearest one on dev cost $7.64 (7 photos, 33 previews)
     LISTING_ESTIMATE_USD: float = 8.0
+    # the same for one room or the views from outside shot alone (#142): a preview cost about $0.11
+    # and a photo $0.21 on dev (2026-11-12), so a room of 6 viewpoints about $0.90, the exteriors
+    # (6 previews, up to 4 photos) about $1.50
+    LISTING_ROOM_ESTIMATE_USD: float = 2.0
 
     @property
     def database_url(self) -> str:

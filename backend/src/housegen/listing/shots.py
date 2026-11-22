@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
@@ -113,21 +114,101 @@ def pick(rooms: list[dict[str, Any]]) -> list[Shot]:
     shots: list[Shot] = []
     for unit in sorted(units, key=_unit_order):
         for r in _unit_rooms(units[unit]):
-            title = room_name_parts(r["name"])[0].strip()
-            shots.append(
-                Shot(
-                    key=f"{len(shots) + 1:02d}",
-                    unit=unit,
-                    room=r["name"],
-                    title=title,
-                    use=r["use"],
-                    area=round(r["area"], 1),
-                    caption=caption(title, r["area"]),
-                    camera=r["camera"],
-                    views=list(r.get("views") or [r["camera"]]),
-                )
-            )
+            shots.append(room_shot(r, f"{len(shots) + 1:02d}"))
     return shots
+
+
+def room_shot(r: dict[str, Any], key: str) -> Shot:
+    """A prepared room (name, use, area, camera, views) as the set's shot `key`."""
+    title = room_name_parts(r["name"])[0].strip()
+    area = float(r.get("area") or 0)
+    return Shot(
+        key=key,
+        unit=unit_of(r["name"]),
+        room=r["name"],
+        title=title,
+        use=r["use"],
+        area=round(area, 1),
+        caption=caption(title, area),
+        camera=r["camera"],
+        views=list(r.get("views") or [r["camera"]]),
+    )
+
+
+EXTERIOR = "exterior"  # the building from outside, shot alone as one unit (#142)
+
+
+def unit_id(shot: dict[str, Any]) -> str:
+    """What a one-room shoot names a photo by (#142): its room's name, `exterior` for every view from outside."""
+    return EXTERIOR if shot.get("use") == "exterior" else str(shot["room"])
+
+
+def listable(rooms: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The prepared rooms of a use a set photographs, whatever their size (#142): name, use, area and whether a
+    viewpoint was found in them (None: the prepare did not score the room, too small for a set)."""
+    return [
+        {
+            "name": r["name"],
+            "use": r["use"],
+            "area": round(float(r.get("area") or 0), 1),
+            "camera": bool(r.get("camera")) if r.get("scored", True) else None,
+        }
+        for r in rooms
+        if r.get("use") in MIN_AREA and r.get("name")
+    ]
+
+
+def score_rule(room: dict[str, Any]) -> dict[str, float]:
+    """The prepare's scoring rule (#96), widened to a room under its use's MIN_AREA so that it gets viewpoints."""
+    use, area = room["use"], float(room.get("area") or 0)
+    if area >= MIN_AREA[use]:
+        return dict(MIN_AREA)
+    # a tenth below the rounded area the set stored: the service compares its own, unrounded figure
+    return {**MIN_AREA, use: max(0.0, math.floor(area * 10) / 10 - 0.1)}
+
+
+# a room's slot in its unit's listing order (_unit_rooms): living, dining or kitchen, main bedroom, bathroom,
+# the other bedrooms
+_SLOT = {"living": 0, "kitchen-living": 0, "dining": 1, "kitchen": 1, "bedroom": 2, "bath": 3}
+
+
+def _ranks(shots: list[Shot]) -> list[tuple[Any, ...]]:
+    """Each shot's place in listing order: a unit's first room of a slot holds it, the others follow it."""
+    held: set[tuple[str | None, int]] = set()
+    out: list[tuple[Any, ...]] = []
+    for n, x in enumerate(shots):
+        if x.use == "exterior":
+            out.append((0, n))
+            continue
+        slot = _SLOT.get(x.use, 4)
+        if slot == 2 and (x.unit, 2) in held:
+            slot = 4
+        follows = int((x.unit, slot) in held) if slot != 4 else 0
+        held.add((x.unit, slot))
+        out.append((1, _unit_order(x.unit), slot, follows, _natural(x.room)))
+    return out
+
+
+def place(shots: list[Shot], new: Shot) -> int:
+    """Where a room the set left out joins it, in listing order; the set's own photos keep theirs."""
+    ranks = _ranks([*shots, new])
+    return next((i for i, r in enumerate(ranks[:-1]) if r > ranks[-1]), len(shots))
+
+
+def next_key(shots: list[Shot]) -> str:
+    """A key no photo of the set uses: a room that joins the set keeps it wherever it is placed."""
+    return f"{max((int(x.key) for x in shots if x.key.isdigit()), default=0) + 1:02d}"
+
+
+def left_out(rooms: list[dict[str, Any]], shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The listable rooms the set has no photo of, in listing order; a room scored without a viewpoint is not
+    offered."""
+    held = {x["room"] for x in shots}
+    found = [r for r in rooms if r["name"] not in held and r.get("camera") is not False]
+    return sorted(
+        found,
+        key=lambda r: (_unit_order(unit_of(r["name"])), _SLOT[r["use"]], _natural(r["name"])),
+    )
 
 
 _FRENCH = re.compile(

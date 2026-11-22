@@ -11,6 +11,7 @@ import type { ListingPhotoOutWhy } from './listingPhotoOutWhy';
 
 export interface ListingPhotoOut {
   key: string;
+  room: string;
   unit: ListingPhotoOutUnit;
   title: string;
   caption: string;
@@ -19,4 +20,5 @@ export interface ListingPhotoOut {
   url: ListingPhotoOutUrl;
   error?: ListingPhotoOutError;
   why?: ListingPhotoOutWhy;
+  previous?: boolean;
 }
