@@ -144,24 +144,26 @@ def unit_id(shot: dict[str, Any]) -> str:
 
 
 def listable(rooms: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The prepared rooms of a use a set photographs, whatever their size (#142): name, use, area and whether a
-    viewpoint was found in them (None: the prepare did not score the room, too small for a set)."""
+    """The prepared rooms of the house, whatever their use or size (#142): name, use, area, floor level and whether
+    a viewpoint was found in them (None: the prepare did not score the room)."""
     return [
         {
             "name": r["name"],
-            "use": r["use"],
+            "use": r.get("use") or "",
             "area": round(float(r.get("area") or 0), 1),
+            "y": r.get("y"),
             "camera": bool(r.get("camera")) if r.get("scored", True) else None,
         }
         for r in rooms
-        if r.get("use") in MIN_AREA and r.get("name")
+        if r.get("name")
     ]
 
 
 def score_rule(room: dict[str, Any]) -> dict[str, float]:
-    """The prepare's scoring rule (#96), widened to a room under its use's MIN_AREA so that it gets viewpoints."""
+    """The prepare's scoring rule (#96), widened to a room under its use's MIN_AREA, or of a use a set does not
+    photograph, so that it gets viewpoints."""
     use, area = room["use"], float(room.get("area") or 0)
-    if area >= MIN_AREA[use]:
+    if use in MIN_AREA and area >= MIN_AREA[use]:
         return dict(MIN_AREA)
     # a tenth below the rounded area the set stored: the service compares its own, unrounded figure
     return {**MIN_AREA, use: max(0.0, math.floor(area * 10) / 10 - 0.1)}
@@ -200,14 +202,29 @@ def next_key(shots: list[Shot]) -> str:
     return f"{max((int(x.key) for x in shots if x.key.isdigit()), default=0) + 1:02d}"
 
 
-def left_out(rooms: list[dict[str, Any]], shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """The listable rooms the set has no photo of, in listing order; a room scored without a viewpoint is not
-    offered."""
+def house_rooms(rooms: list[dict[str, Any]], shots: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every room of the house a room can be shot alone from (#142), floor by floor from the lowest, in listing
+    order: `storey` counts the floors from 0, `in_set` marks the rooms the set has a photo of. A room scored
+    without a viewpoint is not offered."""
     held = {x["room"] for x in shots}
-    found = [r for r in rooms if r["name"] not in held and r.get("camera") is not False]
+    levels = sorted({round(float(r["y"]), 1) for r in rooms if r.get("y") is not None})
+    found = [
+        {
+            **r,
+            "storey": levels.index(round(float(r["y"]), 1)) if r.get("y") is not None else 0,
+            "in_set": r["name"] in held,
+        }
+        for r in rooms
+        if r["name"] in held or r.get("camera") is not False
+    ]
     return sorted(
         found,
-        key=lambda r: (_unit_order(unit_of(r["name"])), _SLOT[r["use"]], _natural(r["name"])),
+        key=lambda r: (
+            r["storey"],
+            _unit_order(unit_of(r["name"])),
+            _SLOT.get(r["use"], 4),
+            _natural(r["name"]),
+        ),
     )
 
 

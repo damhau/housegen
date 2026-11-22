@@ -158,11 +158,24 @@ def _status(doc: dict[str, Any]) -> str:
     return "done" if all(x["key"] in doc["photos"] for x in doc["shots"]) else "partial"
 
 
-def _rule(doc: dict[str, Any], room: str) -> dict[str, float]:
-    """The scoring rule a one-room shoot prepares with: the set's, widened to a room too small for it."""
+def version_rooms(st: ProjectStorage, version: int, doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every room of the version (its report.json, kept with every save), with what the set's last prepare found
+    in it: a set only stores the rooms a prepare scored, and sets from before #142 none."""
+    seen = {r["name"]: r for r in doc.get("rooms", [])}
+    report = _read_json(st.versions_dir / str(version) / "report.json") or {}
+    rooms = listable(list(report.get("rooms") or []))
+    if not rooms:
+        return list(seen.values())
+    return [
+        {**r, "camera": seen[r["name"]].get("camera")} if r["name"] in seen else r for r in rooms
+    ]
+
+
+def _rule(doc: dict[str, Any], room: str, rooms: list[dict[str, Any]]) -> dict[str, float]:
+    """The scoring rule a one-room shoot prepares with: the set's, widened to a room it does not take."""
     if any(x["room"] == room for x in doc["shots"]):
         return dict(MIN_AREA)
-    found = next((r for r in doc.get("rooms", []) if r["name"] == room), None)
+    found = next((r for r in rooms if r["name"] == room), None)
     return score_rule(found) if found else dict(MIN_AREA)
 
 
@@ -397,7 +410,11 @@ async def listing(ctx: JobContext) -> None:
         raise RuntimeError("this set has no views from outside to shoot again")
     # a room shot alone needs no exterior build, and its prepare scores it even when it is small
     outside = exterior != "none" and only in (None, EXTERIOR)
-    rule = _rule(previous, only) if previous and only and only != EXTERIOR else MIN_AREA
+    rule = (
+        _rule(previous, only, version_rooms(st, version, previous))
+        if previous and only and only != EXTERIOR
+        else MIN_AREA
+    )
     client = PhotoClient(s)
     t0 = time.time()
     doc: dict[str, Any] = {}

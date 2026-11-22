@@ -781,6 +781,7 @@ def test_a_left_out_room_joins_the_set_in_listing_order() -> None:
     assert alone[place(alone, small) - 1].title == "Salle à Manger"
     assert score_rule({"use": "bath", "area": 3.4}) == {**MIN_AREA, "bath": pytest.approx(3.3)}
     assert score_rule({"use": "kitchen", "area": 8.7}) == MIN_AREA
+    assert score_rule({"use": "wc", "area": 1.6}) == {**MIN_AREA, "wc": pytest.approx(1.5)}
 
 
 def _photo_bytes(pid: str) -> dict[str, bytes]:
@@ -889,10 +890,11 @@ async def test_a_room_the_set_left_out_is_shot_on_demand_and_joins_it(
     r = await app_client.post(url)
     assert await _wait_job(r.json()["id"]) == "done"
     ls = (await app_client.get(url)).json()["listing"]
-    assert [(x["room"], x["caption"]) for x in ls["left_out"]] == [
+    assert [(x["room"], x["caption"]) for x in ls["rooms"] if not x["in_set"]] == [
         ("Véranda existante", "Véranda existante, 11 m²"),
         ("Cuisine", "Cuisine, 9 m²"),
         ("Douche", "Douche, 3 m²"),
+        ("Garage (transformation) / Atelier", "Garage (transformation) / Atelier, 26 m²"),
     ]
     before, calls = _photo_bytes(pid), len(svc.calls)
 
@@ -914,7 +916,11 @@ async def test_a_room_the_set_left_out_is_shot_on_demand_and_joins_it(
     douche = ls["photos"][4]
     assert (douche["key"], douche["caption"], douche["previous"]) == ("06", "Douche, 3 m²", False)
     assert douche["url"]
-    assert [x["room"] for x in ls["left_out"]] == ["Véranda existante", "Cuisine"]
+    assert [x["room"] for x in ls["rooms"] if not x["in_set"]] == [
+        "Véranda existante",
+        "Cuisine",
+        "Garage (transformation) / Atelier",
+    ]
     assert ls["reshoots"][0]["joined"] is True
     assert ls["status"] == "done"
     assert _photo_bytes(pid) == {**before, "06.jpg": f"jpeg {CAM}".encode()}
@@ -987,7 +993,7 @@ async def test_a_room_shot_alone_names_a_unit_of_the_set_and_keeps_its_settings(
     r = await app_client.post(url, json={"exteriors": "none"})
     assert await _wait_job(r.json()["id"]) == "done"
     for body in (
-        {"room": "Garage (transformation) / Atelier"},  # not a room a listing shows
+        {"room": "Grenier"},  # no room of the house
         {"room": "Salon", "staging": "empty"},
         {"room": "Salon", "reuse": True},
         {"room": "exterior"},  # the set has none
@@ -1011,3 +1017,52 @@ async def test_a_room_shot_alone_names_a_unit_of_the_set_and_keeps_its_settings(
     assert record is not None
     assert record.listing_usd is not None
     assert record.listing_usd < get_settings().LISTING_ROOM_ESTIMATE_USD
+
+
+async def test_any_room_of_the_house_is_shot_on_demand(
+    app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    extra = [("wc", "WC", 1.6), ("hall", "Hall étage", 13.3)]
+    svc = FakeService(_rooms(MONTELLY + extra))
+    _fake_service(monkeypatch, svc)
+    pid = await _furnished_project()
+    levels = {"Garage (transformation) / Atelier": 0.025, "Ch.1": 5.4, "Ch.3": 5.4, "Bain": 5.4}
+    levels |= {"Hall étage": 5.4}
+    report = {
+        "rooms": [
+            {"name": n, "use": u, "area": a, "polygon": [], "y": levels.get(n, 2.35)}
+            for u, n, a in MONTELLY + extra
+        ]
+    }
+    version = ProjectStorage(pid).versions_dir / "1"
+    (version / "report.json").write_text(json.dumps(report), encoding="utf-8")
+    url = f"/api/v1/projects/{pid}/listing"
+    r = await app_client.post(url)
+    assert await _wait_job(r.json()["id"]) == "done"
+    rooms = (await app_client.get(url)).json()["listing"]["rooms"]
+    assert [(x["room"], x["storey"], x["in_set"]) for x in rooms] == [
+        ("Garage (transformation) / Atelier", 0, False),
+        ("Salon", 1, True),
+        ("Véranda existante", 1, False),
+        ("Cuisine", 1, False),
+        ("Salle à Manger", 1, True),
+        ("Douche", 1, False),
+        ("WC", 1, False),
+        ("Ch.1", 2, True),
+        ("Ch.3", 2, True),
+        ("Bain", 2, True),
+        ("Hall étage", 2, False),
+    ]
+    calls = len(svc.calls)
+
+    r = await app_client.post(url, json={"room": "WC"})
+    assert r.status_code == 202, r.text
+    assert await _wait_job(r.json()["id"]) == "done"
+    now = list(svc.calls.values())[calls:]
+    assert now[0]["score"] == {**MIN_AREA, "wc": pytest.approx(1.5)}
+    ls = (await app_client.get(url)).json()["listing"]
+    assert [p["caption"] for p in ls["photos"]][-1] == "WC, 2 m²"
+    assert next(x for x in ls["rooms"] if x["room"] == "WC")["in_set"] is True
+
+    r = await app_client.post(url, json={"room": "Grenier"})
+    assert r.status_code == 422

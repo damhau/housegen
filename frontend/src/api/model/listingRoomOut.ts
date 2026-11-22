@@ -7,7 +7,8 @@
 import type { ListingRoomOutUnit } from './listingRoomOutUnit';
 
 /**
- * A room the set left out (too small, or another room of its kind holds its place), shot on demand.
+ * A room of the house, to shoot alone (#142): one of the set's, or one it left out (too small, another room
+of its kind holds its place, or a use a set does not photograph).
  */
 export interface ListingRoomOut {
   room: string;
@@ -16,4 +17,6 @@ export interface ListingRoomOut {
   use: string;
   area: number;
   caption: string;
+  storey?: number;
+  in_set?: boolean;
 }

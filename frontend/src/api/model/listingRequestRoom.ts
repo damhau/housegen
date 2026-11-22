@@ -6,6 +6,6 @@
  */
 
 /**
- * shoot one unit of the version's set alone: a room's name (a photo's `room`, or one of the set's `left_out`) or `exterior` for the views from outside. Its previews, the editor's pick and its photos, nothing else; they replace the unit's in the set, which keeps the replaced ones to bring back. The set's staging, exteriors and renderer are kept
+ * shoot one unit of the version's set alone: a room's name (any of the set's `rooms`) or `exterior` for the views from outside. Its previews, the editor's pick and its photos, nothing else; they replace the unit's in the set, which keeps the replaced ones to bring back. The set's staging, exteriors and renderer are kept
  */
 export type ListingRequestRoom = string | null;

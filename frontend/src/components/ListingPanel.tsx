@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query"
 import { Camera, ChevronLeft, ChevronRight, Download, ImageOff, Loader2, Plus, RefreshCw, Square, Undo2, X } from "lucide-react"
 import { getGetListingQueryKey, useBringBackListingPhoto, useGetListing, useStartListing } from "@/api/endpoints/listing/listing"
 import { getListJobsQueryKey, useCancelJob } from "@/api/endpoints/projects/projects"
-import { ListingOutExteriors, ListingOutStaging, type JobOut, type ListingOut, type ListingPhotoOut } from "@/api/model"
+import { ListingOutExteriors, ListingOutStaging, type JobOut, type ListingOut, type ListingPhotoOut, type ListingRoomOut } from "@/api/model"
 import { fmtUsd } from "@/components/RunSummaryCard"
 import { Button } from "@/components/ui/button"
 import { errorMessage, relTime } from "@/lib/utils"
@@ -26,7 +26,7 @@ const EXTERIOR = "exterior"
 /** A unit of the set as the panel names it: a room's caption (with its flat), or the views from outside. */
 function unitLabel(set: ListingOut | null, room: string): string {
   if (room === EXTERIOR) return "the views from outside"
-  const p = set?.photos.find((x) => x.room === room) ?? set?.left_out?.find((x) => x.room === room)
+  const p = set?.photos.find((x) => x.room === room) ?? set?.rooms?.find((x) => x.room === room)
   if (!p) return room
   return p.unit ? `${p.unit} · ${p.caption}` : p.caption
 }
@@ -175,8 +175,8 @@ export function ListingPanel({
         and of each room; a picture editor (the project's critic model) keeps the best, and those are shot at full size. The
         staging sets how much of the furnishing the rooms show: furnished, light (no decor) or empty (the architecture and its
         finishes). The exteriors show the house in its surroundings, alone on its plot, or not at all. A room can be shot
-        again alone (its viewpoints, the editor's pick and its photo, with the set's settings), a room the set left out
-        can be added, and the photo a room's new shot replaced can be brought back.
+        again alone (its viewpoints, the editor's pick and its photo, with the set's settings), any other room of the
+        house can be shot and added, and the photo a room's new shot replaced can be brought back.
       </p>
       {!data?.available && <p className="text-xs text-amber-700 dark:text-amber-300">No photo service is configured on this server.</p>}
       <div className="flex flex-wrap items-center gap-2">
@@ -309,7 +309,7 @@ function SetView({
   onBack: (room: string) => void
 }) {
   const ready = set.photos.filter((p) => p.url)
-  const leftOut = set.left_out ?? []
+  const rooms = set.rooms ?? []
   const reshoots = [...(set.reshoots ?? [])].reverse().slice(0, 3)
   return (
     <div className="space-y-3">
@@ -336,6 +336,7 @@ function SetView({
           Shot on v{set.version}; the project is at v{currentVersion} now. Shoot again to show the current state.
         </p>
       )}
+      {rooms.length > 0 && <RoomPicker rooms={rooms} reshooting={reshooting} busy={busy} onShoot={onShoot} />}
       {byUnit(set.photos).map(([unit, photos]) => {
         const outside = photos[0]?.use === "exterior"
         return (
@@ -415,31 +416,71 @@ function SetView({
           </section>
         )
       })}
-      {leftOut.length > 0 && (
-        <section className="space-y-1.5">
-          <h3 className="text-xs font-semibold">Left out of the set</h3>
-          <p className="text-xs text-muted-foreground">
-            Too small for a wide shot, or another room of the kind holds the place. Shoot one to add it in listing order.
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {leftOut.map((r) => (
-              <Button
-                key={r.room}
-                size="sm"
-                variant="outline"
-                className="h-7 px-2"
-                disabled={busy}
-                onClick={() => onShoot(r.room)}
-                title={`Shoot ${r.title} and add it to the set`}
-              >
-                {reshooting === r.room ? <Loader2 className="animate-spin" /> : <Plus />}
-                {r.unit ? `${r.unit} · ${r.caption}` : r.caption}
-              </Button>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
+  )
+}
+
+/** Every room of the house, floor by floor from the lowest: any one shot alone (#142). */
+function RoomPicker({
+  rooms,
+  reshooting,
+  busy,
+  onShoot,
+}: {
+  rooms: ListingRoomOut[]
+  reshooting: string | null
+  busy: boolean
+  onShoot: (room: string) => void
+}) {
+  const [room, setRoom] = useState("")
+  const floors = [...new Set(rooms.map((r) => r.storey ?? 0))]
+  const chosen = rooms.find((r) => r.room === room)
+  const name = (r: ListingRoomOut) => (r.unit ? `${r.unit} · ${r.caption}` : r.caption)
+  return (
+    <section className="space-y-1.5">
+      <h3 className="text-xs font-semibold">Shoot one room</h3>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <select
+          value={room}
+          onChange={(e) => setRoom(e.target.value)}
+          disabled={busy}
+          aria-label="Room to shoot alone"
+          className="h-7 min-w-0 max-w-[280px] flex-1 rounded-md border bg-background px-1 text-xs"
+        >
+          <option value="">Choose a room…</option>
+          {floors.map((f) => (
+            <optgroup key={f} label={floors.length > 1 ? `Level ${f + 1}${f === 0 ? " (lowest)" : ""}` : "Rooms"}>
+              {rooms
+                .filter((r) => (r.storey ?? 0) === f)
+                .map((r) => (
+                  <option key={r.room} value={r.room}>
+                    {name(r)}
+                    {r.in_set ? " · in the set" : ""}
+                  </option>
+                ))}
+            </optgroup>
+          ))}
+        </select>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2"
+          disabled={busy || !chosen}
+          onClick={() => chosen && onShoot(chosen.room)}
+          title={
+            chosen?.in_set
+              ? `Shoot ${chosen.title} again alone: its viewpoints, the editor's pick and the photo. The photo it replaces is kept`
+              : chosen
+                ? `Shoot ${chosen.title} and add it to the set in listing order`
+                : "Choose a room first"
+          }
+        >
+          {reshooting && reshooting === room ? <Loader2 className="animate-spin" /> : chosen?.in_set ? <RefreshCw /> : <Plus />}
+          {chosen?.in_set ? "Shoot again" : "Shoot and add"}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">About 10 minutes and $1 a room; the rest of the set stays as it is.</p>
+    </section>
   )
 }
 

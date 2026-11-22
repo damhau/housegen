@@ -23,6 +23,6 @@ export interface ListingOut {
   previews_done?: number;
   previews_total?: number;
   photos: ListingPhotoOut[];
-  left_out?: ListingRoomOut[];
+  rooms?: ListingRoomOut[];
   reshoots?: ListingReshootOut[];
 }

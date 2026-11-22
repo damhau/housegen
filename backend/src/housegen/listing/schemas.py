@@ -29,7 +29,8 @@ class ListingPhotoOut(BaseModel):
 
 
 class ListingRoomOut(BaseModel):
-    """A room the set left out (too small, or another room of its kind holds its place), shot on demand."""
+    """A room of the house, to shoot alone (#142): one of the set's, or one it left out (too small, another room
+    of its kind holds its place, or a use a set does not photograph)."""
 
     room: str
     unit: str | None
@@ -37,6 +38,8 @@ class ListingRoomOut(BaseModel):
     use: str
     area: float
     caption: str
+    storey: int = 0  # the floor, counted from the lowest
+    in_set: bool = False  # the set has a photo of it
 
 
 class ListingReshootOut(BaseModel):
@@ -65,7 +68,7 @@ class ListingOut(BaseModel):
     previews_done: int = 0  # viewpoints previewed so far for the picture editor (#92)
     previews_total: int = 0  # 0: the set was shot without previews
     photos: list[ListingPhotoOut]  # in listing order, grouped by unit
-    left_out: list[ListingRoomOut] = Field(default_factory=list)  # in listing order
+    rooms: list[ListingRoomOut] = Field(default_factory=list)  # every room, floor by floor
     reshoots: list[ListingReshootOut] = Field(default_factory=list)  # oldest first
 
 
@@ -99,8 +102,8 @@ class ListingRequest(BaseModel):
     )
     room: str | None = Field(
         None,
-        description="shoot one unit of the version's set alone: a room's name (a photo's `room`, or one of the "
-        "set's `left_out`) or `exterior` for the views from outside. Its previews, the editor's pick and its "
+        description="shoot one unit of the version's set alone: a room's name (any of the set's `rooms`) or "
+        "`exterior` for the views from outside. Its previews, the editor's pick and its "
         "photos, nothing else; they replace the unit's in the set, which keeps the replaced ones to bring back. "
         "The set's staging, exteriors and renderer are kept",
     )

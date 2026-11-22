@@ -20,7 +20,13 @@ from housegen.core.db import DbSession
 from housegen.core.exceptions import ConflictError, InvalidInputError, NotFoundError
 from housegen.jobs.manager import job_manager
 from housegen.limits import service as limits
-from housegen.listing.job import bring_back, default_exteriors, listing_dir, read_set
+from housegen.listing.job import (
+    bring_back,
+    default_exteriors,
+    listing_dir,
+    read_set,
+    version_rooms,
+)
 from housegen.listing.schemas import (
     ListingOut,
     ListingPhotoOut,
@@ -30,7 +36,14 @@ from housegen.listing.schemas import (
     ListingStatusOut,
     ListingUnitRequest,
 )
-from housegen.listing.shots import EXTERIOR, caption, left_out, room_name_parts, unit_id, unit_of
+from housegen.listing.shots import (
+    EXTERIOR,
+    caption,
+    house_rooms,
+    room_name_parts,
+    unit_id,
+    unit_of,
+)
 from housegen.projects import crud
 from housegen.projects.schemas import JobOut
 from housegen.projects.storage import ProjectStorage
@@ -62,11 +75,14 @@ def _room_out(r: dict[str, Any]) -> ListingRoomOut:
         use=r["use"],
         area=r["area"],
         caption=caption(title, float(r["area"])),
+        storey=r["storey"],
+        in_set=r["in_set"],
     )
 
 
-def _left_out(doc: dict[str, Any]) -> list[ListingRoomOut]:
-    return [_room_out(r) for r in left_out(doc.get("rooms", []), doc.get("shots", []))]
+def _rooms(st: ProjectStorage, version: int, doc: dict[str, Any]) -> list[ListingRoomOut]:
+    rooms = house_rooms(version_rooms(st, version, doc), doc.get("shots", []))
+    return [_room_out(r) for r in rooms]
 
 
 def listing_out(
@@ -120,7 +136,7 @@ def listing_out(
         if doc.get("settings", {}).get("editor")
         else 0,
         photos=photos,
-        left_out=_left_out(doc),
+        rooms=_rooms(st, version, doc),
         reshoots=[
             ListingReshootOut(
                 room=r["room"],
@@ -158,10 +174,8 @@ def _check_unit(st: ProjectStorage, version: int, body: ListingRequest) -> None:
         return
     if any(x["room"] == body.room for x in doc.get("shots", [])):
         return
-    if not any(r.room == body.room for r in _left_out(doc)):
-        raise InvalidInputError(
-            f"no room named {body.room!r} in this version's set or among the rooms it left out"
-        )
+    if not any(r.room == body.room for r in _rooms(st, version, doc)):
+        raise InvalidInputError(f"no room named {body.room!r} in this version")
 
 
 @router.get("/{project_id}/listing")
