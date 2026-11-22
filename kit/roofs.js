@@ -2,22 +2,27 @@
 // cover (interlocking clay, beaver tails, fibre-cement slates, concrete tiles, standing seam metal), its level faces
 // gravel, a green roof or a membrane: one white-balanced finish per kind, tinted per house by vertex colour, the tile
 // rows along each face's eave at the cover's real size. A ridge cap runs along its ridges and hips, a gutter along its
-// eaves, and its solar modules (dark glass, an aluminium frame, a faint cell grid) are instanced.
+// eaves, and its solar modules (dark glass, an aluminium frame, a faint cell grid) are instanced. Its flat roofs (#146)
+// get a parapet with a metal coping along their open edges, the equipment the backend placed on them (vents,
+// skylights, hatches, units, stacks, housings, rails, slab walkways; instanced), and gravel in darker patches.
 //
 // What a house wears comes from the backend's roof spec (buildings.json `roof_spec`, #143: cover, flat, colour, family,
-// panels in the frame of `positions`), else from the kit: the colour family of its photographed roof (roofFamily over
-// the photo's median, as neighbours.js does for the newer houses) and its id's hash.
+// panels and props in the frame of `positions`), else from the kit: the colour family of its photographed roof
+// (roofFamily over the photo's median, as neighbours.js does for the newer houses) and its id's hash.
 //
 //   const choice = roofChoice(house, { photographed, neighbourhood, slope })   → { cover, flat, colour, … }
 //   const faces = roofFaces(pts, tris)          the roof's faces by plane, each with its eave frame (u along, v up)
-//   const { ridges, eaves } = roofEdges(faces)  where the caps and the gutters go
+//   const { ridges, eaves, parapets } = roofEdges(faces)   where the caps, the gutters and the parapets go (runs
+//                                               along the open edges of its level faces)
 //   const roofs = planRoofs(houses, photographed)   geometry and finishes asked for; after finishesReady():
-//   roofs.meshes()                              → a group: a mesh per finish, the caps and gutters, the modules
+//   roofs.meshes({ wallMaterial })              → a group: a mesh per finish, the caps, gutters and copings, the
+//                                                 parapets' outer faces (in the walls' material), modules, equipment
 //
-// A house: { id, pts: [[x, y, z]…] in the scene, roof: [i…] (its roof triangles), spec, panels: [[c0, c1, c2, c3]…] }.
+// A house: { id, pts: [[x, y, z]…] in the scene, roof: [i…] (its roof triangles), spec, panels: [[c0, c1, c2, c3]…],
+// props: specProps(spec), render (its walls' colour) }.
 
 import * as THREE from "three";
-import { finishMaterial } from "./finishes.js";
+import { finishMaterial, metricUV } from "./finishes.js";
 import { FLAT_ROOF, ROOF_TINTS, houseHash, roofFamily, roofTint } from "./neighbours.js";
 
 export const COVERS = ["clay-interlocking", "clay-beaver", "fibre-cement", "concrete-tile", "metal-seam"];
@@ -63,6 +68,28 @@ const MIN_EAVE = 1.2; // metres: a shorter level edge gets no gutter
 const CAP = { width: 0.15, height: 0.08, lift: 0.02 }; // a ridge tile's half width, its rise over the ridge
 const GUTTER = [[0, -0.04], [0.13, -0.02], [0.13, -0.08], [0.1, -0.13], [0.035, -0.13], [0, -0.09]]; // (out, up), metres
 const MODULE = { thick: 0.04, frame: 0.035, cell: 0.166, line: 0.004 };
+// a flat roof's parapet (#146): the upstand's height (0.25–0.45 m from the house's hash; `low` when the house's level
+// faces add up to less than `small` m²: an annex, a dormer), its thickness inward, the coping's overhang, thickness and
+// drips; the upstand starts `foot` under the roof. A level face under `minArea` m² (the lidar's noise) has none.
+const PARAPET = { thick: 0.25, low: 0.15, small: 25, minArea: 2, over: 0.04, cap: 0.03, drip: 0.06, dripIn: 0.03, foot: 0.02 };
+const COPINGS = ["#45484c", "#9a9fa2", "#b4b7b6"]; // anthracite, zinc, light grey aluminium
+const FLASHING = "#5e6165"; // the upstand's inner face: the membrane turned up it
+// metres: a parapet's edge is probed this far out; a roof of the house there as high or higher, or a slope going on from
+// the edge (a mansard's flat top), has none
+const PROBE = 0.3;
+// the equipment's surfaces: sRGB colour and the material they share (roughness, metalness)
+const SURFACES = {
+  galvanised: ["#9da3a6", "metal"], steel: ["#a9adb0", "metal"], grey: ["#7f8386", "paint"], unit: ["#b3b6b5", "paint"],
+  dark: ["#33363a", "paint"], door: ["#3b3f43", "paint"], dome: ["#e2e4e1", "dome"], glass: ["#1b232a", "glass"],
+  slab: ["#a7a298", "mineral"],
+};
+const FINISHES = { metal: [0.42, 0.6], paint: [0.55, 0.25], dome: [0.25, 0], glass: [0.05, 0], mineral: [0.9, 0] };
+export const PROPS = ["vent", "skylight-dome", "skylight-flat", "hatch", "hvac", "stack", "housing", "rail", "walkway"];
+const SINK = 0.05; // metres a piece goes into the roof: a level face of the survey tilts up to 5°
+const SLAB = 0.5; // metres: a walkway's paving slab
+// gravel's darker patches: the multiplier (linear) at a full patch, the noise's two scales (metres), and a wide band
+// from its median to its 90th percentile (half a roof touched, a seventh fully: a narrow band reads as camouflage)
+const PATCHES = { tint: [0.78, 0.8, 0.72], scales: [3, 1.1], from: 0.5, to: 0.71 };
 
 const srgb = (hex) => [0, 2, 4].map((k) => parseInt(hex.slice(1 + k, 3 + k), 16) / 255);
 const linear = ([r, g, b]) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
@@ -91,6 +118,31 @@ export function specPanels(spec, toScene = (x, y, z) => [x, y, z]) {
   if (!Array.isArray(spec?.panels)) return [];
   const ok = (q) => Array.isArray(q) && q.length === 4 && q.every((p) => Array.isArray(p) && p.length === 3 && p.every(Number.isFinite));
   return spec.panels.filter(ok).map((q) => q.map((p) => toScene(p[0], p[1], p[2])));
+}
+
+/**
+ * The spec's roof equipment in the scene (#146): every piece of a known kind with a finite place and a positive size,
+ * its middle through `toScene(x, y, z)` and its yaw turned with the frame (width along (cos yaw, 0, -sin yaw)).
+ */
+export function specProps(spec, toScene = (x, y, z) => [x, y, z]) {
+  if (!Array.isArray(spec?.props)) return [];
+  const finite = (v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite);
+  const ok = (p) => PROPS.includes(p?.kind) && finite(p.at) && finite(p.size) && p.size.every((s) => s > 0) && Number.isFinite(p.yaw);
+  return spec.props.filter(ok).map((p) => {
+    const at = toScene(p.at[0], p.at[1], p.at[2]);
+    const to = toScene(p.at[0] + Math.cos(p.yaw), p.at[1], p.at[2] - Math.sin(p.yaw));
+    return { kind: p.kind, at, size: [...p.size], yaw: Math.atan2(at[2] - to[2], to[0] - at[0]) };
+  });
+}
+
+/** The backend's mix of a house's hash (geo/roofs.py `_mix`, murmur3's finaliser): its high bits move with the id's last letter. */
+export function mixHash(h) {
+  h ^= h >>> 16;
+  h = Math.imul(h, 0x85ebca6b);
+  h ^= h >>> 13;
+  h = Math.imul(h, 0xc2b2ae35);
+  h ^= h >>> 16;
+  return h >>> 0;
 }
 
 /** A real roof colour of a family (sRGB 0–1), picked and shaded by the hash as roofTint does. */
@@ -211,8 +263,9 @@ export function roofPitch(faces) {
 }
 
 /**
- * Where a roof's caps and gutters go. Ridges: edges two pitched faces share where each falls away from the other (ridges
- * and hips, not valleys); eaves: level edges of a pitched face that no other face holds, the face rising from them.
+ * Where a roof's caps, gutters and parapets go. Ridges: edges two pitched faces share where each falls away from the
+ * other (ridges and hips, not valleys); eaves: level edges of a pitched face that no other face holds, the face rising
+ * from them; parapets: the runs parapetEdges finds along the edges of its level faces no other face holds.
  */
 export function roofEdges(faces) {
   const edges = new Map();
@@ -223,11 +276,11 @@ export function roofEdges(faces) {
       if (ka === kb) continue;
       const key = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
       if (!edges.has(key)) edges.set(key, []);
-      edges.get(key).push({ fi, a, b, c });
+      edges.get(key).push({ fi, a, b, c, ka, kb });
     }
   });
   const below = (f, p) => f.n.x * p[0] + f.n.y * p[1] + f.n.z * p[2] - f.d < -0.02;
-  const ridges = [], low = [], open = [];
+  const ridges = [], low = [], open = [], lone = [];
   for (const list of edges.values()) {
     if (list.length >= 2) {
       const one = list[0], other = list.find((e) => e.fi !== one.fi);
@@ -238,14 +291,130 @@ export function roofEdges(faces) {
       continue;
     }
     const e = list[0], f = faces[e.fi];
-    if (f.level) continue;
+    if (f.level) {
+      lone.push(e);
+      continue;
+    }
     const len = Math.hypot(e.b[0] - e.a[0], e.b[1] - e.a[1], e.b[2] - e.a[2]);
     const top = Math.max(e.a[1], e.b[1]);
     if (e.c[1] < top - 0.05) open.push(e); // the face falls away from it: half a ridge whose other half is cut elsewhere
     else if (Math.abs(e.a[1] - e.b[1]) <= Math.max(0.05, 0.02 * len) && e.c[1] > top + 0.1) low.push(e);
   }
   ridges.push(...splitRidges(open, faces, below));
-  return { ridges, eaves: joinEaves(low, faces) };
+  return { ridges, eaves: joinEaves(low, faces), parapets: lone.length ? parapetRuns(faces, lone) : [] };
+}
+
+/**
+ * Where a house's flat roofs get a parapet: the edges of its level faces (minArea m² at least) that no other triangle
+ * holds, where the roof falls away. Probed PROBE m out from an edge's middle, a roof triangle of the house there as
+ * high as the edge or higher (within PROBE), or one whose plane goes on from the edge (a slope falling from it), means
+ * none: the roof goes on, or a higher part of the house rises there. Joined into runs: { pts: [[x, y, z]…], closed },
+ * the roof on the left walking pts seen from above (+y), as the faces' triangles wind; a corner in a straight line
+ * dropped.
+ */
+export function parapetEdges(faces) {
+  return roofEdges(faces).parapets;
+}
+
+function parapetRuns(faces, lone, minArea = PARAPET.minArea) {
+  const tris = [];
+  for (const f of faces) for (const [a, b, c] of f.tris) {
+    tris.push({ a, b, c, f, x0: Math.min(a[0], b[0], c[0]), x1: Math.max(a[0], b[0], c[0]),
+      z0: Math.min(a[2], b[2], c[2]), z1: Math.max(a[2], b[2], c[2]) });
+  }
+  const inside = (t, x, z) => {
+    const s = (p, q) => (q[0] - p[0]) * (z - p[2]) - (q[2] - p[2]) * (x - p[0]);
+    const s1 = s(t.a, t.b), s2 = s(t.b, t.c), s3 = s(t.c, t.a);
+    return (s1 >= 0 && s2 >= 0 && s3 >= 0) || (s1 <= 0 && s2 <= 0 && s3 <= 0);
+  };
+  const heightAt = (f, x, z) => (f.d - f.n.x * x - f.n.z * z) / f.n.y;
+  const falls = (a, b) => {
+    const dx = b[0] - a[0], dz = b[2] - a[2], len = Math.hypot(dx, dz);
+    const mx = (a[0] + b[0]) / 2, mz = (a[2] + b[2]) / 2, my = (a[1] + b[1]) / 2;
+    // outward: the roof is on the left of a → b
+    const px = mx - (dz / len) * PROBE, pz = mz + (dx / len) * PROBE;
+    for (const t of tris) {
+      if (px < t.x0 || px > t.x1 || pz < t.z0 || pz > t.z1 || !inside(t, px, pz)) continue;
+      if (Math.max(heightAt(t.f, px, pz), heightAt(t.f, mx, mz)) >= my - PROBE) return false;
+    }
+    return true;
+  };
+  const open = lone.filter((e) => faces[e.fi].area >= minArea && Math.hypot(e.b[0] - e.a[0], e.b[2] - e.a[2]) >= 0.05 && falls(e.a, e.b));
+  const from = new Map(), into = new Set(), used = new Set(), runs = [];
+  for (const e of open) {
+    if (!from.has(e.ka)) from.set(e.ka, []);
+    from.get(e.ka).push(e);
+    into.add(e.kb);
+  }
+  // q in a straight line from p to r, at their height: a corner the run does without
+  const inLine = (p, q, r) => {
+    const ux = q[0] - p[0], uz = q[2] - p[2], vx = r[0] - q[0], vz = r[2] - q[2];
+    const cross = ux * vz - uz * vx, dot = ux * vx + uz * vz;
+    return dot > 0 && Math.abs(cross) < 0.01 * Math.hypot(ux, uz) * Math.hypot(vx, vz) && Math.abs(q[1] - p[1]) < 0.02 && Math.abs(r[1] - q[1]) < 0.02;
+  };
+  const walk = (first) => {
+    const pts = [first.a];
+    for (let e = first; e && !used.has(e); e = from.get(e.kb)?.find((x) => !used.has(x))) {
+      used.add(e);
+      if (pts.length >= 2 && inLine(pts[pts.length - 2], pts[pts.length - 1], e.b)) pts[pts.length - 1] = e.b;
+      else pts.push(e.b);
+    }
+    const closed = pts.length > 3 && cornerKey(pts[pts.length - 1]) === cornerKey(pts[0]);
+    if (closed) pts.pop();
+    if (closed && pts.length > 3 && inLine(pts[pts.length - 1], pts[0], pts[1])) pts.shift();
+    runs.push({ pts, closed });
+  };
+  for (const e of open) if (!used.has(e) && !into.has(e.ka)) walk(e);
+  for (const e of open) if (!used.has(e)) walk(e);
+  return runs;
+}
+
+/**
+ * A parapet along a run (parapetEdges), its corners mitred: the upstand's outer face (`outer`, on the edge, from `foot`
+ * under it up to `height`), its inner face (`inner`, PARAPET.thick in) and the coping over both with its drips
+ * (`coping`); triangles, 3 floats a corner. `height` 0 gives the coping alone (a stair housing's top).
+ */
+export function parapetTriangles(run, height, p = PARAPET) {
+  const pts = run.pts.filter((q, i, all) => i === 0 || cornerKey(q) !== cornerKey(all[i - 1]));
+  if (run.closed && pts.length > 1 && cornerKey(pts[0]) === cornerKey(pts[pts.length - 1])) pts.pop();
+  const out = { outer: [], inner: [], coping: [] };
+  const n = pts.length, segs = run.closed ? n : n - 1;
+  if (segs < 1 || n < 2) return out;
+  const normal = (i) => {
+    const a = pts[i % n], b = pts[(i + 1) % n], dx = b[0] - a[0], dz = b[2] - a[2], len = Math.hypot(dx, dz) || 1;
+    return [dz / len, -dx / len];
+  };
+  // each corner's offset per metre inward: the bisector of its two edges' normals, longer at a sharp corner (capped)
+  const mitre = pts.map((_, i) => {
+    const prev = i > 0 || run.closed ? normal((i - 1 + n) % n) : null, next = i < segs ? normal(i) : null;
+    const [ax, az] = prev ?? next, [bx, bz] = next ?? prev;
+    let mx = ax + bx, mz = az + bz;
+    const len = Math.hypot(mx, mz);
+    if (len < 1e-6) return [ax, az];
+    mx /= len; mz /= len;
+    const k = 1 / Math.max(0.35, mx * bx + mz * bz);
+    return [mx * k, mz * k];
+  });
+  const at = (i, off, y) => [pts[i][0] + mitre[i][0] * off, pts[i][1] + y, pts[i][2] + mitre[i][1] * off];
+  // a vertical band between two offsets' heights, facing out (or in)
+  const band = (list, i, j, off, y0, y1, facingIn) => {
+    const a0 = at(i, off, y0), b0 = at(j, off, y0), b1 = at(j, off, y1), a1 = at(i, off, y1);
+    if (facingIn) list.push(...a0, ...b1, ...b0, ...a0, ...a1, ...b1);
+    else list.push(...a0, ...b0, ...b1, ...a0, ...b1, ...a1);
+  };
+  const top = height + p.cap;
+  for (let s = 0; s < segs; s++) {
+    const i = s, j = (s + 1) % n;
+    if (height > 0) {
+      band(out.outer, i, j, 0, -p.foot, height, false);
+      band(out.inner, i, j, p.thick, -p.foot, height, true);
+    }
+    const o0 = at(i, -p.over, top), o1 = at(j, -p.over, top), i0 = at(i, p.thick + p.over, top), i1 = at(j, p.thick + p.over, top);
+    out.coping.push(...o0, ...o1, ...i0, ...o1, ...i1, ...i0);
+    band(out.coping, i, j, -p.over, top - p.drip, top, false);
+    band(out.coping, i, j, p.thick + p.over, top - p.dripIn, top, true);
+  }
+  return out;
 }
 
 /** A face's low edges in a line joined into its eaves (a traced roof cuts one in pieces), MIN_EAVE long at least. */
@@ -458,6 +627,102 @@ function drawnTextures(kind) {
   return { map: tex(colour, true), normalMap: tex(normal, false), white: 1 / (sum / (W * H)) };
 }
 
+/**
+ * The simple pieces a piece of roof equipment is drawn with (#146): { shape: box | cylinder | dome, surface (SURFACES),
+ * at: the middle of its foot in the scene, size: [along the width, up, along the depth], yaw }, its foot SINK into the
+ * roof. A housing's walls, top and coping are the parapets' (planRoofs); here only its door.
+ */
+export function propPieces({ kind, at, size: [w, d, h], yaw }, shade = () => 0) {
+  const c = Math.cos(yaw), s = Math.sin(yaw), out = [];
+  const put = (shape, surface, x, y0, z, sx, sy, sz, tone = 0) => out.push({
+    shape, surface, tone, yaw,
+    at: [at[0] + x * c + z * s, at[1] + y0, at[2] - x * s + z * c],
+    size: [sx, sy, sz],
+  });
+  if (kind === "vent" && w >= 0.25) {
+    // a mushroom vent: a low cap wider than its pipe
+    put("cylinder", "galvanised", 0, -SINK, 0, w, h - 0.12 + SINK, w);
+    put("dome", "galvanised", 0, h - 0.14, 0, 1.3 * w, 0.14, 1.3 * w);
+  } else if (kind === "vent") {
+    put("cylinder", "galvanised", 0, -SINK, 0, w, h - 0.05 + SINK, w);
+    put("cylinder", "galvanised", 0, h - 0.05, 0, 1.5 * w, 0.05, 1.5 * w);
+  } else if (kind === "stack") {
+    put("cylinder", "steel", 0, -SINK, 0, w, h - 0.06 + SINK, w);
+    put("cylinder", "steel", 0, h - 0.06, 0, 1.15 * w, 0.06, 1.15 * w);
+    put("cylinder", "dark", 0, h - 0.01, 0, 0.9 * w, 0.013, 0.9 * w);
+  } else if (kind === "skylight-dome") {
+    put("box", "grey", 0, -SINK, 0, w, 0.25 + SINK, d);
+    put("dome", "dome", 0, 0.25, 0, w - 0.06, h - 0.25, d - 0.06);
+  } else if (kind === "skylight-flat") {
+    put("box", "grey", 0, -SINK, 0, w, h - 0.04 + SINK, d);
+    put("box", "glass", 0, h - 0.04, 0, w - 0.08, 0.04, d - 0.08);
+  } else if (kind === "hatch") {
+    put("box", "grey", 0, -SINK, 0, w, h - 0.06 + SINK, d);
+    put("box", "grey", 0, h - 0.06, 0, w + 0.06, 0.06, d + 0.06);
+  } else if (kind === "hvac") {
+    for (const z of [-0.35 * d, 0.35 * d]) put("box", "dark", 0, -SINK, z, w, 0.12 + SINK, 0.1);
+    put("box", "unit", 0, 0.12, 0, w, h - 0.12, d);
+    const fans = w > 2 * d ? [-w / 4, w / 4] : [0], fan = 0.7 * Math.min(d, w / 2);
+    for (const x of fans) put("cylinder", "dark", x, h - 0.01, 0, fan, 0.013, fan);
+  } else if (kind === "rail") {
+    const posts = Math.ceil(w / 1.5) + 1;
+    for (let i = 0; i < posts; i++) put("box", "galvanised", -w / 2 + 0.02 + (i * (w - 0.04)) / (posts - 1), -SINK, 0, 0.04, h + SINK, 0.04);
+    put("box", "galvanised", 0, h - 0.04, 0, w, 0.04, 0.04);
+    put("box", "galvanised", 0, h / 2 - 0.02, 0, w, 0.04, 0.04);
+  } else if (kind === "walkway") {
+    const nx = Math.max(1, Math.round(w / SLAB)), nz = Math.max(1, Math.round(d / SLAB));
+    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
+      const x = -w / 2 + ((i + 0.5) * w) / nx, z = -d / 2 + ((j + 0.5) * d) / nz;
+      put("box", "slab", x, -SINK, z, w / nx - 0.01, h + SINK, d / nz - 0.01, shade(i * 31 + j));
+    }
+  } else if (kind === "housing") {
+    put("box", "door", 0, 0.1, d / 2, 0.9, 2.05, 0.04);
+  }
+  return out;
+}
+
+const SHAPES = {
+  box: () => new THREE.BoxGeometry(1, 1, 1).translate(0, 0.5, 0),
+  cylinder: () => new THREE.CylinderGeometry(0.5, 0.5, 1, 14, 1).translate(0, 0.5, 0),
+  dome: () => new THREE.SphereGeometry(0.5, 18, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 2, 1),
+};
+
+/**
+ * The corners of a housing's foot (`at` its middle, `size` [w, d, h]), its inside on the left walking them seen from
+ * above: its walls and coping are a parapet as high as it is along them.
+ */
+export function housingRun({ at, size: [w, d], yaw }) {
+  const c = Math.cos(yaw), s = Math.sin(yaw);
+  const corner = (a, b) => [at[0] + (a * w * c + b * d * s) / 2, at[1], at[2] + (-a * w * s + b * d * c) / 2];
+  const pts = [corner(-1, -1), corner(-1, 1), corner(1, 1), corner(1, -1)];
+  const area = pts.reduce((sum, p, i) => { const q = pts[(i + 1) % 4]; return sum + p[0] * q[2] - q[0] * p[2]; }, 0);
+  return { pts: area > 0 ? pts.reverse() : pts, closed: true };
+}
+
+/** Gravel's darker patches (PATCHES): value noise over the roof's x and z, in metres. */
+function withPatches(m) {
+  const [tr, tg, tb] = PATCHES.tint, [s1, s2] = PATCHES.scales, f = (v) => v.toFixed(3);
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec2 vPatch;")
+      .replace("#include <begin_vertex>", "#include <begin_vertex>\nvPatch = position.xz;");
+    shader.fragmentShader = shader.fragmentShader
+      .replace("#include <common>", `#include <common>
+        varying vec2 vPatch;
+        float patchHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float patchNoise(vec2 p) {
+          vec2 i = floor(p), f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(patchHash(i), patchHash(i + vec2(1.0, 0.0)), f.x), mix(patchHash(i + vec2(0.0, 1.0)), patchHash(i + vec2(1.0, 1.0)), f.x), f.y);
+        }`)
+      .replace("#include <map_fragment>", `#include <map_fragment>
+        float patchN = 0.65 * patchNoise(vPatch / ${f(s1)}) + 0.35 * patchNoise(vPatch / ${f(s2)} + 17.0);
+        diffuseColor.rgb *= mix(vec3(1.0), vec3(${f(tr)}, ${f(tg)}, ${f(tb)}), smoothstep(${f(PATCHES.from)}, ${f(PATCHES.to)}, patchN));`);
+  };
+  m.customProgramCacheKey = () => "housekit-roofs-gravel";
+  return m;
+}
+
 /** The finish's material asked for now (its textures start loading), the vertex-coloured copy made once they are in. */
 function lookOf(kind) {
   const look = LOOKS[kind];
@@ -478,16 +743,34 @@ function lookOf(kind) {
 
 /**
  * Every house's roof planned: its choice, its faces' triangles by finish (positions, normals, metric uvs, colours), its
- * caps and gutters, its modules; the finishes asked for (their textures load while the rest of the surroundings is
- * built). `photographed`: Map(house → { tiled, flat }) of photographed medians; `neighbourhood`: photographed tiled
- * medians to pick from for a house the photo does not show; `roofOf(house)`: the triangles drawn as its roof (by
- * default `roof`). `meshes()`, after finishesReady, makes the group.
+ * caps and gutters, its modules, its flat roofs' parapets and equipment (`props`, specProps); the finishes asked for
+ * (their textures load while the rest of the surroundings is built). `photographed`: Map(house → { tiled, flat }) of
+ * photographed medians; `neighbourhood`: photographed tiled medians to pick from for a house the photo does not show;
+ * `roofOf(house)`: the triangles drawn as its roof (by default `roof`). `meshes({ wallMaterial })`, after
+ * finishesReady, makes the group; the parapets' outer faces and the housings' walls wear `wallMaterial` (the walls',
+ * with an attribute wallLook: the house's render, the height above its foot), else their render as vertex colour.
  */
 export function planRoofs(houses, { photographed = new Map(), neighbourhood = [], roofOf = (h) => h.roof } = {}) {
   const lists = new Map(); // kind → { pos, nor, uv, col }
   const details = { pos: [], col: [] };
+  const walls = { pos: [], look: [] }; // the parapets' outer faces and the housings' walls: the house's render
   const panels = [];
-  const stats = { houses: 0, spec: 0, kit: 0, covers: {}, flats: {}, panels: 0, ridges: 0, gutters: 0 };
+  const parts = new Map(); // shape:finish → [piece…]
+  const stats = { houses: 0, spec: 0, kit: 0, covers: {}, flats: {}, panels: 0, ridges: 0, gutters: 0, parapets: 0, props: 0 };
+  const flashing = new THREE.Color(FLASHING);
+  const addDetail = (tris, c) => {
+    for (let k = 0; k < tris.length; k += 3) {
+      details.pos.push(tris[k], tris[k + 1], tris[k + 2]);
+      details.col.push(c.r, c.g, c.b);
+    }
+  };
+  // the wall shader's height above the ground darkens a foot: a housing's on the roof, never a parapet's
+  const addWall = (tris, c, foot = -Infinity) => {
+    for (let k = 0; k < tris.length; k += 3) {
+      walls.pos.push(tris[k], tris[k + 1], tris[k + 2]);
+      walls.look.push(c.r, c.g, c.b, Math.min(10, tris[k + 1] - foot));
+    }
+  };
   const listOf = (kind) => {
     if (!lists.has(kind)) lists.set(kind, { pos: [], nor: [], uv: [], col: [] });
     return lists.get(kind);
@@ -516,32 +799,65 @@ export function planRoofs(houses, { photographed = new Map(), neighbourhood = []
     }
     if (pitched) stats.covers[choice.cover] = (stats.covers[choice.cover] ?? 0) + 1;
     if (flat) stats.flats[choice.flat] = (stats.flats[choice.flat] ?? 0) + 1;
-    const { ridges, eaves } = roofEdges(faces);
+    const { ridges, eaves, parapets } = roofEdges(faces);
     const cap = tiled.clone().multiplyScalar(choice.cover === "metal-seam" ? 1 : 0.9);
     const capSize = choice.cover === "metal-seam" ? { width: 0.08, height: 0.04 } : {};
     for (const r of ridges) {
-      const t = capTriangles(r, capSize);
-      details.pos.push(...t);
-      for (let k = 0; k < t.length; k += 3) details.col.push(cap.r, cap.g, cap.b);
+      addDetail(capTriangles(r, capSize), cap);
       stats.ridges += Math.hypot(r.b[0] - r.a[0], r.b[1] - r.a[1], r.b[2] - r.a[2]);
     }
     const gutter = new THREE.Color(GUTTERS[choice.gutter]);
     for (const e of eaves) {
-      const t = gutterTriangles(e);
-      details.pos.push(...t);
-      for (let k = 0; k < t.length; k += 3) details.col.push(gutter.r, gutter.g, gutter.b);
+      addDetail(gutterTriangles(e), gutter);
       stats.gutters += Math.hypot(e.b[0] - e.a[0], e.b[2] - e.a[2]);
     }
+    const m = mixHash(houseHash(h.id)), render = h.render ?? new THREE.Color(1, 1, 1);
+    const levelArea = faces.reduce((s, f) => s + (f.level ? f.area : 0), 0);
+    const height = levelArea < PARAPET.small ? PARAPET.low : 0.25 + (m % 21) / 100;
+    const coping = new THREE.Color(COPINGS[(m >>> 8) % COPINGS.length]);
+    for (const run of parapets) {
+      const t = parapetTriangles(run, height);
+      addWall(t.outer, render);
+      addDetail(t.inner, flashing);
+      addDetail(t.coping, coping);
+      const n = run.pts.length;
+      for (let i = 0; i < (run.closed ? n : n - 1); i++) {
+        const a = run.pts[i], b = run.pts[(i + 1) % n];
+        stats.parapets += Math.hypot(b[0] - a[0], b[2] - a[2]);
+      }
+    }
+    (h.props ?? []).forEach((p, k) => {
+      const shade = (i) => ((mixHash(m + k * 977 + i) % 11) - 5) / 100;
+      for (const piece of propPieces(p, shade)) {
+        const key = `${piece.shape}:${SURFACES[piece.surface][1]}`;
+        if (!parts.has(key)) parts.set(key, []);
+        parts.get(key).push(piece);
+      }
+      if (p.kind === "housing") {
+        const run = housingRun(p), t = parapetTriangles(run, p.size[2]);
+        addWall(t.outer, render, p.at[1]);
+        addDetail(t.coping, coping);
+        const L = listOf(choice.flat), top = run.pts.map((q) => [q[0], q[1] + p.size[2], q[2]]);
+        for (const q of [top[0], top[1], top[2], top[0], top[2], top[3]]) {
+          L.pos.push(...q);
+          L.nor.push(0, 1, 0);
+          L.uv.push(q[0], q[2]);
+          L.col.push(level.r, level.g, level.b);
+        }
+      }
+      stats.props++;
+    });
   }
   stats.panels = panels.length;
   stats.ridges = Math.round(stats.ridges);
   stats.gutters = Math.round(stats.gutters);
+  stats.parapets = Math.round(stats.parapets);
   // asked for now: the textures load while the caller builds the rest
   const looks = new Map([...lists.keys()].map((kind) => [kind, lookOf(kind)]));
   return {
     choices,
     stats,
-    meshes() {
+    meshes({ wallMaterial = null } = {}) {
       const group = new THREE.Group();
       group.name = "Surroundings: drawn roofs";
       for (const [kind, L] of lists) {
@@ -550,7 +866,7 @@ export function planRoofs(houses, { photographed = new Map(), neighbourhood = []
         g.setAttribute("normal", new THREE.Float32BufferAttribute(L.nor, 3));
         g.setAttribute("uv", new THREE.Float32BufferAttribute(L.uv, 2));
         g.setAttribute("color", new THREE.Float32BufferAttribute(L.col, 3));
-        const mesh = new THREE.Mesh(g, looks.get(kind)());
+        const mesh = new THREE.Mesh(g, kind === "gravel" ? withPatches(looks.get(kind)()) : looks.get(kind)());
         mesh.castShadow = mesh.receiveShadow = true;
         mesh.name = `Surroundings: ${kind} roofs`;
         mesh.userData = { kind: "context", roof: kind };
@@ -566,8 +882,23 @@ export function planRoofs(houses, { photographed = new Map(), neighbourhood = []
           polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 });
         const mesh = new THREE.Mesh(g, mat);
         mesh.receiveShadow = true;
-        mesh.name = "Surroundings: ridge caps and gutters";
+        mesh.name = "Surroundings: ridge caps, gutters and copings";
         mesh.userData = { kind: "context", part: "roof details" };
+        group.add(mesh);
+      }
+      if (walls.pos.length) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.Float32BufferAttribute(walls.pos, 3));
+        g.computeVertexNormals();
+        metricUV(g);
+        const look = new THREE.Float32BufferAttribute(walls.look, 4);
+        g.setAttribute("wallLook", look);
+        g.setAttribute("color", new THREE.Float32BufferAttribute(walls.look.filter((_, i) => i % 4 !== 3), 3));
+        // the walls' own material (context.js: their render, each house's colour from wallLook)
+        const mesh = new THREE.Mesh(g, wallMaterial ?? new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95 }));
+        mesh.castShadow = mesh.receiveShadow = true;
+        mesh.name = "Surroundings: parapets and roof housings";
+        mesh.userData = { kind: "context", part: "parapets" };
         group.add(mesh);
       }
       if (panels.length) {
@@ -581,9 +912,35 @@ export function planRoofs(houses, { photographed = new Map(), neighbourhood = []
         mesh.userData = { kind: "context", part: "solar modules" };
         group.add(mesh);
       }
+      // the equipment: an instanced mesh a shape and finish, each piece its surface's colour
+      const finishes = new Map();
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), c = new THREE.Color();
+      for (const [key, list] of parts) {
+        const [shape, finish] = key.split(":");
+        if (!finishes.has(finish)) {
+          const [roughness, metalness] = FINISHES[finish];
+          finishes.set(finish, new THREE.MeshStandardMaterial({ color: "#ffffff", roughness, metalness }));
+        }
+        const mesh = new THREE.InstancedMesh(SHAPES[shape](), finishes.get(finish), list.length);
+        list.forEach((p, i) => {
+          q.setFromAxisAngle(up, p.yaw);
+          mesh.setMatrixAt(i, m.compose(v3(p.at), q, v3(p.size)));
+          mesh.setColorAt(i, c.set(SURFACES[p.surface][0]).multiplyScalar(1 + p.tone));
+        });
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.instanceColor.needsUpdate = true;
+        mesh.computeBoundingSphere();
+        mesh.castShadow = mesh.receiveShadow = true;
+        mesh.name = `Surroundings: roof equipment (${shape}, ${finish})`;
+        mesh.userData = { kind: "context", part: "roof equipment" };
+        group.add(mesh);
+      }
       return group;
     },
   };
 }
 
-export default { COVERS, FLATS, LOW_PITCH, validSpec, specPanels, flatFamily, roofChoice, roofFaces, uvOf, roofPitch, roofEdges, capTriangles, gutterTriangles, moduleMatrix, planRoofs };
+export default {
+  COVERS, FLATS, LOW_PITCH, PROPS, validSpec, specPanels, specProps, mixHash, flatFamily, roofChoice, roofFaces, uvOf, roofPitch,
+  roofEdges, parapetEdges, parapetTriangles, propPieces, housingRun, capTriangles, gutterTriangles, moduleMatrix, planRoofs,
+};

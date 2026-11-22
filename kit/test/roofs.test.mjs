@@ -1,11 +1,13 @@
 // The neighbours' roofs drawn (#144): faces by plane, tile rows along the eave, caps on ridges and hips, gutters at
-// the eaves, the solar modules on their quads, and the cover the kit picks without the backend's spec.
+// the eaves, the solar modules on their quads, and the cover the kit picks without the backend's spec; flat roofs'
+// parapets and equipment (#146).
 import test from "node:test";
 import assert from "node:assert/strict";
 import * as THREE from "three";
 import {
-  COVERS, LOW_PITCH, capTriangles, flatFamily, gutterTriangles, moduleMatrix, planRoofs, roofChoice, roofEdges, roofFaces,
-  roofPitch, specPanels, uvOf, validSpec,
+  COVERS, LOW_PITCH, PROPS, capTriangles, flatFamily, gutterTriangles, housingRun, mixHash, moduleMatrix, parapetEdges,
+  parapetTriangles, planRoofs, propPieces, roofChoice, roofEdges, roofFaces, roofPitch, specPanels, specProps, uvOf,
+  validSpec,
 } from "../roofs.js";
 import { ROOF_TINTS } from "../neighbours.js";
 
@@ -192,7 +194,9 @@ test("planRoofs: a mesh a finish, the caps and gutters, the modules; the spec's 
   const group = plan.meshes();
   const names = group.children.map((m) => m.name);
   assert.ok(names.includes("Surroundings: clay-interlocking roofs") && names.includes("Surroundings: green roofs"), names.join(", "));
-  assert.ok(names.includes("Surroundings: ridge caps and gutters"));
+  assert.ok(names.includes("Surroundings: ridge caps, gutters and copings"));
+  assert.ok(names.includes("Surroundings: parapets and roof housings"), "the flat roof's parapet");
+  assert.ok(plan.stats.parapets >= 40 - 1, `parapets ${plan.stats.parapets} m`);
   const modules = group.children.find((m) => m.isInstancedMesh);
   assert.equal(modules.count, 1);
   // each roof vertex wears its metric uv and its house's colour, a fifth of the way to its grey
@@ -202,4 +206,169 @@ test("planRoofs: a mesh a finish, the caps and gutters, the modules; the spec's 
   const grey = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
   assert.ok(near(clay.geometry.attributes.color.getX(0), c.r + (grey - c.r) * 0.2, 1e-6));
   assert.ok(clay.geometry.attributes.color.getX(0) < c.r);
+});
+
+/** Triangles (3 floats a corner) → their corners. */
+const corners = (t) => Array.from({ length: t.length / 3 }, (_, i) => [t[i * 3], t[i * 3 + 1], t[i * 3 + 2]]);
+
+test("the backend's hash mix: the same numbers as geo/roofs.py's _mix", () => {
+  // from Python: roofs._mix(roofs.house_hash(id)) for these ids
+  assert.equal(mixHash(1132219421), 1239943596); // lidar-12
+  assert.equal(mixHash(1132219422), 1675561047); // lidar-13
+  assert.equal(mixHash(1377134745), 4109883920);
+});
+
+test("a flat roof's parapet: all round its open edges, mitred, its coping over it; none where the roof goes on", () => {
+  const faces = roofFaces(flatBox().pts, flatBox().roof);
+  const runs = parapetEdges(faces);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].closed, true);
+  assert.equal(runs[0].pts.length, 4, "the diagonal both triangles hold has none");
+  const t = parapetTriangles(runs[0], 0.3);
+  const outer = corners(t.outer), inner = corners(t.inner), coping = corners(t.coping);
+  // the outer face on the façade, from just under the roof to 0.3 m over it
+  for (const [x, y, z] of outer) {
+    assert.ok(near(x, 0) || near(x, 10) || near(z, 0) || near(z, 10), `outer ${x}, ${z}`);
+    assert.ok(near(y, 7 - 0.02) || near(y, 7.3));
+  }
+  // the inner face 0.25 m in, mitred at the corners (never outside the roof)
+  for (const [x, , z] of inner) {
+    assert.ok(x >= 0.25 - 1e-9 && x <= 9.75 + 1e-9 && z >= 0.25 - 1e-9 && z <= 9.75 + 1e-9, `inner ${x}, ${z}`);
+    assert.ok(near(x, 0.25) || near(x, 9.75) || near(z, 0.25) || near(z, 9.75));
+  }
+  // the coping 3 cm thick on the upstand, 4 cm over it on both sides, its drips down from it
+  assert.ok(near(Math.max(...coping.map((p) => p[1])), 7.33));
+  assert.ok(near(Math.min(...coping.map((p) => p[0])), -0.04));
+  assert.ok(near(Math.max(...coping.map((p) => p[0])), 10.04));
+  assert.ok(near(Math.min(...coping.map((p) => p[1])), 7.33 - 0.06));
+
+  // two flat roofs side by side at the same height: one parapet round both, none along their joint
+  const pair = { pts: [[0, 7, 0], [0, 7, 10], [10, 7, 10], [10, 7, 0], [20, 7, 10], [20, 7, 0]], roof: [0, 1, 2, 0, 2, 3, 3, 2, 4, 3, 4, 5] };
+  const both = parapetEdges(roofFaces(pair.pts, pair.roof));
+  assert.equal(both.length, 1);
+  assert.ok(!both[0].pts.some((p) => near(p[0], 10) && p[2] > 0.1 && p[2] < 9.9));
+});
+
+test("a parapet stops where a higher part of the house rises, and goes on along a lower one", () => {
+  // a low wing (x 0–10 at 4 m) against a tall block (x 10–20 at 10 m): the wing's edge on the block has none, the
+  // block's edge over the wing has one
+  const pts = [[0, 4, 0], [0, 4, 10], [10, 4, 10], [10, 4, 0], [10, 10, 0], [10, 10, 10], [20, 10, 10], [20, 10, 0]];
+  const roof = [0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7];
+  const runs = parapetEdges(roofFaces(pts, roof));
+  const wing = runs.filter((r) => near(r.pts[0][1], 4)), block = runs.filter((r) => near(r.pts[0][1], 10));
+  assert.equal(block.length, 1);
+  assert.equal(block[0].closed, true, "the block all round");
+  assert.equal(wing.length, 1);
+  assert.equal(wing[0].closed, false, "the wing's run stops at the block");
+  const along = (r) => r.pts.slice(1).reduce((s, p, i) => s + Math.hypot(p[0] - r.pts[i][0], p[2] - r.pts[i][2]), 0);
+  assert.ok(near(along(wing[0]), 30), `wing ${along(wing[0])} m`);
+  assert.ok(!wing[0].pts.some((p) => near(p[0], 10) && p[2] > 0.1 && p[2] < 9.9), "nothing along the block's wall");
+
+  // a mansard's flat top: its slopes fall from its edges, so it has none; a pitched roof's tiny level bit neither
+  const mansard = {
+    pts: [[0, 6, 0], [12, 6, 0], [12, 6, 10], [0, 6, 10], [2, 9, 2], [10, 9, 2], [10, 9, 8], [2, 9, 8]],
+    roof: [4, 7, 6, 4, 6, 5, 0, 4, 5, 0, 5, 1, 1, 5, 6, 1, 6, 2, 2, 6, 7, 2, 7, 3, 3, 7, 4, 3, 4, 0],
+  };
+  assert.deepEqual(parapetEdges(roofFaces(mansard.pts, mansard.roof)), []);
+  const bit = { pts: [[0, 7, 0], [0, 7, 1], [1, 7, 1], [1, 7, 0]], roof: [0, 1, 2, 0, 2, 3] };
+  assert.deepEqual(parapetEdges(roofFaces(bit.pts, bit.roof)), [], "1 m² of level roof: noise");
+});
+
+test("the spec's equipment: known kinds with a place and a size, turned with the frame", () => {
+  const spec = { props: [
+    { kind: "hvac", at: [10, 5, 20], size: [2, 1, 1.2], yaw: 0.3 },
+    { kind: "pool", at: [0, 0, 0], size: [1, 1, 1], yaw: 0 },
+    { kind: "vent", at: [0, 0], size: [0.1, 0.1, 0.5], yaw: 0 },
+    { kind: "hatch", at: [0, 0, 0], size: [1, 0, 0.5], yaw: 0 },
+  ] };
+  assert.deepEqual(specProps(spec).map((p) => p.kind), ["hvac"]);
+  assert.deepEqual(specProps({}), []);
+  // a frame turned by 30°: the middle through it, the yaw 30° more
+  const th = Math.PI / 6, toScene = (x, y, z) => [Math.cos(th) * x + Math.sin(th) * z, y - 2, -Math.sin(th) * x + Math.cos(th) * z];
+  const [p] = specProps(spec, toScene);
+  assert.deepEqual(p.at, toScene(10, 5, 20));
+  assert.ok(near(p.yaw, 0.3 + th, 1e-9), `yaw ${p.yaw}`);
+  assert.deepEqual(p.size, [2, 1, 1.2]);
+  assert.equal(PROPS.length, 9);
+});
+
+test("each piece of equipment stands on the roof (its foot a little in it), within its footprint, as high as its size", () => {
+  const at = [5, 7, 5];
+  const sizes = {
+    vent: [[0.14, 0.14, 0.7], [0.32, 0.32, 0.4]], stack: [[0.3, 0.3, 1.6]], "skylight-dome": [[1.2, 1.8, 0.55]],
+    "skylight-flat": [[1, 1.5, 0.35]], hatch: [[1, 1.2, 0.5]], hvac: [[3, 1.2, 1.4], [1.6, 1.6, 1.1]],
+    housing: [[2.8, 4, 2.6]], rail: [[6, 0.05, 1.1]], walkway: [[7.3, 1, 0.04]],
+  };
+  for (const [kind, list] of Object.entries(sizes)) for (const size of list) for (const yaw of [0, 0.7]) {
+    const pieces = propPieces({ kind, at, size, yaw });
+    assert.ok(pieces.length >= 1, kind);
+    const [w, d, h] = size, c = Math.cos(yaw), s = Math.sin(yaw);
+    // a cap stands over its pipe by half its width at most, a lid by 3 cm, a door by 2 cm
+    const over = kind === "vent" || kind === "stack" ? 0.25 * w : 0.03;
+    let top = -Infinity, foot = Infinity;
+    for (const p of pieces) {
+      top = Math.max(top, p.at[1] + p.size[1]);
+      foot = Math.min(foot, p.at[1]);
+      const dx = p.at[0] - at[0], dz = p.at[2] - at[2], u = dx * c - dz * s, v = dx * s + dz * c;
+      assert.ok(Math.abs(u) + p.size[0] / 2 <= w / 2 + over + 1e-9, `${kind} across: ${u} ± ${p.size[0] / 2}`);
+      assert.ok(Math.abs(v) + p.size[2] / 2 <= d / 2 + over + 1e-9, `${kind} along: ${v} ± ${p.size[2] / 2}`);
+      assert.ok(p.size.every((x) => x > 0), `${kind} ${p.size}`);
+      assert.equal(p.yaw, yaw);
+    }
+    if (kind === "housing") continue;
+    assert.ok(near(top, at[1] + h, 0.01), `${kind}: top ${top - at[1]} for ${h}`);
+    assert.ok(foot < at[1] && foot >= at[1] - 0.06, `${kind}: foot ${foot - at[1]}`);
+  }
+  // a walkway of slabs 0.5 m (a centimetre apart), a rail's posts 1.5 m apart at most
+  const slabs = propPieces({ kind: "walkway", at, size: [7.5, 1, 0.04], yaw: 0 });
+  assert.equal(slabs.length, 15 * 2);
+  assert.ok(near(slabs[0].size[0], 0.49, 1e-9));
+  const posts = propPieces({ kind: "rail", at, size: [6, 0.05, 1.1], yaw: 0 }).filter((p) => p.size[0] < 0.1);
+  assert.equal(posts.length, 5);
+});
+
+test("a housing: walls on its footprint and a coping round its top, its inside on the left of its corners", () => {
+  const p = { kind: "housing", at: [5, 7, 5], size: [3, 4, 2.6], yaw: 0.4 };
+  const run = housingRun(p);
+  assert.equal(run.pts.length, 4);
+  // the inside on the left walking the corners (seen from above, z down): a negative shoelace
+  const area = run.pts.reduce((s, a, i) => { const b = run.pts[(i + 1) % 4]; return s + a[0] * b[2] - b[0] * a[2]; }, 0);
+  assert.ok(near(area, -2 * 12, 1e-9), `area ${area}`);
+  const t = parapetTriangles(run, 2.6);
+  assert.ok(near(Math.max(...corners(t.coping).map((q) => q[1])), 7 + 2.6 + 0.03));
+  for (const [x, , z] of corners(t.outer)) {
+    const dx = x - 5, dz = z - 5, u = dx * Math.cos(0.4) - dz * Math.sin(0.4), v = dx * Math.sin(0.4) + dz * Math.cos(0.4);
+    assert.ok(near(Math.abs(u), 1.5, 1e-9) || near(Math.abs(v), 2, 1e-9), `wall corner ${u}, ${v}`);
+  }
+});
+
+test("planRoofs: a block's equipment instanced by shape and finish, a housing's walls with the parapets", () => {
+  const block = { id: "block", source: "swissbuildings3d", pts: [[0, 20, 0], [0, 20, 30], [40, 20, 30], [40, 20, 0]], roof: [0, 1, 2, 0, 2, 3],
+    spec: { flat: "gravel" } };
+  block.props = specProps({ props: [
+    { kind: "vent", at: [5, 20, 5], size: [0.14, 0.14, 0.7], yaw: 0 },
+    { kind: "vent", at: [6, 20, 5], size: [0.3, 0.3, 0.4], yaw: 0 },
+    { kind: "skylight-dome", at: [12, 20, 10], size: [1.2, 1.2, 0.55], yaw: 0 },
+    { kind: "hvac", at: [20, 20, 12], size: [3, 1.2, 1.4], yaw: 0 },
+    { kind: "housing", at: [30, 20, 20], size: [3, 4, 2.6], yaw: 0 },
+    { kind: "walkway", at: [20, 20, 16], size: [6, 0.5, 0.04], yaw: 0 },
+  ] });
+  const plan = planRoofs([block]);
+  assert.equal(plan.stats.props, 6);
+  assert.equal(plan.stats.parapets, 140);
+  const group = plan.meshes();
+  const equipment = group.children.filter((m) => m.userData.part === "roof equipment");
+  assert.ok(equipment.length >= 4 && equipment.length <= 8, equipment.map((m) => m.name).join(", "));
+  // pipe + cap, pipe + mushroom, curb + dome, 2 rails + body + 2 fans, door, 12 slabs
+  assert.equal(equipment.reduce((s, m) => s + m.count, 0), 2 + 2 + 2 + 5 + 1 + 12);
+  for (const m of equipment) assert.ok(m.instanceColor, `${m.name}: a colour a piece`);
+  const walls = group.children.find((m) => m.userData.part === "parapets");
+  const look = walls.geometry.attributes.wallLook;
+  assert.equal(look.count, walls.geometry.attributes.position.count);
+  // a parapet's foot is never darkened; a housing's is (it stands on the roof)
+  let low = 0;
+  for (let i = 0; i < look.count; i++) if (look.getW(i) < 0.1) low++;
+  assert.ok(low > 0 && low < look.count / 2, `${low} of ${look.count}`);
+  const gravel = group.children.find((m) => m.userData.roof === "gravel");
+  assert.equal(gravel.material.customProgramCacheKey(), "housekit-roofs-gravel");
 });

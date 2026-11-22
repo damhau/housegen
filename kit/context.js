@@ -19,7 +19,7 @@ import { leafBush, leafTree, treeStand } from "housekit"; // the page's own inst
 import { horizonProfile, lv95ToWgs84 } from "./sun.js";
 import { Blockers, FLAT_BEYOND, FLAT_ROOF, RENDERS, houseHash, openingMeshes, planOpenings, roofLook, roofTint } from "./neighbours.js";
 import { clipToSite, lawnColour, ownGround, siteDistance } from "./ground.js";
-import { planRoofs, specPanels } from "./roofs.js";
+import { planRoofs, specPanels, specProps } from "./roofs.js";
 
 // metres over which the real ground joins the builder's, in height and in its grass's colour (short: a longer ring
 // tilts the roads beside the plot)
@@ -201,9 +201,10 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     const cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cz = pts.reduce((s, q) => s + q[2], 0) / pts.length;
     if (siteGap(own, cx, cz, 0).d <= 0) { skipped++; continue; }
     // each house its render (a Swiss palette, picked by its id so it stays)
-    // what its roof wears and its solar modules (#143, #144), when the backend's geo code said so
+    // what its roof wears, its solar modules and its flat roofs' equipment (#143, #144, #146), when the backend's geo
+    // code said so
     houses.push({ id: b.id, source: b.source, local: p, pts, wall: b.wall, roof: b.roof, eave: b.eave ?? [], render: RENDERS[houseHash(b.id) % RENDERS.length],
-      spec: b.roof_spec ?? null, panels: specPanels(b.roof_spec, toScene) });
+      spec: b.roof_spec ?? null, panels: specPanels(b.roof_spec, toScene), props: specProps(b.roof_spec, toScene) });
   }
   const groundAt = (x, z) => { const [lx, lz] = toLocal(x, z); return joined(x, z, realY(lx, lz)); };
   let t0 = performance.now();
@@ -262,11 +263,14 @@ export async function loadContext(url, { houseGroup, heightAt }) {
   const finished = [[tiled, "roof-tiles", "tiled"], [flat, "gravel", "flat"]].filter(([list]) => list.pos.length);
   // the finishes matched to white: each roof's vertex colour is then its mean colour
   const shared = finished.map(([, finish]) => finishMaterial(finish, { color: "#ffffff" }));
-  const render = wallPos.length ? finishMaterial("render", { color: "#ffffff" }) : null;
+  const render = houses.length ? finishMaterial("render", { color: "#ffffff" }) : null;
   built.roofs += performance.now() - t0;
   await finishesReady();
   t0 = performance.now();
-  const drawnRoofs = drawn.meshes();
+  // the render the house's walls wear, copied (each house's colour is drawn on the neighbours' copy only); the
+  // parapets and roof housings of the drawn roofs wear it too
+  const wallMaterial = withRenders(render ? render.clone() : new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.95 }));
+  const drawnRoofs = drawn.meshes({ wallMaterial });
   group.add(drawnRoofs);
   finished.forEach(([list, , name], k) => {
     const g = new THREE.BufferGeometry();
@@ -294,10 +298,7 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     g.computeVertexNormals();
     metricUV(g);
     g.setAttribute("wallLook", new THREE.Float32BufferAttribute(wallLook, 4));
-    // the render the house's walls wear, copied (each house's colour is drawn on the neighbours' copy only)
-    const mat = render ? render.clone() : new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 0.95 });
-    withRenders(mat);
-    const walls = new THREE.Mesh(g, mat);
+    const walls = new THREE.Mesh(g, wallMaterial);
     walls.castShadow = walls.receiveShadow = true;
     walls.name = "Surroundings: walls";
     group.add(walls);
