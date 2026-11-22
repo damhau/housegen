@@ -29,7 +29,7 @@ COVERS = {
 }
 FLATS = {"gravel": ("gravel_floor_02", 2.0, 1.0), "green": ("leafy_grass", 2.0, 1.0), "membrane": (None, 2.0, 0.75)}
 FLAT_TINTS = {
-    "gravel": ("#aaa497", "#a09a8f", "#b3ada1", "#968f86"),
+    "gravel": ("#948e82", "#8b857b", "#9c968a", "#827c73"),
     "green": ("#6e7643", "#77794a", "#636d3d", "#7a7250"),
     "membrane": ("#5e6165", "#7d8185", "#a9adb0"),
 }
@@ -189,7 +189,7 @@ def snap(q):
 
 
 def unique(pts, tris):
-    """The triangles once each: swissBUILDINGS3D's roofs list every triangle twice."""
+    """The triangles once each: swissBUILDINGS3D lists many roof triangles twice, which hides the eaves."""
     seen, out = set(), []
     for ids in tris:
         k = tuple(sorted(snap(pts[i]) for i in ids))
