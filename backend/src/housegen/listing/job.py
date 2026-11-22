@@ -166,9 +166,8 @@ def version_rooms(st: ProjectStorage, version: int, doc: dict[str, Any]) -> list
     rooms = listable(list(report.get("rooms") or []))
     if not rooms:
         return list(seen.values())
-    return [
-        {**r, "camera": seen[r["name"]].get("camera")} if r["name"] in seen else r for r in rooms
-    ]
+    # a room no prepare scored yet: whether it has a viewpoint is unknown
+    return [{**r, "camera": seen.get(r["name"], {}).get("camera")} for r in rooms]
 
 
 def _rule(doc: dict[str, Any], room: str, rooms: list[dict[str, Any]]) -> dict[str, float]:

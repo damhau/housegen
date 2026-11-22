@@ -1039,6 +1039,10 @@ async def test_any_room_of_the_house_is_shot_on_demand(
     url = f"/api/v1/projects/{pid}/listing"
     r = await app_client.post(url)
     assert await _wait_job(r.json()["id"]) == "done"
+    # a set from before every room was offered stored only the rooms of a listed use
+    stored = json.loads((version / "listing" / "set.json").read_text(encoding="utf-8"))
+    stored["rooms"] = [x for x in stored["rooms"] if x["use"] in MIN_AREA]
+    (version / "listing" / "set.json").write_text(json.dumps(stored), encoding="utf-8")
     rooms = (await app_client.get(url)).json()["listing"]["rooms"]
     assert [(x["room"], x["storey"], x["in_set"]) for x in rooms] == [
         ("Garage (transformation) / Atelier", 0, False),
