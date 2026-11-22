@@ -1,11 +1,14 @@
 """Download a Poly Haven asset (CC0) as glTF with its files: ph_get.py <id> [res=2k] -> assets/models/<id>/<id>.gltf
 (textures: ph_get.py --tex <id> [res=2k] -> assets/textures/<id>/{diff,nor_gl,rough,disp}.jpg;
 the exteriors' plants and sky, #93: ph_get.py --blend <id> -> assets/outside/<id>/<id>_2k.blend with its textures,
-ph_get.py --hdri <id> -> assets/outside/<id>/<id>_4k.exr)"""
+ph_get.py --hdri <id> -> assets/outside/<id>/<id>_4k.exr; an ambientCG texture set, also CC0, the listing exteriors'
+roofs, #145: ph_get.py --acg <id> -> assets/textures/<id>/{diff,nor_gl,rough}.jpg)"""
 
+import io
 import json
 import sys
 import urllib.request
+import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -57,10 +60,22 @@ def texture(asset: str, res: str) -> None:
     print(out, sorted(x.name for x in out.iterdir()))
 
 
+def ambientcg(asset: str) -> None:
+    out = HERE / "assets" / "textures" / asset
+    out.mkdir(parents=True, exist_ok=True)
+    pack = zipfile.ZipFile(io.BytesIO(get(f"https://ambientcg.com/get?file={asset}_2K-JPG.zip")))
+    for suffix, name in (("_Color.jpg", "diff"), ("_NormalGL.jpg", "nor_gl"), ("_Roughness.jpg", "rough")):
+        member = next(m for m in pack.namelist() if m.endswith(suffix))
+        (out / f"{name}.jpg").write_bytes(pack.read(member))
+    print(out, sorted(x.name for x in out.iterdir()))
+
+
 if __name__ == "__main__":
     args = sys.argv[1:]
     if args[0] == "--tex":
         texture(args[1], args[2] if len(args) > 2 else "2k")
+    elif args[0] == "--acg":
+        ambientcg(args[1])
     elif args[0] in ("--blend", "--hdri"):
         outside(args[1], args[0][2:])
     else:

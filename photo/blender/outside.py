@@ -24,6 +24,7 @@ from mathutils.bvhtree import BVHTree
 from PIL import Image
 
 import paths
+import roofs
 import still
 
 PLANTS = os.path.join(paths.ASSETS, "outside")  # Poly Haven, CC0 (spikes/archviz/ph_get.py --blend / --hdri)
@@ -149,8 +150,8 @@ def within(p, box, m=0.0):
 def surroundings(scene, ctx):
     """The project's surroundings (kit/context.js's data): the surveyed ground beyond the builder's site under the
     aerial photo (its lawn cells, from the survey's land cover, in the lawn material for grass), the neighbours (a
-    render on their walls, tiles on pitched roofs), the land to the horizon; returns the lidar's trees (Blender
-    position, height, crown radius) and the alignment."""
+    render on their walls, their roofs from the backend's roof spec), the land to the horizon; returns the lidar's
+    trees (Blender position, height, crown radius) and the alignment."""
     meta = json.load(open(os.path.join(ctx, "context.json"), encoding="utf-8"))
     al = meta["alignment"]
     R, N, step = meta["radius"], meta["terrain"]["size"], meta["terrain"]["step"]
@@ -506,10 +507,53 @@ def roof_colour(photo, R, local):
     return tuple(float(c) * AERIAL_TONE[1] for c in lin)
 
 
+class Mesh:
+    """A mesh being gathered: its vertices, and per face the material slot, the UVs of its corners, a colour (the
+    `tint` face attribute the roof finishes multiply by) and whether it shades smooth."""
+
+    def __init__(self):
+        self.verts, self.faces, self.mats, self.uvs, self.tints, self.smooth = [], [], [], [], [], []
+
+    def add(self, verts):
+        base = len(self.verts)
+        self.verts.extend(tuple(v) for v in verts)
+        return base
+
+    def face(self, ids, mat, uvs, tint=(1.0, 1.0, 1.0), smooth=False):
+        self.faces.append(tuple(ids))
+        self.mats.append(mat)
+        self.uvs.append(uvs)
+        self.tints.append(tint)
+        self.smooth.append(smooth)
+
+    def strip(self, verts, faces, mat, tint, smooth):
+        base = self.add(verts)
+        for f in faces:
+            self.face([base + k for k in f], mat, [(0.0, 0.0)] * len(f), tint, smooth)
+
+    def build(self, name, materials):
+        me = bpy.data.meshes.new(name)
+        me.from_pydata(self.verts, [], self.faces)
+        for m in materials:
+            me.materials.append(m)
+        me.polygons.foreach_set("material_index", self.mats)
+        me.polygons.foreach_set("use_smooth", self.smooth)
+        layer = me.uv_layers.new(name="UVMap")
+        for poly, uvs in zip(me.polygons, self.uvs):
+            for li, uv in zip(poly.loop_indices, uvs):
+                layer.data[li].uv = uv
+        me.attributes.new("tint", "FLOAT_COLOR", "FACE").data.foreach_set(
+            "color", [c for t in self.tints for c in (*t, 1.0)])
+        return me
+
+
 def neighbours(scene, ctx, meta, place, site, alt):
-    """The swissBUILDINGS3D houses around the plot: each roof in its colour on the aerial photo, the walls as the
-    viewer draws them (context.js): a render from a Swiss palette, rows of windows, shutters on a third of them."""
+    """The swissBUILDINGS3D houses around the plot, the walls as the viewer draws them (context.js): a render from a
+    Swiss palette, rows of windows, shutters on a third of them. A roof with the backend's spec (#145, roofs.py) wears
+    its cover, ridge caps, gutters, flat finish and solar modules as the viewer draws them; without one (surroundings
+    fetched before #143), its colour on the aerial photo."""
     mats = [facade_material(f"facade-{k}-{sh}", rgb, sh) for sh in (0, 1) for k, rgb in enumerate(RENDERS)]
+    slots = roofs.Slots(mats)
     photo = np.asarray(Image.open(os.path.join(ctx, meta["photo"]["file"])).convert("RGB"))
     R = meta["radius"]
     N, step = meta["terrain"]["size"], meta["terrain"]["step"]
@@ -519,47 +563,41 @@ def neighbours(scene, ctx, meta, place, site, alt):
         j = min(max(round((lz + R) / step), 0), N - 1)
         return float(alt[j, i])
 
-    verts, faces, which, uvs = [], [], [], []
-    n = 0
+    mesh = Mesh()
+    n, drawn = 0, {"specs": 0, "ridges": 0, "gutters": 0, "panels": 0}
     for b in json.load(open(os.path.join(ctx, meta["buildings"]["file"]), encoding="utf-8"))["buildings"]:
         local = [b["positions"][k:k + 3] for k in range(0, len(b["positions"]), 3)]
         pts = [place(*q) for q in local]
         if within(sum(pts, Vector()) / len(pts), site):  # the old state of the plot
             continue
-        base = len(verts)
         # the survey's walls reach under the ground (#140): the rows of windows start from the lowest ground
         # around the house, not from the walls' foot
         low = min(local, key=lambda q: ground_at(q[0], q[2]))
         foot = max(min(q.z for q in pts), place(low[0], ground_at(low[0], low[2]), low[2]).z)
-        verts.extend(tuple(q) for q in pts)
+        base = mesh.add(pts)
         key = sum(ord(ch) * 31 ** k for k, ch in enumerate(str(b["id"])))
         wall = key % len(RENDERS) + (len(RENDERS) if (key >> 8) % 3 == 0 else 0)
-        roof = len(mats)
-        mats.append(material(f"roof-{b['id']}", roof_colour(photo, R, local), 0.75, 0.3))
-        for t in range(0, len(b["roof"]), 3):
-            ids = [b["roof"][t + q] for q in range(3)]
-            faces.append(tuple(base + k for k in ids))
-            which.append(roof)
-            uvs.append([(0.0, 0.0)] * 3)
-        for t in range(0, len(b["wall"]), 3):
-            ids = [b["wall"][t + q] for q in range(3)]
+        if isinstance(b.get("roof_spec"), dict):
+            roof_tris, wall_tris = roofs.drawn_as(b)
+            for k, v in roofs.dress_roof(mesh, slots, base, pts, roof_tris, b, place).items():
+                drawn[k] += v
+            drawn["specs"] += 1
+        else:
+            roof_tris = [b["roof"][t:t + 3] for t in range(0, len(b["roof"]), 3)]
+            wall_tris = [b["wall"][t:t + 3] for t in range(0, len(b["wall"]), 3)]
+            roof = len(mats)
+            mats.append(material(f"roof-{b['id']}", roof_colour(photo, R, local), 0.75, 0.3))
+            for ids in roof_tris:
+                mesh.face([base + k for k in ids], roof, [(0.0, 0.0)] * 3)
+        for ids in wall_tris:
             a, bb, cc = (pts[k] for k in ids)
             nrm = (bb - a).cross(cc - a)
             along = Vector((-nrm.y, nrm.x, 0.0)).normalized() if nrm.xy.length > 1e-9 else Vector((1, 0, 0))
-            faces.append(tuple(base + k for k in ids))
-            which.append(wall)
-            uvs.append([(pts[k].dot(along), pts[k].z - foot) for k in ids])
+            mesh.face([base + k for k in ids], wall, [(pts[k].dot(along), pts[k].z - foot) for k in ids])
         n += 1
-    me = bpy.data.meshes.new("neighbours")
-    me.from_pydata(verts, [], faces)
-    for m in mats:
-        me.materials.append(m)
-    layer = me.uv_layers.new(name="UVMap")
-    for poly, k, tri in zip(me.polygons, which, uvs):
-        poly.material_index = k
-        for li, uv in zip(poly.loop_indices, tri):
-            layer.data[li].uv = uv
-    scene.collection.objects.link(bpy.data.objects.new("neighbours", me))
+    scene.collection.objects.link(bpy.data.objects.new("neighbours", mesh.build("neighbours", mats)))
+    log(f"outside: roofs from the spec on {drawn['specs']} of {n} neighbours ({drawn['ridges']} ridge runs, "
+        f"{drawn['gutters']} gutter runs, {drawn['panels']} solar modules)")
     return n
 
 
@@ -1135,12 +1173,15 @@ def build(blend, out_dir, ctx=None, site=None, with_surroundings=True, name="out
     trees = kit_trees(scene)
     area = hedge_mass(scene)
     north = 0.0
+    roofs_drawn = None
     meta = os.path.join(ctx, "context.json") if ctx else None
     loaded = bool(meta and os.path.exists(meta) and with_surroundings)
     if loaded:
         more, al = surroundings(scene, ctx)
         trees += more
         north = float(al.get("rotation") or 0.0)
+        with open(meta, encoding="utf-8") as f:
+            roofs_drawn = (json.load(f).get("buildings") or {}).get("roofs")
     else:
         meadow(scene)
         if meta and os.path.exists(meta):
@@ -1153,8 +1194,10 @@ def build(blend, out_dir, ctx=None, site=None, with_surroundings=True, name="out
             if im.source == "FILE" and not im.packed_file and os.path.realpath(bpy.path.abspath(im.filepath)).startswith(root):
                 im.pack()
     bpy.ops.wm.save_as_mainfile(filepath=os.path.join(out_dir, f"{name}.blend"))
+    # "roofs": the context's buildings.roofs this build drew (#143); the service builds it again when the context's
+    # differs (deploy/modal_photo.py _stale_roofs)
     doc = {"views": views, "trees": trees, "hedge_m2": round(area), "north": north, "context": loaded,
-           "seconds": round(time.time() - t0, 1)}
+           "roofs": roofs_drawn, "seconds": round(time.time() - t0, 1)}
     with open(os.path.join(out_dir, f"{name}.json"), "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1)
     log(f"outside: {len(views)} viewpoints, {len(trees)} trees, hedges {area:.0f} m2, {stepped} overlapping faces "

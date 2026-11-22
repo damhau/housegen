@@ -128,7 +128,11 @@ service, `deploy/modal_photo.py` on Modal:
    trees, the far landscape) or the house alone on its plot, and scores up to six exterior viewpoints around it,
    each with a sun at a real date and hour at the plot that lights the façades in view. The `.blend` files are
    cached per version on the `housegen-photo` volume, the two exterior builds side by side: switching a set's
-   exteriors builds only the missing one.
+   exteriors builds only the missing one. The neighbours' roofs follow the context's roof spec as the viewer
+   draws them (#145, `photo/blender/roofs.py`): each cover's scan at its real size with its courses along the
+   eaves, tinted by the house's colour, ridge caps, gutters, gravel, sedum or membrane on flat roofs, and the solar
+   modules; surroundings fetched before the spec keep their aerial photo's colour. When the backend adds the spec
+   to a project whose surroundings are already built, the next prepare builds them again.
 2. `shoot` (an RTX PRO 6000, else an L40S; one container per photo, `LISTING_PARALLEL` at a time)
    renders one room in Cycles with `photo/blender/main.py shoot`. The pipeline keeps the scene's finishes (a
    finish's scan at full resolution, its colour kept) and adds the staging: decor, art, objects. The light is a

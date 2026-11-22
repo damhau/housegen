@@ -12,7 +12,10 @@ so a photo of several minutes never has to fit in one HTTP request.
 Once (the token is the render service's, so the app needs no new secret):
     uvx modal volume create housegen-photo
     uvx modal run deploy/modal_photo.py::upload          # the scans, the HDRI, the made pieces, the bed cache, the
-                                                         # exteriors' plants and sky (spikes/archviz/ph_get.py --blend/--hdri)
+                                                         # exteriors' plants and sky (spikes/archviz/ph_get.py --blend/--hdri),
+                                                         # the neighbours' roofs (ph_get.py --tex clay_roof_tiles_03
+                                                         # grey_roof_tiles_02 gravel_floor_02 leafy_grass, --acg
+                                                         # RoofingTiles002 RoofingTiles006, one id per call, #145)
     # the objects (#90's catalogue) are the spike's archviz-objects volume
 
 Deploy (again after a change under photo/):
@@ -114,6 +117,24 @@ def _outside(d: Path, exteriors: str | None) -> tuple[str | None, bool]:
     return name, bool(name) and (d / f"{name}.blend").exists() and (d / f"{name}.json").exists()
 
 
+def _stale_roofs(d: Path, exteriors: str | None, context_url: str | None) -> bool:
+    """Whether the surroundings build on the volume drew other neighbours' roofs than the context holds now (#145):
+    context.json's buildings.roofs (the backend sets it once it decided each neighbour's roof_spec, #143) against
+    the one the build recorded. False without such a build, or when the context cannot be read: the build stands."""
+    import json
+    import urllib.error
+
+    name, built = _outside(d, exteriors)
+    if name != OUTSIDE["surroundings"] or not built or not context_url:
+        return False
+    try:
+        meta = json.loads(_get(context_url, "context.json", 30))
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+    drawn = json.loads((d / f"{name}.json").read_text()).get("roofs")
+    return (meta.get("buildings") or {}).get("roofs") != drawn
+
+
 def _ready(d: Path, score: dict | None, exteriors: str | None) -> dict | None:
     import json
 
@@ -124,7 +145,7 @@ def _ready(d: Path, score: dict | None, exteriors: str | None) -> dict | None:
     return {"rooms": json.loads(cams.read_text())["rooms"], "exteriors": views}
 
 
-@app.function(image=web_image, cpu=0.25, memory=512, timeout=3600, volumes={DATA: volume})
+@app.function(image=web_image, cpu=0.25, memory=512, timeout=3600, volumes={DATA: volume}, secrets=[token])
 def prepare(
     scene_url: str,
     key: str,
@@ -140,11 +161,12 @@ def prepare(
     t0 = time.time()
     volume.reload()
     d = Path(DATA, "cache", key)
-    ready = _ready(d, score, exteriors)
+    stale = _stale_roofs(d, exteriors, context_url)
+    ready = None if stale else _ready(d, score, exteriors)
     if ready:
         return {**ready, "cached": True, "seconds": round(time.time() - t0, 1)}
     exported = None if (d / "house.blend").exists() else export.remote(scene_url, key)
-    built = blender.remote(key, context_url, site, exteriors, score)
+    built = blender.remote(key, context_url, site, exteriors, score, stale)
     return {
         **built,
         "export": exported,
@@ -191,9 +213,11 @@ def blender(
     site: list[float] | None = None,
     exteriors: str | None = None,
     score: dict | None = None,
+    rebuild: bool = False,
 ) -> dict:
     """What `prepare` found missing: house.blend from the export, the rooms' cameras under `score`, the exterior
-    build. The scoring and the exterior build run side by side: each opens house.blend and writes its own files."""
+    build (again with `rebuild`: its roofs are stale). The scoring and the exterior build run side by side: each
+    opens house.blend and writes its own files."""
     import json
     import shutil
     from concurrent.futures import ThreadPoolExecutor
@@ -217,7 +241,7 @@ def blender(
         if score is not None:
             steps["rooms"] += ["--score", json.dumps(score)]
     name, built = _outside(d, exteriors)
-    if name and not built:
+    if name and (rebuild or not built):
         steps["outside"] = ["main.py", "outside", str(d / "house.blend"), str(d), "--exteriors", exteriors or "surroundings"]
         # house alone needs only the context's alignment (north); the surroundings need its files
         if context_url and _fetch_context(context_url, tmp / "context", files=exteriors != "house"):
@@ -248,25 +272,26 @@ def blender(
     return {**ready, "phases": phases, "seconds": round(time.time() - t0, 1)}
 
 
+def _get(url: str, name: str, timeout: float) -> bytes:
+    """One file of the project's surroundings from the app, with the service's token."""
+    import urllib.request
+
+    req = urllib.request.Request((url if url.endswith("/") else url + "/") + name)
+    token = os.environ.get("RENDER_SERVICE_TOKEN", "")
+    if token:
+        # unredirected: a redirect to another host never gets it
+        req.add_unredirected_header("Authorization", f"Bearer {token}")
+    return urllib.request.urlopen(req, timeout=timeout).read()
+
+
 def _fetch_context(url: str, to: Path, files: bool = True) -> bool:
     """The project's surroundings (context.json and, with `files`, the files it names) into `to`; False when it has
     none."""
     import json
     import urllib.error
-    import urllib.request
-
-    base = url if url.endswith("/") else url + "/"
-    token = os.environ.get("RENDER_SERVICE_TOKEN", "")
-
-    def get(name: str, timeout: float) -> bytes:
-        req = urllib.request.Request(base + name)
-        if token:
-            # unredirected: a redirect to another host never gets it
-            req.add_unredirected_header("Authorization", f"Bearer {token}")
-        return urllib.request.urlopen(req, timeout=timeout).read()
 
     try:
-        meta = json.loads(get("context.json", 60))
+        meta = json.loads(_get(url, "context.json", 60))
     except (urllib.error.URLError, ValueError):
         return False
     names = [meta[k]["file"] for k in ("terrain", "photo", "buildings", "trees", "cover", "far") if meta.get(k)]
@@ -274,7 +299,7 @@ def _fetch_context(url: str, to: Path, files: bool = True) -> bool:
     to.mkdir(parents=True, exist_ok=True)
     (to / "context.json").write_text(json.dumps(meta))
     for name in names if files else []:
-        (to / name).write_bytes(get(name, 120))
+        (to / name).write_bytes(_get(url, name, 120))
     return True
 
 
