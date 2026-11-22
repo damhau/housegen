@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from housegen.geo import context, far, landcover, lidar, swiss
+from housegen.geo import context, far, landcover, lidar, roofs, swiss
 
 GROUND = 500.0
 RADIUS = 40
@@ -539,9 +539,17 @@ async def test_the_surroundings_keep_the_newer_houses(
             ),
         ]
 
+    async def records(*a: Any, **k: Any) -> list[roofs.Record]:
+        return [roofs.Record("190001", -15, 10, 1957, 1020, 2, 80)]
+
+    async def plants(*a: Any, **k: Any) -> list[roofs.Plant]:
+        return [roofs.Plant("190001", -17, 15, 3.4)]
+
     monkeypatch.setattr(lidar, "cloud", cloud)
     monkeypatch.setattr(landcover, "surfaces", cover)
     monkeypatch.setattr(far, "heights", no_far)
+    monkeypatch.setattr(roofs, "records", records)
+    monkeypatch.setattr(roofs, "plants", plants)
     place = swiss.Place(label="Le Mont 3013", kind="parcel", e=2537559, n=1157053)
     ctx = await context.build(tmp_path, place, radius=100)
     assert ctx["buildings"] == {
@@ -549,6 +557,7 @@ async def test_the_surroundings_keep_the_newer_houses(
         "count": 2,
         "lidar": 1,
         "altitudes": context.ALTITUDES,
+        "roofs": context.ROOFS,
         "above_lidar": None,
     }
     assert ctx["lidar"] == {"year": 2025}
@@ -573,6 +582,11 @@ async def test_the_surroundings_keep_the_newer_houses(
     assert np.abs(tint[400, 400] - (90, 120, 60)).max() <= 6  # the garden, as photographed (JPEG)
     saved = json.loads((tmp_path / "context" / "buildings.json").read_text())["buildings"]
     assert [b["source"] for b in saved] == ["swissbuildings3d", "lidar"]
+    # each its roof (#143): the register's year and plant on the surveyed house
+    known, new = (b["roof_spec"] for b in saved)
+    assert (known["year"], known["pv_kw"], known["why"]["panels"]) == (1957, 3.4, "bfe")
+    assert len(known["panels"]) == roofs.module_count(3.4)
+    assert (new["year"], new["pv_kw"], new["panels"]) == (None, None, [])
 
 
 async def test_without_the_lidar_the_surroundings_are_as_before(
@@ -598,6 +612,8 @@ async def test_without_the_lidar_the_surroundings_are_as_before(
     monkeypatch.setattr(lidar, "cloud", failing)
     monkeypatch.setattr(landcover, "surfaces", failing)
     monkeypatch.setattr(far, "heights", failing)
+    monkeypatch.setattr(roofs, "records", failing)
+    monkeypatch.setattr(roofs, "plants", failing)
     ctx = await context.build(
         tmp_path, swiss.Place(label="x", kind="parcel", e=2537559, n=1157053), radius=100
     )
@@ -605,6 +621,7 @@ async def test_without_the_lidar_the_surroundings_are_as_before(
     assert ctx["buildings"]["lidar"] == 0
     assert ctx["credits"] == context.CREDITS
     assert ctx["cover"] is None
+    assert "roofs" not in ctx["buildings"]  # decided again at the next start
 
 
 def _crown(cx: float, cz: float, h: float, r: float) -> np.ndarray:

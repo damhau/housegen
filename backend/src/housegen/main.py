@@ -21,7 +21,7 @@ from housegen.core.config import Settings, get_settings
 from housegen.core.db import dispose_db, init_db, session_factory
 from housegen.core.exceptions import register_exception_handlers
 from housegen.core.logging import RequestLoggingMiddleware, configure_logging
-from housegen.geo.context import fix_survey_altitudes
+from housegen.geo.context import migrate as migrate_surroundings
 from housegen.jobs.manager import job_manager
 from housegen.projects.access import scene_page_access
 from housegen.projects.files import RevalidatedStaticFiles, SceneFiles
@@ -56,8 +56,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     await migrate_plans(settings.projects_dir)  # one-off: plan.pdf + plan/ → plans/1/ (#10)
     await migrate_organisations()  # one-off: the projects from before accounts (#104)
-    # one-off, over the network: in the background, a start does not wait for swisstopo (#140)
-    altitudes = asyncio.create_task(fix_survey_altitudes(settings.projects_dir))
+    # one-off, over the network: in the background, a start does not wait for swisstopo (#140, #143)
+    surroundings = asyncio.create_task(migrate_surroundings(settings.projects_dir))
     await _check_agent_organisation(settings)
     # jobs the previous process left behind (deploy, reload, crash) continue with the same id
     resumed = await resume_interrupted_jobs(job_manager)
@@ -67,7 +67,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     job_manager.on_finished = lambda project_id: start_waiting(job_manager, project_id)
     await start_all_waiting(job_manager)
     yield
-    altitudes.cancel()
+    surroundings.cancel()
     await job_manager.shutdown()
     await renderer.close()
     await dispose_db()

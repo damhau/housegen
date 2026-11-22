@@ -6,7 +6,8 @@
   photo.jpg       the aerial photo over the same square, north up
   buildings.json  the neighbours: positions (local x, altitude, local z) and roof / wall triangles;
                   swissBUILDINGS3D's, then the newer ones the lidar has (source "lidar", geo/lidar.py):
-                  the survey's outline where it has one (geo/landcover.py), the lidar's heights (#73)
+                  the survey's outline where it has one (geo/landcover.py), the lidar's heights (#73);
+                  each its roof_spec: cover, colour, year, solar modules (geo/roofs.py, #143)
   trees.json      the lidar's trees and bushes: [local x, foot altitude, local z, height, crown radius, kind]
   cover.png       the ground by type near the house (geo/landcover.py): masks, R asphalt, G lawn, B paving, A gravel
 
@@ -32,7 +33,7 @@ import httpx
 import numpy as np
 from PIL import Image
 
-from housegen.geo import far, landcover, lidar, swiss
+from housegen.geo import far, landcover, lidar, roofs, swiss
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,7 @@ COVER_EXTENT = (
 NEAR = 120  # metres: the default 3D radius around the house (#51)
 ALTITUDES = "tiles"  # buildings.json's survey buildings stand at their tiles' altitudes (#140)
 ROOFS_OFF = 1.0  # metres between the survey's roofs and the lidar's past which a fetch warns
+ROOFS = 1  # buildings.json's roof_spec, decided with both registers' answers (#143)
 
 
 def context_dir(project_root: Path) -> Path:
@@ -130,6 +132,87 @@ def _shift_survey(root: Path, ctx: dict[str, Any], fresh: list[swiss.Building]) 
     return delta
 
 
+async def migrate(projects_dir: Path) -> None:
+    """The one-off fixes over the network, in turn: both rewrite buildings.json."""
+    await fix_survey_altitudes(projects_dir)
+    await fill_roofs(projects_dir)
+
+
+async def fill_roofs(projects_dir: Path) -> int:
+    """Surroundings fetched before #143 (or while a register was down): each building's roof_spec. Those
+    whose survey still waits for its altitudes, or whose registers cannot be read now, are tried again
+    at the next start. Returns how many were filled."""
+    filled = 0
+    for root, ctx in await asyncio.to_thread(_without_roofs, projects_dir):
+        try:
+            async with httpx.AsyncClient(
+                headers=swiss.UA, timeout=60, follow_redirects=True
+            ) as client:
+                e0, n0, radius = ctx["place"]["e"], ctx["place"]["n"], ctx["radius"]
+                recs = await roofs.records(e0, n0, radius, client)
+                found = await roofs.plants(e0, n0, radius, client)
+            counts = await asyncio.to_thread(_fill, root, ctx, recs, found)
+        # one project's surroundings the heuristics trip on must not stop the others' (and the start)
+        except Exception as e:
+            logger.warning("geo.roofs_failed", extra={"project_id": root.name, "error": str(e)})
+            continue
+        if counts is None:
+            continue
+        filled += 1
+        logger.info("geo.roofs_filled", extra={"project_id": root.name, **counts})
+    return filled
+
+
+def _without_roofs(projects_dir: Path) -> list[tuple[Path, dict[str, Any]]]:
+    out = []
+    for root in sorted(p for p in projects_dir.iterdir() if p.is_dir()):
+        ctx = load(root)
+        meta = (ctx or {}).get("buildings") or {}
+        if ctx and meta.get("altitudes") == ALTITUDES and meta.get("roofs") != ROOFS:
+            out.append((root, ctx))
+    return out
+
+
+def _fill(
+    root: Path, ctx: dict[str, Any], recs: list[roofs.Record], found: list[roofs.Plant]
+) -> dict[str, int] | None:
+    """Decide the stored buildings' roofs and write them back, unless the surroundings were fetched
+    again meanwhile (None)."""
+    d = context_dir(root)
+    path = d / ctx["buildings"]["file"]
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    photo = np.asarray(Image.open(d / ctx["photo"]["file"]).convert("RGB"))
+    counts = _decide_roofs(stored["buildings"], photo, ctx["radius"], recs, found)
+    now = load(root)
+    if now is None or now.get("fetched_at") != ctx.get("fetched_at"):
+        return None
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(stored, separators=(",", ":")), encoding="utf-8")
+    tmp.replace(path)
+    now["buildings"]["roofs"] = ROOFS
+    save(root, now)
+    return counts
+
+
+def _decide_roofs(
+    buildings: list[dict[str, Any]],
+    photo: np.ndarray,
+    radius: int,
+    recs: list[roofs.Record] | None,
+    found: list[roofs.Plant] | None,
+) -> dict[str, int]:
+    """Each building's roof_spec, in place; what the registers gave, for the logs."""
+    specs = roofs.decide(buildings, photo, radius, recs, found)
+    for b, spec in zip(buildings, specs, strict=True):
+        b["roof_spec"] = spec
+    return {
+        "buildings": len(specs),
+        "years": sum(s["year"] is not None for s in specs),
+        "plants": sum(s["pv_kw"] is not None for s in specs),
+        "modules": sum(len(s["panels"]) for s in specs),
+    }
+
+
 async def build(
     project_root: Path, place: swiss.Place, radius: int = 200, step: float = 1.0
 ) -> dict[str, Any]:
@@ -142,6 +225,9 @@ async def build(
         cover_task = asyncio.create_task(
             landcover.surfaces(e0, n0, min(radius, COVER_EXTENT), client)
         )
+        # the federal registers (#143): construction years, photovoltaic plants. Optional
+        records_task = asyncio.create_task(roofs.records(e0, n0, radius, client))
+        plants_task = asyncio.create_task(roofs.plants(e0, n0, radius, client))
         ground = await ground_task
         buildings = await swiss.buildings(e0, n0, radius, client)
         photo = await photo_task
@@ -185,6 +271,16 @@ async def build(
         except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
             logger.warning("geo.lidar_failed", extra={"error": str(e)})
         buildings = [*buildings, *newer]
+        recs: list[roofs.Record] | None = None
+        found: list[roofs.Plant] | None = None
+        try:
+            recs = await records_task
+        except (httpx.HTTPError, RuntimeError, ValueError) as e:
+            logger.warning("geo.register_failed", extra={"register": roofs.GWR, "error": str(e)})
+        try:
+            found = await plants_task
+        except (httpx.HTTPError, RuntimeError, ValueError) as e:
+            logger.warning("geo.register_failed", extra={"register": roofs.PLANTS, "error": str(e)})
         # the far landscape (the horizon: the lake, the Alps, the Jura): optional, the rest stands without it
         try:
             far_heights = await far.heights(e0, n0, client, ground, radius, step)
@@ -202,8 +298,18 @@ async def build(
     if img.width > PHOTO_PIXELS:
         img = img.resize((PHOTO_PIXELS, PHOTO_PIXELS), Image.Resampling.LANCZOS)
     img.save(tmp / "photo.jpg", "JPEG", quality=75, optimize=True, progressive=True)
+    rows = [dict(b.__dict__) for b in buildings]
+    # the roofs drawn (#143); without a register's answer, decided again at the next start
+    try:
+        counts = await asyncio.to_thread(_decide_roofs, rows, np.asarray(img), radius, recs, found)
+        logger.info("geo.roofs", extra=counts)
+    # heuristics over whatever meshes the survey has: the surroundings stand without them
+    except Exception as e:
+        logger.warning("geo.roofs_failed", extra={"error": str(e)})
+        rows = [dict(b.__dict__) for b in buildings]
+        recs = None
     (tmp / "buildings.json").write_text(
-        json.dumps({"buildings": [b.__dict__ for b in buildings]}, separators=(",", ":")),
+        json.dumps({"buildings": rows}, separators=(",", ":")),
         encoding="utf-8",
     )
     cover_meta: dict[str, Any] | None = None
@@ -253,6 +359,7 @@ async def build(
             "count": len(buildings),
             "lidar": len(newer),
             "altitudes": ALTITUDES,
+            **({"roofs": ROOFS} if recs is not None and found is not None else {}),
             # the survey's roofs above the lidar's (median, metres): about 0, a warning past ROOFS_OFF
             "above_lidar": round(roofs_check[0], 2) if roofs_check else None,
         },
