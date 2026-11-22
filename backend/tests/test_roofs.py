@@ -210,6 +210,35 @@ def test_the_survey_s_doubled_triangles_and_split_planes_make_one_face() -> None
     assert south.area == pytest.approx(14 * 5 / math.cos(math.radians(35)), rel=0.02)
 
 
+def test_a_slope_meshed_on_a_grid_at_its_altitude_is_one_face() -> None:
+    # the lidar's roofs: a 0.5 m grid, its heights a few millimetres off, 600 m up
+    rng = np.random.default_rng(3)
+    xs, zs = np.meshgrid(np.arange(0, 12.01, 0.5), np.arange(0, 6.01, 0.5))
+    ys = 604.0 - 0.7 * zs + rng.uniform(-0.003, 0.003, xs.shape)
+    pos = np.stack([xs, ys, zs], axis=-1).reshape(-1, 3)
+    w = xs.shape[1]
+    roof = []
+    for r in range(xs.shape[0] - 1):
+        for c in range(w - 1):
+            a, b, d, e = r * w + c, r * w + c + 1, (r + 1) * w + c, (r + 1) * w + c + 1
+            roof += [a, d, b, b, d, e]
+    (face,) = roofs.faces(pos.ravel().tolist(), roof)
+    assert face.area == pytest.approx(12 * 6 / math.cos(math.atan(0.7)), rel=0.01)
+    assert len(roofs.pitched_modules(face, 20)) == 20
+
+
+def test_an_entry_that_is_walls_alone_takes_no_plant() -> None:
+    walls = {"id": "walls", "positions": [-6, Y, -5, 6, Y, -5, 6, Y, 5, -6, Y, 5], "roof": []}
+    house = _flat(0, 0, 10, 8)
+    fps = roofs.footprints([walls, house])
+    held = roofs.match_records(fps, [roofs.Record("1", 0.0, 0.0, 1990, 1020, 2, 80)])
+    found = [roofs.Plant("1", 0.0, 0.0, 4.0), roofs.Plant(None, 0.0, 4.5, 2.0)]
+    assert sorted(roofs.match_plants(fps, held, found)) == [0]
+    on = roofs.match_plants(fps, held, found, roofed=[False, True])
+    assert sorted(on) == [1]
+    assert [pl.kw for pl in on[1]] == [4.0, 2.0]
+
+
 def test_modules_on_a_flat_roof_stand_in_rows_tilted_to_the_south() -> None:
     roof = _flat(0, 0, 20, 14)
     face = roofs.faces(roof["positions"], roof["roof"])[0]
@@ -375,6 +404,9 @@ def test_the_photo_places_modules_only_where_it_clearly_shows_them() -> None:
     spots = _photo(CLAY)
     _paint(spots, -1, 2, 0, 3, PANEL)
     assert roofs.photo_modules(south, spots, R) == []
+    # a pale blue-grey roof (Le Mont's D1315214) or a tarp: too bright for modules
+    pale = _photo((162, 179, 192))
+    assert roofs.photo_modules(south, pale, R) == []
 
 
 def test_each_building_gets_its_roof() -> None:

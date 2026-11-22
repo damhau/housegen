@@ -375,7 +375,6 @@ def faces(positions: list[float], roof: list[int]) -> list[Face]:
 
 
 def _face(tris: np.ndarray) -> Face:
-
     n = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
     n = np.where(n[:, 1:2] < 0, -n, n)
     w = np.linalg.norm(n, axis=1) / 2
@@ -404,19 +403,21 @@ def _planes(positions: list[float], roof: list[int]) -> list[Face]:
     n = n / (2 * area[:, None])
     n = np.where(n[:, 1:2] < 0, -n, n)
     cos_same = math.cos(math.radians(SAME_PLANE_DEG))
+    mid = tri.mean(axis=1)
     groups: list[list[int]] = []
     normals: list[np.ndarray] = []
     offsets: list[float] = []
     for i in np.argsort(-area):
-        d = float(n[i] @ tri[i, 0])
         for k, (gn, gd) in enumerate(zip(normals, offsets, strict=True)):
-            if float(gn @ n[i]) > cos_same and abs(gd - d) < SAME_PLANE_M:
+            # measured along the group's normal: the altitudes (hundreds of metres) would turn a
+            # fraction of a degree between two triangles' own normals into metres
+            if float(gn @ n[i]) > cos_same and abs(float(gn @ mid[i]) - gd) < SAME_PLANE_M:
                 groups[k].append(int(i))
                 break
         else:
             groups.append([int(i)])
             normals.append(n[i])
-            offsets.append(d)
+            offsets.append(float(n[i] @ mid[i]))
     return [_face(tri[g]) for g in groups]
 
 
@@ -790,13 +791,18 @@ def match_records(fps: list[Any], recs: list[Record]) -> dict[int, list[Record]]
 
 
 def match_plants(
-    fps: list[Any], held: dict[int, list[Record]], found: list[Plant]
+    fps: list[Any],
+    held: dict[int, list[Record]],
+    found: list[Plant],
+    roofed: list[bool] | None = None,
 ) -> dict[int, list[Plant]]:
     """The photovoltaic plants on each building: a plant on the register's building of its egid (at that
     building's point: the address can be off the house), else on the house nearest its point, within
-    NEAR_PLANT."""
+    NEAR_PLANT. Only on buildings with a roof (`roofed`, all by default): the survey has entries that
+    are walls alone."""
     from shapely.geometry import Point
 
+    can = roofed or [True] * len(fps)
     by_egid: dict[str, tuple[Record, list[int]]] = {}
     for k, rs in held.items():
         for r in rs:
@@ -804,12 +810,14 @@ def match_plants(
     out: dict[int, list[Plant]] = {}
     for pl in found:
         rec, ks = by_egid.get(pl.egid or "", (None, []))
-        if rec is not None and ks:
-            k = max(ks, key=lambda i: fps[i].area)
+        if rec is not None:
             pl = Plant(egid=pl.egid, x=rec.x, z=rec.z, kw=pl.kw)
+        ks = [i for i in ks if can[i]]
+        if ks:
+            k = max(ks, key=lambda i: fps[i].area)
         else:
             pt = Point(pl.x, pl.z)
-            near = [(f.distance(pt), i) for i, f in enumerate(fps) if not f.is_empty]
+            near = [(f.distance(pt), i) for i, f in enumerate(fps) if can[i] and not f.is_empty]
             if not near or min(near)[0] > NEAR_PLANT:
                 continue
             k = min(near)[1]
@@ -819,7 +827,8 @@ def match_plants(
 
 PHOTO_SOUTH = 0.3  # a face facing this much south at least: no roof's own shade on it
 PHOTO_BLUE = 0.45  # of its pixels panel-blue
-PHOTO_BRIGHT = 0.2  # their median brightest channel: darker is a shadow, not a module
+PHOTO_BRIGHT = (0.2, 0.5)  # their median brightest channel: darker is a shadow, brighter a pale
+# roof, a pool or a tarp (modules read 0.26 to 0.34 on Le Mont and Montelly; a pale grey roof 0.75)
 PHOTO_AREA = 5.0  # m² of blue at least
 
 
@@ -849,7 +858,10 @@ def photo_modules(face: Face, photo: np.ndarray, radius: float) -> list[list[lis
     sat = np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-9), 0)
     hue = _hues(px[:, 0], px[:, 1], px[:, 2], mx, mn)
     blue = (hue >= 190) & (hue <= 260) & (sat > 0.15)
-    if float(blue.mean()) < PHOTO_BLUE or float(np.median(mx[blue])) < PHOTO_BRIGHT:
+    if float(blue.mean()) < PHOTO_BLUE:
+        return []
+    lo, hi = PHOTO_BRIGHT
+    if not lo <= float(np.median(mx[blue])) <= hi:
         return []
     area = float(blue.sum()) * cell * cell / max(float(face.normal[1]), 0.1)
     if area < PHOTO_AREA:
@@ -875,7 +887,8 @@ def decide(
     pix = sample_photo(photo)
     fps = footprints(buildings)
     held = match_records(fps, recs or [])
-    on = match_plants(fps, held, found or [])
+    roofed = [bool(b.get("roof")) for b in buildings]
+    on = match_plants(fps, held, found or [], roofed)
     geo = [
         (
             np.asarray(b["positions"], dtype=np.float64).reshape(-1, 3),
