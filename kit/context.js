@@ -19,6 +19,7 @@ import { leafBush, leafTree, treeStand } from "housekit"; // the page's own inst
 import { horizonProfile, lv95ToWgs84 } from "./sun.js";
 import { Blockers, FLAT_BEYOND, FLAT_ROOF, RENDERS, houseHash, openingMeshes, planOpenings, roofLook, roofTint } from "./neighbours.js";
 import { clipToSite, lawnColour, ownGround, siteDistance } from "./ground.js";
+import { planRoofs, specPanels } from "./roofs.js";
 
 // metres over which the real ground joins the builder's, in height and in its grass's colour (short: a longer ring
 // tilts the roads beside the plot)
@@ -188,8 +189,9 @@ export async function loadContext(url, { houseGroup, heightAt }) {
   // ---- the far landscape (the horizon), when the backend fetched it
   const far = meta.far ? await farLandscape(meta, base, get, toScene, R) : null;
 
-  // ---- the neighbours: roofs wear the photo (seen from above: their real colour, panels, windows),
-  // walls a render; anything standing on the scene's own ground is the old state of the plot: left out
+  // ---- the neighbours: roofs drawn in their cover (roofs.js, #144) or wearing the photo (seen from above: their
+  // real colour, panels, windows; setRoofs), walls a render; anything standing on the scene's own ground is the old
+  // state of the plot: left out
   const houses = [];
   let skipped = 0;
   for (const b of buildings.buildings ?? []) {
@@ -199,18 +201,24 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     const cx = pts.reduce((s, q) => s + q[0], 0) / pts.length, cz = pts.reduce((s, q) => s + q[2], 0) / pts.length;
     if (siteGap(own, cx, cz, 0).d <= 0) { skipped++; continue; }
     // each house its render (a Swiss palette, picked by its id so it stays)
-    houses.push({ id: b.id, source: b.source, local: p, pts, wall: b.wall, roof: b.roof, eave: b.eave ?? [], render: RENDERS[houseHash(b.id) % RENDERS.length] });
+    // what its roof wears and its solar modules (#143, #144), when the backend's geo code said so
+    houses.push({ id: b.id, source: b.source, local: p, pts, wall: b.wall, roof: b.roof, eave: b.eave ?? [], render: RENDERS[houseHash(b.id) % RENDERS.length],
+      spec: b.roof_spec ?? null, panels: specPanels(b.roof_spec, toScene) });
   }
   const groundAt = (x, z) => { const [lx, lz] = toLocal(x, z); return joined(x, z, realY(lx, lz)); };
   let t0 = performance.now();
-  const newer = newerRoofs(houses, photo, R);
-  // what the neighbours took to build (ms), for the load time (#124)
-  const built = { roofs: Math.round(performance.now() - t0) };
+  const shapes = new Map(houses.map((h) => [h, drawnAs(h)]));
+  const { newer, seen, neighbourhood } = photographedRoofs(houses, photo, R);
+  // the roofs drawn (#144), their finishes asked for now: their textures load while the rest is built
+  const drawn = planRoofs(houses, { photographed: seen, neighbourhood, roofOf: (h) => shapes.get(h).roof });
+  // what the neighbours took to build (ms), for the load time (#124); roofs: both kinds, drawn and photographed
+  const built = { roofs: performance.now() - t0 };
   const roofPos = [], roofUv = [], wallPos = [], wallLook = [];
   const tiled = { pos: [], col: [] }, flat = { pos: [], col: [] };
+  t0 = performance.now();
   for (const h of houses) {
     const look = newer.get(h);
-    const { roof, wall } = drawnAs(h);
+    const { roof, wall } = shapes.get(h);
     if (look) {
       // a house newer than the photo (the lidar's, geo/lidar.py), where the photo shows a building site: roof
       // tiles (pitched) or gravel (flat) in the colours of the neighbourhood's photographed roofs
@@ -238,6 +246,8 @@ export async function loadContext(url, { houseGroup, heightAt }) {
   group.userData = { kind: "context", excludeFromBounds: true };
   group.add(ground);
   if (far) group.add(far.mesh);
+  // the switch between the drawn roofs and the photo's (setRoofs)
+  const photoRoofs = [];
   if (roofPos.length) {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(roofPos, 3));
@@ -247,12 +257,17 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     mesh.castShadow = mesh.receiveShadow = true;
     mesh.name = "Surroundings: roofs";
     group.add(mesh);
+    photoRoofs.push(mesh);
   }
   const finished = [[tiled, "roof-tiles", "tiled"], [flat, "gravel", "flat"]].filter(([list]) => list.pos.length);
   // the finishes matched to white: each roof's vertex colour is then its mean colour
   const shared = finished.map(([, finish]) => finishMaterial(finish, { color: "#ffffff" }));
   const render = wallPos.length ? finishMaterial("render", { color: "#ffffff" }) : null;
+  built.roofs += performance.now() - t0;
   await finishesReady();
+  t0 = performance.now();
+  const drawnRoofs = drawn.meshes();
+  group.add(drawnRoofs);
   finished.forEach(([list, , name], k) => {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(list.pos, 3));
@@ -265,7 +280,14 @@ export async function loadContext(url, { houseGroup, heightAt }) {
     mesh.castShadow = mesh.receiveShadow = true;
     mesh.name = `Surroundings: newer ${name} roofs`;
     group.add(mesh);
+    photoRoofs.push(mesh);
   });
+  built.roofs = Math.round(built.roofs + performance.now() - t0);
+  const showRoofs = (mode) => {
+    drawnRoofs.visible = mode === "drawn";
+    for (const m of photoRoofs) m.visible = mode === "photo";
+  };
+  showRoofs("drawn");
   if (wallPos.length) {
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(wallPos, 3));
@@ -323,6 +345,9 @@ export async function loadContext(url, { houseGroup, heightAt }) {
       lawn: lawn ? `#${lawn.getHexString()}` : null,
     },
     built,
+    // the roofs drawn (#144): how many houses, from the backend's spec or the kit's pick, their covers and finishes,
+    // the solar modules, metres of ridge caps and of gutters
+    roofStats: drawn.stats,
     trees: trees ? { near: trees.userData.near, far: trees.userData.far } : null,
     cover: Boolean(coverUniforms),
     near: nearRadius,
@@ -341,6 +366,16 @@ export async function loadContext(url, { houseGroup, heightAt }) {
       this.mode = m;
       if (trees) trees.visible = m === "3d";
       near3D.on.value = m === "3d" && cover ? 1 : 0;
+      return true;
+    },
+    // the roofs' switch (#144): "drawn" (each cover a material, caps, gutters, solar modules) or "photo" (the aerial
+    // photo on them, as before); returns whether anything changed
+    roofs: "drawn",
+    setRoofs(mode) {
+      const m = mode === "photo" ? "photo" : "drawn";
+      if (m === this.roofs) return false;
+      this.roofs = m;
+      showRoofs(m);
       return true;
     },
     credits: meta.credits ?? [],
@@ -743,15 +778,17 @@ function roadFinder(cover, meta, toLocal) {
 }
 
 /**
- * The houses newer than the aerial photo (the lidar's) that it shows as a building site, a field or a tree, each
- * with the roof colours it wears instead: { tiled, flat } (linear). Tiles: a real roof colour of the kind of a
- * photographed roof of the neighbourhood picked by the house's id (roofTint); gravel: that roof's own colour, a
- * little lighter or darker. Those it shows finished keep the photo.
+ * What the aerial photo shows of the neighbours' roofs. `newer`: the houses newer than it (the lidar's) that it shows
+ * as a building site, a field or a tree, each with the roof colours it wears on the photo's roofs instead: { tiled,
+ * flat } (linear). Tiles: a real roof colour of the kind of a photographed roof of the neighbourhood picked by the
+ * house's id (roofTint); gravel: that roof's own colour, a little lighter or darker. Those it shows finished keep the
+ * photo. `seen`: the photographed medians { tiled, flat } (sRGB) of each house whose roof has no spec, the drawn roofs'
+ * fallback (roofs.js); `neighbourhood`: the tiled medians of the photographed houses, for one it does not show.
  */
-function newerRoofs(houses, photo, R) {
-  const out = new Map();
-  const newer = houses.filter((h) => h.source === "lidar");
-  if (!newer.length) return out;
+function photographedRoofs(houses, photo, R) {
+  const newer = new Map(), seen = new Map();
+  const lidar = houses.filter((h) => h.source === "lidar");
+  if (!lidar.length && houses.every((h) => h.spec)) return { newer, seen, neighbourhood: [] };
   const pix = pixelsOf(photo, { size: 1800 });
   const samples = (h, keep = () => true) => {
     const p = h.local, list = [];
@@ -775,29 +812,39 @@ function newerRoofs(houses, photo, R) {
     return list;
   };
   const median = (list) => [0, 1, 2].map((c) => list.map((s) => s[c]).sort((a, b) => a - b)[list.length >> 1]);
+  const kinds = [["tiled", (a, b, c) => levelness(a, b, c) <= FLAT_ROOF], ["flat", (a, b, c) => levelness(a, b, c) > FLAT_ROOF]];
+  const medians = (h) => {
+    const own = {};
+    for (const [kind, keep] of kinds) {
+      const list = samples(h, keep);
+      if (list.length >= 20) own[kind] = median(list);
+    }
+    return own;
+  };
   const colours = { tiled: [], flat: [] };
   if (pix) {
-    const kinds = [["tiled", (a, b, c) => levelness(a, b, c) <= FLAT_ROOF], ["flat", (a, b, c) => levelness(a, b, c) > FLAT_ROOF]];
     for (const h of houses) {
       if (h.source === "lidar") continue;
-      for (const [kind, keep] of kinds) {
-        const list = samples(h, keep);
-        if (list.length >= 20) colours[kind].push(median(list));
-      }
+      const own = medians(h);
+      for (const kind of ["tiled", "flat"]) if (own[kind]) colours[kind].push(own[kind]);
+      if (!h.spec) seen.set(h, own);
     }
   }
-  for (const h of newer) {
-    if (pix && roofLook(samples(h)) === "photo") continue;
+  for (const h of lidar) {
+    if (pix && roofLook(samples(h)) === "photo") {
+      if (!h.spec) seen.set(h, medians(h));
+      continue;
+    }
     const hash = houseHash(h.id), shade = 0.92 + ((hash >>> 4) % 17) / 100;
     const photographed = (kind) => (colours[kind].length ? colours[kind][(hash >>> 9) % colours[kind].length] : null);
     const [r, g, b] = (photographed("flat") ?? [0.6, 0.59, 0.56]).map((v) => v * shade);
-    out.set(h, {
+    newer.set(h, {
       // the photo's haze pales its roofs: tiles take a real roof colour of the photographed one's kind
       tiled: new THREE.Color().setRGB(...roofTint(photographed("tiled"), hash), THREE.SRGBColorSpace),
       flat: new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace),
     });
   }
-  return out;
+  return { newer, seen, neighbourhood: colours.tiled };
 }
 
 /** Each neighbour's render on the walls (the attribute wallLook: its colour, the height above the ground), darker at the foot. */

@@ -218,6 +218,9 @@ window.__house = {
   // the surroundings' switch (#50): "3d" | "photo"; the mode in force
   setSurroundings: (mode) => setSurroundings(mode),
   get surroundings() { return state.context?.mode ?? null; },
+  // the neighbours' roofs (#144): "drawn" | "photo"; the one in force
+  setRoofs: (mode) => setRoofs(mode),
+  get roofs() { return state.context?.roofs ?? null; },
   // the sun study (#49): the sun on a Swiss date and hour ("2026-12-21", 12.5); off; the sunshine-hours
   // map over a day or a season; what it says at a scene point (hours a day)
   sun: (date, hour) => sunStudy()?.set({ date, hour }) ?? null,
@@ -581,6 +584,7 @@ export async function boot(buildScene) {
       state.context = await loadContext(CONTEXT, { houseGroup, heightAt: house.groundY });
       scene.add(state.context.group);
       if (params.get("surroundings") === "photo") state.context.setMode("photo");
+      if (params.get("roofs") === "photo") state.context.setRoofs("photo");
       // the builder's ground is clipped to its site there (context.js): the real ground beyond it
       if (state.context.clipped) renderer.localClippingEnabled = true;
     } catch (err) {
@@ -666,6 +670,7 @@ export async function boot(buildScene) {
     if (d.type === "house:tour") (d.on ? startTour() : Promise.resolve(stopTour())).catch((err) => recordError(err?.message ?? err));
     if (d.type === "house:dollhouse") (typeof d.index === "number" && d.index >= 0 ? showDollhouse(d.index) : endDollhouse());
     if (d.type === "house:surroundings") setSurroundings(d.mode);
+    if (d.type === "house:roofs") setRoofs(d.mode);
     // the viewer's Point button (#35): the next click names what it is on, for the chat
     if (d.type === "house:pick") (d.on ? startPick(e.source) : endPick(null));
     // a page loaded again (a new version, another look) where the viewer was (#35)
@@ -725,6 +730,8 @@ export async function boot(buildScene) {
       quantities: true, // and the SIA 416 quantities (house:quantities)
       // the surroundings' switch (house:surroundings { mode: "3d" | "photo" }), when there is a 3D part
       surroundings: state.context && (state.context.trees || state.context.cover) ? state.context.mode : null,
+      // the neighbours' roofs' switch (house:roofs { mode: "drawn" | "photo" }), when some are drawn
+      roofs: state.context?.roofStats?.houses ? state.context.roofs : null,
       // the sun study (house:sun, house:sunHours): only once the surroundings say where north is
       sun: Boolean(PRESENTATION && state.context?.aligned && state.context?.place),
       // the storeys with a floor plan, for the dollhouse view (house:dollhouse { index })
@@ -2634,6 +2641,15 @@ function sunStudy() {
 function setSurroundings(mode) {
   if (!state.context?.setMode(mode)) return false;
   // the trees cast shadows: the shadow map is drawn again (it is otherwise only when the sun moves)
+  if (state.renderer?.shadowMap.enabled) state.renderer.shadowMap.needsUpdate = true;
+  state.needsRender = true;
+  state.accumulate?.reset();
+  return true;
+}
+
+/** The neighbours' roofs (#144): "drawn" (their covers, caps, gutters and solar modules) or "photo". */
+function setRoofs(mode) {
+  if (!state.context?.setRoofs?.(mode)) return false;
   if (state.renderer?.shadowMap.enabled) state.renderer.shadowMap.needsUpdate = true;
   state.needsRender = true;
   state.accumulate?.reset();

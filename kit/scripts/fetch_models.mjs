@@ -1,7 +1,8 @@
 // Download the scanned furniture models listed in furnish.js (Poly Haven, CC0, glTF with 1k textures)
 // into kit/assets/polyhaven/<id>/, and the surface textures listed in finishes.js (1k JPEG colour,
 // normal, roughness + meta.json with their real size) into kit/assets/polyhaven/textures/<id>/, and the
-// marbles of the styles' tiles (finishes.js MARBLES, ambientCG, CC0: the 1K colour map) into kit/assets/ambientcg/<id>/.
+// marbles of the styles' tiles (finishes.js MARBLES, ambientCG, CC0: the 1K colour map) and the ambientCG texture sets
+// of finishes.js (`acg`: the neighbours' roof covers) into kit/assets/ambientcg/<id>/.
 // Run from kit/: node scripts/fetch_models.mjs
 import { mkdir, writeFile, access } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
@@ -35,14 +36,20 @@ for (const id of new Set([...Object.values(MODELS).filter((m) => m.id).map((m) =
   console.log(`${id}: fetched`);
 }
 
-for (const id of new Set(Object.values(TEXTURES).map((t) => t.id))) {
+// a JPEG re-encoded at `quality` (finishes.js `jpeg`) when sharp is there (the kit's dev dependency), else as it came
+const sharp = await import("sharp").then((m) => m.default, () => null);
+const lighter = async (buf, quality) => (quality && sharp ? sharp(buf).jpeg({ quality, mozjpeg: true }).toBuffer() : buf);
+const specsOf = (key, id) => Object.values(TEXTURES).filter((t) => t[key] === id);
+
+for (const id of new Set(Object.values(TEXTURES).filter((t) => t.id).map((t) => t.id))) {
   const dir = join(OUT, "textures", id);
   if (await access(join(dir, "meta.json")).then(() => true, () => false)) { console.log(`${id}: present`); continue; }
   const files = JSON.parse((await get(`https://api.polyhaven.com/files/${id}`)).toString());
   const info = JSON.parse((await get(`https://api.polyhaven.com/info/${id}`)).toString());
   await mkdir(dir, { recursive: true });
-  for (const [key, suffix] of [["Diffuse", "diff"], ["nor_gl", "nor_gl"], ["Rough", "rough"]]) {
-    await writeFile(join(dir, `${id}_${suffix}_1k.jpg`), await get(files[key]["1k"].jpg.url));
+  const specs = specsOf("id", id), rough = specs.some((t) => t.rough !== false), quality = Math.max(0, ...specs.map((t) => t.jpeg ?? 0));
+  for (const [key, suffix] of [["Diffuse", "diff"], ["nor_gl", "nor_gl"], ...(rough ? [["Rough", "rough"]] : [])]) {
+    await writeFile(join(dir, `${id}_${suffix}_1k.jpg`), await lighter(await get(files[key]["1k"].jpg.url), quality));
   }
   // real size of one tile of the texture, metres (the API gives millimetres)
   const size = (info.dimensions ?? [1000, 1000]).map((mm) => Math.round(mm) / 1000);
@@ -58,6 +65,22 @@ for (const id of Object.keys(MARBLES)) {
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, name), zip[name]);
   await writeFile(join(dir, "meta.json"), JSON.stringify({ id, source: `https://ambientcg.com/view?id=${id}`, license: "CC0" }));
+  console.log(`${id}: fetched`);
+}
+
+// the ambientCG texture sets (finishes.js `acg`): colour, OpenGL normal and, unless rough: false, roughness
+for (const id of new Set(Object.values(TEXTURES).filter((t) => t.acg).map((t) => t.acg))) {
+  const dir = join(OUT, "..", "ambientcg", id);
+  if (await access(join(dir, "meta.json")).then(() => true, () => false)) { console.log(`${id}: present`); continue; }
+  const specs = specsOf("acg", id), quality = Math.max(0, ...specs.map((t) => t.jpeg ?? 0));
+  const maps = ["Color", "NormalGL", ...(specs.some((t) => t.rough !== false) ? ["Roughness"] : [])].map((m) => `${id}_1K-JPG_${m}.jpg`);
+  const zip = unzipSync(new Uint8Array(await get(`https://ambientcg.com/get?file=${id}_1K-JPG.zip`)), { filter: (f) => maps.includes(f.name) });
+  await mkdir(dir, { recursive: true });
+  for (const name of maps) {
+    if (!zip[name]) throw new Error(`${id}: no ${name} in its archive`);
+    await writeFile(join(dir, name), await lighter(Buffer.from(zip[name]), quality));
+  }
+  await writeFile(join(dir, "meta.json"), JSON.stringify({ id, size: specs[0].size, source: `https://ambientcg.com/view?id=${id}`, license: "CC0" }));
   console.log(`${id}: fetched`);
 }
 

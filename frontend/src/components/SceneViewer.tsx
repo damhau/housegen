@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
-import { Columns2, Crosshair, Footprints, Image as ImageIcon, LogOut, Map as MapIcon, Mountain, Pause, Play, Ruler, Sparkles, Sun, Trees } from "lucide-react"
+import { Columns2, Crosshair, Footprints, House, Image as ImageIcon, LogOut, Map as MapIcon, Mountain, Pause, Play, Ruler, Sparkles, Sun, Trees } from "lucide-react"
 import { useKits } from "@/api/endpoints/meta/meta"
 import { useGetSurroundings } from "@/api/endpoints/surroundings/surroundings"
 import type { KitInfo, PointOut } from "@/api/model"
@@ -268,6 +268,9 @@ export function SceneViewer({
   // alone; null when the page has no 3D part to switch (older renderer, older surroundings)
   const [surroundingsMode, setSurroundingsMode] = useState<"3d" | "photo" | null>(null)
   const wantedSurroundings = useRef<"3d" | "photo">("3d")
+  // the neighbours' roofs (#144): drawn in their covers, or the aerial photo on them; null when the page draws none
+  const [roofsMode, setRoofsMode] = useState<"drawn" | "photo" | null>(null)
+  const wantedRoofs = useRef<"drawn" | "photo">("drawn")
   // the sun study (#49): offered once the surroundings say where north is (house:ready { sun })
   const [sunAvailable, setSunAvailable] = useState(false)
   const [sunOpen, setSunOpen] = useState(false)
@@ -327,6 +330,7 @@ export function SceneViewer({
     setSurfacesOpen(false)
     setMeasurable(false)
     setSurroundingsMode(null)
+    setRoofsMode(null)
     setSunAvailable(false)
     setSurroundingsOpen(false)
     setPickable(false)
@@ -349,6 +353,7 @@ export function SceneViewer({
         tour?: boolean
         quantities?: boolean
         surroundings?: "3d" | "photo" | null
+        roofs?: "drawn" | "photo" | null
         sun?: boolean
         progress?: { done: number; total: number }
         storeys?: { index: number; y: number; rooms: number }[]
@@ -380,6 +385,11 @@ export function SceneViewer({
         // a page loaded again (another look, another version) keeps the switch where the viewer left it
         if (switchable && d.surroundings !== wantedSurroundings.current) {
           ref.current?.contentWindow?.postMessage({ type: "house:surroundings", mode: wantedSurroundings.current }, "*")
+        }
+        const roofsSwitchable = d.roofs === "drawn" || d.roofs === "photo"
+        setRoofsMode(roofsSwitchable ? wantedRoofs.current : null)
+        if (roofsSwitchable && d.roofs !== wantedRoofs.current) {
+          ref.current?.contentWindow?.postMessage({ type: "house:roofs", mode: wantedRoofs.current }, "*")
         }
         if (autoTour && d.tour === true && !autoTourDone.current && Array.isArray(d.rooms) && d.rooms.length > 0) {
           autoTourDone.current = true
@@ -712,6 +722,27 @@ export function SceneViewer({
             >
               {surroundingsMode === "3d" ? <Trees className="size-3.5" /> : <ImageIcon className="size-3.5" />}
               {surroundingsMode === "3d" ? "3D near" : "Photo"}
+            </Button>
+          )}
+          {ready && !compare && look !== "fast" && roofsMode && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2"
+              title={
+                roofsMode === "drawn"
+                  ? "Neighbours' roofs: drawn in their covers (tiles, slates, metal, gravel, green roofs, solar panels). Click for the aerial photo on them"
+                  : "Neighbours' roofs: the aerial photo on them. Click to draw them in their covers"
+              }
+              onClick={() => {
+                const next = roofsMode === "drawn" ? "photo" : "drawn"
+                wantedRoofs.current = next
+                setRoofsMode(next)
+                ref.current?.contentWindow?.postMessage({ type: "house:roofs", mode: next }, "*")
+              }}
+            >
+              {roofsMode === "drawn" ? <House className="size-3.5" /> : <ImageIcon className="size-3.5" />}
+              {roofsMode === "drawn" ? "Roofs drawn" : "Roofs photo"}
             </Button>
           )}
           <span className="mx-1 w-px self-stretch bg-border" />

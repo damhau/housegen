@@ -41,6 +41,7 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 from playwright.async_api import Browser, Page, Route, async_playwright
+from playwright.async_api import TimeoutError as PlaywrightTimeout
 from walk_sheet import (
     DEV_BASE,
     GPU_ARGS,
@@ -127,16 +128,22 @@ async def shoot_kit(
             else None
         ),
     )
-    await serve_local_kit(page, kit_files(name), False)
+    await serve_local_kit(page, kit_files(name), args.local_assets)
     await serve_buildings(page, buildings)
     sizes: list[int] = []
     page.on("requestfinished", lambda r: asyncio.ensure_future(_size(r, sizes)))
     await present_token(page, url)
     t0 = time.monotonic()
+    page.on("pageerror", lambda e: result["console"].append(f"pageerror: {e}"))
     await page.goto(url)
-    await page.wait_for_function(
-        "() => window.__house && window.__house.ready", timeout=args.timeout * 1000
-    )
+    try:
+        await page.wait_for_function(
+            "() => window.__house && window.__house.ready", timeout=args.timeout * 1000
+        )
+    except PlaywrightTimeout:
+        # the page's own errors say why it never got ready; the timeout alone does not
+        print(f"[{kit}] never ready:", *result["console"][-20:], sep="\n  ", flush=True)
+        raise
     result["ready_s"] = round(time.monotonic() - t0, 2)
     result["timing"] = await page.evaluate(TIMING_JS)
     gl = str(await page.evaluate("() => window.__house.gl"))
@@ -291,6 +298,11 @@ def main() -> None:
         default=[],
         metavar="KIT=PATH",
         help="a local buildings.json for that --kit column only (repeat per column)",
+    )
+    ap.add_argument(
+        "--local-assets",
+        action="store_true",
+        help="also serve the kit's other files (textures…) from this checkout where it has them",
     )
     ap.add_argument(
         "--size", default="1600x1000", type=lambda s: tuple(int(v) for v in s.split("x"))

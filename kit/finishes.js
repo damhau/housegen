@@ -7,7 +7,7 @@
 //   await finishesReady()         after building: every material used has its images (and what track() was given)
 //
 // Textures are fetched with kit/scripts/fetch_models.mjs into kit/assets/polyhaven/textures/<id>/, the
-// marble photographs of the marble tiles into kit/assets/ambientcg/<id>/.
+// marble photographs of the marble tiles and the ambientCG sets (`acg`) into kit/assets/ambientcg/<id>/.
 // The runtime loads them before buildScene (house.js mat.* then return textured materials) and runs
 // metricUVs over the built scene.
 
@@ -41,6 +41,14 @@ export const TEXTURES = {
   gravel: { id: "gravel_floor_02", match: true },
   asphalt: { id: "clean_asphalt", match: true },
   "wood-planks": { id: "wood_planks", match: true },
+  // the neighbours' roof covers (#144, roofs.js), white-balanced: tinted per house by vertex colour. Rows run along the
+  // image's width, its top up the slope; `size` is the metres a repeat covers where the scan's own is not the cover's
+  // real size; no roughness map (rough: false); `jpeg`: re-encoded at that quality when fetched (ambientCG's 1K maps
+  // weigh 1-2 MB each)
+  "roof-clay": { id: "clay_roof_tiles_03", match: true, rough: false, jpeg: 85, grade: { saturation: 0.35 } },
+  "roof-beaver": { acg: "RoofingTiles002", size: [1.15, 1.15], match: true, rough: false, jpeg: 85, grade: { saturation: 0 } },
+  "roof-fibre-cement": { id: "grey_roof_tiles_02", size: [1.8, 1.8], match: true, rough: false, jpeg: 85, grade: { saturation: 0 } },
+  "roof-concrete": { acg: "RoofingTiles006", size: [2.5, 2.5], match: true, rough: false, jpeg: 85, grade: { saturation: 0.2 } },
 };
 
 // absolute: renderer snapshots (kit/versions/<name>/) share the working copy's assets
@@ -91,18 +99,27 @@ export async function loadTexture(url) {
   return t;
 }
 
+/** Where a finish's files are: Poly Haven's (`id`) or ambientCG's (`acg`) names, as scripts/fetch_models.mjs writes them. */
+export function textureFiles(spec) {
+  if (spec.acg) {
+    const dir = new URL(`${spec.acg}/`, AMBIENT), file = (map) => new URL(`${spec.acg}_1K-JPG_${map}.jpg`, dir).href;
+    return { meta: new URL("meta.json", dir).href, diff: file("Color"), nor: file("NormalGL"), rough: file("Roughness") };
+  }
+  const dir = new URL(`${spec.id}/`, BASE), file = (map) => new URL(`${spec.id}_${map}_1k.jpg`, dir).href;
+  return { meta: new URL("meta.json", dir).href, diff: file("diff"), nor: file("nor_gl"), rough: file("rough") };
+}
+
 async function loadTextures(name) {
-  const spec = TEXTURES[name];
-  const dir = new URL(`${spec.id}/`, BASE);
-  const get = async (suffix, srgb) => {
-    const t = await loadTexture(new URL(`${spec.id}_${suffix}_1k.jpg`, dir).href);
+  const spec = TEXTURES[name], files = textureFiles(spec);
+  const get = async (url, srgb) => {
+    const t = await loadTexture(url);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     t.anisotropy = 8;
     return t;
   };
   const [map, normalMap, roughnessMap] = await Promise.all([
-    spec.colour === false ? null : get("diff", true), get("nor_gl", false), get("rough", false),
+    spec.colour === false ? null : get(files.diff, true), get(files.nor, false), spec.rough === false ? null : get(files.rough, false),
   ]);
   if (map && spec.grade) await gradeTexture(map, spec.grade);
   return { map, normalMap, roughnessMap, mean: map ? meanColour(map.image) : null };
@@ -171,8 +188,7 @@ function meanColour(image) {
 export async function loadFinishes(names = Object.keys(TEXTURES)) {
   await Promise.all(names.map(async (n) => {
     if (_meta.has(n)) return;
-    const dir = new URL(`${TEXTURES[n].id}/`, BASE);
-    _meta.set(n, await fetch(new URL("meta.json", dir)).then((r) => (r.ok ? r.json() : null)).catch(() => null));
+    _meta.set(n, await fetch(textureFiles(TEXTURES[n]).meta).then((r) => (r.ok ? r.json() : null)).catch(() => null));
   }));
 }
 
@@ -203,7 +219,7 @@ export function finishMaterial(name, { color, scale = 1, rotate = 0, roughness =
   const spec = TEXTURES[name];
   const key = `${name}:${color}:${scale}:${rotate}:${roughness}`;
   if (_mats.has(key)) return _mats.get(key);
-  const [sx, sy] = meta.size;
+  const [sx, sy] = spec.size ?? meta.size;
   const wanted = new THREE.Color(color ?? spec.tint ?? "#ffffff");
   // plain in the colour asked for until the images arrive (the runtime waits for them)
   const m = new THREE.MeshStandardMaterial({
