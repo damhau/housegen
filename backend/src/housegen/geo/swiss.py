@@ -265,7 +265,10 @@ def _node_matrix(node: dict[str, Any]) -> np.ndarray:
 def decode_b3dm(
     data: bytes, e0: float, n0: float
 ) -> list[tuple[dict[str, Any], np.ndarray, np.ndarray]]:
-    """One tile's buildings: (their attributes, vertices [local x, ellipsoidal height, local z], triangles)."""
+    """One tile's buildings: (their attributes, vertices [local x, altitude, local z], triangles).
+
+    The tiles' heights read as ellipsoidal are the Swiss altitudes already, like swissALTI3D's and the
+    lidar's: their roofs lie within half a metre of swissSURFACE3D's in five towns (#140)."""
     import DracoPy
     from pyproj import Transformer
 
@@ -338,37 +341,23 @@ async def buildings(
     n0: float,
     radius: int,
     client: httpx.AsyncClient,
-    ground: np.ndarray,
-    step: float = 1.0,
 ) -> list[Building]:
-    """The buildings whose centre lies within the square anchor ± radius, heights in LN02 (the
-    ellipsoid-to-geoid offset is measured on the terrain: a building's lowest point stands on it)."""
+    """The buildings whose centre lies within the square anchor ± radius, at their altitudes. Their
+    walls reach 1.5 to 3.5 m under the ground: set on it by their lowest point, they stood a storey
+    too high (#140)."""
     urls = await _tile_urls(client, _region_box(e0, n0, radius))
     datas = await asyncio.gather(*(client.get(u) for u in urls))
     raw: list[tuple[dict[str, Any], np.ndarray, np.ndarray]] = []
     for r in datas:
         r.raise_for_status()
         raw.extend(await asyncio.to_thread(decode_b3dm, r.content, e0, n0))
-    size = ground.shape[0]
-
-    def ground_at(x: float, z: float) -> float | None:
-        i, j = round((x + radius) / step), round((z + radius) / step)
-        return float(ground[j, i]) if 0 <= i < size and 0 <= j < size else None
-
-    kept, offsets = [], []
-    for attrs, v, f in raw:
-        cx, cz = float(v[:, 0].mean()), float(v[:, 2].mean())
-        if abs(cx) > radius or abs(cz) > radius:
-            continue
-        g = ground_at(cx, cz)
-        if g is not None:
-            offsets.append(g - float(v[:, 1].min()))
-        kept.append((attrs, v, f, cx, cz))
-    offset = float(np.median(offsets)) if offsets else 0.0
+    kept = [
+        (attrs, v, f)
+        for attrs, v, f in raw
+        if abs(float(v[:, 0].mean())) <= radius and abs(float(v[:, 2].mean())) <= radius
+    ]
     out: list[Building] = []
-    for attrs, v, f, _cx, _cz in kept:
-        v = v.copy()
-        v[:, 1] += offset
+    for attrs, v, f in kept:
         # roofs: faces turned upwards; walls: upright; the underside is never seen
         a, b, c = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
         nrm = np.cross(b - a, c - a)

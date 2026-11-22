@@ -72,6 +72,7 @@ EAVE_CLEAR = 1.0  # m
 NARROW = 4.0  # m
 MAX_PITCH = 45.0  # degrees
 PITCHED = 5.0  # degrees: a roof less steep is flat (no eaves; gravel in the viewer)
+SURVEY_POINTS = 20  # lidar points on a survey building's roof for it to count in survey_roofs
 
 
 @dataclass
@@ -1147,6 +1148,37 @@ class Tree:
 
 
 MIN_TREE = 1.2  # m: lower is grass, a low wall's cap, noise
+
+
+def survey_roofs(c: Cloud, known: list[swiss.Building]) -> tuple[float, int] | None:
+    """How far the survey's roofs stand above the lidar's: the median over the buildings both see
+    (their highest point against the lidar's 98th percentile inside their outline), and how many.
+    About 0 (#140: it was 3.8 m when the terrain set the survey's altitudes)."""
+    from shapely import contains_xy
+    from shapely.geometry import MultiPoint
+
+    roofs = c.cls == BUILDING
+    x, z, y = c.x[roofs], c.z[roofs], c.y[roofs]
+    diffs = []
+    for b in known:
+        p = np.asarray(b.positions, dtype=np.float64).reshape(-1, 3)
+        if len(p) < 3:
+            continue
+        near = (
+            (x >= p[:, 0].min())
+            & (x <= p[:, 0].max())
+            & (z >= p[:, 2].min())
+            & (z <= p[:, 2].max())
+        )
+        inside = MultiPoint(p[:, [0, 2]]).convex_hull.buffer(-0.7)
+        if inside.is_empty or near.sum() < SURVEY_POINTS:
+            continue
+        m = contains_xy(inside, x[near], z[near])
+        if m.sum() >= SURVEY_POINTS:
+            diffs.append(float(p[:, 1].max() - np.percentile(y[near][m], 98)))
+    if len(diffs) < 3:
+        return None
+    return float(np.median(diffs)), len(diffs)
 
 
 def trees(c: Cloud, ground: np.ndarray, radius: int, step: float = 1.0) -> list[Tree]:

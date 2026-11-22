@@ -544,7 +544,13 @@ async def test_the_surroundings_keep_the_newer_houses(
     monkeypatch.setattr(far, "heights", no_far)
     place = swiss.Place(label="Le Mont 3013", kind="parcel", e=2537559, n=1157053)
     ctx = await context.build(tmp_path, place, radius=100)
-    assert ctx["buildings"] == {"file": "buildings.json", "count": 2, "lidar": 1}
+    assert ctx["buildings"] == {
+        "file": "buildings.json",
+        "count": 2,
+        "lidar": 1,
+        "altitudes": context.ALTITUDES,
+        "above_lidar": None,
+    }
     assert ctx["lidar"] == {"year": 2025}
     assert "swissSURFACE3D" in ctx["credits"][0]
     assert ctx["cover"]["file"] == "cover.png"
@@ -687,3 +693,17 @@ def test_a_point_inside_every_region_between_the_outlines() -> None:
     pts = landcover.regions(img)
     assert len(pts) == 3
     assert all(img[j, i] == 255 for i, j in pts)
+
+
+def test_the_survey_roofs_are_checked_against_the_lidar() -> None:
+    """The survey's flat 6 m roofs over the lidar's: 1 m above on each, the newer house left out (#140)."""
+    known = [_known(-15, 10, 10, 8), _known(15, 10, 10, 8), _known(0, -20, 12, 9)]
+    flat = [
+        _house(x, z, L, W, "flat", eave=5.0)
+        for x, z, L, W in [(-15, 10, 10, 8), (15, 10, 10, 8), (0, -20, 12, 9)]
+    ]
+    check = lidar.survey_roofs(_cloud(*flat, _house(30, -30, 8, 6)), known)
+    assert check is not None
+    assert check[0] == pytest.approx(1.0, abs=0.01)
+    assert check[1] == 3
+    assert lidar.survey_roofs(_cloud(*flat[:2]), known) is None  # too few to say

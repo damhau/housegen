@@ -232,7 +232,7 @@ def surroundings(scene, ctx):
     me.polygons.foreach_set("material_index", hard)
     scene.collection.objects.link(bpy.data.objects.new("real-ground", me))
 
-    n_b = neighbours(scene, ctx, meta, place, site)
+    n_b = neighbours(scene, ctx, meta, place, site, alt)
     trees = []
     if meta.get("trees"):
         for lx, foot, lz, height, radius, _kind in json.load(open(os.path.join(ctx, meta["trees"]["file"])))["trees"]:
@@ -506,12 +506,19 @@ def roof_colour(photo, R, local):
     return tuple(float(c) * AERIAL_TONE[1] for c in lin)
 
 
-def neighbours(scene, ctx, meta, place, site):
+def neighbours(scene, ctx, meta, place, site, alt):
     """The swissBUILDINGS3D houses around the plot: each roof in its colour on the aerial photo, the walls as the
     viewer draws them (context.js): a render from a Swiss palette, rows of windows, shutters on a third of them."""
     mats = [facade_material(f"facade-{k}-{sh}", rgb, sh) for sh in (0, 1) for k, rgb in enumerate(RENDERS)]
     photo = np.asarray(Image.open(os.path.join(ctx, meta["photo"]["file"])).convert("RGB"))
     R = meta["radius"]
+    N, step = meta["terrain"]["size"], meta["terrain"]["step"]
+
+    def ground_at(lx, lz):
+        i = min(max(round((lx + R) / step), 0), N - 1)
+        j = min(max(round((lz + R) / step), 0), N - 1)
+        return float(alt[j, i])
+
     verts, faces, which, uvs = [], [], [], []
     n = 0
     for b in json.load(open(os.path.join(ctx, meta["buildings"]["file"]), encoding="utf-8"))["buildings"]:
@@ -520,7 +527,10 @@ def neighbours(scene, ctx, meta, place, site):
         if within(sum(pts, Vector()) / len(pts), site):  # the old state of the plot
             continue
         base = len(verts)
-        foot = min(q.z for q in pts)
+        # the survey's walls reach under the ground (#140): the rows of windows start from the lowest ground
+        # around the house, not from the walls' foot
+        low = min(local, key=lambda q: ground_at(q[0], q[2]))
+        foot = max(min(q.z for q in pts), place(low[0], ground_at(low[0], low[2]), low[2]).z)
         verts.extend(tuple(q) for q in pts)
         key = sum(ord(ch) * 31 ** k for k, ch in enumerate(str(b["id"])))
         wall = key % len(RENDERS) + (len(RENDERS) if (key >> 8) % 3 == 0 else 0)

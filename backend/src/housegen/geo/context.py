@@ -45,6 +45,8 @@ COVER_EXTENT = (
     180  # metres around the searched point: the ground by type, for a 3D radius up to 165 m
 )
 NEAR = 120  # metres: the default 3D radius around the house (#51)
+ALTITUDES = "tiles"  # buildings.json's survey buildings stand at their tiles' altitudes (#140)
+ROOFS_OFF = 1.0  # metres between the survey's roofs and the lidar's past which a fetch warns
 
 
 def context_dir(project_root: Path) -> Path:
@@ -69,6 +71,65 @@ def remove(project_root: Path) -> None:
     shutil.rmtree(context_dir(project_root), ignore_errors=True)
 
 
+async def fix_survey_altitudes(projects_dir: Path) -> int:
+    """Surroundings fetched before #140: their survey buildings moved down to their tiles' altitudes,
+    the rest kept (the lidar's houses, the alignment). One whose tiles cannot be read now is tried
+    again at the next start. Returns how many were fixed."""
+    fixed = 0
+    for root, ctx in await asyncio.to_thread(_before_altitudes, projects_dir):
+        try:
+            async with httpx.AsyncClient(
+                headers=swiss.UA, timeout=60, follow_redirects=True
+            ) as client:
+                fresh = await swiss.buildings(
+                    ctx["place"]["e"], ctx["place"]["n"], ctx["radius"], client
+                )
+            delta = await asyncio.to_thread(_shift_survey, root, ctx, fresh)
+        except (httpx.HTTPError, OSError, RuntimeError, ValueError) as e:
+            logger.warning("geo.altitudes_failed", extra={"project_id": root.name, "error": str(e)})
+            continue
+        if delta is None:
+            logger.warning("geo.altitudes_unmatched", extra={"project_id": root.name})
+            continue
+        fixed += 1
+        logger.info(
+            "geo.altitudes_fixed", extra={"project_id": root.name, "shift": round(delta, 2)}
+        )
+    return fixed
+
+
+def _before_altitudes(projects_dir: Path) -> list[tuple[Path, dict[str, Any]]]:
+    out = []
+    for root in sorted(p for p in projects_dir.iterdir() if p.is_dir()):
+        ctx = load(root)
+        if ctx and ctx.get("buildings", {}).get("altitudes") != ALTITUDES:
+            out.append((root, ctx))
+    return out
+
+
+def _shift_survey(root: Path, ctx: dict[str, Any], fresh: list[swiss.Building]) -> float | None:
+    """Shift the stored survey buildings by how far the tiles put them now, measured on the ones
+    both have: the set stays the one the lidar's houses were found against. None when none match."""
+    path = context_dir(root) / ctx["buildings"]["file"]
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    survey = [b for b in stored["buildings"] if b.get("source", "swissbuildings3d") != "lidar"]
+    delta = 0.0
+    if survey:
+        lowest = {b.id: min(b.positions[1::3]) for b in fresh if b.positions}
+        shifts = [lowest[b["id"]] - min(b["positions"][1::3]) for b in survey if b["id"] in lowest]
+        if not shifts:
+            return None
+        delta = float(np.median(shifts))
+        for b in survey:
+            b["positions"][1::3] = [round(y + delta, 2) for y in b["positions"][1::3]]
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(stored, separators=(",", ":")), encoding="utf-8")
+        tmp.replace(path)
+    ctx["buildings"]["altitudes"] = ALTITUDES
+    save(root, ctx)
+    return delta
+
+
 async def build(
     project_root: Path, place: swiss.Place, radius: int = 200, step: float = 1.0
 ) -> dict[str, Any]:
@@ -82,7 +143,7 @@ async def build(
             landcover.surfaces(e0, n0, min(radius, COVER_EXTENT), client)
         )
         ground = await ground_task
-        buildings = await swiss.buildings(e0, n0, radius, client, ground, step)
+        buildings = await swiss.buildings(e0, n0, radius, client)
         photo = await photo_task
         # the ground by type near the house (#50): the cadastral survey's land cover. Optional
         cover: list[landcover.Surface] = []
@@ -93,11 +154,22 @@ async def build(
         # the newest lidar: the houses swissBUILDINGS3D does not have yet (#66), on the survey's
         # outlines where it has them (#73). Optional
         cloud: lidar.Cloud | None = None
+        roofs_check: tuple[float, int] | None = None
         newer: list[swiss.Building] = []
         trees: list[lidar.Tree] = []
         try:
             cloud = await cloud_task
             if cloud is not None:
+                roofs_check = await asyncio.to_thread(lidar.survey_roofs, cloud, buildings)
+                if roofs_check is not None:
+                    log = logger.warning if abs(roofs_check[0]) > ROOFS_OFF else logger.info
+                    log(
+                        "geo.survey_roofs",
+                        extra={
+                            "above_lidar": round(roofs_check[0], 2),
+                            "buildings": roofs_check[1],
+                        },
+                    )
                 survey = await _survey(e0, n0, cloud, buildings, radius, cover, client)
                 newer = await asyncio.to_thread(
                     lidar.new_buildings,
@@ -176,7 +248,14 @@ async def build(
         "radius": radius,
         "terrain": {"file": "terrain.bin", "size": int(ground.shape[0]), "step": step},
         "photo": {"file": "photo.jpg", "pixels": img.width},
-        "buildings": {"file": "buildings.json", "count": len(buildings), "lidar": len(newer)},
+        "buildings": {
+            "file": "buildings.json",
+            "count": len(buildings),
+            "lidar": len(newer),
+            "altitudes": ALTITUDES,
+            # the survey's roofs above the lidar's (median, metres): about 0, a warning past ROOFS_OFF
+            "above_lidar": round(roofs_check[0], 2) if roofs_check else None,
+        },
         "lidar": {"year": cloud.year} if cloud is not None else None,
         # [local x, foot altitude, local z, height, crown radius, kind]
         "trees": {"file": "trees.json", "count": len(trees)} if trees else None,

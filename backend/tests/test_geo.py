@@ -7,6 +7,7 @@ import struct
 from pathlib import Path
 from typing import Any
 
+import httpx
 import numpy as np
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -146,8 +147,92 @@ def test_a_buildings_tile_lands_in_the_local_frame() -> None:
     assert abs(a[:, 0].mean() - 30) < 0.3  # x east
     assert abs(a[:, 2].mean() - -10) < 0.3  # z south: 10 m north
     assert abs(b[:, 0].mean() - 50) < 0.3
-    assert abs(a[:, 1].mean() - 720) < 0.5  # ellipsoidal height, before the terrain sets it
+    assert abs(a[:, 1].mean() - 720) < 0.5  # the tile's altitude as it is (#140)
     assert np.ptp(a[:, 1]) == pytest.approx(4, abs=0.05)  # upright: 4 m tall
+
+
+async def test_the_buildings_keep_their_tiles_altitudes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Their walls reach under the ground: set on it by their lowest point, they stood a storey too
+    high (#140)."""
+    e0, n0 = 2537559.0, 1157053.0
+    tile = _b3dm(e0 + 30, n0 + 10, 720.0)
+
+    async def urls(*a: Any, **k: Any) -> list[str]:
+        return ["https://tiles.test/0.b3dm"]
+
+    monkeypatch.setattr(swiss, "_tile_urls", urls)
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, content=tile))
+    async with httpx.AsyncClient(transport=transport) as c:
+        out = await swiss.buildings(e0, n0, 100, c)
+    a = np.array(next(b for b in out if b.id == "a").positions).reshape(-1, 3)
+    assert a[:, 1].mean() == pytest.approx(720, abs=0.5)
+
+
+def _stored(root: Path, altitudes: str | None = None) -> None:
+    d = context.context_dir(root)
+    d.mkdir(parents=True)
+    box = [0.0, 450.0, 0.0, 4.0, 450.0, 0.0, 4.0, 460.0, 4.0]
+    buildings = [
+        {"id": "a", "height": 10, "year": None, "positions": box, "roof": [], "wall": []},
+        {"id": "b", "height": 10, "year": None, "positions": box, "roof": [], "wall": []},
+        {"id": "l1", "positions": box, "roof": [], "wall": [], "source": "lidar"},
+    ]
+    (d / "buildings.json").write_text(json.dumps({"buildings": buildings}))
+    meta: dict[str, Any] = {"file": "buildings.json", "count": 3}
+    if altitudes:
+        meta["altitudes"] = altitudes
+    ctx = {
+        "place": {"e": 2536240, "n": 1152557},
+        "radius": 200,
+        "buildings": meta,
+        "alignment": {"x": -2.0, "z": 1.0, "rotation": 18.0, "ground": 440.0, "set": True},
+    }
+    (d / "context.json").write_text(json.dumps(ctx))
+
+
+async def test_fetched_surroundings_move_their_survey_down(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stored(tmp_path / "p1")
+    _stored(tmp_path / "p2", altitudes=context.ALTITUDES)
+    (tmp_path / "p3").mkdir()
+    fetched = []
+
+    async def buildings(e0: float, n0: float, radius: int, client: Any) -> list[swiss.Building]:
+        fetched.append((e0, n0, radius))
+        box = [0.0, 446.2, 0.0, 4.0, 446.2, 0.0, 4.0, 456.2, 4.0]
+        return [swiss.Building(id="a", height=10, year=None, positions=box)]
+
+    monkeypatch.setattr(swiss, "buildings", buildings)
+    assert await context.fix_survey_altitudes(tmp_path) == 1
+    assert fetched == [(2536240, 1152557, 200)]
+    got = {
+        b["id"]: b["positions"][1::3]
+        for b in json.loads((tmp_path / "p1/context/buildings.json").read_text())["buildings"]
+    }
+    # every survey building by the shift of the ones the tiles still have, the lidar's as they were
+    assert got == {"a": [446.2, 446.2, 456.2], "b": [446.2, 446.2, 456.2], "l1": [450, 450, 460]}
+    ctx = context.load(tmp_path / "p1")
+    assert ctx is not None
+    assert ctx["buildings"]["altitudes"] == context.ALTITUDES
+    assert ctx["alignment"]["ground"] == 440.0
+    assert await context.fix_survey_altitudes(tmp_path) == 0
+    assert len(fetched) == 1
+
+
+async def test_surroundings_whose_tiles_cannot_be_read_wait_for_the_next_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _stored(tmp_path / "p1")
+
+    async def offline(*a: Any, **k: Any) -> list[swiss.Building]:
+        raise httpx.ConnectError("offline")
+
+    monkeypatch.setattr(swiss, "buildings", offline)
+    assert await context.fix_survey_altitudes(tmp_path) == 0
+    ctx = context.load(tmp_path / "p1")
+    assert ctx is not None
+    assert "altitudes" not in ctx["buildings"]
 
 
 @pytest.fixture
