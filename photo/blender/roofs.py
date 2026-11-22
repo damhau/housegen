@@ -49,9 +49,10 @@ MODULE = {"thick": 0.04, "frame": 0.035, "cell": 0.166, "line": 0.004}
 # kit/roofs.js (#146), a flat roof's upstand (metres): its thickness inward from the facade, its height (by the house's
 # mixed hash, `small` under SMALL_FLAT m2 of level faces), how far its coping overhangs each side, the coping's
 # thickness, its drip down the facade and inside; an open edge is probed this far outward for a higher part of the
-# building (no parapet) or more of the same roof (a seam of the survey, none either)
+# building, more of the same roof (a seam of the survey) or a slope going on from it (none on any of them); a level
+# face under `tiny` m2 is the lidar's noise, none either
 PARAPET = {"thick": 0.25, "low": 0.25, "steps": 21, "small": 0.15, "over": 0.04, "cap": 0.03, "drip": 0.06,
-           "drip_in": 0.03, "probe": 0.3}
+           "drip_in": 0.03, "probe": 0.3, "tiny": 2.0}
 SMALL_FLAT = 25.0
 JOIN = 0.06  # metres: two parapets whose corners are closer than this meet in a mitre
 COPINGS = ("#45484c", "#9a9fa2", "#b4b7b6")  # anthracite, zinc, light grey
@@ -65,9 +66,10 @@ SURFACES = {"galvanised": (0.45, 0.6), "stack": (0.35, 0.6), "grey": (0.5, 0.3),
             "membrane": (0.75, 0.0), "slab": (0.9, 0.0)}
 SLAB = {"size": 0.5, "joint": 0.01}
 # kit/roofs.js: a flat roof's moss and dirt, fbm patches 2-4 m across: the noise's base scale (per metre) and how much
-# finer its second octave is, the band of its value over which a patch fades in (about 30 % of a roof), the colour a
-# full patch multiplies by (linear)
-PATCHES = {"scale": 1 / 3, "lacunarity": 3 / 1.1, "from": 0.52, "to": 0.6, "moss": (0.74, 0.78, 0.66)}
+# finer its second octave is; a patch fades in from the noise's median to its 90th percentile (measured on this noise:
+# the viewer's differs, the coverage is what matches), so half a roof is touched and a tenth fully; the colour a full
+# patch multiplies by (linear)
+PATCHES = {"scale": 1 / 3, "lacunarity": 3 / 1.1, "from": 0.5, "to": 0.656, "moss": (0.78, 0.80, 0.72)}
 SEGMENTS = 12  # sides of a round prop
 SLOPE_SINK = 0.09  # tan(5 deg): a prop sinks this much per metre of its half-size, the most a level face may lean
 # kit/neighbours.js ROOF_TINTS and kit/roofs.js BY_FAMILY, LOW_PITCH: what the kit draws for a field the spec lacks
@@ -380,7 +382,7 @@ def gutter(a, b, f):
 
 
 class Cover:
-    """Where a building's roof triangles lie seen from above: the heights they reach at a point."""
+    """Where a building's roof triangles lie seen from above."""
 
     def __init__(self, pts, tris):
         self.tris = []
@@ -391,29 +393,36 @@ class Cover:
                 box = (min(a.x, b.x, c.x), max(a.x, b.x, c.x), min(a.y, b.y, c.y), max(a.y, b.y, c.y))
                 self.tris.append((a, b, c, det, box))
 
-    def heights(self, p):
+    def heights(self, p, q):
+        """For each triangle over the point p: its height there and its plane's at the point q."""
+        def at(a, b, c, det, r):
+            l1 = ((b.y - c.y) * (r.x - c.x) + (c.x - b.x) * (r.y - c.y)) / det
+            l2 = ((c.y - a.y) * (r.x - c.x) + (a.x - c.x) * (r.y - c.y)) / det
+            return l1, l2, 1 - l1 - l2
+
         out = []
         for a, b, c, det, (x0, x1, y0, y1) in self.tris:
             if not (x0 <= p.x <= x1 and y0 <= p.y <= y1):
                 continue
-            l1 = ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) / det
-            l2 = ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) / det
-            l3 = 1 - l1 - l2
-            if min(l1, l2, l3) >= -1e-6:
-                out.append(l1 * a.z + l2 * b.z + l3 * c.z)
+            ls = at(a, b, c, det, p)
+            if min(ls) >= -1e-6:
+                lq = at(a, b, c, det, q)
+                out.append((ls[0] * a.z + ls[1] * b.z + ls[2] * c.z, lq[0] * a.z + lq[1] * b.z + lq[2] * c.z))
         return out
 
 
 def open_level(pts, tris, keys, faces, edges):
-    """The edges of the level faces that get a parapet: held by no other roof triangle, and with neither a higher part
-    of the building nor more of the same roof (a seam the survey left open) just outside them. Each as (a, b, inward
-    unit normal), walked with the roof on its left."""
+    """The edges of the level faces that get a parapet: held by no other roof triangle, on a face of at least
+    PARAPET["tiny"] m2, and with neither a higher part of the building, more of the same roof (a seam the survey left
+    open) nor a slope going on from the edge (a mansard's flat top) just outside them. Each as (a, b, inward unit
+    normal), walked with the roof on its left."""
     cover, probe, out = Cover(pts, tris), PARAPET["probe"], []
     for uses in edges.values():
         if len(uses) != 1:
             continue
         t, i = uses[0]
-        if not faces[keys[t]].level:
+        face = faces[keys[t]]
+        if not face.level or face.area < PARAPET["tiny"]:
             continue
         ids = tris[t]
         a, b, c = pts[ids[i]], pts[ids[(i + 1) % 3]], pts[ids[(i + 2) % 3]]
@@ -424,7 +433,7 @@ def open_level(pts, tris, keys, faces, edges):
         if inward.dot(c - a) < 0:
             a, b, inward = b, a, -inward
         mid = (a + b) / 2
-        if any(z > mid.z - probe for z in cover.heights(mid - inward * probe)):
+        if any(max(z, edge) > mid.z - probe for z, edge in cover.heights(mid - inward * probe, mid)):
             continue
         out.append((a, b, inward))
     return out
