@@ -131,8 +131,9 @@ service, `deploy/modal_photo.py` on Modal:
    exteriors builds only the missing one. The neighbours' roofs follow the context's roof spec as the viewer
    draws them (#145, `photo/blender/roofs.py`): each cover's scan at its real size with its courses along the
    eaves, tinted by the house's colour, ridge caps, gutters, gravel, sedum or membrane on flat roofs, and the solar
-   modules; surroundings fetched before the spec keep their aerial photo's colour. When the backend adds the spec
-   to a project whose surroundings are already built, the next prepare builds them again.
+   modules; flat roofs get a parapet with a metal coping, darker patches in their gravel and the roof equipment the
+   backend placed in the spec's `props` (#146); surroundings fetched before the spec keep their aerial photo's
+   colour. When the backend decides the roofs again (`context.ROOFS`), the next prepare builds them again.
 2. `shoot` (an RTX PRO 6000, else an L40S; one container per photo, `LISTING_PARALLEL` at a time)
    renders one room in Cycles with `photo/blender/main.py shoot`. The pipeline keeps the scene's finishes (a
    finish's scan at full resolution, its colour kept) and adds the staging: decor, art, objects. The light is a

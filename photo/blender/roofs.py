@@ -4,8 +4,14 @@ pitched face wears its cover, a CC0 scan at its real size with its courses along
 tinted by the house's colour, a little weathered; ridges and hips get a cap, eaves a gutter; level faces are gravel,
 sedum or a membrane in a colour of their own; each quad of `panels` is a solar module (dark glass, an aluminium frame,
 a faint grid of cells). One material per finish and the houses' colours as a face attribute: a street of houses costs
-about thirty materials, not one per house."""
+about thirty materials, not one per house.
 
+A flat roof (#146) gets a parapet with a metal coping along its open edges (none against a higher part of the same
+building), gravel with darker patches, and the equipment the backend placed in `props` (vents, skylights, a hatch, an
+air-handling unit, a stack, a stair housing, a rail, a walkway): simple low pieces joined into the neighbours' mesh
+(the viewpoint scorer and the grass know the neighbours by that object)."""
+
+import itertools
 import math
 import os
 
@@ -40,6 +46,30 @@ CAP = {"tile": (0.15, 0.08), "metal": (0.08, 0.04)}  # half the width of a ridge
 CAP_LIFT = 0.02
 GUTTER = ((0, -0.04), (0.13, -0.02), (0.13, -0.08), (0.1, -0.13), (0.035, -0.13), (0, -0.09))  # (out, up), metres
 MODULE = {"thick": 0.04, "frame": 0.035, "cell": 0.166, "line": 0.004}
+# kit/roofs.js (#146), a flat roof's upstand (metres): its thickness inward from the facade, its height (by the house's
+# mixed hash, `small` under SMALL_FLAT m2 of level faces), how far its coping overhangs each side, the coping's
+# thickness, its drip down the facade and inside; an open edge is probed this far outward for a higher part of the
+# building (no parapet) or more of the same roof (a seam of the survey, none either)
+PARAPET = {"thick": 0.25, "low": 0.25, "steps": 21, "small": 0.15, "over": 0.04, "cap": 0.03, "drip": 0.06,
+           "drip_in": 0.03, "probe": 0.3}
+SMALL_FLAT = 25.0
+JOIN = 0.06  # metres: two parapets whose corners are closer than this meet in a mitre
+COPINGS = ("#45484c", "#9a9fa2", "#b4b7b6")  # anthracite, zinc, light grey
+PROPS = ("vent", "skylight-dome", "skylight-flat", "hatch", "hvac", "stack", "housing", "rail", "walkway")
+# kit/roofs.js: the props' colours (sRGB) and each surface's (roughness, metallic); the coping and the render take the
+# house's colours
+PROP_TINTS = {"galvanised": "#9da3a6", "stack": "#a9adb0", "grey": "#7f8386", "hvac": "#b3b6b5", "dark": "#33363a",
+              "door": "#3b3f43", "dome": "#e2e4e1", "glass": "#1b232a", "slab": "#a7a298", "membrane": "#5e6165"}
+SURFACES = {"galvanised": (0.45, 0.6), "stack": (0.35, 0.6), "grey": (0.5, 0.3), "painted": (0.5, 0.2),
+            "dome": (0.25, 0.0), "glass": (0.05, 0.0), "coping": (0.45, 0.5), "render": (0.9, 0.0),
+            "membrane": (0.75, 0.0), "slab": (0.9, 0.0)}
+SLAB = {"size": 0.5, "joint": 0.01}
+# kit/roofs.js: a flat roof's moss and dirt, fbm patches 2-4 m across: the noise's base scale (per metre) and how much
+# finer its second octave is, the band of its value over which a patch fades in (about 30 % of a roof), the colour a
+# full patch multiplies by (linear)
+PATCHES = {"scale": 1 / 3, "lacunarity": 3 / 1.1, "from": 0.52, "to": 0.6, "moss": (0.74, 0.78, 0.66)}
+SEGMENTS = 12  # sides of a round prop
+SLOPE_SINK = 0.09  # tan(5 deg): a prop sinks this much per metre of its half-size, the most a level face may lean
 # kit/neighbours.js ROOF_TINTS and kit/roofs.js BY_FAMILY, LOW_PITCH: what the kit draws for a field the spec lacks
 ROOF_TINTS = {
     "terracotta": ("#86523f", "#8f5843", "#7a4b3b"),
@@ -349,6 +379,312 @@ def gutter(a, b, f):
     return sweep([out * o + UP * u for o, u in GUTTER], a, b, True)
 
 
+class Cover:
+    """Where a building's roof triangles lie seen from above: the heights they reach at a point."""
+
+    def __init__(self, pts, tris):
+        self.tris = []
+        for ids in tris:
+            a, b, c = (pts[k] for k in ids)
+            det = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y)
+            if abs(det) > 1e-6:
+                box = (min(a.x, b.x, c.x), max(a.x, b.x, c.x), min(a.y, b.y, c.y), max(a.y, b.y, c.y))
+                self.tris.append((a, b, c, det, box))
+
+    def heights(self, p):
+        out = []
+        for a, b, c, det, (x0, x1, y0, y1) in self.tris:
+            if not (x0 <= p.x <= x1 and y0 <= p.y <= y1):
+                continue
+            l1 = ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) / det
+            l2 = ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) / det
+            l3 = 1 - l1 - l2
+            if min(l1, l2, l3) >= -1e-6:
+                out.append(l1 * a.z + l2 * b.z + l3 * c.z)
+        return out
+
+
+def open_level(pts, tris, keys, faces, edges):
+    """The edges of the level faces that get a parapet: held by no other roof triangle, and with neither a higher part
+    of the building nor more of the same roof (a seam the survey left open) just outside them. Each as (a, b, inward
+    unit normal), walked with the roof on its left."""
+    cover, probe, out = Cover(pts, tris), PARAPET["probe"], []
+    for uses in edges.values():
+        if len(uses) != 1:
+            continue
+        t, i = uses[0]
+        if not faces[keys[t]].level:
+            continue
+        ids = tris[t]
+        a, b, c = pts[ids[i]], pts[ids[(i + 1) % 3]], pts[ids[(i + 2) % 3]]
+        d = Vector((b.x - a.x, b.y - a.y, 0.0))
+        if d.length < 0.2:
+            continue
+        inward = Vector((-d.y, d.x, 0.0)).normalized()
+        if inward.dot(c - a) < 0:
+            a, b, inward = b, a, -inward
+        mid = (a + b) / 2
+        if any(z > mid.z - probe for z in cover.heights(mid - inward * probe)):
+            continue
+        out.append((a, b, inward))
+    return out
+
+
+def mitres(runs):
+    """For each edge of `runs`: the vectors that offset its two corners inward (one metre from both edges that meet
+    there, else from its own line), and whether each corner is free (no other parapet meets it). Parapets meet in a
+    mitre around a roof's corners."""
+
+    def meeting(p, ends):
+        """The edge whose end (0: start, 1: end) is at p: the survey's corners of two faces can be a few cm apart."""
+        return next((k for k, r in enumerate(runs) if (r[ends] - p).length < JOIN), None)
+
+    def mitre(n1, n2):
+        m = (n1 + n2) / max(1 + n1.dot(n2), 1e-6)
+        return m if m.length < 3 else None
+
+    out = []
+    for a, b, n in runs:
+        prev, nxt = meeting(a, 1), meeting(b, 0)
+        ma = mitre(runs[prev][2], n) if prev is not None else None
+        mb = mitre(n, runs[nxt][2]) if nxt is not None else None
+        out.append((ma or n, mb or n, ma is None, mb is None))
+    return out
+
+
+def parapet(a, b, ma, mb, open_a, open_b, h):
+    """An upstand from the edge a-b inward and its coping (profiles in (inward, up) metres swept from a to b, each end
+    offset along its mitre), closed at a free end: (vertices, [(quad, part)]), part "render" for the upstand's face to
+    the street and its ends, "membrane" for its inner face and top, "coping" for the cap."""
+    t, k, c = PARAPET["thick"], PARAPET["over"], PARAPET["cap"]
+    verts, quads = [], []
+    for profile, parts, end in (
+        ([(0, 0), (t, -0.05), (t, h), (0, h)], ("render", "membrane", "membrane", "render"), "render"),
+        ([(-k, h - PARAPET["drip"]), (t + k, h - PARAPET["drip_in"]), (t + k, h + c), (-k, h + c)], ("coping",) * 4,
+         "coping"),
+    ):
+        n, base = len(profile), len(verts)
+        verts += [a + ma * o + UP * u for o, u in profile] + [b + mb * o + UP * u for o, u in profile]
+        quads += [([base + q, base + (q + 1) % n, base + n + (q + 1) % n, base + n + q], parts[q]) for q in range(n)]
+        if open_a:
+            quads.append(([base + q for q in reversed(range(n))], end))
+        if open_b:
+            quads.append(([base + n + q for q in range(n)], end))
+    return verts, quads
+
+
+def mixed(h):
+    """murmur3's finaliser (backend geo/roofs.py _mix): house_hash's high bits barely move between "lidar-12" and
+    "lidar-13"."""
+    h ^= h >> 16
+    h = (h * 0x85EBCA6B) & 0xFFFFFFFF
+    h ^= h >> 13
+    h = (h * 0xC2B2AE35) & 0xFFFFFFFF
+    return h ^ (h >> 16)
+
+
+def parapet_choice(b, level_area):
+    """kit/roofs.js: a house's parapet height (lower on a small flat roof) and the linear colour of its coping."""
+    m = mixed(house_hash(b["id"]))
+    height = PARAPET["small"] if level_area < SMALL_FLAT else PARAPET["low"] + (m % PARAPET["steps"]) / 100
+    return height, srgb(COPINGS[(m >> 8) % len(COPINGS)])
+
+
+def _numbers(v, n):
+    return (isinstance(v, list) and len(v) == n
+            and all(isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in v))
+
+
+def props_of(spec):
+    """The spec's roof equipment, each checked: (kind, at, size, yaw)."""
+    out = []
+    for p in spec.get("props") or []:
+        if not isinstance(p, dict) or p.get("kind") not in PROPS:
+            continue
+        at, size, yaw = p.get("at"), p.get("size"), p.get("yaw", 0.0)
+        if not (_numbers(at, 3) and _numbers(size, 3) and min(size) > 0 and _numbers([yaw], 1)):
+            continue
+        out.append((p["kind"], at, size, float(yaw)))
+    return out
+
+
+class Piece:
+    """A roof prop being built in its own frame: x along its width, y across it, z up from the middle of its foot
+    (metres). Each face: (corner ids, part, tint, UVs or None, smooth)."""
+
+    def __init__(self):
+        self.verts, self.faces = [], []
+
+    def points(self, pts):
+        base = len(self.verts)
+        self.verts.extend(Vector(p) for p in pts)
+        return base
+
+    def face(self, ids, part, tint, uvs=None, smooth=False):
+        self.faces.append((ids, part, tint, uvs, smooth))
+
+    def box(self, x0, x1, y0, y1, z0, z1, part, tint, top=None, bottom=False):
+        """A box without its floor; `top` (part, tint, UVs) when its top differs, False for none."""
+        b = self.points([(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
+                         (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)])
+        for s in ([0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]):
+            self.face([b + k for k in s], part, tint)
+        if top is not False:
+            p, t, uvs = top or (part, tint, None)
+            self.face([b + 4, b + 5, b + 6, b + 7], p, t, uvs)
+        if bottom:
+            self.face([b + 3, b + 2, b + 1, b], part, tint)
+
+    def ring(self, rx, ry, z, power=2.0, x=0.0):
+        """SEGMENTS points around (x, 0) at height z: an ellipse, a rounded rectangle for a higher power."""
+        e, pts = 2 / power, []
+        for k in range(SEGMENTS):
+            a = 2 * math.pi * (k + 0.5) / SEGMENTS
+            c, s = math.cos(a), math.sin(a)
+            pts.append((x + rx * math.copysign(abs(c) ** e, c), ry * math.copysign(abs(s) ** e, s), z))
+        return self.points(pts)
+
+    def loft(self, rings, part, tint, top=None, bottom=None, smooth=True):
+        """Bands between rings (their first ids); `top`/`bottom`: (part, tint) of a disc closing the last/first."""
+        n = SEGMENTS
+        for r0, r1 in itertools.pairwise(rings):
+            for k in range(n):
+                j = (k + 1) % n
+                self.face([r0 + k, r0 + j, r1 + j, r1 + k], part, tint, smooth=smooth)
+        if top:
+            self.face([rings[-1] + k for k in range(n)], *top)
+        if bottom:
+            self.face([rings[0] + k for k in reversed(range(n))], *bottom)
+
+    def tube(self, r0, z0, r1, z1, part, tint, top=None, bottom=None):
+        """A round band from radius r0 at z0 to r1 at z1, its own corners (a hard edge where it meets another)."""
+        self.loft([self.ring(r0, r0, z0), self.ring(r1, r1, z1)], part, tint, top, bottom)
+
+
+def _tint(name):
+    return srgb(PROP_TINTS[name])
+
+
+def vent(w, d, h, sink, _look):
+    """kit/roofs.js: a vent pipe `d` across, a flat rain cap on it, a mushroom cap on a wide one."""
+    p, r, g = Piece(), d / 2, _tint("galvanised")
+    if d >= 0.25:
+        z0 = h - max(0.05, 0.25 * d)
+        p.tube(r, -sink, r, z0, "galvanised", g)
+        rings = [p.ring(0.65 * d * math.cos(math.radians(a)), 0.65 * d * math.cos(math.radians(a)),
+                        z0 + (h - z0) * math.sin(math.radians(a))) for a in (0, 30, 60, 80)]
+        p.loft(rings, "galvanised", g, top=("galvanised", g), bottom=("galvanised", g))
+    else:
+        p.tube(r, -sink, r, h - 0.05, "galvanised", g)
+        p.tube(0.75 * d, h - 0.05, 0.75 * d, h, "galvanised", g, top=("galvanised", g), bottom=("galvanised", g))
+    return p
+
+
+def stack(w, d, h, sink, _look):
+    """kit/roofs.js: an exhaust stack `d` across, a rim round its open top."""
+    p, r, g = Piece(), d / 2, _tint("stack")
+    p.tube(r, -sink, r, h - 0.06, "stack", g)
+    p.tube(0.575 * d, h - 0.06, 0.575 * d, h, "stack", g, top=("painted", _tint("dark")), bottom=("stack", g))
+    return p
+
+
+def skylight_dome(w, d, h, sink, _look):
+    """kit/roofs.js: a 0.25 m curb in grey metal, an opal acrylic dome 3 cm inside it, square-ish like the curb."""
+    p, curb = Piece(), min(0.25, h * 0.6)
+    p.box(-w / 2, w / 2, -d / 2, d / 2, -sink, curb, "grey", _tint("grey"))
+    rx, ry, dome = w / 2 - 0.03, d / 2 - 0.03, _tint("dome")
+    rings = [p.ring(rx * math.cos(math.radians(a)), ry * math.cos(math.radians(a)),
+                    curb + (h - curb) * math.sin(math.radians(a)), power=3.5) for a in range(0, 90, 15)]
+    p.loft(rings, "dome", dome, top=("dome", dome))
+    return p
+
+
+def skylight_flat(w, d, h, sink, _look):
+    """kit/roofs.js: a curb in grey metal, a 4 cm pane of dark glass 4 cm inside its edges (the curb is its frame)."""
+    p = Piece()
+    p.box(-w / 2, w / 2, -d / 2, d / 2, -sink, h - 0.04, "grey", _tint("grey"))
+    p.box(-w / 2 + 0.04, w / 2 - 0.04, -d / 2 + 0.04, d / 2 - 0.04, h - 0.05, h, "glass", _tint("glass"))
+    return p
+
+
+def hatch(w, d, h, sink, _look):
+    """kit/roofs.js: a roof hatch, a curb under a lid that overhangs it 3 cm, both grey metal."""
+    p, grey = Piece(), _tint("grey")
+    p.box(-w / 2, w / 2, -d / 2, d / 2, -sink, h - 0.06, "grey", grey)
+    p.box(-w / 2 - 0.03, w / 2 + 0.03, -d / 2 - 0.03, d / 2 + 0.03, h - 0.06, h, "grey", grey, bottom=True)
+    return p
+
+
+def hvac(w, d, h, sink, _look):
+    """kit/roofs.js: an air-handling unit on two 0.12 m rails along its width, one fan grille on its top (two on a long
+    one)."""
+    p, dark = Piece(), _tint("dark")
+    for y in (-0.3 * d, 0.3 * d):
+        p.box(-w / 2, w / 2, y - 0.04, y + 0.04, -sink, 0.12, "painted", dark)
+    p.box(-w / 2, w / 2, -d / 2, d / 2, 0.12, h, "painted", _tint("hvac"))
+    fans = 2 if w > 2 * d else 1
+    r = 0.35 * min(d, w / 2)
+    for k in range(fans):
+        x = -w / 2 + w / fans * (k + 0.5)
+        p.loft([p.ring(r, r, h - 0.01, x=x), p.ring(r, r, h + 0.01, x=x)], "painted", dark, top=("painted", dark))
+    return p
+
+
+def housing(w, d, h, sink, look):
+    """kit/roofs.js: a lift or stair housing in the house's render, its top in the roof's own finish under the
+    parapet's coping, a door on its front (the +depth side)."""
+    p, k, t, c = Piece(), PARAPET["over"], PARAPET["thick"], PARAPET["cap"]
+    top = ("flat", look["level"], [(0.0, 0.0), (w, 0.0), (w, d), (0.0, d)])
+    p.box(-w / 2, w / 2, -d / 2, d / 2, -sink, h, "render", look["render"], top=top)
+    x0, x1, y0, y1, ix, iy = -w / 2 - k, w / 2 + k, -d / 2 - k, d / 2 + k, w / 2 - t, d / 2 - t
+    for box in ((x0, x1, y0, -iy), (x0, x1, iy, y1), (x0, -ix, -iy, iy), (ix, x1, -iy, iy)):
+        p.box(*box, h - PARAPET["drip"], h + c, "coping", look["coping"], bottom=True)
+    if w >= 1.2 and h >= 2.3:
+        y = look["front"] * (d / 2 + 0.01)
+        xs = (-0.45, 0.45) if look["front"] < 0 else (0.45, -0.45)
+        door = p.points([(xs[0], y, 0.0), (xs[1], y, 0.0), (xs[1], y, 2.05), (xs[0], y, 2.05)])
+        p.face([door, door + 1, door + 2, door + 3], "painted", _tint("door"))
+    return p
+
+
+def rail(w, d, h, sink, _look):
+    """kit/roofs.js: a guard rail, 4 cm posts at most 1.5 m apart, a top rail and a knee rail."""
+    p, g, s = Piece(), _tint("galvanised"), 0.02
+    n = math.ceil(w / 1.5)
+    for i in range(n + 1):
+        x = -w / 2 + s + i * (w - 2 * s) / n
+        p.box(x - s, x + s, -s, s, -sink, h, "galvanised", g)
+    p.box(-w / 2, w / 2, -s, s, h - 2 * s, h, "galvanised", g, bottom=True)
+    p.box(-w / 2, w / 2, -s, s, h / 2 - s, h / 2 + s, "galvanised", g, bottom=True)
+    return p
+
+
+def walkway(w, d, h, sink, _look):
+    """kit/roofs.js: a path of 0.5 m concrete slabs on the gravel."""
+    p, slab = Piece(), _tint("slab")
+    p.box(-w / 2, w / 2, -d / 2, d / 2, -sink, h, "slab", slab, top=("slab", slab, [(0.0, 0.0), (w, 0.0), (w, d), (0.0, d)]))
+    return p
+
+
+BUILD = {"vent": vent, "stack": stack, "skylight-dome": skylight_dome, "skylight-flat": skylight_flat, "hatch": hatch,
+         "hvac": hvac, "housing": housing, "rail": rail, "walkway": walkway}
+
+
+def piece_of(kind, size, look):
+    """The prop's piece, sunk into the roof 5 cm and as far as a level face may lean (5 degrees) under it."""
+    w, d, h = size
+    return BUILD[kind](w, d, h, 0.05 + SLOPE_SINK * max(w, d) / 2, look)
+
+
+def place_piece(mesh, slots, piece, origin, ex, flat):
+    """A piece into `mesh` at `origin` (Blender), its width along `ex` (level, unit), its faces in their surfaces."""
+    ey = UP.cross(ex)
+    base = mesh.add([origin + ex * v.x + ey * v.y + UP * v.z for v in piece.verts])
+    for ids, part, tint, uvs, smooth in piece.faces:
+        slot = slots(("flat", flat) if part == "flat" else ("prop", part))
+        mesh.face([base + k for k in ids], slot, uvs or [(0.25, 0.25)] * len(ids), tint, smooth)
+
+
 def module(quad):
     """A solar module whose glass top is the quad: (vertices, [(face, "glass" | "frame", uv per corner or None)]).
     The frame is MODULE["frame"] wide on the top, its sides MODULE["thick"] deep under it; the glass's UVs count its
@@ -525,9 +861,10 @@ def flat_material(kind):
     m, g, p = _material(f"roof-flat-{kind}")
     p.inputs["Roughness"].default_value = roughness
     maps = g.scan(scan, size) if scan else None
+    tint = g.mul(g.tint(), patches(g)) if kind == "gravel" else g.tint()
     if maps:
         colour, normal = maps
-        g.nt.links.new(g.mul(colour, g.tint()), p.inputs["Base Color"])
+        g.nt.links.new(g.mul(colour, tint), p.inputs["Base Color"])
         g.nt.links.new(normal, p.inputs["Normal"])
         return m
     noise = g.nt.nodes.new("ShaderNodeTexNoise")
@@ -538,9 +875,26 @@ def flat_material(kind):
     mottle = g.op("MULTIPLY_ADD", noise.outputs["Fac"], 0.12, 0.94)
     shade = _lin(196) / _lin(232)
     value = g.op("MULTIPLY", mottle, g.op("MULTIPLY_ADD", lap, shade - 1.0, 1.0))
-    g.nt.links.new(g.mul(g.tint(), g.grey(value)), p.inputs["Base Color"])
+    g.nt.links.new(g.mul(tint, g.grey(value)), p.inputs["Base Color"])
     g.nt.links.new(g.bump(g.op("SUBTRACT", 1.0, lap), 0.004), p.inputs["Normal"])
     return m
+
+
+def patches(g):
+    """kit/roofs.js: what years leave on a flat roof, as a colour to multiply by: fbm patches of moss and dirt 2-4 m
+    across over about 30 % of it (UVs in metres, the roof's own place)."""
+    noise = g.nt.nodes.new("ShaderNodeTexNoise")
+    noise.noise_dimensions = "2D"
+    noise.inputs["Scale"].default_value = PATCHES["scale"]
+    noise.inputs["Detail"].default_value = 1.0
+    noise.inputs["Roughness"].default_value = 0.5
+    noise.inputs["Lacunarity"].default_value = PATCHES["lacunarity"]
+    g.nt.links.new(g.uv(), noise.inputs["Vector"])
+    ramp = g.nt.nodes.new("ShaderNodeMapRange")
+    ramp.interpolation_type = "SMOOTHSTEP"
+    ramp.inputs["From Min"].default_value, ramp.inputs["From Max"].default_value = PATCHES["from"], PATCHES["to"]
+    g.nt.links.new(noise.outputs["Fac"], ramp.inputs["Value"])
+    return g.mix(ramp.outputs["Result"], (1.0, 1.0, 1.0), PATCHES["moss"])
 
 
 def detail_material(_kind):
@@ -574,6 +928,26 @@ def panel_material(kind):
     return m
 
 
+def prop_material(kind):
+    """A parapet's or a prop's surface (SURFACES: roughness, metallic) in its colour (the `tint` face attribute); the
+    walkway's concrete slabs with their joints."""
+    m, g, p = _material(f"roof-{kind}")
+    p.inputs["Roughness"].default_value, p.inputs["Metallic"].default_value = SURFACES[kind]
+    colour = g.tint()
+    if kind == "slab":
+        u, v = g.uv_parts(SLAB["size"])
+        half = SLAB["joint"] / SLAB["size"] / 2
+
+        def on(x):
+            return g.op("LESS_THAN", g.op("ABSOLUTE", g.op("SUBTRACT", g.op("FRACT", g.op("ADD", x, 0.5)), 0.5)), half)
+
+        colour = g.mix(g.op("MAXIMUM", on(u), on(v)), colour, g.mul(colour, (0.55, 0.55, 0.55)))
+    if kind == "render":
+        p.inputs["Specular IOR Level"].default_value = 0.2
+    g.nt.links.new(colour, p.inputs["Base Color"])
+    return m
+
+
 class Slots:
     """The neighbours mesh's material slots: the roof finishes are made on first use and appended to `mats`."""
 
@@ -583,19 +957,22 @@ class Slots:
     def __call__(self, key):
         if key not in self.index:
             kind, name = key
-            make = {"cover": cover_material, "flat": flat_material, "detail": detail_material, "panel": panel_material}
+            make = {"cover": cover_material, "flat": flat_material, "detail": detail_material, "panel": panel_material,
+                    "prop": prop_material}
             self.index[key] = len(self.mats)
             self.mats.append(make[kind](name))
         return self.index[key]
 
 
-def dress_roof(mesh, slots, base, pts, tris, b, place):
+def dress_roof(mesh, slots, base, pts, tris, b, place, render):
     """One building's roof from its spec (`b["roof_spec"]`) into `mesh` (outside.Mesh): its triangles `tris` (indices
     into `pts`, the building's points, in the mesh from index `base`) in their cover or flat finish, ridge caps,
-    gutters and the modules of `panels` (`place` takes the spec's local points to Blender). Counts what it drew."""
+    gutters, parapets, the modules of `panels` and the equipment of `props` (`place` takes the spec's local points to
+    Blender; `render`: the linear colour of the house's walls). Counts what it drew."""
+    spec = b["roof_spec"]
     tris = unique(pts, tris)
     keys, faces, edges = planes(pts, tris)
-    cover, flat, tile, level, rain = choice(b, b["roof_spec"], faces)
+    cover, flat, tile, level, rain = choice(b, spec, faces)
     for ids, key in zip(tris, keys):
         f = faces.get(key)
         if f is None:
@@ -613,8 +990,17 @@ def dress_roof(mesh, slots, base, pts, tris, b, place):
         mesh.strip(*cap(a, b_, s1, s2, width, height), details, capped, True)
     for a, b_, f in eaves:
         mesh.strip(*gutter(a, b_, f), details, rain, False)
+    level_area = sum(f.area for f in faces.values() if f.level)
+    upstand, coping = parapet_choice(b, level_area)
+    runs = open_level(pts, tris, keys, faces, edges) if level_area > 0 else []
+    tints = {"render": render, "membrane": _tint("membrane"), "coping": coping}
+    for (a, b_, _), (ma, mb, open_a, open_b) in zip(runs, mitres(runs), strict=True):
+        verts, quads = parapet(a, b_, ma, mb, open_a, open_b, upstand)
+        at = mesh.add(verts)
+        for q, part in quads:
+            mesh.face([at + k for k in q], slots(("prop", part)), [(0.25, 0.25)] * len(q), tints[part])
     count = 0
-    for quad in (b["roof_spec"].get("panels") or []):
+    for quad in (spec.get("panels") or []):
         if not (isinstance(quad, list) and len(quad) == 4 and all(isinstance(q, list) and len(q) == 3 for q in quad)):
             continue
         verts, parts = module([place(*q) for q in quad])
@@ -622,4 +1008,14 @@ def dress_roof(mesh, slots, base, pts, tris, b, place):
         for f, kind, uvs in parts:
             mesh.face([at + k for k in f], slots(("panel", kind)), uvs or [(0.0, 0.0)] * len(f))
         count += 1
-    return {"ridges": len(ridges), "gutters": len(eaves), "panels": count}
+    props = props_of(spec)
+    for kind, (x, y, z), size, yaw in props:
+        origin = place(x, y, z)
+        ex = place(x + math.cos(yaw), y, z - math.sin(yaw)) - origin
+        ex.z = 0.0
+        ex.normalize()
+        depth = place(x + math.sin(yaw), y, z + math.cos(yaw)) - origin
+        look = {"render": render, "level": level, "coping": coping,
+                "front": 1.0 if depth.dot(UP.cross(ex)) > 0 else -1.0}
+        place_piece(mesh, slots, piece_of(kind, size, look), origin, ex, flat)
+    return {"ridges": len(ridges), "gutters": len(eaves), "panels": count, "parapets": len(runs), "props": len(props)}

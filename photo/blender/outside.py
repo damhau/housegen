@@ -550,8 +550,8 @@ class Mesh:
 def neighbours(scene, ctx, meta, place, site, alt):
     """The swissBUILDINGS3D houses around the plot, the walls as the viewer draws them (context.js): a render from a
     Swiss palette, rows of windows, shutters on a third of them. A roof with the backend's spec (#145, roofs.py) wears
-    its cover, ridge caps, gutters, flat finish and solar modules as the viewer draws them; without one (surroundings
-    fetched before #143), its colour on the aerial photo."""
+    its cover, ridge caps, gutters, flat finish, parapets, solar modules and roof equipment as the viewer draws them;
+    without one (surroundings fetched before #143), its colour on the aerial photo."""
     mats = [facade_material(f"facade-{k}-{sh}", rgb, sh) for sh in (0, 1) for k, rgb in enumerate(RENDERS)]
     slots = roofs.Slots(mats)
     photo = np.asarray(Image.open(os.path.join(ctx, meta["photo"]["file"])).convert("RGB"))
@@ -564,7 +564,7 @@ def neighbours(scene, ctx, meta, place, site, alt):
         return float(alt[j, i])
 
     mesh = Mesh()
-    n, drawn = 0, {"specs": 0, "ridges": 0, "gutters": 0, "panels": 0}
+    n, drawn = 0, {"specs": 0, "ridges": 0, "gutters": 0, "panels": 0, "parapets": 0, "props": 0}
     for b in json.load(open(os.path.join(ctx, meta["buildings"]["file"]), encoding="utf-8"))["buildings"]:
         local = [b["positions"][k:k + 3] for k in range(0, len(b["positions"]), 3)]
         pts = [place(*q) for q in local]
@@ -579,7 +579,8 @@ def neighbours(scene, ctx, meta, place, site, alt):
         wall = key % len(RENDERS) + (len(RENDERS) if (key >> 8) % 3 == 0 else 0)
         if isinstance(b.get("roof_spec"), dict):
             roof_tris, wall_tris = roofs.drawn_as(b)
-            for k, v in roofs.dress_roof(mesh, slots, base, pts, roof_tris, b, place).items():
+            render = tuple(c * PLASTER for c in RENDERS[key % len(RENDERS)])
+            for k, v in roofs.dress_roof(mesh, slots, base, pts, roof_tris, b, place, render).items():
                 drawn[k] += v
             drawn["specs"] += 1
         else:
@@ -597,7 +598,8 @@ def neighbours(scene, ctx, meta, place, site, alt):
         n += 1
     scene.collection.objects.link(bpy.data.objects.new("neighbours", mesh.build("neighbours", mats)))
     log(f"outside: roofs from the spec on {drawn['specs']} of {n} neighbours ({drawn['ridges']} ridge runs, "
-        f"{drawn['gutters']} gutter runs, {drawn['panels']} solar modules)")
+        f"{drawn['gutters']} gutter runs, {drawn['parapets']} parapet runs, {drawn['panels']} solar modules, "
+        f"{drawn['props']} pieces of roof equipment)")
     return n
 
 
