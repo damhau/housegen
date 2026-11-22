@@ -537,3 +537,134 @@ def test_a_mesh_the_modules_cannot_follow_keeps_the_rest_of_its_roof(
     (spec,) = roofs.decide([house], _photo(CLAY), R, recs, [roofs.Plant("1", 0.0, 2.0, 3.0)])
     assert (spec["cover"], spec["year"], spec["pv_kw"]) == ("clay-interlocking", 1931, 3.0)
     assert (spec["panels"], spec["why"]["panels"]) == ([], None)
+
+
+def _equipped(
+    b: dict[str, Any], panels: list[Any] | None = None, year: int | None = 1965
+) -> list[dict[str, Any]]:
+    fs = roofs.faces(b["positions"], b["roof"])
+    return roofs.props(fs, panels or [], roofs.house_hash(b["id"]), year)
+
+
+def _footprints(ps: list[dict[str, Any]]) -> list[Any]:
+    return [
+        roofs.footprint(p["at"][0], p["at"][2], p["size"][0], p["size"][1], p["yaw"]) for p in ps
+    ]
+
+
+def _block(id_: str, length: float = 40, width: float = 22, turn: float = 0.0) -> dict[str, Any]:
+    return {**_flat(0, 0, length, width, turn=turn), "id": id_}
+
+
+KINDS = {"vent", "skylight-dome", "skylight-flat", "hatch", "hvac", "stack", "housing", "rail"}
+
+
+def test_a_block_s_flat_roof_takes_its_equipment_inside_it_and_clear_of_its_edges() -> None:
+    seen: set[str] = set()
+    for k in range(12):
+        b = _block(f"block-{k}", turn=25)
+        roof = Polygon(np.asarray(b["positions"]).reshape(-1, 3)[:, [0, 2]])
+        inner = roof.buffer(-roofs.PROP_EDGE, join_style="mitre")
+        ps = _equipped(b)
+        seen |= {p["kind"] for p in ps}
+        for p, fp in zip(ps, _footprints(ps), strict=True):
+            assert inner.buffer(1e-6).contains(fp), p
+            assert p["at"][1] == pytest.approx(Y)
+            assert all(v > 0 for v in p["size"])
+        # the pieces stand along the roof's sides (turned 25° clockwise seen from above: yaw -25°)
+        assert {round(math.degrees(p["yaw"])) % 90 for p in ps} <= {65}
+    assert {"vent", "hatch"} <= seen <= KINDS | {"walkway"}
+    assert seen & {"skylight-dome", "skylight-flat"}
+    assert seen & {"hvac", "housing", "rail", "walkway"}
+
+
+def test_the_equipment_never_overlaps_and_keeps_clear_of_the_modules() -> None:
+    for k in range(12):
+        b = _block(f"pv-{k}")
+        face = roofs.faces(b["positions"], b["roof"])[0]
+        panels = roofs.flat_modules(face, 60)
+        assert len(panels) == 60
+        ps = _equipped(b, panels)
+        assert ps
+        fps = _footprints(ps)
+        for i, a in enumerate(fps):
+            for j in range(i + 1, len(fps)):
+                assert a.intersection(fps[j]).area < 1e-9, (ps[i], ps[j])
+        modules = [Polygon(np.asarray(q)[:, [0, 2]]) for q in panels]
+        for p, fp in zip(ps, fps, strict=True):
+            assert min(fp.distance(m) for m in modules) >= roofs.MODULE_CLEAR, p
+
+
+def test_the_equipment_is_drawn_again_the_same_for_the_same_house() -> None:
+    house = _block("same")
+    photo = _photo(FIELD)
+    (a,) = roofs.decide([house], photo, R, [], [])
+    (b,) = roofs.decide([json.loads(json.dumps(house))], photo, R, [], [])
+    assert a["props"]
+    assert a["props"] == b["props"]
+    (c,) = roofs.decide([{**house, "id": "other"}], photo, R, [], [])
+    assert c["props"] != a["props"]
+
+
+def test_a_small_roof_takes_one_vent_at_most_a_tiny_one_nothing() -> None:
+    small = [_equipped({**_flat(0, 0, 5, 4.4), "id": f"garage-{k}"}) for k in range(30)]
+    assert all(len(ps) <= 1 for ps in small)
+    assert all(p["kind"] == "vent" for ps in small for p in ps)
+    assert any(small)
+    assert not all(small)
+    assert all(_equipped({**_flat(0, 0, 3, 2.5), "id": f"shed-{k}"}) == [] for k in range(30))
+    # a house's flat roof: vents, sometimes a skylight; no hatch, no unit, no housing
+    house = [_equipped({**_flat(0, 0, 12, 9), "id": f"house-{k}"}) for k in range(30)]
+    kinds = {p["kind"] for ps in house for p in ps}
+    assert "vent" in kinds
+    assert kinds <= {"vent", "skylight-dome", "skylight-flat"}
+    assert "skylight-dome" in kinds or "skylight-flat" in kinds
+    # a pitched roof takes nothing
+    assert _equipped(_gable(0, 0, 12, 9)) == []
+
+
+def _with_part_on_it(
+    id_: str, x0: float, z0: float, x1: float, z1: float, top: float
+) -> dict[str, Any]:
+    """A 40 x 22 m flat roof at Y with a higher part (x0..x1, z0..z1) standing on it, its roof at `top`."""
+    xs, zs = [-20.0, x0, x1, 20.0], [-11.0, z0, z1, 11.0]
+    pts: list[tuple[float, float, float]] = []
+    roof: list[int] = []
+
+    def quad(a: float, b: float, c: float, d: float, y: float) -> None:
+        n = len(pts)
+        pts.extend([(a, y, c), (b, y, c), (b, y, d), (a, y, d)])
+        roof.extend([n, n + 2, n + 1, n, n + 3, n + 2])
+
+    for i in range(3):
+        for j in range(3):
+            if (i, j) != (1, 1):
+                quad(xs[i], xs[i + 1], zs[j], zs[j + 1], Y)
+    quad(x0, x1, z0, z1, top)
+    return {"id": id_, "positions": [v for p in pts for v in p], "roof": roof, "wall": []}
+
+
+def test_a_housing_only_where_the_survey_has_no_higher_part_already() -> None:
+    plain = [_equipped(_block(f"big-{k}")) for k in range(40)]
+    housings = [p for ps in plain for p in ps if p["kind"] == "housing"]
+    assert housings
+    assert all(2.3 <= p["size"][2] <= 2.9 for p in housings)
+    built = [_with_part_on_it(f"big-{k}", -2, -3, 2, 3, Y + 2.6) for k in range(40)]
+    assert len(roofs.faces(built[0]["positions"], built[0]["roof"])) == 2
+    assert all(p["kind"] != "housing" for b in built for p in _equipped(b))
+    # nothing under the higher part or against it either
+    part = Polygon([(-2, -3), (2, -3), (2, 3), (-2, 3)])
+    for b in built:
+        for fp in _footprints([p for p in _equipped(b) if p["at"][1] < Y + 1]):
+            assert fp.distance(part) >= roofs.PROP_GAP - 1e-6
+
+
+def test_each_building_s_spec_holds_its_props() -> None:
+    (spec,) = roofs.decide([_block("specs")], _photo(FIELD), R, [], [])
+    assert spec["props"]
+    for p in spec["props"]:
+        assert set(p) == {"kind", "at", "size", "yaw"}
+        assert len(p["at"]) == 3
+        assert len(p["size"]) == 3
+    (spec,) = roofs.decide([_gable(0, 0, 10, 8)], _photo(CLAY), R, [], [])
+    assert spec["props"] == []

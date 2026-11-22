@@ -49,7 +49,8 @@ NEAR = 120  # metres: the default 3D radius around the house (#51)
 ALTITUDES = "tiles"  # buildings.json's survey buildings stand at their tiles' altitudes (#140)
 ROOFS_OFF = 1.0  # metres between the survey's roofs and the lidar's past which a fetch warns
 # buildings.json's roof_spec, decided with both registers' answers (#143); a new value decides them again
-ROOFS = 2
+# (3: the flat roofs' equipment, #146)
+ROOFS = 3
 
 
 def context_dir(project_root: Path) -> Path:

@@ -16,6 +16,11 @@ there is the roof's triangles).
                (c1 - c0) x (c3 - c0) points out of the module's face
   why          what decided the colour ("photo" | "neighbours"), the cover ("year" | "colour" | "hash")
                and the panels ("bfe" | "photo" | None)
+  props        the equipment on its flat faces (#146), placed at random from the house's hash:
+               {"kind": vent | skylight-dome | skylight-flat | hatch | hvac | stack | housing | rail |
+               walkway, "at": [x, y, z] the middle of its footprint on the roof (y the roof's surface),
+               "size": [w, d, h] metres (w along yaw), "yaw": radians about +y (0: w along +x, so w runs
+               along (cos yaw, 0, -sin yaw) and d along (sin yaw, 0, cos yaw))}
   egid         optional: the register's building id
   flat_colour  optional: the photo's median over the level faces (sRGB), where it shows them
 
@@ -26,8 +31,9 @@ from __future__ import annotations
 
 import logging
 import math
+import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -923,17 +929,23 @@ def decide(
         level_px = samples(p, t, pix, radius, level=True) if shown else every[:0]
         plants_here = on.get(k, [])
         panels: list[list[list[float]]] = []
+        fs: list[Face] = []
         try:
+            fs = faces(b["positions"], b.get("roof") or [])
             if plants_here:
-                panels = _plant_modules(b, fps[k], plants_here)
+                panels = _plant_modules(fs, fps[k], plants_here)
             elif shown:
-                fs = faces(b["positions"], b.get("roof") or [])
                 panels = [m for f in fs for m in photo_modules(f, photo, radius)]
         # a survey mesh the geometry cannot follow loses its modules, not the rest of its roof
         except Exception as e:
             logger.warning("geo.roof_modules_failed", extra={"building": b["id"], "error": str(e)})
             panels = []
         panels_why = ("bfe" if plants_here else "photo") if panels else None
+        try:
+            equipment = props(fs, panels, h, year)
+        except Exception as e:
+            logger.warning("geo.roof_props_failed", extra={"building": b["id"], "error": str(e)})
+            equipment = []
         spec: dict[str, Any] = {
             "cover": cover,
             "flat": flat_kind(level_px),
@@ -943,6 +955,7 @@ def decide(
             "pv_kw": round(sum(pl.kw for pl in plants_here), 2) if plants_here else None,
             "panels": panels,
             "why": {"colour": colour_why, "cover": cover_why, "panels": panels_why},
+            "props": equipment,
             "egid": rec.egid if rec else None,
         }
         if len(level_px) >= 20:
@@ -951,11 +964,10 @@ def decide(
     return out
 
 
-def _plant_modules(b: dict[str, Any], fp: Any, plants_here: list[Plant]) -> list[list[list[float]]]:
+def _plant_modules(fs: list[Face], fp: Any, plants_here: list[Plant]) -> list[list[list[float]]]:
     """The plants' modules, each plant's on the part of a multi-part entry nearest its point."""
     from shapely.geometry import Point
 
-    fs = faces(b["positions"], b.get("roof") or [])
     parts = list(getattr(fp, "geoms", [fp]))
     part_of = [_nearest(parts, Point(f.centre[0], f.centre[2])) for f in fs]
     by_part: dict[int, float] = {}
@@ -970,3 +982,339 @@ def _plant_modules(b: dict[str, Any], fp: Any, plants_here: list[Plant]) -> list
 
 def _nearest(parts: list[Any], pt: Any) -> int:
     return min(range(len(parts)), key=lambda j: parts[j].distance(pt)) if parts else 0
+
+
+# the equipment on the flat roofs (#146)
+PROP_EDGE = 0.8  # metres: kept clear of a flat roof's edges (its parapet)
+PROP_GAP = 0.4  # metres between two pieces
+VENT_GAP = 0.25  # between the pipes of a cluster
+MODULE_CLEAR = 0.3  # metres round a solar module
+HIGHER = 0.3  # metres: a part of the building this much higher than a flat face is not on it
+TINY_ROOF = 8.0  # m²: a flat face this small takes nothing
+SMALL_ROOF = 25.0  # m²: a garage's, an annex's: nothing, or one vent
+BLOCK_ROOF = 180.0  # m²: a block's from here, a house's under it
+BLOCK_PART = 80.0  # m²: a face this large of a building whose flat faces add up to BLOCK_TOTAL
+BLOCK_TOTAL = 400.0
+HOUSING_ROOF = 350.0  # m²: a lift or stair housing from here
+STANDS_ON = (
+    1.0  # metres: a higher part of the building this close stands on the face (one there already)
+)
+TRIES = 40
+RAIL_IN = 0.9  # metres: a fall-protection rail inside the roof's edge
+
+
+@dataclass
+class _Roof:
+    """One flat face being equipped: where a piece may stand, what is placed, its axes."""
+
+    face: Face
+    inner: Any  # where a footprint may lie: PROP_EDGE inside the face, clear of higher parts
+    outline: Any  # the face seen from above
+    yaw: float  # its long side's direction
+    rng: random.Random
+    taken: list[tuple[Any, float]] = field(default_factory=list)  # footprints, and their gap
+    props: list[dict[str, Any]] = field(default_factory=list)
+
+
+def footprint(x: float, z: float, w: float, d: float, yaw: float) -> Any:
+    """A piece's footprint seen from above: w along (cos yaw, -sin yaw) in (x, z), d across it."""
+    from shapely.geometry import Polygon
+
+    c, s = math.cos(yaw), math.sin(yaw)
+    return Polygon(
+        [
+            (x + a * c * w / 2 + b * s * d / 2, z - a * s * w / 2 + b * c * d / 2)
+            for a, b in ((-1, -1), (1, -1), (1, 1), (-1, 1))
+        ]
+    )
+
+
+def _axis(outline: Any) -> float:
+    """The yaw of a shape's long side (its least rectangle's), in (-π/2, π/2]."""
+    rect = outline.minimum_rotated_rectangle
+    if rect.geom_type != "Polygon":
+        return 0.0
+    xs, zs = rect.exterior.coords.xy
+    a = (xs[1] - xs[0], zs[1] - zs[0])
+    b = (xs[2] - xs[1], zs[2] - zs[1])
+    dx, dz = a if math.hypot(*a) >= math.hypot(*b) else b
+    yaw = math.atan2(-dz, dx)
+    if yaw <= -math.pi / 2:
+        yaw += math.pi
+    elif yaw > math.pi / 2:
+        yaw -= math.pi
+    return yaw
+
+
+def _free(roof: _Roof, fp: Any, gap: float, only: bool = False) -> bool:
+    """Whether a footprint lies inside the roof's room, `gap` from every piece (or the piece's own gap
+    when larger, unless `only`)."""
+    if not roof.inner.contains(fp):
+        return False
+    x0, z0, x1, z1 = fp.bounds
+    for t, g in roof.taken:
+        tx0, tz0, tx1, tz1 = t.bounds
+        clear = gap if only else max(gap, g)
+        if tx0 - clear > x1 or x0 - clear > tx1 or tz0 - clear > z1 or z0 - clear > tz1:
+            continue
+        if fp.distance(t) < clear:
+            return False
+    return True
+
+
+def _keep(roof: _Roof, kind: str, fp: Any, size: tuple[float, float, float], yaw: float) -> Any:
+    c = fp.centroid
+    y = _roof_at(roof.face.tris, c.x, c.y)
+    if y is None:
+        n, o = roof.face.normal, roof.face.centre
+        y = float(o[1] - (n[0] * (c.x - o[0]) + n[2] * (c.y - o[2])) / n[1])
+    roof.taken.append((fp, VENT_GAP if kind == "vent" else PROP_GAP))
+    roof.props.append(
+        {
+            "kind": kind,
+            "at": [round(c.x, 3), round(y, 3), round(c.y, 3)],
+            "size": [round(v, 2) for v in size],
+            "yaw": round(yaw, 4),
+        }
+    )
+    return fp
+
+
+def _put(
+    roof: _Roof,
+    kind: str,
+    size: tuple[float, float, float],
+    near: tuple[float, float] | None = None,
+    spread: float = 1.5,
+    gap: float = PROP_GAP,
+) -> Any:
+    """A piece where it fits, at random (within `spread` of `near` when given), along the roof's long
+    side: its footprint, None when it fits nowhere."""
+    x0, z0, x1, z1 = roof.inner.bounds
+    for _ in range(TRIES):
+        if near is None:
+            x, z = roof.rng.uniform(x0, x1), roof.rng.uniform(z0, z1)
+        else:
+            x = near[0] + roof.rng.uniform(-spread, spread)
+            z = near[1] + roof.rng.uniform(-spread, spread)
+        fp = footprint(x, z, size[0], size[1], roof.yaw)
+        if _free(roof, fp, gap):
+            return _keep(roof, kind, fp, size, roof.yaw)
+    return None
+
+
+def _vents(roof: _Roof, count: int) -> None:
+    """Vent pipes in clusters of one to three (a flat's plumbing), now and then a mushroom vent."""
+    r = roof.rng
+    left = count
+    while left > 0:
+        if r.random() < 0.3:
+            d = r.uniform(0.28, 0.4)
+            size = (d, d, r.uniform(0.3, 0.45))
+        else:
+            d = r.uniform(0.11, 0.16)
+            size = (d, d, r.uniform(0.45, 0.9))
+        first = _put(roof, "vent", size)
+        left -= 1
+        if first is None:
+            return
+        for _ in range(min(left, r.randint(0, 2))):
+            c = first.centroid
+            d = r.uniform(0.1, 0.15)
+            if _put(roof, "vent", (d, d, r.uniform(0.45, 0.9)), (c.x, c.y), 0.9, VENT_GAP):
+                left -= 1
+
+
+def _skylights(roof: _Roof, count: int, year: int | None) -> list[Any]:
+    """Skylights in a row along the roof's long side (over a corridor or a stair): domes, or flat glass
+    on a curb, more often on a newer house."""
+    r = roof.rng
+    flat = r.random() < (0.7 if year is not None and year >= 2000 else 0.3)
+    if flat:
+        w, d = r.choice([(1.0, 1.0), (1.2, 1.2), (1.0, 1.5), (1.2, 2.0), (1.5, 2.5)])
+        size = (w, d, r.uniform(0.3, 0.4))
+    else:
+        w, d = r.choice([(0.9, 0.9), (1.0, 1.0), (1.2, 1.2), (1.0, 1.5), (1.2, 1.8)])
+        size = (w, d, r.uniform(0.45, 0.6))
+    kind = "skylight-flat" if flat else "skylight-dome"
+    step = size[0] + r.uniform(1.2, 2.5)
+    c, s = math.cos(roof.yaw), math.sin(roof.yaw)
+    out: list[Any] = []
+    first = _put(roof, kind, size)
+    if first is None:
+        return out
+    out.append(first)
+    o = first.centroid
+    for k in range(1, count):
+        fp = footprint(o.x + k * step * c, o.y - k * step * s, size[0], size[1], roof.yaw)
+        put = _keep(roof, kind, fp, size, roof.yaw) if _free(roof, fp, PROP_GAP) else None
+        put = put or _put(roof, kind, size)
+        if put is not None:
+            out.append(put)
+    return out
+
+
+def _rail(roof: _Roof, near: Any) -> None:
+    """A fall-protection rail along the roof's edge nearest the hatch, RAIL_IN inside it."""
+    from shapely.geometry import Point
+
+    shape = max(getattr(roof.outline, "geoms", [roof.outline]), key=lambda g: g.area)
+    xs, zs = shape.exterior.coords.xy
+    c = np.array([near.centroid.x, near.centroid.y])
+    edges = []
+    for k in range(len(xs) - 1):
+        p, q = np.array([xs[k], zs[k]]), np.array([xs[k + 1], zs[k + 1]])
+        length = float(np.linalg.norm(q - p))
+        if length < 2 * RAIL_IN + 2.0:
+            continue
+        e = (q - p) / length
+        n = np.array([-e[1], e[0]])
+        if not shape.contains(Point(*((p + q) / 2 + 0.5 * n))):
+            n = -n
+        edges.append((abs(float(np.dot(c - p, n))), p, e, n, length, float(np.dot(c - p, e))))
+    want = roof.rng.uniform(4.0, 10.0)
+    for _, p, e, n, length, t in sorted(edges, key=lambda x: x[0])[:3]:
+        span = min(want, length - 2 * RAIL_IN)
+        while span >= 2.0:
+            t0 = min(max(t, RAIL_IN + span / 2), length - RAIL_IN - span / 2)
+            mid = p + t0 * e + RAIL_IN * n
+            yaw = math.atan2(-e[1], e[0])
+            fp = footprint(float(mid[0]), float(mid[1]), span, 0.05, yaw)
+            if _free(roof, fp, 0.3):
+                _keep(roof, "rail", fp, (span, 0.05, 1.1), yaw)
+                return
+            span *= 0.6
+
+
+def _walkway(roof: _Roof, start: Any, end: Any, width: float) -> None:
+    """Paving slabs from one piece to another along the roof's axes (one turn), clear of the rest."""
+    from shapely.geometry import LineString
+
+    c, s = math.cos(roof.yaw), math.sin(roof.yaw)
+    a, b = start.centroid, end.centroid
+    du = (b.x - a.x) * c - (b.y - a.y) * s  # along the roof's long side
+    corner = (a.x + du * c, a.y - du * s)
+    ends = [start.buffer(0.1, join_style="mitre"), end.buffer(0.1, join_style="mitre")]
+    legs = []
+    for p, q, yaw in (((a.x, a.y), corner, roof.yaw), (corner, (b.x, b.y), roof.yaw - math.pi / 2)):
+        if math.dist(p, q) < 0.5:
+            continue
+        line: Any = LineString([p, q])
+        for blocked in ends:
+            line = line.difference(blocked)
+        pieces = [g for g in getattr(line, "geoms", [line]) if not g.is_empty]
+        if pieces:
+            legs.append((max(pieces, key=lambda g: g.length), yaw))
+    planned = []
+    for line, yaw in legs:
+        (x0, z0), (x1, z1) = line.coords[0], line.coords[-1]
+        length = line.length
+        if length < 0.5:
+            continue
+        ux, uz = (x1 - x0) / length, (z1 - z0) / length
+        mid = ((x0 + x1) / 2, (z0 + z1) / 2)
+        # the first leg runs on under the turn, the second starts past it: one square, not two
+        if len(legs) == 2 and math.dist((x1, z1), corner) < 1e-6:
+            length += width / 2
+            mid = (mid[0] + ux * width / 4, mid[1] + uz * width / 4)
+        elif len(legs) == 2 and math.dist((x0, z0), corner) < 1e-6:
+            # and a slab's joint between the two
+            skip = width / 2 + 0.01
+            length -= skip
+            mid = (mid[0] + ux * skip / 2, mid[1] + uz * skip / 2)
+        if length >= 0.5:
+            planned.append((footprint(mid[0], mid[1], length, width, yaw), length, yaw))
+    if planned and all(_free(roof, fp, 0.05, only=True) for fp, _, _ in planned):
+        for fp, length, yaw in planned:
+            _keep(roof, "walkway", fp, (length, width, 0.04), yaw)
+
+
+def _equip(roof: _Roof, scale: str, year: int | None, may_house: bool, main: bool) -> None:
+    r = roof.rng
+    area = roof.face.area
+    if scale == "small":
+        if r.random() < 0.5:
+            _vents(roof, 1)
+        return
+    if scale == "house":
+        if r.random() < 0.4:
+            _skylights(roof, 2 if area > 80 and r.random() < 0.3 else 1, year)
+        _vents(roof, r.randint(1, 3))
+        return
+    housing = None
+    if may_house and area >= HOUSING_ROOF and r.random() < 0.6:
+        housing = _put(
+            roof, "housing", (r.uniform(2.4, 3.2), r.uniform(3.0, 4.5), r.uniform(2.4, 2.8))
+        )
+    units = []
+    for _ in range(2 if area >= 800 and r.random() < 0.5 else 1):
+        if r.random() < (0.6 if area >= 300 else 0.4):
+            size = (r.uniform(1.6, 3.2), r.uniform(0.9, 1.6), r.uniform(1.0, 1.6))
+            units.append(_put(roof, "hvac", size))
+    lights = _skylights(roof, r.randint(1, min(4, 1 + int(area // 200))), year)
+    hatch = None
+    # one way up a block, mostly: a hatch on its main roof, on half of its other parts
+    if r.random() < (0.3 if housing is not None else 1.0 if main else 0.5):
+        hatch = _put(
+            roof, "hatch", (r.uniform(0.9, 1.2), r.uniform(0.9, 1.4), r.uniform(0.45, 0.6))
+        )
+    if r.random() < 0.35:
+        d = r.uniform(0.25, 0.45)
+        _put(roof, "stack", (d, d, r.uniform(1.0, 2.2)))
+    _vents(roof, min(10, 3 + int(area // 150) + r.randint(0, 2)))
+    if hatch is not None and r.random() < 0.35:
+        _rail(roof, hatch)
+    access = hatch if hatch is not None else housing
+    target = next((u for u in units if u is not None), None) or (lights[-1] if lights else None)
+    if access is not None and target is not None and r.random() < 0.5:
+        _walkway(roof, access, target, 1.0 if r.random() < 0.3 else 0.5)
+
+
+def props(
+    fs: list[Face], panels: list[list[list[float]]], hash_: int, year: int | None
+) -> list[dict[str, Any]]:
+    """The equipment on a building's flat faces (see the module's docstring), drawn by the house's hash:
+    clear of its modules and of its higher parts, PROP_EDGE inside each face's edge, never overlapping,
+    as many and as large as the face allows (nothing or a vent on an annex, vents and a skylight on a
+    house, skylights, a hatch, units, a stack, a housing, a rail and a walkway on a block)."""
+    import shapely
+    from shapely.geometry import Polygon
+
+    flats = [k for k, f in enumerate(fs) if f.flat and f.area >= TINY_ROOF]
+    if not flats:
+        return []
+    clear = [
+        Polygon(np.asarray(q, dtype=np.float64)[:, [0, 2]]).buffer(MODULE_CLEAR, join_style="mitre")
+        for q in panels
+    ]
+    modules_plan = shapely.union_all(clear) if clear else None
+    plans = [_shape(f.tris[:, :, [0, 2]]) for f in fs]
+    tops = [float(f.tris[:, :, 1].max()) for f in fs]
+    total = sum(fs[k].area for k in flats)
+    out: list[dict[str, Any]] = []
+    for k in flats:
+        f, y = fs[k], float(fs[k].centre[1])
+        others = [i for i in range(len(fs)) if i != k and not plans[i].is_empty]
+        inner = plans[k].buffer(-PROP_EDGE, join_style="mitre")
+        for i in others:
+            if tops[i] > y + HIGHER:
+                inner = inner.difference(plans[i].buffer(PROP_GAP, join_style="mitre"))
+        if inner.is_empty:
+            continue
+        shapely.prepare(inner)
+        roof = _Roof(f, inner, plans[k], _axis(plans[k]), random.Random(_mix(hash_) * 64 + k))
+        if modules_plan is not None:
+            roof.taken.append((modules_plan, 0.0))
+        # the survey has a higher part standing on it already (a housing, the block's next storey)
+        stands_on = any(
+            tops[i] > y + STANDS_ON and plans[i].distance(plans[k]) <= STANDS_ON for i in others
+        )
+        if f.area < SMALL_ROOF:
+            scale = "small"
+        elif f.area >= BLOCK_ROOF or (total >= BLOCK_TOTAL and f.area >= BLOCK_PART):
+            scale = "block"
+        else:
+            scale = "house"
+        _equip(roof, scale, year, not stands_on, k == flats[0])
+        out += roof.props
+    return out
