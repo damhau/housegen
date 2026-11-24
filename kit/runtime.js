@@ -36,6 +36,11 @@
 //                                                  calibration overrides of the presentation look (tuning only)
 //   ?live_spots=6                                  the same for the fixtures' cones (spot lights)
 //   ?lamps=day|all|off                             which fixtures are lit (lighting.js): by day the accents only (default)
+//   ?glass=alpha|half|full                         presentation glass (#147): see-through without transmission (default),
+//                                                  transmission at half resolution, or at full resolution (ultra's)
+//   ?adapt=0&adapt_mp=2.4                          presentation frames while the camera moves: at most this many
+//                                                  megapixels, stretched to the canvas (#147); adapt=0: always full
+//   ?ao_scale=0.5                                  the moving camera's ambient occlusion, a share of its frame's width
 //   ?p_contrast=1.08&p_sat=1.06&p_vignette=0.28&p_meadow=0.78
 //                                                  the grade (contrast about mid grey, saturation, vignette) and
 //                                                  how much darker than the lawn the land beyond the plot is
@@ -87,6 +92,16 @@ const AO_FROM_SCENE = params.get("ao_gbuffer") !== "1"; // the occlusion reads t
 const BOX = params.get("box") !== "0"; // glossy reflections projected on the room's box (#59)
 const TILE = Number(params.get("merge_tile")) || 16; // metres: the shell and the outside are merged by tiles this size
 const SAMPLES = Math.max(1, Math.min(256, Number(params.get("samples")) || (HEADLESS ? 16 : 48)));
+// transmissive glass draws the whole scene behind it a second time, every frame one is in view (#147):
+// presentation draws it see-through instead; ultra keeps it
+const GLASS = ULTRA ? "full" : ["alpha", "half", "full"].includes(params.get("glass")) ? params.get("glass") : PRESENTATION ? "alpha" : "full";
+// a moving camera's presentation frames at most `megapixels`, the full resolution once it has rested `settle` ms;
+// moving = turned in two drawn frames less than `sustain` ms apart (a jump to a view is not a move; a slow
+// machine's frames are still close enough)
+const ADAPT = { on: params.get("adapt") !== "0", megapixels: Number(params.get("adapt_mp")) || 2.4, settle: 300, sustain: 1000 };
+// the ambient occlusion of a moving camera's frames at half their width and height; at rest it is drawn at full
+// size, where a quarter of the samples showed as grain along every edge
+const AO_SCALE = Math.max(0.25, Math.min(1, Number(params.get("ao_scale")) || 0.5));
 const CAMERA_FAR = PRESENTATION ? 2000 : 500; // presentation: the sky dome and the ground reach the horizon
 const DEFAULT_FOV = 42; // the elevated auto-framed views
 const PHOTO_FOV = 50; // the "-photo" views: a person with a phone
@@ -253,19 +268,27 @@ window.__house = {
         envIntensity: state.outdoor.envIntensity, hemi: state.outdoor.hemi } };
   },
   // debugging: the lamps lighting the last frame (null when every point light of the scene does):
-  // the room each lights, where it hangs, how far up its fade is
+  // whether their stand-ins are drawn at all (not outdoors by day), the room each lights, where it hangs,
+  // how far up its fade is
   get lamps() {
     const L = state.lamps;
     const r = (v) => Math.round(v * 100) / 100;
-    return L && { total: L.lamps.length, live: L.slots.map((s) => s.spot && { room: s.spot.key, at: s.spot.p.toArray().map(r), w: r(s.w), intensity: r(s.light.intensity) }) };
+    return L && { total: L.lamps.length, shown: L.slots[0]?.light.visible ?? false, live: L.slots.map((s) => s.spot && { room: s.spot.key, at: s.spot.p.toArray().map(r), w: r(s.w), intensity: r(s.light.intensity) }) };
   },
   // the same for the fixtures' cones (spot lights), and which fixtures the daytime rule lit
   get spotLamps() {
     const L = state.spotLamps;
     const r = (v) => Math.round(v * 100) / 100;
-    return L && { total: L.lamps.length, live: L.slots.map((s) => s.spot && { room: s.spot.key, at: s.spot.p.toArray().map(r), w: r(s.w), intensity: r(s.light.intensity) }) };
+    return L && { total: L.lamps.length, shown: L.slots[0]?.light.visible ?? false, live: L.slots.map((s) => s.spot && { room: s.spot.key, at: s.spot.p.toArray().map(r), w: r(s.w), intensity: r(s.light.intensity) }) };
   },
   get lampMode() { return { mode: LAMP_MODE, ...state.lampMode }; },
+  // debugging (#147): how the glass is drawn (materials made see-through), and the frame's chain: the
+  // moving camera's ("low", its size) or the full one
+  get glass() { return { mode: GLASS, seeThrough: state.glass ?? 0, transmissionScale: state.renderer?.transmissionResolutionScale ?? null }; },
+  get chain() {
+    const c = state.chain, t = c?.composer.renderTarget1;
+    return c ? { name: c === state.chains?.low ? "low" : "full", size: [t.width, t.height], ao: [c.gtao.width, c.gtao.height], low: Boolean(state.chains?.low) } : null;
+  },
   // debugging: the presentation look in force on this page (after the calibration overrides)
   get look() { return PRESENTATION ? JSON.parse(JSON.stringify(PRESENTATION_LOOK)) : null; },
   // debugging: progress of the ultra accumulation, null on other pages
@@ -480,55 +503,12 @@ export async function boot(buildScene) {
   // post-processing (final look): ambient occlusion + anti-aliasing
   if (EFFECTS) {
     const drawing = renderer.getDrawingBufferSize(new THREE.Vector2());
-    // presentation renders into a multisampled target (MSAA with the occlusion pass, which the
-    // canvas cannot give); ultra accumulates its own samples instead
-    const target = PRESENTATION
-      ? new THREE.WebGLRenderTarget(drawing.x, drawing.y, { type: THREE.HalfFloatType, samples: ULTRA ? 0 : 4 })
-      : undefined;
-    // the ambient occlusion reads the scene pass's own depth (its normals rebuilt from it) instead of
-    // drawing the whole scene a second time for its normals (#56): each of the composer's two
-    // targets gets a depth texture (the second is a clone of the first)
-    const sharedDepth = PRESENTATION && !ULTRA && AO_FROM_SCENE;
-    if (sharedDepth) target.depthTexture = new THREE.DepthTexture(drawing.x, drawing.y);
-    const composer = new EffectComposer(renderer, target);
-    if (ULTRA) {
-      const accumulate = new AccumulatePass(scene, camera, sun, {
-        samples: SAMPLES, radiusDeg: PRESENTATION_LOOK.sunAngularRadius, width: drawing.x, height: drawing.y,
-      });
-      composer.addPass(accumulate);
-      state.accumulate = accumulate;
-    } else {
-      composer.addPass(new RenderPass(scene, camera));
-    }
-    const gtao = new GTAOPass(scene, camera, W, H);
-    gtao.output = GTAOPass.OUTPUT.Default;
-    gtao.blendIntensity = PRESENTATION ? 0.8 : 0.9;
-    gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1, thickness: 1, scale: 1, samples: Number(params.get("ao_samples")) || (QUALITY === "high" ? 16 : 8), distanceFallOff: 1, screenSpaceRadius: false });
-    if (sharedDepth) gtao.setGBuffer(target.depthTexture); // pointed at the right target before each frame (renderFrame)
-    composer.addPass(gtao);
-    if (PRESENTATION) {
-      // the indoor white balance (#58): linear gains before the tone mapping, neutral outdoors
-      const balance = new ShaderPass(BalanceShader);
-      composer.addPass(balance);
-      state.balancePass = balance;
-      state.balanceTarget = new THREE.Vector3(1, 1, 1);
-    }
-    composer.addPass(new OutputPass());
-    if (PRESENTATION) {
-      const grade = new ShaderPass(GradeShader);
-      grade.uniforms.strength.value = PRESENTATION_LOOK.vignette;
-      grade.uniforms.contrast.value = PRESENTATION_LOOK.contrast;
-      grade.uniforms.saturation.value = PRESENTATION_LOOK.saturation;
-      composer.addPass(grade);
-      if (!ULTRA && !HEADLESS && REST.on) {
-        state.rest = new RestPass(drawing.x, drawing.y, REST.samples);
-        composer.addPass(state.rest);
-      }
-    } else {
-      composer.addPass(new SMAAPass(W, H));
-    }
-    state.composer = composer;
-    state.gtao = gtao;
+    const full = buildChain(drawing.x, drawing.y, { rest: PRESENTATION && !ULTRA && !HEADLESS && REST.on });
+    state.chains = { full, low: null };
+    Object.assign(state, { gtao: full.gtao, rest: full.rest, accumulate: full.accumulate, balancePass: full.balance });
+    if (full.balance) state.balanceTarget = new THREE.Vector3(1, 1, 1);
+    useChain(full);
+    sizeLowChain(drawing);
   }
 
   // progress while the scene loads (#60): the viewer shows the version's picture and this until the
@@ -591,6 +571,8 @@ export async function boot(buildScene) {
       console.warn(`housekit: surroundings not loaded: ${err?.message ?? err}`);
     }
   }
+  if (GLASS === "alpha") seeThroughGlass(scene);
+  else if (GLASS === "half") renderer.transmissionResolutionScale = 0.5;
   if (PRESENTATION) {
     applyPresentationLook(scene, sun, sunSpec, ground);
     state.accumulate?.rememberSun();
@@ -654,7 +636,7 @@ export async function boot(buildScene) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
-    state.composer?.setSize(w, h);
+    resizeChains();
     state.needsRender = true;
   });
   if (WALK) await startWalk();
@@ -761,7 +743,7 @@ export async function boot(buildScene) {
     if (moved || state.needsRender) state.rest?.reset();
     const converging = state.composer && state.accumulate && !state.accumulate.done;
     const resting = state.composer && state.rest && state.rest.count > 0 && !state.rest.done;
-    if (!moved && !state.needsRender && !converging && !resting) return;
+    if (!moved && !state.needsRender && !converging && !resting && !sharpenDue()) return;
     state.needsRender = false;
     const t0 = performance.now();
     const made = (renderer.info.programs?.length ?? 0) + renderer.info.memory.textures;
@@ -779,7 +761,7 @@ export async function boot(buildScene) {
         programs: info.programs?.length ?? 0, textures: info.memory.textures, geometries: info.memory.geometries, moved: !!moved,
         at: [Math.round(state.camera.position.x * 100) / 100, Math.round(state.camera.position.z * 100) / 100], yaw: Math.round((state.walk?.yaw ?? 0) * 100) / 100,
         room: state.indoor?.name ?? null, doorway: state.indoor?.doorway ? `${state.indoor.doorway.from}>${state.indoor.doorway.to}:${state.indoor.doorway.w}` : null,
-        drawn: state.lastCull?.seen?.length ?? null });
+        drawn: state.lastCull?.seen?.length ?? null, chain: state.chain ? (state.chain === state.chains?.low ? "low" : "full") : null });
       if (FRAME_LOG.length > 2000) FRAME_LOG.splice(0, 1000);
     }
     // a frame that compiled a shader or uploaded a texture, or one behind a fade, is a one-off cost,
@@ -796,7 +778,7 @@ export async function boot(buildScene) {
       // (a slow frame here and there is the GPU driver's first draw of something, not the machine)
       const median = counted.length === 8 ? [...counted].sort((a, b) => a - b)[4] : 0;
       if (slowRun >= 3 || median > 90) {
-        state.composer = null;
+        dropEffects();
         state.needsRender = true; // redraw once without effects
         console.warn(`housekit: effects disabled, ${Math.round(dt)} ms frame on this machine`);
         try { parent.postMessage({ type: "house:effects", enabled: false }, "*"); } catch { /* noop */ }
@@ -808,6 +790,34 @@ export async function boot(buildScene) {
 // --------------------------------------------------------------------------
 // Presentation look: sky, sun, environment, horizon, vignette, accumulation
 // --------------------------------------------------------------------------
+
+/**
+ * Glass drawn see-through instead of transmissive (#147). A transmissive material in view draws every opaque
+ * object of the scene a second time, into a multisampled copy of the frame it refracts (on the owner's house, a
+ * T4 at their 4K and 150 %: 29 ms of a 94 ms outdoor frame's GPU time, 22-38 % of its CPU time, about 300 MB).
+ * The same pane as plain alpha: as much of what is behind shows through (its opacity times the share it did not
+ * transmit, at least GLASS_FLOOR), with the same tint, and its reflection at normal incidence kept (the specular
+ * colour divided by that share). A rough pane's blur and the grazing reflections are what differ.
+ */
+const GLASS_FLOOR = 0.1;
+function seeThroughGlass(root) {
+  const seen = new Set();
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      if (!m || seen.has(m) || !(m.transmission > 0)) continue;
+      seen.add(m);
+      const share = Math.max(GLASS_FLOOR, 1 - m.transmission);
+      const f0 = ((m.ior - 1) / (m.ior + 1)) ** 2 * Math.max(m.specularColor.r, m.specularColor.g, m.specularColor.b, 1e-3);
+      m.specularColor.multiplyScalar(Math.min(1 / share, 1 / f0));
+      m.opacity *= share;
+      m.transparent = true;
+      m.transmission = 0;
+      m.needsUpdate = true;
+    }
+  });
+  state.glass = (state.glass ?? 0) + seen.size;
+}
 
 function applyPresentationSun(sun, spec) {
   sun.color.set(PRESENTATION_LOOK.sunColor);
@@ -1288,6 +1298,102 @@ const GradeShader = {
     }`,
 };
 
+/**
+ * The ambient occlusion at `scale` of the frame's width and height, whatever size the composer gives it.
+ * Below 1, stretched back over the frame, each pixel takes the occlusion of the nearby samples at its own
+ * depth: a plain bilinear stretch bled a darker band from the objects in front onto the wall behind them.
+ */
+class ScaledGTAOPass extends GTAOPass {
+  constructor(scene, camera, width, height, scale = 1) {
+    super(scene, camera, width, height);
+    this.scale = scale;
+    if (scale >= 1) return;
+    this.blendMaterial.dispose();
+    this.blendMaterial = new THREE.ShaderMaterial({
+      ...DepthAwareBlendShader,
+      uniforms: THREE.UniformsUtils.clone(DepthAwareBlendShader.uniforms),
+      defines: { PERSPECTIVE_CAMERA: camera.isPerspectiveCamera ? 1 : 0 },
+      transparent: true, depthTest: false, depthWrite: false,
+      blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+      blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor,
+      blendSrcAlpha: THREE.DstAlphaFactor, blendDstAlpha: THREE.ZeroFactor, blendEquationAlpha: THREE.AddEquation,
+    });
+  }
+
+  setSize(width, height) {
+    super.setSize(Math.max(1, Math.round(width * this.scale)), Math.max(1, Math.round(height * this.scale)));
+  }
+
+  render(renderer, writeBuffer, readBuffer, deltaTime, maskActive) {
+    const u = this.blendMaterial.uniforms;
+    if (u.tDepth) {
+      u.tDepth.value = this.gtaoMaterial.uniforms.tDepth.value;
+      u.aoSize.value.set(this.width, this.height);
+      u.cameraNear.value = this.camera.near;
+      u.cameraFar.value = this.camera.far;
+    }
+    super.render(renderer, writeBuffer, readBuffer, deltaTime, maskActive);
+  }
+}
+
+const DepthAwareBlendShader = {
+  name: "DepthAwareBlendShader",
+  uniforms: {
+    tDiffuse: { value: null },
+    tDepth: { value: null },
+    aoSize: { value: new THREE.Vector2(1, 1) },
+    cameraNear: { value: 0.1 },
+    cameraFar: { value: 1000 },
+    intensity: { value: 1 },
+  },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */ `
+    #include <packing>
+    uniform sampler2D tDiffuse;
+    uniform sampler2D tDepth;
+    uniform vec2 aoSize;
+    uniform float cameraNear;
+    uniform float cameraFar;
+    uniform float intensity;
+    varying vec2 vUv;
+    float distanceAt(const vec2 uv) {
+      float d = texture2D(tDepth, uv).x;
+      #if PERSPECTIVE_CAMERA == 1
+        return -perspectiveDepthToViewZ(d, cameraNear, cameraFar);
+      #else
+        return -orthographicDepthToViewZ(d, cameraNear, cameraFar);
+      #endif
+    }
+    void main() {
+      float z = distanceAt(vUv);
+      vec2 p = vUv * aoSize - 0.5;
+      vec2 f = fract(p);
+      vec2 base = (floor(p) + 0.5) / aoSize;
+      float sum = 0.0, weights = 0.0, nearest = 1e20;
+      vec3 fallback = vec3(1.0);
+      for (int j = 0; j < 2; j++) {
+        for (int i = 0; i < 2; i++) {
+          vec2 uv = base + vec2(float(i), float(j)) / aoSize;
+          vec3 ao = texture2D(tDiffuse, uv).rgb;
+          float dz = abs(distanceAt(uv) - z) / max(z, 1e-4);
+          vec2 b = mix(1.0 - f, f, vec2(float(i), float(j)));
+          // a sample more than 4 % nearer or farther is another surface
+          float w = b.x * b.y * max(0.0, 1.0 - dz * 25.0);
+          sum += ao.r * w;
+          weights += w;
+          if (dz < nearest) { nearest = dz; fallback = ao; }
+        }
+      }
+      vec3 ao = weights > 1e-4 ? vec3(sum / weights) : fallback;
+      gl_FragColor = vec4(mix(vec3(1.0), ao, intensity), 1.0);
+    }`,
+};
+
 /** Van der Corput radical inverse: the i-th point of a low-discrepancy sequence in base b. */
 function halton(i, b) {
   let f = 1, r = 0;
@@ -1543,7 +1649,8 @@ const REST = { samples: Math.max(2, Number(params.get("rest_samples")) || 8), on
 // fadeIn/fadeOut: seconds; throughDoor: the weight of a room a door opens onto (1: a room open to the
 // camera's); roomless: of a lamp in no room (a stair, a porch) from indoors; keep: the lead a lamp
 // with a stand-in has over one without; reach: metres at which a lamp counts half (distance)
-const LAMPS = { fadeIn: 0.4, fadeOut: 0.25, throughDoor: 0.35, roomless: 0.2, keep: 1.3, reach: 4 };
+// dusk: degrees; with the sun higher than this, a camera outdoors sees no lamp behind the windows (#147)
+const LAMPS = { fadeIn: 0.4, fadeOut: 0.25, throughDoor: 0.35, roomless: 0.2, keep: 1.3, reach: 4, dusk: 8 };
 
 function capLights(root, scene) {
   state.lamps = capPool(root, scene, false, LIGHT_BUDGET);
@@ -1651,25 +1758,53 @@ function setStandIn(light, spot, w, scale = state.lampScale ?? 1) {
   }
 }
 
-/** Before each frame: the stand-ins on the lamps that light the view, fading toward their new lamp. */
-function placeLampStandIns(camera) {
-  for (const L of lampPools()) placeStandIns(L, camera);
+/**
+ * Is the sun up (above LAMPS.dusk)? By day a camera outdoors does not see the lamps behind the windows: twelve
+ * lights in every material's shader cost a third of an outdoor frame's GPU time (the owner's house, a T4, #147).
+ * At dusk (the sun study's evening) they light the windows again.
+ */
+const _sunRay = new THREE.Vector3();
+function daylight() {
+  const sun = state.sun;
+  if (!sun || sun.intensity <= 0) return false;
+  const d = _sunRay.subVectors(sun.position, sun.target.position);
+  return d.y > d.length() * Math.sin(THREE.MathUtils.degToRad(LAMPS.dusk));
 }
 
-function placeStandIns(L, camera) {
+/**
+ * The stand-ins drawn or not: hidden, they are out of every shader (a light at intensity 0 still costs
+ * its share). Both variants are compiled before they are needed (precompileHouse, precompileLamps).
+ */
+function showStandIns(on) {
+  for (const L of lampPools()) for (const slot of L.slots) slot.light.visible = on;
+}
+
+/**
+ * Before each frame: the stand-ins on the lamps that light the view, fading toward their new lamp. Outdoors by
+ * day none: hidden at once, not faded (a fade would be one more set of programs, for a light nobody sees).
+ */
+function placeLampStandIns(camera) {
+  const pools = lampPools();
+  if (!pools.length) return;
+  const room = cameraRoom(camera);
+  const off = !room && daylight();
+  showStandIns(!off);
+  for (const L of pools) placeStandIns(L, camera, room, off);
+}
+
+function placeStandIns(L, camera, room, off) {
   const spots = lampSpots(L);
   camera.updateMatrixWorld();
   camera.getWorldPosition(L.from);
   L.frustum.setFromProjectionMatrix(L.m.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
-  const room = cameraRoom(camera);
   const inView = room ? roomsInView(room) : null;
-  for (const s of spots) s.score = lampScore(s, L.from, inView, L.frustum, L.sphere) * (s.slot ? LAMPS.keep : 1);
+  for (const s of spots) s.score = off ? 0 : lampScore(s, L.from, inView, L.frustum, L.sphere) * (s.slot ? LAMPS.keep : 1);
   const wanted = spots.filter((s) => s.score > 0).sort((a, b) => b.score - a.score).slice(0, L.slots.length);
   const chosen = new Set(wanted);
   for (const slot of L.slots) slot.target = slot.spot && chosen.has(slot.spot) ? 1 : 0;
   // the first frame (and a headless page) lights its lamps at once; later a stand-in fades out
   // before it moves to another lamp (taken over when nearly dark)
-  const instant = HEADLESS || L.at === null;
+  const instant = HEADLESS || L.at === null || off;
   for (const s of wanted) {
     if (s.slot) continue;
     const free = L.slots
@@ -1705,6 +1840,7 @@ function placeStandIns(L, camera) {
  */
 function aimLamps(room, at, scale = state.lampScale ?? 1) {
   const inView = roomsInView(room);
+  showStandIns(true);
   for (const L of lampPools()) {
     const best = lampSpots(L)
       .map((s) => ({ s, v: lampScore(s, at, inView, null, L.sphere) }))
@@ -2040,10 +2176,7 @@ function enterIndoorLight(room, key) {
     } else {
       setExposureTarget(out.exposure * INDOOR.exposure);
     }
-    if (gtao) {
-      gtao.updateGtaoMaterial({ radius: INDOOR.aoRadius, thickness: INDOOR.aoThickness });
-      gtao.blendIntensity = INDOOR.aoBlend;
-    }
+    setOcclusion(INDOOR.aoRadius, INDOOR.aoThickness, INDOOR.aoBlend);
   } else {
     scene.environment = out.env;
     scene.environmentIntensity = out.envIntensity;
@@ -2056,15 +2189,21 @@ function enterIndoorLight(room, key) {
     state.balanceTarget?.copy(NEUTRAL);
     setEnvBox(null);
     setLampScale(1);
-    if (gtao) {
-      gtao.updateGtaoMaterial({ radius: out.aoRadius, thickness: 1 });
-      gtao.blendIntensity = out.aoBlend;
-    }
+    setOcclusion(out.aoRadius, 1, out.aoBlend);
   }
   state.accumulate?.reset();
   // the next frames recompile the materials for the new light (a second on a laptop GPU): not a
   // sign that the effects are too heavy for this machine
   state.frameCheckSkip = 3;
+}
+
+/** The ambient occlusion of every chain (the moving camera's too): its reach, thickness and strength. */
+function setOcclusion(radius, thickness, blend) {
+  for (const chain of [state.chains?.full, state.chains?.low]) {
+    if (!chain) continue;
+    chain.gtao.updateGtaoMaterial({ radius, thickness });
+    chain.gtao.blendIntensity = blend;
+  }
 }
 
 /**
@@ -2281,8 +2420,150 @@ function innerPoint(poly) {
   return best;
 }
 
+/**
+ * A post-processing chain drawing frames `width` x `height` (drawing pixels): the scene (multisampled on a
+ * presentation page, accumulated on an ultra one), its ambient occlusion, the indoor white balance, the tone
+ * mapping, the grade and the frame at rest (`rest`). `share`: the chain whose white balance this one follows.
+ */
+function buildChain(width, height, { rest = false, share = null, aoScale = 1 } = {}) {
+  const { renderer, scene, camera, sun } = state;
+  // presentation renders into a multisampled target (MSAA with the occlusion pass, which the
+  // canvas cannot give); ultra accumulates its own samples instead
+  const target = PRESENTATION
+    ? new THREE.WebGLRenderTarget(width, height, { type: THREE.HalfFloatType, samples: ULTRA ? 0 : 4 })
+    : undefined;
+  // the ambient occlusion reads the scene pass's own depth (its normals rebuilt from it) instead of
+  // drawing the whole scene a second time for its normals (#56): each of the composer's two
+  // targets gets a depth texture (the second is a clone of the first)
+  if (PRESENTATION && !ULTRA && AO_FROM_SCENE) target.depthTexture = new THREE.DepthTexture(width, height);
+  const composer = new EffectComposer(renderer, target);
+  const chain = { composer, gtao: null, rest: null, balance: null, accumulate: null };
+  if (ULTRA) {
+    chain.accumulate = new AccumulatePass(scene, camera, sun, {
+      samples: SAMPLES, radiusDeg: PRESENTATION_LOOK.sunAngularRadius, width, height,
+    });
+    composer.addPass(chain.accumulate);
+  } else {
+    composer.addPass(new RenderPass(scene, camera));
+  }
+  const gtao = new ScaledGTAOPass(scene, camera, width, height, aoScale);
+  gtao.output = GTAOPass.OUTPUT.Default;
+  gtao.blendIntensity = PRESENTATION ? 0.8 : 0.9;
+  gtao.updateGtaoMaterial({ radius: 0.6, distanceExponent: 1, thickness: 1, scale: 1, samples: Number(params.get("ao_samples")) || (QUALITY === "high" ? 16 : 8), distanceFallOff: 1, screenSpaceRadius: false });
+  if (target?.depthTexture) gtao.setGBuffer(target.depthTexture); // pointed at the right target before each frame (renderFrame)
+  composer.addPass(gtao);
+  chain.gtao = gtao;
+  if (PRESENTATION) {
+    // the indoor white balance (#58): linear gains before the tone mapping, neutral outdoors
+    chain.balance = new ShaderPass(BalanceShader);
+    if (share?.balance) chain.balance.uniforms.gain = share.balance.uniforms.gain;
+    composer.addPass(chain.balance);
+  }
+  composer.addPass(new OutputPass());
+  if (PRESENTATION) {
+    const grade = new ShaderPass(GradeShader);
+    grade.uniforms.strength.value = PRESENTATION_LOOK.vignette;
+    grade.uniforms.contrast.value = PRESENTATION_LOOK.contrast;
+    grade.uniforms.saturation.value = PRESENTATION_LOOK.saturation;
+    composer.addPass(grade);
+    if (rest) {
+      chain.rest = new RestPass(width, height, REST.samples);
+      composer.addPass(chain.rest);
+    }
+  } else {
+    composer.addPass(new SMAAPass(width, height));
+  }
+  // every pass at the chain's size, in drawing pixels: a composer built on a target takes the target's
+  // size for CSS pixels and gave every pass that times the pixel ratio (2.25 x the pixels at 150 %, #147)
+  composer.setPixelRatio(1);
+  composer.setSize(width, height);
+  return chain;
+}
+
+/** The chain the next frame is drawn with (null: no effects); state.composer is its composer. */
+function useChain(chain) {
+  state.chain = chain;
+  state.composer = chain?.composer ?? null;
+  return chain;
+}
+
+/**
+ * The moving camera's chain (#147) for a canvas drawing `drawing` pixels: at most ADAPT.megapixels, its
+ * last pass stretching the frame to the canvas. Its targets are allocated now, not at the first move (a
+ * hitch); a canvas small enough to move at its full resolution has none.
+ */
+function sizeLowChain(drawing) {
+  const chains = state.chains;
+  if (!chains) return;
+  const scale = Math.min(1, Math.sqrt((ADAPT.megapixels * 1e6) / (drawing.x * drawing.y)));
+  if (!(ADAPT.on && PRESENTATION && !ULTRA && !HEADLESS && scale < 0.9)) {
+    if (chains.low) disposeChain(chains.low);
+    chains.low = null;
+    if (state.chain) useChain(chains.full);
+    return;
+  }
+  const w = Math.max(1, Math.round(drawing.x * scale)), h = Math.max(1, Math.round(drawing.y * scale));
+  if (chains.low) chains.low.composer.setSize(w, h);
+  else chains.low = buildChain(w, h, { share: chains.full, aoScale: AO_SCALE });
+  chains.low.drawn = false;
+  const { composer, gtao } = chains.low;
+  for (const t of [composer.renderTarget1, composer.renderTarget2, gtao.gtaoRenderTarget, gtao.pdRenderTarget]) state.renderer.initRenderTarget(t);
+}
+
+function disposeChain(chain) {
+  for (const pass of chain.composer.passes) pass.dispose?.();
+  chain.composer.dispose();
+}
+
+/** The chains at the canvas's new size (a resized window). */
+function resizeChains() {
+  if (!state.chains) return;
+  const drawing = state.renderer.getDrawingBufferSize(new THREE.Vector2());
+  state.chains.full.composer.setSize(drawing.x, drawing.y);
+  sizeLowChain(drawing);
+}
+
+/** The effects off for good (the frame-time guard): every frame straight to the canvas. */
+function dropEffects() {
+  if (state.chains?.low) disposeChain(state.chains.low);
+  state.chains = null;
+  useChain(null);
+}
+
+const pose = { p: new THREE.Vector3(Infinity, 0, 0), q: new THREE.Quaternion(), fov: 0, at: -Infinity, until: 0 };
+
+/** The chain of a frame drawn now: the moving camera's while it moves and ADAPT.settle ms after, else the full one. */
+function pickChain(camera, now = performance.now()) {
+  const chains = state.chains;
+  if (!chains) return useChain(null);
+  if (camera.position.distanceToSquared(pose.p) > 1e-6 || Math.abs(camera.quaternion.dot(pose.q)) < 1 - 1e-8 || camera.fov !== pose.fov) {
+    if (now - pose.at < ADAPT.sustain) pose.until = now + ADAPT.settle;
+    pose.p.copy(camera.position);
+    pose.q.copy(camera.quaternion);
+    pose.fov = camera.fov;
+    pose.at = now;
+  }
+  return useChain(chains.low && now < pose.until ? chains.low : chains.full);
+}
+
+/** Is the camera at rest after frames drawn while it moved: one at the full resolution due? */
+function sharpenDue(now = performance.now()) {
+  const chains = state.chains;
+  return Boolean(chains?.low && state.chain === chains.low && now >= pose.until);
+}
+
+function drawChain({ composer, gtao }) {
+  if (gtao.depthTexture && composer.readBuffer.depthTexture) {
+    // the scene pass draws into the composer's read buffer: its depth is what the occlusion reads
+    const d = composer.readBuffer.depthTexture;
+    gtao.gtaoMaterial.uniforms.tDepth.value = d;
+    gtao.pdMaterial.uniforms.tDepth.value = d;
+  }
+  composer.render();
+}
+
 function renderFrame() {
-  const { renderer, scene, camera, composer } = state;
+  const { renderer, scene, camera } = state;
   if (!renderer) return;
   syncShadows();
   updateIndoorLight();
@@ -2290,15 +2571,17 @@ function renderFrame() {
   placeLampStandIns(camera);
   updateMirrors(camera);
   const culled = cullRooms(camera);
-  if (composer && state.gtao?.depthTexture && composer.readBuffer.depthTexture) {
-    // the scene pass draws into the composer's read buffer: its depth is what the occlusion reads
-    const d = composer.readBuffer.depthTexture;
-    state.gtao.gtaoMaterial.uniforms.tDepth.value = d;
-    state.gtao.pdMaterial.uniforms.tDepth.value = d;
+  const chain = pickChain(camera);
+  const low = state.chains?.low;
+  if (low && !low.drawn && chain !== low) {
+    // its first frame is slow (programs, buffers made on first use): drawn under a full one, not at the first move
+    drawChain(low);
+    low.drawn = true;
   }
-  const jittered = composer && state.rest?.jitter(camera, renderer);
-  if (composer) composer.render();
+  const jittered = chain?.rest?.jitter(camera, renderer);
+  if (chain) drawChain(chain);
   else renderer.render(scene, camera);
+  if (low && chain === low) low.drawn = true;
   if (jittered) jittered();
   if (culled) for (const o of culled) o.visible = true;
   state.mirrors?.done();
@@ -2634,6 +2917,7 @@ function sunStudy() {
   if (state.study) return state.study;
   if (!PRESENTATION || !state.context?.aligned || !state.context?.place) return null;
   state.study = createSunStudy({ renderer: state.renderer, scene: state.scene, sun: state.sun, look: PRESENTATION_LOOK, sampleHorizon, context: state.context, state });
+  precompileLamps();
   return state.study;
 }
 
@@ -3164,13 +3448,17 @@ async function precompileHouse() {
   if (state.precompiled || HEADLESS || !state.renderer?.compileAsync) return;
   state.precompiled = true;
   const { renderer, scene, camera, composer } = state;
+  if (GLASS === "alpha") seeThroughGlass(scene); // a model that arrived after the first frame
   const t0 = performance.now(), before = renderer.info.programs.length;
   const target = composer ? composer.renderTarget1 : null;
+  // and the way out (#147): outdoors by day the sky's environment and no lamp stand-ins, other programs
+  const out = lampPools().length > 0 && daylight();
   const previous = renderer.getRenderTarget();
   renderer.setRenderTarget(target); // the programs are made now; only the wait for them is async
-  const done = renderer.compileAsync(scene, camera);
+  const done = [renderer.compileAsync(scene, camera)];
+  if (out) done.push(asOutdoors(false, () => renderer.compileAsync(scene, camera)));
   renderer.setRenderTarget(previous);
-  await done.catch((err) => console.warn(`housekit: precompile: ${err?.message ?? err}`));
+  await Promise.all(done).catch((err) => console.warn(`housekit: precompile: ${err?.message ?? err}`));
   const culled = [];
   scene.traverse((o) => {
     if ((o.isMesh || o.isPoints || o.isLine) && o.frustumCulled) {
@@ -3180,12 +3468,48 @@ async function precompileHouse() {
   });
   // the whole chain: the scene into the composer's target, and the ambient occlusion's own pass,
   // which draws every object again with its normals material
-  if (composer) composer.render();
+  if (state.chain) drawChain(state.chain);
   else renderer.render(scene, camera);
+  if (out) {
+    asOutdoors(false, () => {
+      renderer.setRenderTarget(target);
+      renderer.render(scene, camera);
+      renderer.setRenderTarget(previous);
+    });
+  }
   for (const o of culled) o.frustumCulled = true;
   state.frameCheckSkip = Math.max(state.frameCheckSkip ?? 0, 2); // the next frame may still be slow: not the machine
   state.precompile = { env: scene.environment?.image?.height ?? null, indoor: !!state.indoor, programs: [before, renderer.info.programs.length],
     ms: Math.round(performance.now() - t0) };
+}
+
+/** `fn` run with the scene lit as outdoors (the sky's environment), the lamps' stand-ins drawn or not; then as it was. */
+function asOutdoors(lamps, fn) {
+  const { scene } = state;
+  const env = scene.environment, shown = lampPools()[0]?.slots[0]?.light.visible ?? true;
+  if (state.outdoor) scene.environment = state.outdoor.env;
+  showStandIns(lamps);
+  try {
+    return fn();
+  } finally {
+    scene.environment = env;
+    showStandIns(shown);
+  }
+}
+
+/**
+ * The programs of the house seen from outdoors with its lamps lit, made in the background (#147): the sun
+ * study's evening lights the windows again, which by day nothing draws (placeLampStandIns).
+ */
+function precompileLamps() {
+  if (state.lampsPrecompiled || HEADLESS || !lampPools().length || !state.renderer?.compileAsync) return;
+  state.lampsPrecompiled = true;
+  const { renderer, scene, camera, composer } = state;
+  const previous = renderer.getRenderTarget();
+  renderer.setRenderTarget(composer ? composer.renderTarget1 : null);
+  asOutdoors(true, () => renderer.compileAsync(scene, camera))
+    .catch((err) => console.warn(`housekit: precompile: ${err?.message ?? err}`));
+  renderer.setRenderTarget(previous);
 }
 
 /**

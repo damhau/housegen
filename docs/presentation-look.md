@@ -108,6 +108,41 @@ Byte-identical pictures are therefore not a usable regression test; the check us
 the old-code-vs-new-code difference equals the same-code-vs-same-code difference (template: mean
 absolute difference 0.250 vs 0.252; ac386: 1.44 vs 1.48 across the four views).
 
+## Frame cost on the viewer (2026-11-24, renderer v47, #147)
+
+Measured on a Modal T4 at the owner's screen (a 1964 x 1166 viewer at 150 %, 5.15 MP drawn), on Montelly
+(cdc30a72d1ac, version 30), against v45:
+
+- The composer's passes ran at the drawing size times the pixel ratio (11.6 MP instead of 5.15 MP). Each chain
+  now sets its composer's pixel ratio to 1 and its size in drawing pixels.
+- Glass is see-through alpha instead of transmission (`?glass=half|full` brings back transmission at half or
+  full resolution; ultra keeps it). Transmission drew every opaque object a second time: 29 ms of a 94 ms
+  outdoor frame's GPU time, about 300 MB. In the side-by-side views (façade, conservatory roof, porthole,
+  glazed doors from inside), the panes look the same.
+- Outdoors with the sun above 8°, the lamps' stand-ins are hidden: twelve lights in every shader cost a third
+  of an outdoor frame. At dusk and at night (sun study), they light the windows again. Both light sets are
+  compiled before they are needed: the outdoor set when the walk starts, the lit one in the background when
+  the sun study opens.
+- While the camera moves (two pose changes less than 1 s apart), frames come from a second chain at
+  2.4 MP at most (`?adapt_mp`, `?adapt=0`), stretched to the canvas. It has no frame-at-rest pass, and its
+  ambient occlusion is at half its width and height (`?ao_scale`), with a depth-aware stretch. The full
+  chain comes back 300 ms after the last move. The second chain is allocated and drawn once at load, so the
+  first move does not hitch. It exists only on canvases above about 3 MP.
+- At rest, the ambient occlusion stays at full size: at half size, its grain showed along every edge (door
+  frames, bookcases, room corners), even with the depth-aware stretch.
+
+| T4, ms per frame (CPU p50 / GPU p50) | v45 | v47 |
+|---|---|---|
+| orbit outside | 43.9 / 82.6 | 30.3 / 26.2 |
+| opening view at rest | 38.9 / 92.5 | 28.5 / 33.1 |
+| turning in Salon, Réserve, Ch.1 | 9.1, 7.0, 5.2 / 65.6, 76.6, 89.6 | 10.0, 9.3, 6.6 / 12.5, 13.2, 11.0 |
+| at rest in Salon, Réserve, Ch.1 | 7.3, 15.5, 7.5 / 61.2, 77.4, 66.4 | 8.6, 9.4, 8.9 / 33.4, 42.4, 36.9 |
+
+Still open: walking into a second or third room stalls one frame for 2.3 to 2.6 s on the T4 (v45 too, where
+it compiled 79 and 21 programs). v47 compiles four there, material variants made for that room's captured
+light (box-projected `env-box`, planar mirrors), which the walk's precompile, done in the first room, does
+not make. Walking out of the house costs one frame of about 350 ms without compiling anything.
+
 ## Not done yet, in the order to try them
 
 Textures with grain, then trees, then something behind the glass, each on a presentation page,
